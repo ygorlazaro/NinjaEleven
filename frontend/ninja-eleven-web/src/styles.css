@@ -1,0 +1,685 @@
+:root {
+  --bg: #071018;
+  --panel: #0d1823;
+  --panel2: #111f2d;
+  --line: #22384b;
+  --text: #edf5fb;
+  --muted: #91a7b8;
+  --accent: #f2d34f;
+  --green: #38d39f;
+  --red: #ff647c;
+  --blue: #57a6ff;
+  --orange: #ffb45b;
+  --team-primary: var(--accent);
+  --team-secondary: var(--accent);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 0%, #17304a 0, transparent 35%),
+    radial-gradient(circle at 90% 100%, #172a1f 0, transparent 35%), var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+button, select { font: inherit; }
+button { cursor: pointer; }
+.hidden { display: none !important; }
+
+.app { max-width: 1180px; margin: auto; padding: 22px; }
+.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+.brand { font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.brand span { color: var(--accent); }
+.badge { padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 12px; }
+
+.card {
+  background: linear-gradient(180deg, rgba(17, 31, 45, .96), rgba(9, 19, 29, .96));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .22);
+}
+.start { padding: 30px; }
+.start h1 { margin: 0 0 7px; font-size: 34px; }
+.start p { color: var(--muted); margin: 0 0 24px; }
+
+.team-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.team-choice {
+  padding: 18px; border: 1px solid var(--line); border-radius: 12px;
+  background: #0b1722; transition: .2s;
+}
+.team-choice:hover { transform: translateY(-2px); border-color: #42617a; }
+.team-choice.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.crest {
+  width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center;
+  font-weight: 900; background: linear-gradient(135deg, #274b67, #162737);
+  margin-bottom: 14px;
+}
+.team-choice h3 { margin: 0 0 5px; }
+.team-choice .small { color: var(--muted); font-size: 13px; }
+.team-choice .rating { margin-top: 15px; font-size: 12px; color: var(--accent); }
+
+.primary { border: 0; background: var(--accent); color: #12170f; font-weight: 900; padding: 12px 18px; border-radius: 9px; }
+.primary:disabled { opacity: .35; cursor: not-allowed; }
+#startBtn { margin-top: 20px; width: 100%; }
+
+.league-screen { padding: 22px; }
+.league-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.league-head h2 { margin: 0 0 5px; }
+.league-head p { margin: 0; color: var(--muted); font-size: 12px; }
+.league-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 14px; }
+.league-panel { padding: 16px; }
+.league-panel h3 { margin: 0 0 10px; font-size: 14px; }
+.standings { width: 100%; border-collapse: collapse; font-size: 11px; }
+.standings th { color: var(--muted); font-size: 9px; text-transform: uppercase; padding: 7px 5px; text-align: center; }
+.standings th:nth-child(2) { text-align: left; }
+.standings td { padding: 8px 5px; border-top: 1px solid rgba(34, 56, 75, .65); text-align: center; }
+.standings td:nth-child(2) { text-align: left; }
+.standings tr.user-row { background: color-mix(in srgb, var(--team-primary) 10%, transparent); box-shadow: inset 3px 0 var(--team-primary); }
+.team-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+
+/* A played round, told back. The scoreline is the shape; the summary underneath is the
+   match's own account of itself, and it is the reason the panel exists — a table of
+   results says nothing about how any of it happened. */
+.matchday-report { margin-top: 12px; display: flex; flex-direction: column; gap: 7px; }
+.matchday-report-title { margin: 0 0 2px; font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 700; }
+.matchday-report-entry {
+  display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left;
+  padding: 8px 9px; border: 1px solid var(--line); border-radius: 7px;
+  background: #0a1520; color: inherit; font: inherit; cursor: pointer;
+}
+.matchday-report-entry:hover { border-color: var(--accent); }
+.matchday-report-entry.user-entry { border-left: 3px solid var(--accent); }
+.matchday-report-score { display: flex; align-items: center; gap: 9px; font-size: 11px; }
+.matchday-report-score b { font-weight: 700; }
+.matchday-report-goals { font-weight: 950; white-space: nowrap; }
+.matchday-report-goals i { font-style: normal; color: var(--muted); padding: 0 1px; }
+.matchday-report-summary { color: var(--muted); font-size: 10.5px; line-height: 1.45; }
+.fixture-list, .calendar-list { min-height: 40px; display: flex; flex-direction: column; gap: 6px; max-height: 370px; overflow: auto; }
+.fixture { grid-template-columns: 35px 1fr auto 1fr; gap: 7px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: #0a1520; font-size: 11px; display: grid; }
+.fixture .home { text-align: right; }
+.fixture .away { text-align: left; }
+/* Full club names are what a manager reads, so they get the room; the abbreviation
+   stays available as the tooltip when a name is long. */
+.fixture .home, .fixture .away { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fixture .result { font-weight: 950; min-width: 45px; text-align: center; }
+.fixture.played { opacity: .78; }
+.fixture.live { border-color: var(--orange); }
+.fixture.clickable { cursor: pointer; transition: .15s; }
+.fixture.clickable:hover { border-color: #46657d; background: #0e1c29; }
+.league-empty { color: var(--muted); font-size: 11px; padding: 6px 2px; }
+.league-note { color: var(--muted); font-size: 11px; }
+.calendar-round.current-round { border-color: var(--accent); }
+.fixture.user-fixture { border-color: var(--team-primary); }
+.calendar-round { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
+.calendar-round-title { padding: 8px 10px; background: #101b26; font-size: 11px; font-weight: 900; }
+.calendar-round-body { display: flex; flex-direction: column; gap: 4px; padding: 7px; }
+.scorers { width: 100%; border-collapse: collapse; font-size: 11px; }
+.scorers th { color: var(--muted); font-size: 9px; text-transform: uppercase; text-align: left; padding: 7px; }
+.scorers td { padding: 7px; border-top: 1px solid rgba(34, 56, 75, .5); }
+.scorers td:nth-child(4) { text-align: center; }
+.scorers tr.user-row { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.scorers tr.user-row td:first-child { box-shadow: inset 3px 0 var(--accent); }
+.scorer-tabs { margin-bottom: 8px; }
+.league-actions { display: flex; gap: 8px; }
+
+@media(max-width: 850px) {
+  .league-grid { grid-template-columns: 1fr; }
+  .fixture { grid-template-columns: 15px minmax(90px, 1fr) 65px minmax(90px, 1fr); }
+}
+
+.squad-screen { padding: 22px; }
+.squad-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.squad-hint { color: var(--muted); font-size: 11px; margin: 5px 0 8px; }
+.selection-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+.selection-count { font-weight: 800; color: var(--accent); }
+.squad-table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 9px; }
+.squad-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.squad-table th { color: var(--muted); font-size: 9px; text-transform: uppercase; padding: 7px 5px; text-align: left; }
+.squad-table td { padding: 8px 5px; border-top: 1px solid rgba(34, 56, 75, .5); }
+
+/* The manager's own club. It is a screen and not a modal: the game starts here, and a
+   career is read from this table more than from anything else. */
+.team-view-overlay { padding: 0; }
+.team-view-card { padding: 20px; }
+.team-view-summary { position: sticky; top: 0; z-index: 2; background: linear-gradient(180deg, rgba(17, 31, 45, .97), rgba(9, 19, 29, .94)); margin: -20px -20px 14px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.team-view-summary h2 { margin: 0 0 4px; }
+.team-color-sample { width: 150px; height: 28px; border-radius: 999px; border: 1px solid var(--line); background: linear-gradient(90deg, var(--team-primary), var(--team-secondary)); box-shadow: 0 0 0 2px rgba(255, 255, 255, .03) inset; }
+.team-view-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.team-view-table th { color: var(--muted); font-size: 9px; text-transform: uppercase; padding: 7px; text-align: center; }
+.team-view-table th:first-child, .team-view-table td:first-child { text-align: left; }
+.team-view-table td { padding: 7px 6px; border-top: 1px solid rgba(34, 56, 75, .65); text-align: center; font-size: 10px; }
+.team-view-table tr:hover { background: #0a1520; }
+
+.match-header { padding: 16px 20px 18px; }
+.competition { font-size: 11px; color: var(--muted); letter-spacing: .13em; text-transform: uppercase; }
+.scoreline { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 18px; margin-top: 10px; }
+.team-name { font-size: 25px; font-weight: 850; }
+.team-name.user-team { color: var(--accent); }
+.team-name.team-colored { color: var(--team-primary); }
+
+/* The share of the ball, under the score and across both names.
+   The thickness is a variable so it can be made thicker in one place instead of in a rule
+   somewhere else: it is 16px, which is thick enough to read as a bar rather than a rule
+   and thin enough to leave the score the loudest thing in the row. */
+.possession-bar {
+  --possession-thickness: 16px;
+  --possession-home: 50%;
+  grid-column: 1 / -1;
+  position: relative;
+  height: var(--possession-thickness);
+  margin: 6px 0 2px;
+  border-radius: calc(var(--possession-thickness) / 2);
+  overflow: hidden;
+  background: var(--away-team, #2a4a63);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .35);
+}
+
+/* The home share, drawn from the left. The engine's number is the width; nothing here
+   rounds it, clamps it or guesses at it. */
+.possession-bar__share {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--possession-home);
+  background: linear-gradient(180deg, var(--home-team, #2f6f4f), var(--home-team, #2f6f4f));
+  transition: width .4s ease;
+}
+
+/* The two numbers, in the two halves, so the bar can be read without a tooltip. */
+.possession-bar__labels {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .7);
+}
+.away { text-align: right; }
+.score { font-size: 48px; font-weight: 950; letter-spacing: .06em; line-height: 1; }
+/* The clock is the one number in the header that keeps moving, so it is given the size of
+   a number rather than the size of a caption: 26px, under a 48px score, with the half in a
+   smaller weight so it does not compete with the minutes. */
+.clock {
+  font-size: 26px;
+  color: var(--accent);
+  text-align: center;
+  margin-top: 6px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .04em;
+  line-height: 1.1;
+}
+/* The team sheet under the scoreboard: the manager's own eleven, read the way a team sheet
+   is read. One card per player, with what happened to him and his energy, and clickable
+   while the match is being played to open a substitution. */
+.on-pitch-list {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 5px;
+  margin-top: 12px;
+}
+.on-pitch-list-wrap { margin-top: 12px; }
+/* The shape each side is playing, read off the eleven on the pitch. It is described here
+   rather than chosen: the engine measures the team it is given, so what a manager reads
+   here is a description of the match, and it changes when a substitution changes the
+   balance of a side. */
+.formation-strip {
+  display: flex; align-items: baseline; justify-content: center; gap: 8px;
+  margin-top: 10px; font-size: 11px; color: var(--muted);
+}
+.formation-strip b { color: var(--accent); font-weight: 900; letter-spacing: .04em; }
+.formation-strip-team {
+  text-transform: uppercase; letter-spacing: .08em; font-size: 10px; font-weight: 800;
+  max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.formation-strip-vs { font-size: 9px; text-transform: uppercase; letter-spacing: .1em; opacity: .6; }
+.on-pitch-head {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em;
+}
+.on-pitch-head b { color: var(--accent); font-size: 11px; }
+.on-pitch-card {
+  min-width: 0; padding: 6px 8px; background: #09141e; border: 1px solid #22384b;
+  border-radius: 7px; font-size: 10px; font-weight: 800; text-align: left; transition: .18s;
+}
+.on-pitch-card.clickable { cursor: pointer; }
+.on-pitch-card.clickable:hover { border-color: var(--team-primary, #46657d); transform: translateY(-1px); }
+.on-pitch-card.unavailable { opacity: .45; }
+.on-pitch-card.emergency { border-color: var(--orange); }
+/* The player holding the ball right now. It is not a highlight of how well he is playing —
+   it is a statement about where the ball is, which is why it is the accent colour and not a
+   rating, and why it moves as often as the engine changes possession. */
+.on-pitch-card.has-ball {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(242, 211, 79, .28), 0 0 12px rgba(242, 211, 79, .16);
+  background: #121d27;
+}
+.on-pitch-card .pc-pos { color: var(--accent); font-size: 9px; margin-right: 5px; }
+.on-pitch-card .pc-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.on-pitch-icons { display: flex; gap: 3px; margin-top: 3px; min-height: 13px; font-size: 9px; }
+.icon-goal { color: var(--text); }
+.icon-yellow { filter: saturate(1.15); }
+.icon-red, .icon-injury { filter: drop-shadow(0 0 3px rgba(229, 83, 83, .5)); }
+.icon-sub { color: var(--muted); }
+/* The energy bar: a track that always has a height, and a fill whose width is set inline.
+   The fill is never used on its own, so `height: 100%` always has something to be a
+   percentage of. */
+.pc-energy {
+  display: block; width: 100%; height: 6px; margin-top: 5px; border-radius: 4px;
+  background: #1b2b38; border: 1px solid #33475a; overflow: hidden; box-sizing: border-box;
+}
+.pc-energy--compact { height: 4px; margin-top: 3px; border: 0; }
+.pc-energy-fill {
+  display: block; height: 100%; min-width: 2px; border-radius: 3px;
+  transition: width .25s ease;
+}
+.energy-green { background: #39c56b; }
+.energy-yellow { background: #f2d34f; }
+.energy-red { background: #e55353; }
+
+.feed-row { padding: 10px 0; border-bottom: 1px solid rgba(34, 56, 75, .65); display: grid; grid-template-columns: 45px 25px 1fr; gap: 7px; font-size: 13px; }
+.feed-row:last-child { border-bottom: 0; }
+.minute { color: var(--accent); font-weight: 800; }
+.feed-icon { text-align: center; }
+.feed-text { color: #d8e2e8; }
+.feed-text b { color: #fff; }
+.feed-text .user-highlight { color: var(--accent); font-weight: 850; }
+
+/* A goal is the loudest line in the feed, so it is the one that is allowed to shout. */
+.feed-row.goal-event { background: linear-gradient(90deg, rgba(242, 211, 79, .12), transparent 70%); }
+.feed-row.goal-event .feed-text { color: #fff; font-weight: 700; }
+
+/* The manager's own club is the one worth finding in a column of ninety rows. The bar is
+   in the club's colour, so an away moment is marked in the away colour and the marking
+   still means something. */
+.feed-row.managed-event { box-shadow: inset 3px 0 0 var(--team-primary, var(--accent)); padding-left: 8px; }
+.feed-row.managed-event .minute { color: var(--team-primary, var(--accent)); }
+
+/* The half sits inside the clock without competing with the minutes it follows. */
+.clock-half { font-size: 13px; font-weight: 700; margin-left: 2px; opacity: .8; }
+
+.icon-own-goal, .icon-save { cursor: help; }
+
+.controls { display: flex; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--line); }
+.ctrl { border: 1px solid var(--line); background: #0a1520; color: var(--text); padding: 9px 12px; border-radius: 8px; }
+.ctrl:hover { border-color: #46657d; }
+.ctrl.active { border-color: var(--accent); color: var(--accent); }
+/* A control that reports a value instead of changing it. */
+.ctrl.readonly { cursor: default; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ctrl.readonly:hover { border-color: var(--line); }
+/* The opponent's team sheet is reference, not a decision. */
+.player-card.opponent { opacity: .78; }
+
+.side { padding: 16px; }
+.tabs { display: flex; gap: 5px; margin-bottom: 12px; }
+.tab { flex: 1; padding: 9px 6px; background: #09141e; border: 1px solid var(--line); color: var(--muted); border-radius: 7px; font-size: 12px; cursor: pointer; }
+.tab.active { color: #111; background: var(--accent); border-color: var(--accent); font-weight: 800; }
+.tabpane { display: none; }
+.tabpane.active { display: block; }
+
+/* How many matches the other tab is holding, so a manager knows there is something on it
+   without opening it. */
+.tab-badge {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, .28);
+  font-size: 10px;
+  font-weight: 850;
+  vertical-align: middle;
+}
+.tab.active .tab-badge { background: rgba(0, 0, 0, .22); color: #111; }
+
+/* The matchday: one row per match, with what the match did besides scoring. */
+.matchday { display: flex; flex-direction: column; gap: 8px; }
+
+.matchday-row {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: 8px;
+  background: #0a1520;
+}
+.matchday-row.live { border-left-color: var(--accent); }
+.matchday-row.played { opacity: .82; }
+.matchday-row.user-fixture { border-color: var(--accent); }
+
+/* The last thing the other match said. A scoreline with no words under it is a table of
+   results; this is the one line that says the game is being played, in the words that
+   match used and not in a summary written here. */
+.matchday-beat {
+  display: flex; gap: 7px; align-items: baseline;
+  margin-top: 7px; padding-top: 6px; border-top: 1px dashed var(--line);
+  font-size: 11px; line-height: 1.4; color: var(--muted);
+}
+.matchday-beat.goal { color: var(--green); }
+.matchday-beat-minute { flex: 0 0 auto; color: var(--muted); font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.matchday-beat.goal .matchday-beat-minute { color: var(--green); }
+.matchday-beat-text { min-width: 0; }
+
+.matchday-teams {
+  display: grid;
+  grid-template-columns: 12px 1fr 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.matchday-teams .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.matchday-row.live .matchday-teams .dot { background: var(--accent); }
+.matchday-teams .name { color: #d8e2e8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.matchday-teams .name.right { text-align: right; }
+
+.matchday-score {
+  margin: 6px 0 4px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+.matchday-score b { color: var(--muted); font-weight: 500; margin: 0 3px; }
+.matchday-score .minute { margin-left: 8px; color: var(--muted); font-size: 10px; font-weight: 700; }
+
+/* The marks sit under the club they belong to, so a row reads as two sides rather than as
+   one list of incidents. Nothing is drawn for a zero: a match with nothing to report should
+   look like a match with nothing to report. */
+.matchday-marks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; }
+.matchday-marks .marks { display: flex; gap: 4px; min-height: 16px; }
+.matchday-marks .marks.away { justify-content: flex-end; }
+.mark { cursor: help; }
+
+.stat { margin: 13px 0; }
+.stat-head { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+.bars { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+.bar { height: 8px; background: #182a39; border-radius: 5px; overflow: hidden; }
+.bar div { height: 100%; background: var(--blue); }
+.bar.right div { background: var(--red); margin-left: auto; }
+
+.lineup { font-size: 12px; }
+.player-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 8px; }
+.player-card {
+  padding: 10px; background: #0a1520; border: 1px solid var(--line); border-radius: 9px;
+  cursor: pointer; transition: .15s; min-width: 0;
+}
+.player-card:hover { border-color: #46657d; transform: translateY(-1px); }
+.player-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(255, 207, 73, .25); background: #101e29; }
+.player-card.disabled { opacity: .48; cursor: not-allowed; }
+.player-top { display: flex; align-items: center; gap: 8px; }
+.player-pos { font-size: 13px; font-weight: 950; min-width: 34px; color: var(--accent); text-align: center; }
+.player-card .player-name, .player-card__name { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.player-energy { margin-left: auto; font-size: 15px; font-weight: 950; color: #e8f2f7; white-space: nowrap; }
+.player-status { font-size: 10px; margin-left: 42px; margin-top: 2px; color: var(--muted); }
+.player-stats { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; color: var(--muted); font-size: 10px; }
+.player-stats span { padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; background: #0d1a25; }
+
+.bench-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 8px; }
+.bench-card { padding: 0; background: transparent; border: 0; }
+.bench-card .player-card { cursor: pointer; }
+
+.sub-panel { margin-top: 14px; padding: 12px; background: #0a1520; border: 1px solid var(--line); border-radius: 10px; }
+.sub-panel__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.sub-panel__head h4 { margin: 0; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.sub-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+.sub-confirm { width: 100%; margin-top: 12px; }
+
+.modal { position: fixed; inset: 0; background: rgba(0, 0, 0, .72); display: grid; place-items: start center; padding: 20px; z-index: 10; overflow-y: auto; }
+.modal-card { width: min(650px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; background: #0d1924; border: 1px solid #304b61; border-radius: 14px; padding: 24px; box-shadow: 0 25px 80px rgba(0, 0, 0, .5); margin: 20px 0; }
+.modal-card h2 { margin-top: 0; }
+.modal-score { text-align: center; font-size: 38px; font-weight: 950; margin: 20px 0; }
+
+.penalty-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 14px; }
+.penalty-player { padding: 12px; background: #09141e; border: 1px solid var(--line); border-radius: 9px; text-align: left; cursor: pointer; }
+.penalty-player:hover { border-color: var(--team-primary); }
+.penalty-player b { display: block; }
+.penalty-player span { font-size: 10px; color: var(--muted); }
+.penalty-player .penalty-chance { display: block; margin-top: 5px; font-size: 11px; font-weight: 800; color: var(--accent); }
+.modal-actions { display: flex; gap: 8px; }
+.modal-actions > * { flex: 1; }
+.end-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.end-stat { padding: 12px; background: #09141e; border-radius: 8px; text-align: center; }
+.end-stat span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+
+@media(max-width: 900px) {
+  .main { grid-template-columns: 1fr; }
+  .team-grid { grid-template-columns: 1fr; }
+  .side { min-height: auto; }
+  .scoreline { gap: 8px; }
+  .team-name { font-size: 19px; }
+  .score { font-size: 40px; }
+  .sub-columns { grid-template-columns: 1fr; }
+}
+
+.player-stats-list { display: flex; flex-direction: column; gap: 14px; max-height: 560px; overflow: auto; padding-right: 2px; }
+.player-stat-team { border: 1px solid var(--border, var(--line)); border-radius: 12px; overflow: hidden; }
+.player-stat-team-title { padding: 10px 12px; background: #111923; font-weight: 900; color: var(--accent); }
+.player-stat-row {
+  padding: 9px 12px; border-top: 1px solid var(--border, var(--line));
+  display: grid; grid-template-columns: minmax(110px, .65fr) 1.35fr; gap: 10px; align-items: start; font-size: 12px;
+}
+.player-stat-row.sent-off { opacity: .55; }
+.player-stat-detail { color: var(--muted); line-height: 1.5; }
+.mini-pos { font-size: 9px; color: var(--muted); border: 1px solid var(--border, var(--line)); padding: 2px 4px; border-radius: 4px; }
+.player-team-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.player-team-tab { flex: 1; padding: 8px; background: #09141e; border: 1px solid var(--line); color: var(--muted); border-radius: 7px; font-size: 11px; cursor: pointer; }
+.player-team-tab.active { background: var(--accent); color: #111; font-weight: 900; }
+.player-stats-table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 9px; }
+.player-stats-table { width: 100%; border-collapse: collapse; min-width: 760px; }
+.player-stats-table th { position: sticky; top: 0; background: #101f2c; color: var(--muted); font-size: 9px; text-transform: uppercase; padding: 8px; text-align: center; }
+.player-stats-table th:first-child, .player-stats-table td:first-child { text-align: left; }
+.player-stats-table td { padding: 7px 6px; border-top: 1px solid rgba(34, 56, 75, .65); font-size: 10px; text-align: center; }
+.player-stats-table tr:hover { background: #0e1c29; }
+.player-name-cell { font-weight: 800; min-width: 145px; }
+.player-stats-table .subtle { color: var(--muted); font-weight: 600; }
+.player-stats-table .event-minutes { font-size: 9px; color: var(--muted); line-height: 1.25; min-width: 90px; }
+.injury-mark { color: var(--orange); }
+
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 7px; }
+.formation { padding: 10px; border: 1px solid var(--line); background: #0a1520; color: var(--text); border-radius: 7px; text-align: center; font-size: 12px; cursor: pointer; }
+.formation.selected { border-color: var(--green); color: var(--green); }
+
+.pitch {
+  margin-top: 14px; height: 215px; border: 1px solid #2d644f; border-radius: 10px; position: relative; overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(43, 133, 87, .23) 0 10%, transparent 10% 20%, rgba(43, 133, 87, .18) 20% 30%, transparent 30% 40%, rgba(43, 133, 87, .18) 40% 50%, transparent 50% 60%, rgba(43, 133, 87, .18) 60% 70%, transparent 70% 80%, rgba(43, 133, 87, .18) 80% 90%, transparent 90%),
+    #0a3a29;
+}
+.pitch::before { content: ""; position: absolute; inset: 10px; border: 1px solid rgba(255, 255, 255, .35); border-radius: 3px; }
+.pitch::after { content: ""; position: absolute; left: 50%; top: 10px; bottom: 10px; width: 1px; background: rgba(255, 255, 255, .35); }
+.pdot { position: absolute; width: 25px; height: 25px; border-radius: 50%; display: grid; place-items: center; font-size: 9px; font-weight: 900; border: 1px solid rgba(255, 255, 255, .6); z-index: 2; }
+
+.feed {
+  padding: 12px 18px; overflow: auto; flex: 1; max-height: 405px;
+}
+.event-hero {
+  padding: 26px 22px; text-align: center; border-bottom: 1px solid var(--line);
+  border-top: 4px solid transparent; min-height: 145px; display: flex;
+  flex-direction: column; justify-content: center; transition: .2s;
+}
+.event-hero.team-hero { border-top-color: var(--team-primary); background: linear-gradient(180deg, color-mix(in srgb, var(--team-primary) 12%, transparent), transparent 75%); }
+.event-hero.team-hero .event-title { color: var(--team-primary); text-shadow: 0 0 16px color-mix(in srgb, var(--team-secondary) 45%, transparent); }
+.event-icon { font-size: 34px; }
+.event-title { font-size: 24px; font-weight: 950; margin: 7px 0; }
+.event-desc { color: #bdcbd5; font-size: 14px; line-height: 1.45; }
+
+.narrative { min-height: 550px; display: flex; flex-direction: column; }
+.main { display: grid; grid-template-columns: 1.45fr .85fr; gap: 14px; margin-top: 14px; }
+
+.sent-off { border-color: var(--red) !important; }
+
+.squad-unavailable { opacity: .48; }
+
+.lineup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin-top: 14px; max-height: 460px; overflow: auto; }
+.lineup-card {
+  display: flex; gap: 10px; align-items: center; min-width: 0; padding: 9px 11px;
+  background: #0a1520; border: 1px solid var(--line); border-radius: 9px; cursor: pointer; transition: .15s;
+}
+.lineup-card:hover { border-color: #46657d; transform: translateY(-1px); }
+.lineup-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(255, 207, 73, .25); background: #101e29; }
+.lineup-card.reserve { border-style: dashed; opacity: .8; }
+.lineup-card.reserve:hover { opacity: 1; border-color: var(--accent); }
+.lineup-card .pos { flex: 0 0 38px; text-align: center; font-size: 12px; font-weight: 950; color: var(--accent); border: 1px solid var(--line); border-radius: 6px; padding: 4px 0; }
+.lineup-card .who { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lineup-card .who strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lineup-card .who span { font-size: 10px; color: var(--muted); }
+
+.conn-error { border: 1px solid var(--red); border-radius: 10px; padding: 14px 16px; margin-top: 18px; background: color-mix(in srgb, var(--red) 8%, transparent); }
+.conn-error h3 { margin: 0 0 6px; color: var(--red); }
+.conn-error p { margin: 0 0 6px; color: var(--muted); font-size: 12px; }
+.conn-error code { display: block; margin-top: 6px; font-size: 11px; color: #ffb0bd; word-break: break-all; }
+
+/* Squad table: one row per player, grouped by position, with the season numbers a
+   manager reads before choosing the eleven. */
+.squad-table-wrap { margin-top: 14px; max-height: 520px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+.squad-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.squad-table thead th {
+  position: sticky; top: 0; z-index: 2; background: #0d1a26; text-align: left;
+  padding: 8px 10px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); border-bottom: 1px solid var(--line);
+}
+.squad-group th {
+  position: sticky; top: 27px; z-index: 1; text-align: left; padding: 6px 10px;
+  font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent);
+  background: #081320; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.squad-row { cursor: pointer; transition: .12s; }
+.squad-row:nth-child(even) { background: #0a1520; }
+.squad-row:hover { background: #11212d; }
+.squad-row.selected { background: #14293a; box-shadow: inset 3px 0 0 var(--accent); }
+.squad-row.reserve { opacity: .8; }
+.squad-row.unavailable { opacity: .5; cursor: not-allowed; }
+.squad-row .col-pos { width: 42px; padding: 7px 6px; }
+.squad-row .col-name { padding: 7px 10px; }
+.squad-row .col-name strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.squad-row .col-num { width: 62px; text-align: center; padding: 7px 6px; font-variant-numeric: tabular-nums; }
+.squad-row .col-status { width: 120px; text-align: right; padding: 7px 10px; font-size: 11px; color: var(--muted); }
+.squad-row.unavailable .col-status { color: var(--red); }
+.pos-badge { display: inline-block; min-width: 34px; text-align: center; font-size: 10px; font-weight: 950; color: var(--accent); border: 1px solid var(--line); border-radius: 6px; padding: 3px 0; }
+
+/* A player takes two lines: the first one is who he is and what his season looks like, the
+   second is the attributes behind it. The attributes row carries no border of its own and
+   no zebra of its own, so both lines read as one card. */
+.squad-attrs-row td { border-top: 0; padding: 0 10px 8px; }
+.squad-attrs-row { cursor: pointer; }
+.squad-attrs-row.selected { box-shadow: none; }
+.squad-attrs { display: flex; flex-wrap: wrap; gap: 4px; }
+.attr-chip {
+  padding: 2px 6px; border: 1px solid var(--line); border-radius: 5px; background: #0d1a25;
+  font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.attr-chip b { color: var(--text); font-weight: 800; }
+
+/* The controls that decide what the list shows: which position, and in which order. */
+.squad-toolbar {
+  display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between;
+  margin: 12px 0 4px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 9px; background: #0a1520;
+}
+.squad-filters { display: flex; align-items: center; gap: 8px; }
+.squad-toolbar-label { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.squad-filters select {
+  background: #111f2d; color: var(--text); border: 1px solid var(--line);
+  padding: 6px 8px; border-radius: 7px; font-size: 12px;
+}
+.segmented { display: flex; gap: 4px; flex-wrap: wrap; }
+.segmented-item {
+  border: 1px solid var(--line); background: #09141e; color: var(--muted);
+  padding: 6px 11px; border-radius: 7px; font-size: 11px; font-weight: 800;
+}
+.segmented-item:hover { border-color: #46657d; color: var(--text); }
+.segmented-item.active { background: var(--accent); border-color: var(--accent); color: #111; }
+.squad-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+/* A player who left the pitch during the match stays on the team sheet, marked for what
+   happened to him: sent off, injured, or keeping the goal without being a goalkeeper. */
+.player-card.sent-off { border-color: var(--red); opacity: .7; }
+.player-card.injured { border-color: var(--orange); }
+.player-card .player-pos { color: var(--accent); }
+
+/* A name is always a door. It looks exactly like the text around it until the pointer
+   goes over it, so a screen full of names does not turn into a screen full of buttons. */
+.name-link {
+  background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit;
+  text-align: inherit; text-decoration: none;
+}
+.name-link:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.name-link:focus-visible { outline: 1px dashed var(--accent); outline-offset: 2px; }
+.club-link { font-weight: 700; }
+.narrative-link { color: var(--blue); }
+.narrative-link:hover { color: var(--accent); }
+
+/* The profiles: a player and a club, read without leaving what was being read. */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 40; display: grid; place-items: start center;
+  padding: 20px; overflow-y: auto; background: rgba(0, 0, 0, .72);
+}
+.profile-modal {
+  width: min(720px, 100%); margin: 20px 0; padding: 24px;
+  background: linear-gradient(180deg, rgba(17, 31, 45, .99), rgba(9, 19, 29, .99));
+  border: 1px solid var(--line); border-top: 3px solid var(--team-primary);
+  border-radius: 14px; box-shadow: 0 25px 80px rgba(0, 0, 0, .5);
+}
+.profile-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 16px;
+}
+.profile-name { margin: 0 0 6px; font-size: 26px; }
+.profile-role { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0; }
+.profile-position { color: var(--accent); font-size: 11px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }
+.profile-age { color: var(--muted); font-size: 12px; }
+.profile-team { font-size: 12px; color: var(--blue); }
+.profile-team:hover { color: var(--accent); }
+.profile-injury { margin: 0 0 14px; color: var(--orange); font-size: 12px; }
+.modal-close {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px; line-height: 1;
+  border: 1px solid var(--line); background: #09141e; color: var(--muted); font-size: 20px;
+}
+.modal-close:hover { color: var(--text); border-color: #46657d; }
+.club-colors { display: flex; gap: 6px; margin-bottom: 16px; }
+.club-swatch { width: 46px; height: 14px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, .4); }
+
+/* The attributes are the point of a profile: seven numbers, read at a glance. */
+.profile-attrs {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px; margin-bottom: 18px;
+}
+.attr-box {
+  display: grid; gap: 5px; padding: 10px 8px; text-align: center;
+  border: 1px solid var(--line); border-radius: 9px; background: #0a1520;
+}
+.attr-value { font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.attr-bar { display: block; height: 4px; border-radius: 999px; background: #16283a; overflow: hidden; }
+.attr-bar-fill { display: block; height: 100%; background: var(--team-primary); }
+.attr-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
+
+/* Career: this season or every season, said as four numbers rather than a paragraph. */
+.profile-totals { display: grid; gap: 10px; margin-bottom: 18px; }
+.career-line { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.career-cell {
+  display: grid; gap: 2px; padding: 10px; text-align: center;
+  border: 1px solid var(--line); border-radius: 9px; background: #0a1520;
+}
+.career-value { font-size: 18px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.career-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
+
+.profile-history { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 9px; }
+.history-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.history-table th {
+  position: sticky; top: 0; z-index: 1; padding: 8px; text-align: left;
+  background: #0d1924; color: var(--muted); font-size: 10px;
+  text-transform: uppercase; letter-spacing: .07em;
+}
+.history-table td { padding: 7px 8px; border-top: 1px solid var(--line); }
+.history-row { cursor: pointer; }
+.history-row:hover { background: #122334; }
+.history-score { font-variant-numeric: tabular-nums; font-weight: 800; white-space: nowrap; }
+.history-note { color: var(--muted); font-size: 10px; }
+.history-row.result-v .history-score { color: var(--green); }
+.history-row.result-d .history-score { color: var(--red); }
+.history-row.result-e .history-score { color: var(--muted); }
+.profile-footer { display: flex; justify-content: flex-end; margin-top: 16px; }

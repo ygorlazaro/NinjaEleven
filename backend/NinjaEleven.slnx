@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="NinjaEleven.Api/NinjaEleven.Api.csproj" />
+  <Project Path="NinjaEleven.Application/NinjaEleven.Application.csproj" />
+  <Project Path="NinjaEleven.Domain/NinjaEleven.Domain.csproj" />
+  <Project Path="NinjaEleven.Infrastructure/NinjaEleven.Infrastructure.csproj" />
+  <Project Path="../tests/NinjaEleven.Domain.Tests/NinjaEleven.Domain.Tests.csproj" />
+  <Project Path="../tests/NinjaEleven.Application.Tests/NinjaEleven.Application.Tests.csproj" />
+</Solution>
