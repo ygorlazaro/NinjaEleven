@@ -77,6 +77,24 @@ public class Match
         CurrentMinute = minute;
     }
 
+    /// <summary>
+    /// Mirrors the engine's working memory onto the persisted row. This is how the
+    /// clock, the score and the event sequence reach the database; the engine itself
+    /// never writes.
+    /// </summary>
+    public void ApplyEngineState(int minute, int homeScore, int awayScore, int sequence)
+    {
+        if (minute < CurrentMinute)
+        {
+            throw new InvalidOperationException("The match clock can never move backwards.");
+        }
+
+        CurrentMinute = minute;
+        HomeScore = homeScore;
+        AwayScore = awayScore;
+        Sequence = sequence;
+    }
+
     public void StartFirstHalf() => Status = MatchStatus.InProgress;
 
     public void ReachHalfTime()

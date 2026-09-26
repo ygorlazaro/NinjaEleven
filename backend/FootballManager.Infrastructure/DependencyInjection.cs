@@ -1,6 +1,10 @@
 using FootballManager.Application.Abstractions;
+using FootballManager.Application.Matches;
+using FootballManager.Application.Repositories;
+using FootballManager.Application.Services;
 using FootballManager.Infrastructure.Persistence;
 using FootballManager.Infrastructure.Persistence.Seeding;
+using FootballManager.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +30,31 @@ public static class DependencyInjection
 
         services.Configure<DatabaseSeedOptions>(configuration.GetSection(DatabaseSeedOptions.SectionName));
         services.AddScoped<IDataSeeder, DatabaseSeeder>();
+        services.AddScoped<IUnitOfWork, EfUnitOfWork>();
+
+        services.AddScoped<ITeamRepository, TeamRepository>();
+        services.AddScoped<IPlayerRepository, PlayerRepository>();
+        services.AddScoped<ICompetitionRepository, CompetitionRepository>();
+        services.AddScoped<ISeasonRepository, SeasonRepository>();
+        services.AddScoped<IRoundRepository, RoundRepository>();
+        services.AddScoped<IFixtureRepository, FixtureRepository>();
+        services.AddScoped<IMatchRepository, MatchRepository>();
+
+        return services;
+    }
+
+    public static IServiceCollection AddApplication(this IServiceCollection services)
+    {
+        services.AddScoped<TeamService>();
+        services.AddScoped<PlayerService>();
+        services.AddScoped<SeasonService>();
+        services.AddScoped<CompetitionService>();
+        services.AddScoped<RoundService>();
+        services.AddScoped<FixtureService>();
+        services.AddScoped<MatchService>();
+        services.AddScoped<LeagueService>();
+
+        services.AddSingleton<IMatchSessionRegistry, MatchSessionRegistry>();
 
         return services;
     }

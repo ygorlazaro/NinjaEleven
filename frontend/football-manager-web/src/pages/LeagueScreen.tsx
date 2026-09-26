@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { LeagueApi, MatchApi } from '@/api';
+import { useNavigate } from 'react-router-dom';
+import { CompetitionApi, LeagueApi, SeasonApi } from '@/api';
 import { useGameState } from '@/state';
 import type { FixtureDto, StandingDto, ScorerDto, LeagueSetupResult } from '@/types';
 import StandingsTable from '@/components/League/StandingsTable';
@@ -19,9 +20,9 @@ const LeagueScreen: React.FC = () => {
   const setFixtures = useGameState((s) => s.setFixtures);
   const setScorers = useGameState((s) => s.setScorers);
   const setLeagueSetup = useGameState((s) => s.setLeagueSetup);
-  const setCurrentMatch = useGameState((s) => s.setCurrentMatch);
 
   const [compSeasonId, setCompSeasonId] = useState<string>('');
+  const navigate = useNavigate();
   const [currentRound, setCurrentRound] = useState(0);
   const [lastCompletedRound, setLastCompletedRound] = useState(-1);
   const [finished, setFinished] = useState(false);
@@ -32,28 +33,39 @@ const LeagueScreen: React.FC = () => {
     const competition = params.get('competition') || '';
 
     const initialize = async () => {
-      if (leagueTeams.length >= 2) {
-        try {
-          const setup = await LeagueApi.setup(
-            competition,
-            season,
-            leagueTeams.map(t => t.id)
-          );
-          setLeagueSetup(setup);
-          setCompSeasonId(setup.competitionSeasonId || '');
+      if (leagueTeams.length < 2) return;
 
-          const fixturesData = setup.fixtures || [];
-          setFixtures(fixturesData.slice(0, 4));
-          setCurrentRound(0);
+      try {
+        // The query string may be missing or stale (deep link, refresh), so the season
+        // and the competition are resolved from the API before setting the league up.
+        const seasonId = season || (await SeasonApi.current()).id;
+        const competitionId = competition
+          || (await CompetitionApi.listBySeason(seasonId))[0]?.id;
 
-          const standingsData = await LeagueApi.getStandings(setup.competitionSeasonId || '');
-          setStandings(standingsData);
-
-          const scorersData = await LeagueApi.getScorers(season);
-          setScorers(scorersData);
-        } catch (error) {
-          console.error('Failed to initialize league:', error);
+        if (!competitionId) {
+          console.error('No competition available for the selected season.');
+          return;
         }
+
+        const setup = await LeagueApi.setup(
+          competitionId,
+          seasonId,
+          leagueTeams.map(t => t.id)
+        );
+        setLeagueSetup(setup);
+        setCompSeasonId(setup.competitionSeasonId || '');
+
+        const fixturesData = setup.fixtures || [];
+        setFixtures(fixturesData.slice(0, 4));
+        setCurrentRound(0);
+
+        const standingsData = await LeagueApi.getStandings(setup.competitionSeasonId || '');
+        setStandings(standingsData);
+
+        const scorersData = await LeagueApi.getScorers(seasonId);
+        setScorers(scorersData);
+      } catch (error) {
+        console.error('Failed to initialize league:', error);
       }
     };
 
@@ -74,25 +86,13 @@ const LeagueScreen: React.FC = () => {
     return userFixture || null;
   }, [leagueSetup?.fixtures, selectedTeam?.id]);
 
-  const startMatch = async () => {
+  const openLineup = async () => {
     const fixture = fixtureForUser();
     if (!fixture) return;
 
-    try {
-      const result = await MatchApi.start(fixture.id);
-      const lineup = await MatchApi.getLineup(fixture.id);
-
-      setCurrentMatch({
-        matchId: fixture.id,
-        fixture,
-        lineup,
-        state: {} as any,
-        playerStats: {},
-        teamPlayers: { home: [], away: [] },
-      });
-    } catch (error) {
-      console.error('Failed to start match:', error);
-    }
+    // The manager picks the eleven first; the match is started from the lineup screen
+    // with that choice, which the backend validates.
+    navigate(`/match/lineup/${fixture.id}`);
   };
 
   const uf = fixtureForUser();
@@ -109,7 +109,7 @@ const LeagueScreen: React.FC = () => {
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button className="ctrl">🔄 Nova temporada</button>
-          <button className="primary" disabled={playDisabled} onClick={startMatch}>
+          <button className="primary" disabled={playDisabled} onClick={openLineup}>
             ⚽ Escalação e partida
           </button>
         </div>

@@ -25,8 +25,32 @@ export interface PlayerSeasonStateDto {
   yellowCards: number;
   redCards: number;
   suspensionMatches: number;
-  injury: string;
-  isUnavailable: boolean;
+  injury: Injury;
+  isAvailable: boolean;
+}
+
+/** Squad entry: static player attributes plus the state in the season. */
+export interface SquadPlayerDto {
+  id: Guid;
+  name: string;
+  age: number;
+  position: Position;
+  speed: number;
+  accuracy: number;
+  dribbling: number;
+  heading: number;
+  strength: number;
+  goalkeeperPower: number;
+  reflexes: number;
+  energy: number;
+  goals: number;
+  yellowCards: number;
+  redCards: number;
+  suspensionMatches: number;
+  injury: Injury;
+  isAvailable: boolean;
+  teamId: Guid;
+  seasonId: Guid;
 }
 
 export interface TeamDto {
@@ -79,29 +103,36 @@ export interface RoundDto {
   number: number;
 }
 
+export type Injury = 'None' | 'Light' | 'Grave';
+
 export interface FixtureDto {
   id: Guid;
   roundId: Guid;
   homeTeamId: Guid;
   awayTeamId: Guid;
   status: string;
+  matchId?: Guid | null;
   homeGoals?: number | null;
   awayGoals?: number | null;
   homeTeam?: TeamDto | null;
   awayTeam?: TeamDto | null;
 }
 
+/** Snapshot served by GET /match/{id}: state plus the ordered event log. */
 export interface MatchDto {
   id: Guid;
   fixtureId: Guid;
+  homeTeamId: Guid;
+  awayTeamId: Guid;
   status: string;
+  half: MatchHalf;
   currentMinute: number;
-  currentSecond: number;
-  currentHalf: string;
   homeScore: number;
   awayScore: number;
   sequence: number;
-  stoppageTimeMinutes: number;
+  seed: number;
+  homeTeam?: TeamDto | null;
+  awayTeam?: TeamDto | null;
   events: MatchEventDto[];
 }
 
@@ -111,10 +142,15 @@ export interface MatchEventDto {
   sequence: number;
   minute: number;
   type: string;
+  teamId?: Guid | null;
+  playerId?: Guid | null;
+  secondaryPlayerId?: Guid | null;
+  homeScore: number;
+  awayScore: number;
   payload: string;
 }
 
-export type MatchHalf = 'First' | 'Second';
+export type MatchHalf = 'First' | 'Second' | 'ExtraTime' | 'PenaltyShootout';
 
 export interface MatchStateDto {
   matchId: Guid;
@@ -191,6 +227,7 @@ export interface MatchEngineEventDto {
 
 export type MatchCommandResult = {
   accepted: boolean;
+  matchId: Guid;
   errorMessage?: string | null;
   events?: MatchEngineEventDto[] | null;
 };
@@ -278,6 +315,9 @@ export interface MatchResult {
 
 export interface LeagueSetupResult {
   competitionSeasonId: Guid;
+  competitionId: Guid;
+  seasonId: Guid;
+  rounds: RoundDto[];
   fixtures: FixtureDto[];
 }
 

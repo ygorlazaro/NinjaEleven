@@ -29,6 +29,16 @@ public class MatchPlayerSnapshot
     public bool SubbedIn { get; set; }
     public int Goals { get; set; }
 
+    public void ApplyFatigue(int amount)
+    {
+        if (amount <= 0)
+        {
+            return;
+        }
+
+        Energy = Math.Max(0, Energy - amount);
+    }
+
     private MatchPlayerSnapshot() { }
 
     public static MatchPlayerSnapshot FromPlayerSeasonState(Player player, PlayerSeasonState state)

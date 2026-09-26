@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useGameState } from '@/state';
 import { MatchApi } from '@/api';
+import MatchHubClient from '@/signalr/MatchHubClient';
 import type { MatchEngineEventDto, MatchStateDto, MatchLineupDto, MatchResult } from '@/types';
 import { convertToFeedEvent, energyClass, energyPercent, positionLabel } from '@/services/formatters';
 import MatchFeed from '@/components/Match/MatchFeed';
@@ -36,8 +37,6 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   const [selectedStarters, setSelectedStarters] = useState<Set<string>>(new Set());
   const [substitution, setSubstitution] = useState<{ out: string; in: string } | null>(null);
 
-  const timerRef = useRef<number | null>(null);
-
   const matchId = urlMatchId || currentMatch?.matchId || '';
 
   const loadLineup = useCallback(async () => {
@@ -55,60 +54,56 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   }, [matchId]);
 
   useEffect(() => {
-    if (matchId) {
-      loadLineup();
-      loadState();
-    }
+    if (!matchId) return;
+
+    loadLineup();
+    loadState();
+
+    // The match is driven by the server: we subscribe and render whatever it pushes.
+    // No client side clock and no polling loop.
+    MatchHubClient.connect(matchId).catch(error => {
+      console.error('Failed to connect to the match hub:', error);
+    });
+
+    MatchHubClient.onState(next => {
+      setState(next);
+      setIsPaused(next.isPaused);
+
+      // The server stops the loop by itself at the interval; the client owns the
+      // decision to leave it.
+      if (next.isHalfTime) {
+        setShowHalfTimeModal(true);
+      }
+
+      if (next.isFinished) {
+        setShowEndModal(true);
+      }
+    });
+
+    MatchHubClient.onEvent(events => {
+      const feedEvents = events.map(convertToFeedEvent);
+      const currentFeed = useGameState.getState().feed;
+      setFeed([...currentFeed, ...feedEvents]);
+    });
+
+    MatchHubClient.onResult(result => {
+      setMatchResult(result);
+      setShowEndModal(true);
+    });
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      MatchHubClient.disconnect();
     };
   }, [matchId]);
 
-  const tick = async () => {
-    if (!matchId || isPaused) return;
-    try {
-      const events = await MatchApi.tick(matchId);
-      if (events && events.length > 0) {
-        const feedEvents = events.map(convertToFeedEvent);
-        const currentFeed = useGameState.getState().feed;
-        setFeed([...currentFeed, ...feedEvents]);
-
-        const newState = await MatchApi.getState(matchId);
-        setState(newState);
-
-        if (newState.isFinished) {
-          const result = await MatchApi.getResult(matchId);
-          setMatchResult(result);
-          setShowEndModal(true);
-        }
-
-        if (!newState.isHalfTime && newState.currentHalf === 'Second') {
-          // Half time flow handled by state
-        }
-      }
-    } catch (error) {
-      console.error('Tick error:', error);
-    }
-  };
-
-  const startTicking = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(tick, 3000);
-  };
-
   const pause = async () => {
     if (!matchId) return;
-    await MatchApi.pause(matchId);
-    setIsPaused(true);
-    if (timerRef.current) clearInterval(timerRef.current);
+    await MatchHubClient.pause(matchId);
   };
 
   const resume = async () => {
     if (!matchId) return;
-    await MatchApi.resume(matchId);
-    setIsPaused(false);
-    startTicking();
+    await MatchHubClient.resume(matchId);
   };
 
   const changeSpeed = async (speed: number) => {
@@ -116,15 +111,13 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
     if (state) {
       setState({ ...state, speed });
     }
-    await MatchApi.changeSpeed(matchId, speed);
+    await MatchHubClient.changeSpeed(matchId, speed);
   };
 
   const continueSecondHalf = async () => {
     if (!matchId) return;
-    await MatchApi.continueSecondHalf(matchId);
+    await MatchHubClient.continueSecondHalf(matchId);
     setShowHalfTimeModal(false);
-    loadState();
-    startTicking();
   };
 
   if (!lineup) {
@@ -283,7 +276,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
 
       <EndModal show={showEndModal} result={matchResult} onClose={() => setShowEndModal(false)} />
       <HalfTimeModal show={showHalfTimeModal} homeTeam={homeTeam} awayTeam={awayTeam} score={score} onContinue={continueSecondHalf} />
-      <PenaltyModal show={showPenaltyModal} candidates={penaltyCandidates} onSelected={(playerId) => MatchApi.selectPenaltyTaker(matchId, userTeamIdx === 0 ? homeTeam.id : awayTeam.id, playerId)} onClose={() => setShowPenaltyModal(false)} />
+      <PenaltyModal show={showPenaltyModal} candidates={penaltyCandidates} onSelected={(playerId) => MatchHubClient.selectPenaltyTaker(matchId, userTeamIdx === 0 ? homeTeam.id : awayTeam.id, playerId)} onClose={() => setShowPenaltyModal(false)} />
     </div>
   );
 };

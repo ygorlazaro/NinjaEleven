@@ -31,11 +31,14 @@ const StartScreen: React.FC = () => {
 
         let compList: CompetitionDto[] = [];
         if (seasonsData.length > 0) {
-          compList = await CompetitionApi.list(seasonsData[0].id);
+          compList = await CompetitionApi.listBySeason(seasonsData[0].id);
         }
         setCompetitions(compList);
         if (compList.length > 0) {
           setSelectedCompetitionId(compList[0].id);
+        }
+        if (seasonsData.length > 0) {
+          setSelectedSeasonId(seasonsData[0].id);
         }
       } catch {
         // Generate demo teams if API not available
@@ -71,14 +74,14 @@ const StartScreen: React.FC = () => {
     const team = { ...teams[selectedIndex] };
     setSelectedTeam(team);
     setLeagueTeams(teams);
-    const seasonId = selectedSeasonId;
-    const competitionId = selectedCompetitionId;
+    const seasonId = selectedSeasonId || seasons[0]?.id || '';
+    const competitionId = selectedCompetitionId || competitions[0]?.id || '';
 
     window.location.hash = '#/league';
     window.location.search = `?season=${seasonId}&competition=${competitionId}`;
   };
 
-  const canStart = selectedIndex !== null;
+  const canStart = selectedIndex !== null && seasons.length > 0 && competitions.length > 0;
 
   return (
     <div className="card start">

@@ -45,6 +45,12 @@ public class PlayerSeasonState
 
     private static int ClampEnergy(int value) => Math.Max(1, Math.Min(100, value));
 
+    /// <summary>
+    /// A player can be picked for a match only when he is neither injured nor serving
+    /// a suspension. Availability is a domain rule, so it lives with the state.
+    /// </summary>
+    public bool IsAvailable => Injury == Injury.None && SuspensionMatches == 0;
+
     public void AddGoal() => Goals++;
     public void AddYellowCard()
     {
