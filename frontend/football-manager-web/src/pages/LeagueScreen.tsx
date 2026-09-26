@@ -1,102 +1,156 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { CompetitionApi, LeagueApi, SeasonApi } from '@/api';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { CompetitionApi, FixtureApi, LeagueApi, RoundApi, SeasonApi, TeamApi } from '@/api';
 import { useGameState } from '@/state';
-import type { FixtureDto, StandingDto, ScorerDto, LeagueSetupResult } from '@/types';
+import type { FixtureDto, LeagueSetupResult, RoundDto, TeamDto } from '@/types';
 import StandingsTable from '@/components/League/StandingsTable';
 import FixtureList from '@/components/League/FixtureList';
 import Calendar from '@/components/League/Calendar';
 import ScorersList from '@/components/League/ScorersList';
-import { useLeagueSetup, useMatchEngine } from '@/services';
+
+const isScheduled = (f: FixtureDto) => f.status === 'Scheduled';
+const involves = (f: FixtureDto, teamId?: string) =>
+  !!teamId && (f.homeTeamId === teamId || f.awayTeamId === teamId);
 
 const LeagueScreen: React.FC = () => {
   const selectedTeam = useGameState((s) => s.selectedTeam);
   const leagueTeams = useGameState((s) => s.leagueTeams);
   const standings = useGameState((s) => s.standings);
-  const fixtures = useGameState((s) => s.fixtures);
   const scorers = useGameState((s) => s.scorers);
   const leagueSetup = useGameState((s) => s.leagueSetup);
   const setStandings = useGameState((s) => s.setStandings);
-  const setFixtures = useGameState((s) => s.setFixtures);
   const setScorers = useGameState((s) => s.setScorers);
   const setLeagueSetup = useGameState((s) => s.setLeagueSetup);
+  const setLeagueTeams = useGameState((s) => s.setLeagueTeams);
+  const forgetClub = useGameState((s) => s.forgetClub);
 
-  const [compSeasonId, setCompSeasonId] = useState<string>('');
   const navigate = useNavigate();
-  const [currentRound, setCurrentRound] = useState(0);
-  const [lastCompletedRound, setLastCompletedRound] = useState(-1);
-  const [finished, setFinished] = useState(false);
+  const [params] = useSearchParams();
+  const [rounds, setRounds] = useState<RoundDto[]>([]);
+  const [allFixtures, setAllFixtures] = useState<FixtureDto[]>([]);
+  const [roundFixtures, setRoundFixtures] = useState<FixtureDto[]>([]);
+  const [currentRoundId, setCurrentRoundId] = useState('');
+  const [compSeasonId, setCompSeasonId] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  // The round the manager is in is the first one that still has a fixture nobody
+  // played. Rounds are not gated by the calendar: they simply follow the results.
+  const pickCurrentRound = useCallback((roundList: RoundDto[], fixtureList: FixtureDto[]) => {
+    const ordered = [...roundList].sort((a, b) => a.number - b.number);
+    const firstOpen = ordered.find(round =>
+      fixtureList.some(f => f.roundId === round.id && isScheduled(f))
+    );
+    return (firstOpen || ordered[ordered.length - 1])?.id || '';
+  }, []);
+
+  const refresh = useCallback(
+    async (competitionSeasonId: string, seasonId: string) => {
+      const [fixtureData, standingData, scorerData] = await Promise.all([
+        FixtureApi.list(),
+        LeagueApi.getStandings(competitionSeasonId),
+        LeagueApi.getScorers(seasonId),
+      ]);
+
+      setAllFixtures(fixtureData);
+      setStandings(standingData);
+      setScorers(scorerData);
+    },
+    [setStandings, setScorers]
+  );
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
     const season = params.get('season') || '';
     const competition = params.get('competition') || '';
 
     const initialize = async () => {
-      if (leagueTeams.length < 2) return;
+      setError(null);
 
       try {
-        // The query string may be missing or stale (deep link, refresh), so the season
-        // and the competition are resolved from the API before setting the league up.
+        // The persisted career may not have the club list yet (first visit after a
+        // reload), so the teams always come from the API and are stored afterwards.
         const seasonId = season || (await SeasonApi.current()).id;
-        const competitionId = competition
-          || (await CompetitionApi.listBySeason(seasonId))[0]?.id;
+        const competitionId = competition || (await CompetitionApi.listBySeason(seasonId))[0]?.id;
 
         if (!competitionId) {
-          console.error('No competition available for the selected season.');
+          setError('Nenhuma competição disponível para a temporada escolhida.');
           return;
         }
 
-        const setup = await LeagueApi.setup(
+        const teams: TeamDto[] = await TeamApi.list();
+        if (teams.length < 2) {
+          setError('O campeonato precisa de pelo menos dois clubes.');
+          return;
+        }
+        setLeagueTeams(teams);
+
+        const setup: LeagueSetupResult = await LeagueApi.setup(
           competitionId,
           seasonId,
-          leagueTeams.map(t => t.id)
+          teams.map(t => t.id)
         );
         setLeagueSetup(setup);
-        setCompSeasonId(setup.competitionSeasonId || '');
 
-        const fixturesData = setup.fixtures || [];
-        setFixtures(fixturesData.slice(0, 4));
-        setCurrentRound(0);
+        const id = setup.competitionSeasonId || '';
+        setCompSeasonId(id);
 
-        const standingsData = await LeagueApi.getStandings(setup.competitionSeasonId || '');
-        setStandings(standingsData);
+        const roundList = await RoundApi.listByCompetitionSeason(id);
+        setRounds(roundList);
 
-        const scorersData = await LeagueApi.getScorers(seasonId);
-        setScorers(scorersData);
-      } catch (error) {
-        console.error('Failed to initialize league:', error);
+        await refresh(id, seasonId);
+
+        const fixtureData = await FixtureApi.list();
+        setCurrentRoundId(pickCurrentRound(roundList, fixtureData));
+      } catch (err: any) {
+        const code = err?.response?.data?.code;
+        setError(code ? `${code}: ${err.response.data.detail}` : 'Não foi possível carregar o campeonato.');
       }
     };
 
     initialize();
-  }, [leagueTeams]);
+  }, [params, pickCurrentRound, refresh, setLeagueSetup, setLeagueTeams]);
 
-  const fixtureForUser = useCallback(() => {
-    if (!leagueSetup?.fixtures) return null;
-    const uid = selectedTeam?.id;
-    if (!uid) return null;
+  useEffect(() => {
+    if (!currentRoundId) {
+      setRoundFixtures([]);
+      return;
+    }
+    setRoundFixtures(allFixtures.filter(f => f.roundId === currentRoundId));
+  }, [currentRoundId, allFixtures]);
 
-    const allFixtures = leagueSetup?.fixtures || [];
-    const playedFixtures = allFixtures.filter((f: FixtureDto) => f.homeTeamId === uid || f.awayTeamId === uid);
-    const userFixture = allFixtures.find((f: FixtureDto) =>
-      (f.homeTeamId === uid || f.awayTeamId === uid) &&
-      f.status !== 'Completed'
-    );
-    return userFixture || null;
-  }, [leagueSetup?.fixtures, selectedTeam?.id]);
+  const currentRound = rounds.find(r => r.id === currentRoundId);
+  const totalRounds = rounds.length;
 
-  const openLineup = async () => {
-    const fixture = fixtureForUser();
-    if (!fixture) return;
+  // The fixture the manager has to play: the one of the current round that is still
+  // waiting. A fixture that is being played or already finished is not offered again —
+  // it is watched from the fixture list instead.
+  const userFixture = roundFixtures.find(
+    f => involves(f, selectedTeam?.id) && isScheduled(f)
+  ) || null;
 
-    // The manager picks the eleven first; the match is started from the lineup screen
-    // with that choice, which the backend validates.
-    navigate(`/match/lineup/${fixture.id}`);
+  const openLineup = () => {
+    if (!userFixture) return;
+    navigate(`/match/lineup/${userFixture.id}`);
   };
 
-  const uf = fixtureForUser();
-  const playDisabled = !uf;
+  const openFixture = (fixture: FixtureDto) => {
+    if (fixture.matchId) {
+      navigate(`/match/${fixture.matchId}`);
+      return;
+    }
+
+    if (isScheduled(fixture) && involves(fixture, selectedTeam?.id)) {
+      navigate(`/match/lineup/${fixture.id}`);
+    }
+  };
+
+  const changeClub = () => {
+    forgetClub();
+    navigate('/');
+  };
+
+  const otherResults = roundFixtures.filter(
+    f => f.status === 'Finished' && !involves(f, selectedTeam?.id)
+  );
 
   return (
     <div className="card league-screen">
@@ -104,16 +158,24 @@ const LeagueScreen: React.FC = () => {
         <div>
           <h2>Campeonato</h2>
           <div className="badge" style={{ display: 'inline-block', marginTop: '7px' }}>
-            {finished ? 'CAMPEÃO DEFINIDO' : `Rodada ${currentRound + 1}/14`}
+            {currentRound ? `Rodada ${currentRound.number}/${totalRounds}` : 'Sem rodada'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button className="ctrl">🔄 Nova temporada</button>
-          <button className="primary" disabled={playDisabled} onClick={openLineup}>
+          {selectedTeam && (
+            <button className="ctrl" onClick={changeClub}>
+              Trocar de clube
+            </button>
+          )}
+          <button className="primary" disabled={!userFixture} onClick={openLineup}>
             ⚽ Escalação e partida
           </button>
         </div>
       </div>
+
+      {error && (
+        <p className="competition" style={{ color: 'var(--danger)', margin: '0 0 10px' }}>{error}</p>
+      )}
 
       <div className="league-grid">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -125,17 +187,32 @@ const LeagueScreen: React.FC = () => {
           </div>
 
           <div className="league-panel">
-            <h3>Jogos da rodada {currentRound + 1}</h3>
+            <h3>Jogos da rodada {currentRound?.number ?? ''}</h3>
             <div id="roundFixtures">
-              <FixtureList fixtures={fixtures} userId={selectedTeam?.id} />
+              <FixtureList
+                fixtures={roundFixtures}
+                userId={selectedTeam?.id}
+                onSelect={openFixture}
+              />
             </div>
+            {!userFixture && roundFixtures.length > 0 && (
+              <p className="squad-hint" style={{ marginTop: '8px' }}>
+                {otherResults.length < roundFixtures.length
+                  ? 'Seu clube já jogou nesta rodada. As outras partidas estão em andamento.'
+                  : 'Nenhum jogo seu pendente nesta rodada.'}
+              </p>
+            )}
           </div>
 
           <div className="league-panel">
             <h3>📅 Calendário completo</h3>
-            <div id="calendarList">
-              <Calendar fixtures={leagueSetup?.fixtures || []} currentRound={currentRound} userId={selectedTeam?.id} />
-            </div>
+            <Calendar
+              fixtures={allFixtures}
+              rounds={rounds}
+              currentRoundId={currentRoundId}
+              userId={selectedTeam?.id}
+              onSelect={openFixture}
+            />
           </div>
         </div>
 
@@ -143,7 +220,15 @@ const LeagueScreen: React.FC = () => {
           <div className="league-panel">
             <h3>⚽ Outros resultados</h3>
             <div id="otherResults">
-              {completedOtherResults()}
+              {otherResults.length === 0 ? (
+                <div className="league-note">Ainda não há resultados de outras partidas.</div>
+              ) : (
+                <FixtureList
+                  fixtures={otherResults}
+                  userId={selectedTeam?.id}
+                  onSelect={openFixture}
+                />
+              )}
             </div>
           </div>
 
@@ -158,11 +243,5 @@ const LeagueScreen: React.FC = () => {
     </div>
   );
 };
-
-function completedOtherResults() {
-  return (
-    <div className="league-note" style={{ margin: '0 0 6px' }}>Ainda não há resultados de outras partidas.</div>
-  );
-}
 
 export default LeagueScreen;

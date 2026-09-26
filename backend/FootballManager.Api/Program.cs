@@ -39,6 +39,10 @@ builder.Services.AddCors(options => options.AddPolicy(CorsPolicy, policy => poli
         "https://localhost:5173")
     .AllowAnyHeader()
     .AllowAnyMethod()
+    // The SignalR client negotiates with credentials, so the preflight of
+    // POST /matchHub/negotiate is only answered when credentials are allowed. Without
+    // this the browser refuses the response and the live match never connects.
+    .AllowCredentials()
     .WithExposedHeaders("Content-Type")));
 
 builder.Services.AddControllers()
@@ -53,6 +57,7 @@ builder.Services.AddSignalR()
         options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 builder.Services.AddSingleton<IMatchBroadcaster, SignalRMatchBroadcaster>();
+builder.Services.AddSingleton<MatchSimulator>();
 builder.Services.AddHostedService<MatchLoopService>();
 
 var app = builder.Build();

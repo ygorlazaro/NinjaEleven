@@ -1,5 +1,6 @@
 using FootballManager.Api.Contracts;
 using FootballManager.Api.Mappings;
+using FootballManager.Api.Realtime;
 using FootballManager.Application.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,10 +17,12 @@ namespace FootballManager.Api.Controllers;
 public class MatchController : ControllerBase
 {
     private readonly MatchService _matchService;
+    private readonly MatchSimulator _simulator;
 
-    public MatchController(MatchService matchService)
+    public MatchController(MatchService matchService, MatchSimulator simulator)
     {
         _matchService = matchService;
+        _simulator = simulator;
     }
 
     [HttpGet]
@@ -51,8 +54,10 @@ public class MatchController : ControllerBase
     }
 
     /// <summary>
-    /// Creates the playable session for a fixture and locks the starting eleven of
-    /// both clubs.
+    /// Creates the playable session for a fixture, locks the starting eleven of both
+    /// clubs and starts the other matches of the round at the same time. A fixture that
+    /// is already being played answers with the running match instead of a conflict, so
+    /// the caller can watch it.
     /// </summary>
     [HttpPost("start/{fixtureId:guid}")]
     public async Task<ActionResult<MatchCommandResultDto>> Start(
@@ -60,19 +65,54 @@ public class MatchController : ControllerBase
         [FromBody] StartMatchRequestDto? request,
         CancellationToken cancellationToken)
     {
-        var result = await _matchService.StartAsync(
+        var matchId = await _simulator.KickOffMatchdayAsync(
             fixtureId,
-            request?.Seed,
             request?.UserTeamId,
             request?.StarterIds,
+            request?.Seed,
             cancellationToken);
 
-        if (!result.Accepted)
+        if (!matchId.HasValue)
         {
-            return Conflict(result.ToDto());
+            return Conflict(new MatchCommandResultDto
+            {
+                Accepted = false,
+                ErrorMessage = "Esta partida não pode ser iniciada agora."
+            });
         }
 
-        return Ok(result.ToDto());
+        return Ok(new MatchCommandResultDto
+        {
+            Accepted = true,
+            MatchId = matchId.Value
+        });
+    }
+
+    /// <summary>
+    /// Plays a fixture to full time without a live session, for the fixtures the
+    /// manager is not watching. Same engine, same events, same final row.
+    /// </summary>
+    [HttpPost("simulate/{fixtureId:guid}")]
+    public async Task<ActionResult<MatchCommandResultDto>> Simulate(
+        Guid fixtureId,
+        CancellationToken cancellationToken)
+    {
+        var matchId = await _simulator.SimulateFixtureAsync(fixtureId, cancellationToken);
+
+        if (!matchId.HasValue)
+        {
+            return Conflict(new MatchCommandResultDto
+            {
+                Accepted = false,
+                ErrorMessage = "This fixture is not waiting to be played."
+            });
+        }
+
+        return Ok(new MatchCommandResultDto
+        {
+            Accepted = true,
+            MatchId = matchId.Value
+        });
     }
 
     /// <summary>

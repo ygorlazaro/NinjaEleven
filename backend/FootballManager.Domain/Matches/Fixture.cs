@@ -37,5 +37,12 @@ public class Fixture
 
     public void MarkFinished() => Status = FixtureStatus.Finished;
 
+    /// <summary>
+    /// Puts a fixture back on the schedule. A fixture is reopened when the match that
+    /// was created for it was abandoned, so a restart never leaves a fixture that can
+    /// neither be played nor watched.
+    /// </summary>
+    public void Reopen() => Status = FixtureStatus.Scheduled;
+
     public void Postpone() => Status = FixtureStatus.Postponed;
 }

@@ -18,6 +18,12 @@ public class MatchContext
     public List<MatchPlayerSnapshot> AwayBench { get; }
     public IRandomSource Random { get; }
 
+    /// <summary>
+    /// The club a manager is watching, or <c>null</c> when the match is simulated without
+    /// anybody in the dugout.
+    /// </summary>
+    public Guid? ManagerTeamId { get; }
+
     public MatchContext(
         Guid matchId,
         TeamInfo homeTeam,
@@ -26,7 +32,8 @@ public class MatchContext
         List<MatchPlayerSnapshot> awayLineup,
         List<MatchPlayerSnapshot> homeBench,
         List<MatchPlayerSnapshot> awayBench,
-        IRandomSource random)
+        IRandomSource random,
+        Guid? managerTeamId = null)
     {
         MatchId = matchId;
         HomeTeam = homeTeam ?? throw new ArgumentNullException(nameof(homeTeam));
@@ -36,5 +43,6 @@ public class MatchContext
         HomeBench = homeBench ?? new List<MatchPlayerSnapshot>();
         AwayBench = awayBench ?? new List<MatchPlayerSnapshot>();
         Random = random ?? throw new ArgumentNullException(nameof(random));
+        ManagerTeamId = managerTeamId;
     }
 }

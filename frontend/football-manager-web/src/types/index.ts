@@ -26,6 +26,8 @@ export interface PlayerSeasonStateDto {
   redCards: number;
   suspensionMatches: number;
   injury: Injury;
+  /** Matches of his club the injury still keeps him out of. */
+  injuryMatchesRemaining: number;
   isAvailable: boolean;
 }
 
@@ -48,6 +50,8 @@ export interface SquadPlayerDto {
   redCards: number;
   suspensionMatches: number;
   injury: Injury;
+  /** Matches of his club the injury still keeps him out of. */
+  injuryMatchesRemaining: number;
   isAvailable: boolean;
   teamId: Guid;
   seasonId: Guid;
@@ -148,6 +152,8 @@ export interface MatchEventDto {
   homeScore: number;
   awayScore: number;
   payload: string;
+  description: string;
+  icon: string;
 }
 
 export type MatchHalf = 'First' | 'Second' | 'ExtraTime' | 'PenaltyShootout';
@@ -169,8 +175,17 @@ export interface MatchStateDto {
   stats: TeamMatchStatsDto[];
   possession: MatchPossessionDto;
   penaltyAwaitingSelection: boolean;
+  /** Who can take the penalty the engine awarded, when one is waiting for the manager. */
+  penalty: PenaltyTakerOptionsDto;
+  /** The club the manager is watching: what commands are sent for. */
+  userTeamId: Guid | null;
   substitutionsUsedHome: number;
   substitutionsUsedAway: number;
+}
+
+export interface PenaltyTakerOptionsDto {
+  awaitingSelection: boolean;
+  candidates: MatchPlayerDto[];
 }
 
 export interface TeamMatchStatsDto {
@@ -267,6 +282,7 @@ export interface MatchPlayerDto {
   matchYellowCards: number;
   redCard: boolean;
   emergencyGK: boolean;
+  injuredOff: boolean;
   subbedIn: boolean;
   goals: number;
   matchStats?: PlayerMatchStatsDto | null;
@@ -285,10 +301,6 @@ export interface PlayerMatchStatsDto {
   goalMinutes: number[];
   saveMinutes: number[];
   injuryMinutes: number[];
-}
-
-export interface PenaltyTakerDto {
-  candidates: PlayerDto[];
 }
 
 export interface MatchResult {
@@ -381,3 +393,9 @@ export interface PlayerInfo {
 export type Position = 'GK' | 'DEF' | 'MID' | 'ATT';
 
 export type CardType = 'yellow' | 'red';
+
+/** Fixtures of a round that were played without a manager watching. */
+export interface RoundSimulationResult {
+  roundId: string;
+  playedMatchIds: string[];
+}

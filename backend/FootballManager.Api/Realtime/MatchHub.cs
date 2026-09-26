@@ -3,6 +3,7 @@ using FootballManager.Api.Mappings;
 using FootballManager.Api.Realtime;
 using FootballManager.Application.Models;
 using FootballManager.Application.Services;
+using FootballManager.Domain.Common;
 using Microsoft.AspNetCore.SignalR;
 
 namespace FootballManager.Api.Realtime;
@@ -17,6 +18,7 @@ public class MatchHub : Hub
     public const string EventMethod = "MatchEvent";
     public const string StateMethod = "MatchState";
     public const string ResultMethod = "MatchFinished";
+    public const string ScoreMethod = "MatchScore";
 
     private readonly MatchService _matchService;
     private readonly IMatchBroadcaster _broadcaster;
@@ -29,7 +31,10 @@ public class MatchHub : Hub
         _logger = logger;
     }
 
-    public static string GroupFor(Guid matchId) => $"match:{matchId}";
+    public static string MatchGroupFor(Guid matchId) => $"match:{matchId}";
+
+    /// <summary>Group of a whole matchday, used for the score of the other matches.</summary>
+    public static string RoundGroupFor(Guid roundId) => $"round:{roundId}";
 
     /// <summary>
     /// Joins a client to the stream of one match. The current state is sent back right
@@ -38,7 +43,7 @@ public class MatchHub : Hub
     /// </summary>
     public async Task<MatchStateDto> SubscribeMatch(Guid matchId)
     {
-        await Groups.AddToGroupAsync(Context.ConnectionId, GroupFor(matchId), Context.ConnectionAborted);
+        await Groups.AddToGroupAsync(Context.ConnectionId, MatchGroupFor(matchId), Context.ConnectionAborted);
 
         _logger.LogInformation(
             "Connection {ConnectionId} subscribed to match {MatchId}",
@@ -51,9 +56,28 @@ public class MatchHub : Hub
         return state;
     }
 
+    /// <summary>
+    /// Joins the score stream of a round. The client watches one match in full and the
+    /// rest of the matchday on a scoreboard, both over the same connection.
+    /// </summary>
+    public async Task SubscribeMatchday(Guid roundId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, RoundGroupFor(roundId), Context.ConnectionAborted);
+
+        _logger.LogInformation(
+            "Connection {ConnectionId} subscribed to round {RoundId}",
+            Context.ConnectionId,
+            roundId);
+    }
+
+    public async Task LeaveMatchday(Guid roundId)
+    {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, RoundGroupFor(roundId), Context.ConnectionAborted);
+    }
+
     public async Task LeaveMatch(Guid matchId)
     {
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupFor(matchId), Context.ConnectionAborted);
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, MatchGroupFor(matchId), Context.ConnectionAborted);
 
         _logger.LogInformation(
             "Connection {ConnectionId} left match {MatchId}",
@@ -119,7 +143,32 @@ public class MatchHub : Hub
         string commandName,
         Func<Guid, Task<MatchCommandResult>> command)
     {
-        var result = await command(matchId);
+        MatchCommandResult result;
+
+        try
+        {
+            result = await command(matchId);
+        }
+        catch (DomainValidationException exception)
+        {
+            // A refused command is an answer, not a broken hub call: an illegal eleven, a
+            // player who is not on the pitch or a penalty of the other club come back as
+            // a result the client can render, with the rule that refused it.
+            _logger.LogWarning(
+                "Command {Command} refused on match {MatchId}: {Code} {Reason}",
+                commandName,
+                matchId,
+                exception.Code,
+                exception.Message);
+
+            result = new MatchCommandResult
+            {
+                Accepted = false,
+                MatchId = matchId,
+                ErrorMessage = exception.Message
+            };
+        }
+
         var dto = result.ToDto();
 
         if (!result.Accepted)

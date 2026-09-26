@@ -9,6 +9,12 @@ public class DatabaseSeedOptions
 
     public int Teams { get; set; } = 8;
     public int PlayersPerTeam { get; set; } = 23;
+
+    /// <summary>
+    /// Goalkeepers in every squad. A club needs more than the one it starts with: an
+    /// injury, a suspension or a red card has to be coverable.
+    /// </summary>
+    public int GoalkeepersPerTeam { get; set; } = 3;
     public int MinimumEnergy { get; set; } = 70;
     public int MaximumEnergy { get; set; } = 100;
     public int MinimumAttribute { get; set; } = 1;

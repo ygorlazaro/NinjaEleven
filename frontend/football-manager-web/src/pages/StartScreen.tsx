@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { TeamApi, SeasonApi, CompetitionApi } from '@/api';
+import { API_BASE_URL } from '@/config/env';
 import { useGameState } from '@/state';
 import type { TeamDto, SeasonDto, CompetitionDto } from '@/types';
 import { TEAM_COLOR_PALETTES, pick } from '@/services/formatters';
 
 const StartScreen: React.FC = () => {
+  const navigate = useNavigate();
   const setSelectedTeam = useGameState((s) => s.setSelectedTeam);
   const setLeagueTeams = useGameState((s) => s.setLeagueTeams);
   const setSeasonInfo = useGameState((s) => s.setSeasonInfo);
@@ -17,10 +20,12 @@ const StartScreen: React.FC = () => {
   const [selectedSeasonId, setSelectedSeasonId] = useState<string>('');
   const [selectedCompetitionId, setSelectedCompetitionId] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
+      setConnectionError(null);
       try {
         const [teamsData, seasonsData] = await Promise.all([
           TeamApi.list(),
@@ -40,10 +45,14 @@ const StartScreen: React.FC = () => {
         if (seasonsData.length > 0) {
           setSelectedSeasonId(seasonsData[0].id);
         }
-      } catch {
-        // Generate demo teams if API not available
-        const demoTeams = generateDemoTeams(8);
-        setTeams(demoTeams);
+      } catch (err: any) {
+        // Never fake the world: a broken backend must be visible, not hidden behind
+        // invented teams that cannot start a match.
+        const code = err?.response?.status ? `HTTP ${err.response.status}` : err?.message || 'erro desconhecido';
+        setConnectionError(code);
+        setTeams([]);
+        setSeasons([]);
+        setCompetitions([]);
       } finally {
         setLoading(false);
       }
@@ -56,6 +65,21 @@ const StartScreen: React.FC = () => {
     return (
       <div className="card start">
         <p>Carregando...</p>
+      </div>
+    );
+  }
+
+  if (connectionError) {
+    return (
+      <div className="card start">
+        <h1>Servidor indisponível</h1>
+        <p>Não foi possível carregar os dados do campeonato.</p>
+        <div className="conn-error">
+          <h3>Não foi possível conectar ao servidor</h3>
+          <p>Confirme que a API está rodando e que a URL abaixo está correta.</p>
+          <code>{API_BASE_URL}</code>
+          <p style={{ marginTop: '8px' }}>Detalhe: {connectionError}</p>
+        </div>
       </div>
     );
   }
@@ -74,11 +98,15 @@ const StartScreen: React.FC = () => {
     const team = { ...teams[selectedIndex] };
     setSelectedTeam(team);
     setLeagueTeams(teams);
+    setSeasonInfo(seasons.find(s => s.id === (selectedSeasonId || seasons[0]?.id)) || null);
+    setCompetitionInfo(competitions.find(c => c.id === (selectedCompetitionId || competitions[0]?.id)) || null);
+
+    // The season is a query of the championship screen, not a rewrite of the url: the
+    // router owns the path, so navigation has to go through it.
     const seasonId = selectedSeasonId || seasons[0]?.id || '';
     const competitionId = selectedCompetitionId || competitions[0]?.id || '';
 
-    window.location.hash = '#/league';
-    window.location.search = `?season=${seasonId}&competition=${competitionId}`;
+    navigate(`/league?season=${seasonId}&competition=${competitionId}`);
   };
 
   const canStart = selectedIndex !== null && seasons.length > 0 && competitions.length > 0;
@@ -160,38 +188,5 @@ const StartScreen: React.FC = () => {
     </div>
   );
 };
-
-function generateDemoTeams(count: number): TeamDto[] {
-  const TEAM_NAMES = ['Atlético do Vale', 'União Esportiva', 'Real Horizonte', 'Tigres FC', 'Aurora', 'Nacional Azul', 'Porto Verde', 'Estrela do Sul'];
-  const selected = TEAM_NAMES.slice(0, count);
-  return selected.map((name, i) => {
-    const colors = TEAM_COLOR_PALETTES[i % TEAM_COLOR_PALETTES.length];
-    return {
-      id: crypto.randomUUID(),
-      name,
-      shortName: name.split(' ').map(w => w[0]).join(''),
-      primaryColor: colors.primary,
-      secondaryColor: colors.secondary,
-      rating: 50 + Math.floor(Math.random() * 15),
-      birthDate: '',
-      age: 0,
-      position: '',
-      speed: 0,
-      accuracy: 0,
-      dribbling: 0,
-      heading: 0,
-      strength: 0,
-      goalkeeperPower: 0,
-      reflexes: 0,
-      energy: 0,
-      goals: 0,
-      yellowCards: 0,
-      redCards: 0,
-      suspensionMatches: 0,
-      injury: '',
-      isUnavailable: false,
-    };
-  });
-}
 
 export default StartScreen;

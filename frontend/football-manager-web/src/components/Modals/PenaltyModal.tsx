@@ -1,14 +1,17 @@
 import React from 'react';
-import type { PlayerDto } from '@/types';
+import { positionLabel } from '@/services/formatters';
+import type { MatchPlayerDto } from '@/types';
 
 interface PenaltyModalProps {
   show: boolean;
-  candidates: PlayerDto[];
+  candidates: MatchPlayerDto[];
   onSelected: (playerId: string) => void;
   onClose: () => void;
+  /** Why the last attempt was refused, said where the manager is looking. */
+  error?: string | null;
 }
 
-const PenaltyModal: React.FC<PenaltyModalProps> = ({ show, candidates, onSelected, onClose }) => {
+const PenaltyModal: React.FC<PenaltyModalProps> = ({ show, candidates, onSelected, onClose, error }) => {
   if (!show) return null;
 
   return (
@@ -16,19 +19,26 @@ const PenaltyModal: React.FC<PenaltyModalProps> = ({ show, candidates, onSelecte
       <div className="modal-card">
         <h2 id="penaltyTitle">⚽ Pênalti!</h2>
         <p id="penaltyDescription" style={{ color: 'var(--muted)' }}>
-          Escolha o jogador que vai cobrar.
+          Escolha o jogador que vai cobrar. O relógio espera a sua decisão.
         </p>
+        {error && (
+          <p style={{ color: 'var(--danger)', fontSize: '12px' }}>{error}</p>
+        )}
+
         <div id="penaltyOptions" className="penalty-options">
           {candidates.length > 0 ? (
             candidates.map(p => (
               <div
-                key={p.id}
+                key={p.playerId}
                 className="penalty-player"
-                onClick={() => onSelected(p.id)}
+                onClick={() => onSelected(p.playerId)}
                 style={{ '--team-primary': '#f2d34f', '--team-secondary': '#f2d34f' } as React.CSSProperties}
               >
                 <b>{p.name}</b>
-                <span>{p.position} • Vel {p.speed} Des {p.accuracy}</span>
+                <span>
+                  {positionLabel(p.position)} • Fin {p.accuracy} • Dri {p.dribbling} • For{' '}
+                  {p.strength}
+                </span>
               </div>
             ))
           ) : (

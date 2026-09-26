@@ -1,5 +1,6 @@
 using FootballManager.Application.Abstractions;
 using FootballManager.Application.Models;
+using FootballManager.Application.Leagues;
 using FootballManager.Application.Repositories;
 using FootballManager.Domain.Common;
 using FootballManager.Domain.Competitions;
@@ -72,7 +73,7 @@ public class LeagueService
         {
             throw new DomainValidationException(
                 "NotEnoughTeams",
-                "A competition needs at least two teams to generate a schedule.");
+                "Uma competição precisa de pelo menos dois clubes para gerar a tabela de jogos.");
         }
 
         var competitionSeason = await _competitionRepository.GetSeasonAsync(competitionId, seasonId, cancellationToken);
@@ -121,7 +122,7 @@ public class LeagueService
         var fixtures = new List<Fixture>();
         var roundNumber = 0;
 
-        foreach (var roundPairs in CreateRounds(teams))
+        foreach (var roundPairs in RoundRobin.Build(teams))
         {
             roundNumber++;
             var round = Round.Create(competitionSeason.Id, roundNumber);
@@ -462,51 +463,6 @@ public class LeagueService
         }
 
         return total;
-    }
-
-    /// <summary>
-    /// Circle method: with an odd number of teams one club is fixed and takes a bye every
-    /// round, and the others rotate. Both legs are generated, the second one inverting
-    /// home and away.
-    /// </summary>
-    private static IEnumerable<IReadOnlyList<(Team Home, Team Away)>> CreateRounds(IReadOnlyList<Team> teams)
-    {
-        var rotating = new List<Team>(teams);
-        Team? bye = null;
-
-        if (rotating.Count % 2 != 0)
-        {
-            bye = rotating[^1];
-            rotating.RemoveAt(rotating.Count - 1);
-        }
-
-        var roundCount = rotating.Count - 1;
-
-        for (var leg = 0; leg < 2; leg++)
-        {
-            for (var round = 0; round < roundCount; round++)
-            {
-                var pairs = new List<(Team Home, Team Away)>(rotating.Count / 2 + 1);
-
-                for (var index = 0; index < rotating.Count / 2; index++)
-                {
-                    var first = rotating[index];
-                    var second = rotating[rotating.Count - 1 - index];
-
-                    pairs.Add(leg == 0 ? (first, second) : (second, first));
-                }
-
-                if (bye is not null)
-                {
-                    pairs.Add((bye, rotating[round]));
-                }
-
-                yield return pairs;
-
-                rotating.Insert(0, rotating[^1]);
-                rotating.RemoveAt(rotating.Count - 1);
-            }
-        }
     }
 
     private record MatchResultRow(

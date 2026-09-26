@@ -1,10 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useGameState } from '@/state';
 import StartScreen from '@/pages/StartScreen';
 import LeagueScreen from '@/pages/LeagueScreen';
-import SquadScreen from '@/pages/SquadScreen';
 import LineupScreen from '@/pages/LineupScreen';
 import TeamViewScreen from '@/pages/TeamViewScreen';
 import MatchScreen from '@/pages/MatchScreen';
@@ -12,7 +11,6 @@ import '@/styles.css';
 
 function App() {
   const selectedTeam = useGameState((s) => s.selectedTeam);
-  const currentMatch = useGameState((s) => s.currentMatch);
 
   return (
     <div className="app">
@@ -21,13 +19,18 @@ function App() {
         <div className="badge">POC 0.1 • Motor de partida</div>
       </div>
 
+      {/* The club decides where the root goes: a career without a club starts at the
+          club screen, and one that already has a club goes straight to the fixtures. */}
       <Routes>
-        {!selectedTeam && <Route path="/" element={<StartScreen />} />}
-        {selectedTeam && <Route path="/" element={<LeagueScreen />} />}
-        <Route path="/squad" element={<SquadScreen />} />
+        <Route
+          path="/"
+          element={selectedTeam ? <Navigate to="/league" replace /> : <StartScreen />}
+        />
+        <Route path="/league" element={<LeagueScreen />} />
         <Route path="/match/lineup/:fixtureId" element={<LineupScreen />} />
         <Route path="/team/:teamId" element={<TeamViewScreen />} />
         <Route path="/match/:matchId" element={<MatchScreen />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>
   );

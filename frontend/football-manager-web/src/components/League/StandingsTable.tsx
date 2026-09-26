@@ -47,7 +47,7 @@ const StandingsTable: React.FC<StandingsTableProps> = ({ standings, userId, team
               <td>{i + 1}</td>
               <td>
                 <span className="team-dot" style={{ '--team-primary': colors, '--team-secondary': team.secondaryColor || '#f2d34f' } as React.CSSProperties}></span>
-                {team.shortName}
+                {team.name}
               </td>
               <td><b>{s.points}</b></td>
               <td>{s.played}</td>

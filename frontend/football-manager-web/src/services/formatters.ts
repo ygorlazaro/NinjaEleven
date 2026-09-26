@@ -65,6 +65,25 @@ export function goaliePower(p: PlayerInfo): number {
   return Math.max(1, Math.round((p.speed + p.strength + p.accuracy) / 3));
 }
 
+/**
+ * The order players are read in everywhere: goalkeepers, defenders, midfielders and
+ * attackers, and by name inside a position. The API already returns its lists in this
+ * order, but a client that sorts its own list has to use the same rule or the two
+ * disagree on screen.
+ */
+const POSITION_ORDER: Position[] = ['GK', 'DEF', 'MID', 'ATT'];
+
+export function positionRank(position: string): number {
+  const index = POSITION_ORDER.indexOf(position as Position);
+  return index < 0 ? POSITION_ORDER.length : index;
+}
+
+export function sortByPosition<T extends { position: string; name: string }>(players: T[]): T[] {
+  return [...players].sort(
+    (a, b) => positionRank(a.position) - positionRank(b.position) || a.name.localeCompare(b.name, 'pt-BR')
+  );
+}
+
 export function positionLabel(pos: string): string {
   return pos === 'GK' ? 'GOL' : pos === 'DEF' ? 'ZAG' : pos === 'MID' ? 'MEI' : 'ATA';
 }
@@ -111,12 +130,41 @@ export function energyPercent(energy: number): string {
   return `${Math.max(0, Math.min(100, energy))}%`;
 }
 
+/**
+ * What each event looks like in the feed. The engine sends a stable key and the client
+ * decides how to draw it, so a new event type never arrives as a blank row.
+ */
+const EVENT_ICONS: Record<string, string> = {
+  KickOff: '▶',
+  Shot: '🎯',
+  Save: '🧤',
+  GoalScored: '⚽',
+  OwnGoalScored: '🙃',
+  Corner: '🚩',
+  Foul: '🦵',
+  YellowCardShown: '🟨',
+  RedCardShown: '🟥',
+  PlayerInjured: '🚑',
+  KeeperPromoted: '🧤',
+  SubstitutionMade: '🔁',
+  PenaltyAwarded: '🎯',
+  PenaltyTaken: '🎯',
+  PenaltySaved: '🧤',
+  HalfTimeReached: '⏸',
+  SecondHalfStarted: '▶',
+  MatchFinished: '⏹'
+};
+
+export function eventIcon(type: string, fallback: string): string {
+  return EVENT_ICONS[type] ?? fallback ?? '•';
+}
+
 export function convertToFeedEvent(event: any): FeedEvent {
   return {
     sequence: event.sequence,
     minute: event.minute,
     description: event.description,
-    icon: event.icon,
+    icon: eventIcon(event.type, event.icon),
     type: event.type,
     teamId: event.teamId,
     playerId: event.playerId,

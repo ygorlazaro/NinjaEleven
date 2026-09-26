@@ -1,3 +1,4 @@
+using FootballManager.Domain.Enums;
 using FootballManager.Application.Models;
 using FootballManager.Application.Repositories;
 using FootballManager.Domain.Common;
@@ -76,6 +77,10 @@ public class PlayerService
             }
         }
 
-        return squad;
+        // A squad is read top to bottom, so it comes back the way a manager reads it:
+        // goalkeepers, defenders, midfielders, attackers, and by name inside each group.
+        return squad
+            .Apply(player => player.Player.Position, player => player.Player.Name)
+            .ToList();
     }
 }

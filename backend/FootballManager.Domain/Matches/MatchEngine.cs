@@ -50,7 +50,7 @@ public class MatchEngine
                 MatchEventType.KickOff,
                 null,
                 null,
-                $"Kick-off: {state.HomeTeam.Name} vs {state.AwayTeam.Name}",
+                $"Bola rolando: {state.HomeTeam.Name} x {state.AwayTeam.Name}",
                 "whistle")
         };
     }
@@ -70,6 +70,20 @@ public class MatchEngine
             return events;
         }
 
+        // A penalty has to be taken before the clock moves on: whoever is waiting to pick
+        // the taker is deciding the outcome of a goal, not of the next minute.
+        if (state.PenaltyAwaitingSelection)
+        {
+            TakeAutomaticPenalty(state, events);
+            state.PendingFeed.AddRange(events);
+            return events;
+        }
+
+        // A club that lost its last goalkeeper promotes somebody at once, whatever
+        // happened: the next action always finds a goal defended.
+        EnsureGoalkeeper(state, events, home: true);
+        EnsureGoalkeeper(state, events, home: false);
+
         state.GameSeconds += SecondsPerTick;
         state.Minute = state.GameSeconds / SecondsPerTick;
 
@@ -86,7 +100,7 @@ public class MatchEngine
                 MatchEventType.HalfTimeReached,
                 null,
                 null,
-                $"Half-time: {state.HomeScore} - {state.AwayScore}",
+                $"Fim do primeiro tempo: {state.HomeScore} x {state.AwayScore}",
                 "whistle"));
         }
         else if (state.GameSeconds >= state.MatchSeconds)
@@ -98,11 +112,133 @@ public class MatchEngine
                 MatchEventType.MatchFinished,
                 null,
                 null,
-                $"Full-time: {state.HomeScore} - {state.AwayScore}",
+                $"Fim de jogo: {state.HomeScore} x {state.AwayScore}",
                 "whistle"));
         }
 
         state.PendingFeed.AddRange(events);
+
+        return events;
+    }
+
+    /// <summary>
+    /// Takes a penalty nobody chose the taker for, which is the case of the club no
+    /// manager is watching: the engine picks its best penalty taker and the shot is
+    /// resolved.
+    /// </summary>
+    private void TakeAutomaticPenalty(MatchState state, List<MatchEngineEvent> events)
+    {
+        var home = state.PenaltyTeam is 1;
+        var awardedTeamId = home ? state.HomeTeam.Id : state.AwayTeam.Id;
+
+        // The manager of the awarded club names his own taker: the clock keeps waiting.
+        if (state.ManagerSelectsPenaltyTaker(awardedTeamId))
+        {
+            return;
+        }
+
+        var lineup = home ? state.HomeLineup : state.AwayLineup;
+        var taker = BestPenaltyTaker(lineup);
+
+        if (taker is null)
+        {
+            state.PenaltyAwaitingSelection = false;
+            state.PenaltyTeam = null;
+            return;
+        }
+
+        events.AddRange(TakePenalty(state, home, taker));
+    }
+
+    /// <summary>
+    /// The players a club could send to the spot, best first. Only the ones still on the
+    /// pitch are eligible, and an outfield player is preferred over a goalkeeper when the
+    /// numbers are close: a keeper is a poor taker, and a real manager knows it.
+    /// </summary>
+    public static IReadOnlyList<MatchPlayerSnapshot> PenaltyTakerCandidates(MatchState state, bool home)
+    {
+        var lineup = home ? state.HomeLineup : state.AwayLineup;
+
+        return lineup
+            .Where(player => player.IsOnPitch)
+            .OrderByDescending(PenaltySkill)
+            .ToList();
+    }
+
+    private static int PenaltySkill(MatchPlayerSnapshot player) =>
+        player.Accuracy * 2 + player.Dribbling + player.Strength - (player.Position == Position.GK ? 25 : 0);
+
+    private static MatchPlayerSnapshot? BestPenaltyTaker(List<MatchPlayerSnapshot> lineup) =>
+        lineup.Where(player => player.IsOnPitch).OrderByDescending(PenaltySkill).FirstOrDefault();
+
+    /// <summary>
+    /// Takes the penalty the engine awarded. The taker is already chosen; this resolves
+    /// the shot itself, because a goalkeeper's reflexes decide it and not the client.
+    /// </summary>
+    public IEnumerable<MatchEngineEvent> TakePenalty(
+        MatchState state,
+        bool home,
+        MatchPlayerSnapshot taker)
+    {
+        var events = new List<MatchEngineEvent>();
+        var defendingLineup = home ? state.AwayLineup : state.HomeLineup;
+        var keeper = defendingLineup.FirstOrDefault(player => player.KeepsGoal);
+
+        // Around 76% of penalties go in, a little more for a clinical taker and a little
+        // less against a great goalkeeper.
+        var conversion = 0.76
+            + (taker.Accuracy + taker.Dribbling - 20) / 100.0
+            - (keeper is null ? 0 : (keeper.Reflexes + keeper.GoalkeeperPower - 20) / 150.0);
+
+        state.PenaltyAwaitingSelection = false;
+        state.PenaltyTeam = null;
+
+        if (_random.NextDouble() < conversion)
+        {
+            if (home)
+            {
+                state.HomeScore++;
+                state.LastScoreHome = state.Minute;
+            }
+            else
+            {
+                state.AwayScore++;
+                state.LastScoreAway = state.Minute;
+            }
+
+            taker.Goals++;
+            taker.MatchGoals++;
+
+            events.Add(Emit(
+                state,
+                MatchEventType.PenaltyTaken,
+                home ? state.HomeTeam.Id : state.AwayTeam.Id,
+                taker.PlayerId,
+                $"{taker.Name} converte a pênalti",
+                "penalty-goal"));
+            return events;
+        }
+
+        events.Add(Emit(
+            state,
+            MatchEventType.PenaltyTaken,
+            home ? state.HomeTeam.Id : state.AwayTeam.Id,
+            taker.PlayerId,
+            keeper is null
+                ? $"{taker.Name} perde a pênalti"
+                : $"{taker.Name} bate mal e {keeper.Name} defende",
+            "penalty-miss"));
+
+        if (keeper is not null)
+        {
+            events.Add(Emit(
+                state,
+                MatchEventType.PenaltySaved,
+                home ? state.AwayTeam.Id : state.HomeTeam.Id,
+                keeper.PlayerId,
+                $"Defesa de {keeper.Name} no pênalti",
+                "save"));
+        }
 
         return events;
     }
@@ -115,7 +251,6 @@ public class MatchEngine
         if (state == null) throw new ArgumentNullException(nameof(state));
 
         state.Half = 1;
-        state.HalfPaused = false;
         state.HalfTimePauseActive = false;
 
         state.PendingFeed.Add(Emit(
@@ -123,7 +258,7 @@ public class MatchEngine
             MatchEventType.SecondHalfStarted,
             null,
             null,
-            "Second half started",
+            "Começa o segundo tempo",
             "whistle"));
     }
 
@@ -194,7 +329,7 @@ public class MatchEngine
                 MatchEventType.Shot,
                 home ? state.HomeTeam.Id : state.AwayTeam.Id,
                 shooter.PlayerId,
-                $"{shooter.Name} shoots off target",
+                $"{shooter.Name} finaliza para fora",
                 "shot"));
             return;
         }
@@ -221,8 +356,8 @@ public class MatchEngine
                 keeper == null ? null : home ? state.AwayTeam.Id : state.HomeTeam.Id,
                 keeper?.PlayerId,
                 keeper == null
-                    ? $"{shooter.Name} shoots, but there is no keeper to stop him"
-                    : $"{keeper.Name} saves from {shooter.Name}",
+                    ? $"{shooter.Name} finaliza, mas não há goleiro para defender"
+                    : $"{keeper.Name} defende o chute de {shooter.Name}",
                 "save"));
             return;
         }
@@ -255,6 +390,7 @@ public class MatchEngine
         }
 
         scorer.Goals++;
+        scorer.MatchGoals++;
 
         if (ownGoal)
         {
@@ -263,7 +399,7 @@ public class MatchEngine
                 MatchEventType.OwnGoalScored,
                 home ? state.HomeTeam.Id : state.AwayTeam.Id,
                 scorer.PlayerId,
-                $"Own goal by {scorer.Name}",
+                $"Gol contra de {scorer.Name}",
                 "own-goal"));
             return;
         }
@@ -273,7 +409,7 @@ public class MatchEngine
             MatchEventType.GoalScored,
             home ? state.HomeTeam.Id : state.AwayTeam.Id,
             scorer.PlayerId,
-            $"GOAL! {scorer.Name}",
+            $"GOL! {scorer.Name}",
             "goal"));
     }
 
@@ -301,7 +437,7 @@ public class MatchEngine
             MatchEventType.Corner,
             home ? state.HomeTeam.Id : state.AwayTeam.Id,
             taker.PlayerId,
-            $"Corner for {(home ? state.HomeTeam.Name : state.AwayTeam.Name)}",
+            $"Escanteio para {(home ? state.HomeTeam.Name : state.AwayTeam.Name)}",
             "corner"));
 
         if (_random.NextDouble() < 0.25)
@@ -333,34 +469,26 @@ public class MatchEngine
             MatchEventType.Foul,
             home ? state.HomeTeam.Id : state.AwayTeam.Id,
             offender.PlayerId,
-            $"Foul by {offender.Name}",
+            $"Falta cometida por {offender.Name}",
             "foul"));
+
+        // A foul inside the area is a penalty, whatever the referee thinks of the tackle.
+        if (_random.NextDouble() < 0.10)
+        {
+            AwardPenalty(state, events, offendingTeamIsHome: home);
+            return;
+        }
 
         if (_random.NextDouble() >= 0.22)
         {
             return;
         }
 
+        // A second yellow of the match is a red, and so is the one that comes with the
+        // referee having seen enough.
         if (offender.MatchYellowCards >= 1 || _random.NextDouble() < 0.12)
         {
-            offender.RedCard = true;
-
-            if (home)
-            {
-                state.HomeCards++;
-            }
-            else
-            {
-                state.AwayCards++;
-            }
-
-            events.Add(Emit(
-                state,
-                MatchEventType.RedCardShown,
-                home ? state.HomeTeam.Id : state.AwayTeam.Id,
-                offender.PlayerId,
-                $"Red card for {offender.Name}",
-                "red-card"));
+            ShowRedCard(state, events, home, offender, secondYellow: offender.MatchYellowCards >= 1);
             return;
         }
 
@@ -380,8 +508,114 @@ public class MatchEngine
             MatchEventType.YellowCardShown,
             home ? state.HomeTeam.Id : state.AwayTeam.Id,
             offender.PlayerId,
-            $"Yellow card for {offender.Name}",
+            $"Cartão amarelo para {offender.Name}",
             "yellow-card"));
+    }
+
+    /// <summary>
+    /// Sends a player off and, when his club has nobody left in goal, promotes the best
+    /// outfielder to goalkeeper. A club that runs out of goalkeepers does not stop playing
+    /// football, it just plays without one.
+    /// </summary>
+    private void ShowRedCard(
+        MatchState state,
+        List<MatchEngineEvent> events,
+        bool home,
+        MatchPlayerSnapshot offender,
+        bool secondYellow)
+    {
+        offender.SendOff();
+
+        if (home)
+        {
+            state.HomeCards++;
+        }
+        else
+        {
+            state.AwayCards++;
+        }
+
+        events.Add(Emit(
+            state,
+            MatchEventType.RedCardShown,
+            home ? state.HomeTeam.Id : state.AwayTeam.Id,
+            offender.PlayerId,
+            secondYellow
+                ? $"Segundo amarelo: {offender.Name} está expulso"
+                : $"Cartão vermelho para {offender.Name}",
+            "red-card"));
+
+        EnsureGoalkeeper(state, events, home);
+    }
+
+    /// <summary>
+    /// Makes sure the club still has someone keeping the goal after losing one, promoting
+    /// the best outfielder still on the pitch when there is nobody else.
+    /// </summary>
+    private void EnsureGoalkeeper(MatchState state, List<MatchEngineEvent> events, bool home)
+    {
+        var lineup = home ? state.HomeLineup : state.AwayLineup;
+        var teamName = home ? state.HomeTeam.Name : state.AwayTeam.Name;
+
+        if (lineup.Any(player => player.KeepsGoal))
+        {
+            return;
+        }
+
+        var promoted = lineup
+            .Where(player => player.IsOnPitch)
+            .OrderByDescending(player => player.Reflexes + player.GoalkeeperPower)
+            .FirstOrDefault();
+
+        if (promoted is null)
+        {
+            return;
+        }
+
+        promoted.PromoteToGoalkeeper();
+
+        events.Add(Emit(
+            state,
+            MatchEventType.KeeperPromoted,
+            home ? state.HomeTeam.Id : state.AwayTeam.Id,
+            promoted.PlayerId,
+            $"{teamName} sem goleiro: {promoted.Name} assume a meta",
+            "emergency-keeper"));
+    }
+
+    /// <summary>
+    /// Awards a penalty. The manager of the club the match is being watched for names the
+    /// taker; the engine does it for the other side, and the clock waits for the choice.
+    /// </summary>
+    private void AwardPenalty(MatchState state, List<MatchEngineEvent> events, bool offendingTeamIsHome)
+    {
+        var fouledTeamId = offendingTeamIsHome ? state.AwayTeam.Id : state.HomeTeam.Id;
+        var fouledTeamName = offendingTeamIsHome ? state.AwayTeam.Name : state.HomeTeam.Name;
+
+        events.Add(Emit(
+            state,
+            MatchEventType.PenaltyAwarded,
+            fouledTeamId,
+            null,
+            $"Pênalti para {fouledTeamName}",
+            "penalty"));
+
+        if (state.ManagerSelectsPenaltyTaker(fouledTeamId))
+        {
+            state.PenaltyAwaitingSelection = true;
+            state.PenaltyTeam = offendingTeamIsHome ? 2 : 1;
+            return;
+        }
+
+        var lineup = offendingTeamIsHome ? state.AwayLineup : state.HomeLineup;
+        var taker = BestPenaltyTaker(lineup);
+
+        if (taker is null)
+        {
+            return;
+        }
+
+        events.AddRange(TakePenalty(state, home: !offendingTeamIsHome, taker));
     }
 
     private void SimulateInjury(MatchState state, List<MatchEngineEvent> events, bool home)
@@ -393,32 +627,63 @@ public class MatchEngine
             return;
         }
 
+        // Most knocks are nothing more than a lost sprint; a few put a player out of the
+        // match and, when they are a keeper, out of the next few as well.
+        var severityRoll = _random.NextDouble();
+        var isSerious = severityRoll < 0.12;
+        var leavesPitch = isSerious || severityRoll < 0.45;
+
         player.ApplyFatigue(_random.Next(2, 8));
+
+        var injury = isSerious ? Injury.Grave : Injury.Light;
+
+        if (!leavesPitch)
+        {
+            events.Add(Emit(
+                state,
+                MatchEventType.PlayerInjured,
+                home ? state.HomeTeam.Id : state.AwayTeam.Id,
+                player.PlayerId,
+                $"{player.Name} sente dores e continua em campo",
+                "injury"));
+            return;
+        }
+
+        player.Injure(injury);
+        state.InjuriesThisMatch++;
 
         events.Add(Emit(
             state,
             MatchEventType.PlayerInjured,
             home ? state.HomeTeam.Id : state.AwayTeam.Id,
             player.PlayerId,
-            $"{player.Name} is struggling",
+            isSerious
+                ? $"{player.Name} se lesiona gravemente e deixa o campo"
+                : $"{player.Name} se machuca e deixa o campo",
             "injury"));
+
+        EnsureGoalkeeper(state, events, home);
     }
 
+    /// <summary>
+    /// Picks a player who is actually on the pitch: sent off or injured, he is not an
+    /// option for a new action.
+    /// </summary>
     private MatchPlayerSnapshot? PickPlayer(List<MatchPlayerSnapshot> lineup)
     {
-        var available = lineup.Where(p => !p.RedCard).ToList();
+        var available = lineup.Where(p => p.IsOnPitch).ToList();
 
         if (available.Count == 0)
         {
             return null;
         }
 
-        return available[_random.Next(0, available.Count - 1)];
+        return available[_random.Next(0, available.Count)];
     }
 
     private static MatchPlayerSnapshot? FindGoalkeeper(List<MatchPlayerSnapshot> lineup)
     {
-        return lineup.FirstOrDefault(p => p.Position == Position.GK && !p.RedCard);
+        return lineup.FirstOrDefault(p => p.KeepsGoal);
     }
 
     private static MatchEngineEvent Emit(

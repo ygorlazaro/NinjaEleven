@@ -15,6 +15,13 @@ public interface IMatchBroadcaster
     Task PublishEventsAsync(Guid matchId, IReadOnlyList<MatchEngineEventDto> events, CancellationToken cancellationToken = default);
 
     Task PublishResultAsync(Guid matchId, MatchResultDto result, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Publishes the score of one match to everyone following the round. This is what
+    /// lets a client watch its own match in full and the rest of the matchday on a
+    /// scoreboard, all from the same connection.
+    /// </summary>
+    Task PublishScoreAsync(Guid roundId, MatchScoreDto score, CancellationToken cancellationToken = default);
 }
 
 /// <inheritdoc />
@@ -28,7 +35,7 @@ public sealed class SignalRMatchBroadcaster : IMatchBroadcaster
     }
 
     public Task PublishStateAsync(Guid matchId, MatchStateDto state, CancellationToken cancellationToken = default) =>
-        _hubContext.Clients.Group(MatchHub.GroupFor(matchId))
+        _hubContext.Clients.Group(MatchHub.MatchGroupFor(matchId))
             .SendAsync(MatchHub.StateMethod, state, cancellationToken);
 
     public Task PublishEventsAsync(
@@ -41,11 +48,15 @@ public sealed class SignalRMatchBroadcaster : IMatchBroadcaster
             return Task.CompletedTask;
         }
 
-        return _hubContext.Clients.Group(MatchHub.GroupFor(matchId))
+        return _hubContext.Clients.Group(MatchHub.MatchGroupFor(matchId))
             .SendAsync(MatchHub.EventMethod, events, cancellationToken);
     }
 
     public Task PublishResultAsync(Guid matchId, MatchResultDto result, CancellationToken cancellationToken = default) =>
-        _hubContext.Clients.Group(MatchHub.GroupFor(matchId))
+        _hubContext.Clients.Group(MatchHub.MatchGroupFor(matchId))
             .SendAsync(MatchHub.ResultMethod, result, cancellationToken);
+
+    public Task PublishScoreAsync(Guid roundId, MatchScoreDto score, CancellationToken cancellationToken = default) =>
+        _hubContext.Clients.Group(MatchHub.RoundGroupFor(roundId))
+            .SendAsync(MatchHub.ScoreMethod, score, cancellationToken);
 }

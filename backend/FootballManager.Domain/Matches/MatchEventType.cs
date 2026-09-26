@@ -16,6 +16,12 @@ public enum MatchEventType
     YellowCardShown,
     RedCardShown,
     PlayerInjured,
+
+    /// <summary>
+    /// An outfield player had to take the gloves because his club lost its goalkeeper.
+    /// </summary>
+    KeeperPromoted,
+
     SubstitutionMade,
     PenaltyAwarded,
     PenaltyTaken,

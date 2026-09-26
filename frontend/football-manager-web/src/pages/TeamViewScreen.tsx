@@ -1,15 +1,48 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { SeasonApi, TeamApi } from '@/api';
 import { useGameState } from '@/state';
-import type { TeamDto, PlayerSeasonStateDto } from '@/types';
+import type { Position, SquadPlayerDto, TeamDto } from '@/types';
+import { energyClass, positionLabel } from '@/services/formatters';
+
+const POSITION_ORDER: Position[] = ['GK', 'DEF', 'MID', 'ATT'];
+
+const POSITION_LABELS: Record<Position, string> = {
+  GK: 'Goleiros',
+  DEF: 'Defesa',
+  MID: 'Meio-campo',
+  ATT: 'Ataque'
+};
+
+/**
+ * What keeps a player out of the squad, said in the words a manager uses. An injury is
+ * only meaningful with the number of matches it still costs him.
+ */
+function availabilityOf(player: SquadPlayerDto): string {
+  if (player.suspensionMatches > 0) {
+    return `🚫 Suspenso (${player.suspensionMatches})`;
+  }
+
+  if (player.injury !== 'None') {
+    const severity = player.injury === 'Grave' ? 'Lesão grave' : 'Lesão leve';
+    return player.injuryMatchesRemaining > 0
+      ? `🩹 ${severity} (${player.injuryMatchesRemaining})`
+      : `🩹 ${severity}`;
+  }
+
+  return 'Apto';
+}
 
 const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) => {
   const teams = useGameState((s) => s.leagueTeams);
   const [team, setTeam] = useState<TeamDto | null>(null);
-  const [players, setPlayers] = useState<PlayerSeasonStateDto[]>([]);
+  const [players, setPlayers] = useState<SquadPlayerDto[]>([]);
 
-  const params = new URLSearchParams(window.location.search);
+  const navigate = useNavigate();
+  const { teamId: routeTeamId = '' } = useParams();
+  const [params] = useSearchParams();
+  const urlTeamId = propTeamId || routeTeamId;
   const seasonId = params.get('season') || '';
-  const urlTeamId = propTeamId || window.location.pathname.split('/').pop();
 
   useEffect(() => {
     const teamObj = teams.find(t => t.id === urlTeamId);
@@ -17,13 +50,41 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
   }, [teams, urlTeamId]);
 
   useEffect(() => {
-    if (urlTeamId && seasonId) {
-      fetch(`/api/team/${urlTeamId}/squad/${seasonId}`)
-        .then(r => r.json())
-        .then(setPlayers)
-        .catch(console.error);
-    }
+    if (!urlTeamId) return undefined;
+
+    // The squad belongs to a season. The screen can be opened without the query, so
+    // the current season is what it falls back to.
+    let cancelled = false;
+
+    const load = async () => {
+      const season = seasonId || (await SeasonApi.current()).id;
+      if (cancelled) return;
+      setPlayers(await TeamApi.getSquad(urlTeamId, season));
+    };
+
+    load().catch(error => {
+      if (!cancelled) console.error('Failed to load the squad:', error);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [urlTeamId, seasonId]);
+
+  /**
+   * The squad as a manager reads it: by position, and by name inside the position.
+   */
+  const rowsByPosition = useMemo(
+    () =>
+      POSITION_ORDER.map(position => ({
+        position,
+        label: POSITION_LABELS[position],
+        players: players
+          .filter(player => player.position === position)
+          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+      })).filter(group => group.players.length > 0),
+    [players]
+  );
 
   if (!team) return null;
 
@@ -35,7 +96,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
             <h2>Elenco</h2>
             <p>Força {team.rating} • {players.length} jogadores</p>
           </div>
-          <button className="ctrl" onClick={() => window.history.back()}>Fechar</button>
+          <button className="ctrl" onClick={() => navigate(-1)}>Fechar</button>
         </div>
 
         <div className="selection-bar team-view-summary">
@@ -64,24 +125,47 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
                 <th>Temporada</th>
               </tr>
             </thead>
-            <tbody id="teamViewTableBody">
-              {players.map(p => (
-                <tr key={p.id}>
-                  <td>--</td>
-                  <td><b>{p.playerId}</b></td>
-                  <td>--</td>
-                  <td>{p.energy}%</td>
-                  <td>--</td>
-                  <td>
-                    <span>{p.goals || 0} gol{p.goals !== 1 ? 's' : ''}</span>
-                    {' '}
-                    <span>CA {p.yellowCards || 0}/3</span>
-                    {p.suspensionMatches > 0 && <span> 🚫 {p.suspensionMatches}</span>}
-                    {p.injury && <span> 🩹</span>}
-                  </td>
+            {rowsByPosition.map(group => (
+              <tbody key={group.position}>
+                <tr className="squad-group">
+                  <th colSpan={6} scope="colgroup">
+                    {group.label}
+                  </th>
                 </tr>
-              ))}
-            </tbody>
+
+                {group.players.map(p => (
+                  <tr key={p.id} className={p.isAvailable ? 'squad-row' : 'squad-row unavailable'}>
+                    <td className="col-pos">
+                      <span className="pos-badge">{positionLabel(p.position)}</span>
+                    </td>
+                    <td className="col-name">
+                      <b>{p.name}</b>
+                    </td>
+                    <td className="col-num">{p.age}</td>
+                    <td className="col-num">
+                      <div className="pc-energy">
+                        <div
+                          className={`pc-energy-fill ${energyClass(p.energy)}`}
+                          style={{ width: `${p.energy}%` }}
+                        />
+                      </div>
+                      <span style={{ fontSize: '10px' }}>{Math.round(p.energy)}%</span>
+                    </td>
+                    <td style={{ fontSize: '10px', color: 'var(--muted)' }}>
+                      {p.position === 'GK'
+                        ? `Gol ${p.goalkeeperPower} • Ref ${p.reflexes} • Vel ${p.speed}`
+                        : `Vel ${p.speed} • Des ${p.accuracy} • Dri ${p.dribbling} • Cab ${p.heading} • For ${p.strength}`}
+                    </td>
+                    <td className="col-status">
+                      {p.goals} gol{p.goals !== 1 ? 's' : ''} • CA {p.yellowCards}/3
+                      {p.redCards > 0 && ` • 🟥 ${p.redCards}`}
+                      <br />
+                      {availabilityOf(p)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            ))}
           </table>
         </div>
       </div>

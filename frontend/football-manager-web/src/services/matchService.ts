@@ -77,8 +77,8 @@ export function useMatchEngine() {
     return await MatchApi.getResult(matchId);
   };
 
-  const getLineup = async (matchId: string) => {
-    return await MatchApi.getLineup(matchId);
+  const getLineup = async (matchId: string, userTeamId?: string) => {
+    return await MatchApi.getLineup(matchId, userTeamId);
   };
 
   return {

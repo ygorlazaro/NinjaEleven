@@ -25,4 +25,15 @@ public interface IPlayerRepository
         Guid seasonId,
         Guid? teamId = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The same state, but tracked, for a caller that is going to change it. The read
+    /// only overload detaches the entity, so writing a season total needs this one.
+    /// </summary>
+    Task<PlayerSeasonState?> GetSeasonStateForUpdateAsync(
+        Guid playerId,
+        Guid seasonId,
+        CancellationToken cancellationToken = default);
+
+    void UpdateSeasonState(PlayerSeasonState seasonState);
 }

@@ -6,7 +6,20 @@ public interface IMatchRepository
 {
     Task<IReadOnlyList<Match>> ListAsync(CancellationToken cancellationToken = default);
     Task<Match?> GetAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The match that belongs to a fixture right now: the live one, or the most recent
+    /// finished one. An abandoned match is not one of them: it has no result and its
+    /// fixture goes back on the schedule.
+    /// </summary>
     Task<Match?> GetByFixtureAsync(Guid fixtureId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Matches that are neither finished nor abandoned. After a restart these are the
+    /// rows whose working memory is gone, so they are abandoned and their fixtures are
+    /// put back on the schedule.
+    /// </summary>
+    Task<IReadOnlyList<Match>> ListUnfinishedAsync(CancellationToken cancellationToken = default);
     Task AddAsync(Match match, CancellationToken cancellationToken = default);
     void Update(Match match);
 

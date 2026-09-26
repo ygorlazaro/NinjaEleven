@@ -31,6 +31,13 @@ public class PlayerSeasonStateDto
     public int RedCards { get; init; }
     public int SuspensionMatches { get; init; }
     public Injury Injury { get; init; }
+
+    /// <summary>
+    /// Matches of his club the injury still keeps him out of, so a screen can say for how
+    /// long instead of only that something is wrong.
+    /// </summary>
+    public int InjuryMatchesRemaining { get; init; }
+
     public bool IsAvailable { get; init; }
 }
 
@@ -54,6 +61,13 @@ public class SquadPlayerDto
     public int RedCards { get; init; }
     public int SuspensionMatches { get; init; }
     public Injury Injury { get; init; }
+
+    /// <summary>
+    /// Matches of his club the injury still keeps him out of, so a screen can say for how
+    /// long instead of only that something is wrong.
+    /// </summary>
+    public int InjuryMatchesRemaining { get; init; }
+
     public bool IsAvailable { get; init; }
     public Guid TeamId { get; init; }
     public Guid SeasonId { get; init; }

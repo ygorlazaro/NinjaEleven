@@ -39,6 +39,7 @@ public class PlayerSeasonStateConfiguration : IEntityTypeConfiguration<PlayerSea
             .HasConversion<string>()
             .HasMaxLength(16)
             .IsRequired();
+        builder.Property(s => s.InjuryMatchesRemaining).IsRequired();
 
         builder.HasIndex(s => new { s.PlayerId, s.SeasonId }).IsUnique();
         builder.HasIndex(s => new { s.SeasonId, s.TeamId });

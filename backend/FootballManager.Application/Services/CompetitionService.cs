@@ -48,7 +48,7 @@ public class CompetitionService
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            throw new DomainValidationException("CompetitionNameRequired", "The competition name is required.");
+            throw new DomainValidationException("CompetitionNameRequired", "O nome da competição é obrigatório.");
         }
 
         var competition = Competition.Create(name.Trim(), type);

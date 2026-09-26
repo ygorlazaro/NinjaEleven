@@ -36,7 +36,6 @@ public class MatchState
     public bool HalfTimePauseActive { get; set; }
     public bool HalftimeShown { get; set; }
     public bool Paused { get; set; }
-    public bool HalfPaused { get; set; }
     public int Speed { get; set; } = 1;
 
     public int HomeShots { get; set; }
@@ -62,6 +61,21 @@ public class MatchState
     public bool PenaltyAwaitingSelection { get; set; }
     public int? PenaltyTeam { get; set; }
 
+    /// <summary>
+    /// The club the manager is watching, when the match was started by a manager. It is
+    /// what tells the engine whose penalty taker he gets to choose.
+    /// </summary>
+    public Guid? ManagerTeamId { get; set; }
+
+    public int InjuriesThisMatch { get; set; }
+
+    /// <summary>
+    /// Whether the taker of a penalty awarded to <paramref name="teamId"/> is a decision
+    /// the manager makes. He decides for his own club only; the engine picks the taker of
+    /// the other side, because nobody is watching that decision.
+    /// </summary>
+    public bool ManagerSelectsPenaltyTaker(Guid teamId) => ManagerTeamId == teamId;
+
     public List<MatchEngineEvent> PendingFeed { get; set; } = new();
 
     public MatchState(MatchContext context)
@@ -73,6 +87,7 @@ public class MatchState
         AwayLineup = context.AwayLineup;
         HomeBench = context.HomeBench;
         AwayBench = context.AwayBench;
+        ManagerTeamId = context.ManagerTeamId;
     }
 
     public int DisplayedHomeScore => HomeScore;

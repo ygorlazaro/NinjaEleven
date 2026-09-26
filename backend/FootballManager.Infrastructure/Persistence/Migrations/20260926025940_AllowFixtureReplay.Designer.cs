@@ -3,6 +3,7 @@ using System;
 using FootballManager.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FootballManager.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(FootballManagerDbContext))]
-    partial class FootballManagerDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260926025940_AllowFixtureReplay")]
+    partial class AllowFixtureReplay
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -518,10 +521,6 @@ namespace FootballManager.Infrastructure.Persistence.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
                         .HasColumnName("injury");
-
-                    b.Property<int>("InjuryMatchesRemaining")
-                        .HasColumnType("integer")
-                        .HasColumnName("injury_matches_remaining");
 
                     b.Property<Guid>("PlayerId")
                         .HasColumnType("uuid")

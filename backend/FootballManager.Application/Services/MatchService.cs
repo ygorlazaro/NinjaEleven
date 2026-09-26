@@ -114,14 +114,17 @@ public class MatchService
 
     /// <summary>
     /// Creates the playable session for a fixture and locks the starting eleven of
-    /// both clubs. Starting the same fixture twice returns the existing match instead
-    /// of a second one.
+    /// both clubs. Starting a fixture that is already being played is not an error: the
+    /// existing match is returned so the caller can watch it. A match whose working
+    /// memory was lost, for example by a restart, is abandoned and the fixture is put
+    /// back on the schedule instead of being left in a state nobody can reach.
     /// </summary>
     public async Task<MatchCommandResult> StartAsync(
         Guid fixtureId,
         int? seed = null,
         Guid? userTeamId = null,
         IReadOnlyCollection<Guid>? starterIds = null,
+        bool headless = false,
         CancellationToken cancellationToken = default)
     {
         var fixture = await _fixtureRepository.GetAsync(fixtureId, cancellationToken)
@@ -130,12 +133,29 @@ public class MatchService
         var existing = await _matchRepository.GetByFixtureAsync(fixtureId, cancellationToken);
         if (existing is not null)
         {
-            return new MatchCommandResult
+            if (_sessions.TryGet(existing.Id, out _))
             {
-                Accepted = false,
-                MatchId = existing.Id,
-                ErrorMessage = "This fixture has already been started."
-            };
+                // Already being played: hand back the running match so the caller joins
+                // it instead of creating a second one.
+                return new MatchCommandResult
+                {
+                    Accepted = true,
+                    MatchId = existing.Id,
+                    ErrorMessage = "Esta partida já está em andamento."
+                };
+            }
+
+            if (existing.IsFinished)
+            {
+                return new MatchCommandResult
+                {
+                    Accepted = false,
+                    MatchId = existing.Id,
+                    ErrorMessage = "Esta partida já foi disputada."
+                };
+            }
+
+            await AbandonAsync(existing, fixture, cancellationToken);
         }
 
         var seasonId = await ResolveSeasonIdAsync(fixture, cancellationToken);
@@ -151,7 +171,7 @@ public class MatchService
         {
             throw new DomainValidationException(
                 "SquadTooSmall",
-                $"Both clubs need at least {SquadSize} available players to kick off.");
+                $"Os dois clubes precisam de ao menos {SquadSize} jogadores disponíveis para começar.");
         }
 
         // The manager's eleven is validated by the backend; the opponent is picked by
@@ -170,9 +190,14 @@ public class MatchService
             {
                 throw new DomainValidationException(
                     "TeamNotInMatch",
-                    "The team is not playing this fixture.");
+                    "O time não está disputando esta partida.");
             }
         }
+
+        // The absences of this matchday are served at its kick-off: a player who was
+        // suspended or injured stays out of the squad built above, and his counter is one
+        // match closer to being available again.
+        await ServeAbsencesAsync(homeTeam, awayTeam, seasonId, cancellationToken);
 
         var matchSeed = seed ?? Random.Shared.Next(int.MinValue, int.MaxValue);
         var match = Match.Create(fixtureId, homeTeam.Id, awayTeam.Id);
@@ -187,7 +212,8 @@ public class MatchService
             awaySquad.Lineup,
             homeSquad.Bench,
             awaySquad.Bench,
-            new DeterministicRandomSource(matchSeed));
+            new DeterministicRandomSource(matchSeed),
+            userTeamId);
 
         var state = new MatchState(context);
         var engine = new MatchEngine(context.Random);
@@ -203,13 +229,123 @@ public class MatchService
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        _sessions.Register(new LiveMatch(match.Id, engine, state));
+        _sessions.Register(new LiveMatch(match.Id, fixture.RoundId, headless, engine, state));
 
         return new MatchCommandResult
         {
             Accepted = true,
             MatchId = match.Id,
             Events = events
+        };
+    }
+
+    /// <summary>
+    /// The round a fixture belongs to, needed to kick off the rest of the matchday.
+    /// </summary>
+    public async Task<Guid> GetRoundIdAsync(Guid fixtureId, CancellationToken cancellationToken = default)
+    {
+        var fixture = await _fixtureRepository.GetAsync(fixtureId, cancellationToken)
+            ?? throw new EntityNotFoundException("Fixture", fixtureId);
+
+        return fixture.RoundId;
+    }
+
+    /// <summary>
+    /// Abandons a match whose working memory is gone and reopens its fixture, so the
+    /// fixture is playable again instead of being stuck for ever.
+    /// </summary>
+    private async Task AbandonAsync(Match match, Fixture fixture, CancellationToken cancellationToken)
+    {
+        match.Abandon();
+        _matchRepository.Update(match);
+
+        fixture.Reopen();
+        _fixtureRepository.Update(fixture);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Abandons every match that is still open when the process starts. The live
+    /// sessions live in memory, so after a restart their matches can never be resumed;
+    /// closing them here is what keeps a fixture from being stranded in progress.
+    /// </summary>
+    public async Task<int> RecoverInterruptedMatchesAsync(CancellationToken cancellationToken = default)
+    {
+        var unfinished = await _matchRepository.ListUnfinishedAsync(cancellationToken);
+        var recovered = 0;
+
+        foreach (var match in unfinished)
+        {
+            var fixture = await _fixtureRepository.GetAsync(match.FixtureId, cancellationToken);
+            if (fixture is null)
+            {
+                match.Abandon();
+                _matchRepository.Update(match);
+                recovered++;
+                continue;
+            }
+
+            await AbandonAsync(match, fixture, cancellationToken);
+            recovered++;
+        }
+
+        return recovered;
+    }
+
+    /// <summary>
+    /// The score of a match as the rest of the matchday sees it. Read from the live
+    /// session while the match is being played and from the persisted row once it ends,
+    /// so a scoreboard never freezes on a stale number.
+    /// </summary>
+    public async Task<MatchScoreRow> GetScoreAsync(Guid matchId, CancellationToken cancellationToken = default)
+    {
+        var match = await GetMatchAsync(matchId, cancellationToken);
+        var fixture = await _fixtureRepository.GetAsync(match.FixtureId, cancellationToken)
+            ?? throw new EntityNotFoundException("Fixture", match.FixtureId);
+
+        var home = ToTeamInfo(ToTeam(await _teamRepository.GetAsync(match.HomeTeamId, cancellationToken)));
+        var away = ToTeamInfo(ToTeam(await _teamRepository.GetAsync(match.AwayTeamId, cancellationToken)));
+
+        if (_sessions.TryGet(matchId, out var session))
+        {
+            return new MatchScoreRow
+            {
+                RoundId = fixture.RoundId,
+                MatchId = match.Id,
+                FixtureId = match.FixtureId,
+                HomeTeamId = home.Id,
+                HomeTeamName = home.Name,
+                HomeShortName = home.ShortName,
+                AwayTeamId = away.Id,
+                AwayTeamName = away.Name,
+                AwayShortName = away.ShortName,
+                HomeGoals = session.State.HomeScore,
+                AwayGoals = session.State.AwayScore,
+                Minute = session.State.Minute,
+                Half = session.State.Half == 0 ? nameof(MatchHalf.First) : nameof(MatchHalf.Second),
+                Status = session.State.MatchFinished ? nameof(MatchStatus.Finished) : nameof(MatchStatus.InProgress),
+                IsFinished = session.State.MatchFinished
+            };
+        }
+
+        return new MatchScoreRow
+        {
+            RoundId = fixture.RoundId,
+            MatchId = match.Id,
+            FixtureId = match.FixtureId,
+            HomeTeamId = home.Id,
+            HomeTeamName = home.Name,
+            HomeShortName = home.ShortName,
+            AwayTeamId = away.Id,
+            AwayTeamName = away.Name,
+            AwayShortName = away.ShortName,
+            HomeGoals = match.HomeScore,
+            AwayGoals = match.AwayScore,
+            Minute = match.CurrentMinute,
+            Half = match.Half.ToString(),
+            Status = match.Status.ToString(),
+            IsFinished = match.IsFinished
         };
     }
 
@@ -296,7 +432,8 @@ public class MatchService
                 AwayPossession = 50,
                 SubstitutionsUsedHome = 0,
                 SubstitutionsUsedAway = 0,
-                PenaltyAwaitingSelection = false
+                PenaltyAwaitingSelection = false,
+                UserTeamId = null
             };
         }
 
@@ -320,7 +457,7 @@ public class MatchService
             {
                 Accepted = false,
                 MatchId = matchId,
-                ErrorMessage = "This match is not in progress."
+                ErrorMessage = "Esta partida não está em andamento."
             };
         }
 
@@ -334,7 +471,7 @@ public class MatchService
                 {
                     Accepted = false,
                     MatchId = matchId,
-                    ErrorMessage = "The match is paused."
+                    ErrorMessage = "A partida está pausada."
                 };
             }
 
@@ -344,7 +481,7 @@ public class MatchService
                 {
                     Accepted = false,
                     MatchId = matchId,
-                    ErrorMessage = "The match is at half-time."
+                    ErrorMessage = "A partida está no intervalo."
                 };
             }
 
@@ -373,6 +510,7 @@ public class MatchService
             match.Finish();
             _sessions.Remove(matchId);
             await SaveStatisticsAsync(match.Id, session.State, cancellationToken);
+            await ApplySeasonProgressAsync(match.FixtureId, session.State, cancellationToken);
 
             var fixture = await _fixtureRepository.GetAsync(match.FixtureId, cancellationToken);
             fixture?.MarkFinished();
@@ -401,14 +539,14 @@ public class MatchService
 
         if (!_sessions.TryGet(matchId, out var session))
         {
-            return Refused(matchId, "This match is not in progress.");
+            return Refused(matchId, "Esta partida não está em andamento.");
         }
 
         lock (session.Gate)
         {
             if (session.State.Paused)
             {
-                return Refused(matchId, "The match is already paused.");
+                return Refused(matchId, "A partida já está pausada.");
             }
 
             session.State.Paused = true;
@@ -423,14 +561,14 @@ public class MatchService
 
         if (!_sessions.TryGet(matchId, out var session))
         {
-            return Refused(matchId, "This match is not in progress.");
+            return Refused(matchId, "Esta partida não está em andamento.");
         }
 
         lock (session.Gate)
         {
             if (!session.State.Paused)
             {
-                return Refused(matchId, "The match is not paused.");
+                return Refused(matchId, "A partida não está pausada.");
             }
 
             session.State.Paused = false;
@@ -448,12 +586,12 @@ public class MatchService
 
         if (speed is < 1 or > 8)
         {
-            throw new DomainValidationException("InvalidSpeed", "The speed must be between 1 and 8.");
+            throw new DomainValidationException("InvalidSpeed", "A velocidade deve estar entre 1 e 8.");
         }
 
         if (!_sessions.TryGet(matchId, out var session))
         {
-            return Refused(matchId, "This match is not in progress.");
+            return Refused(matchId, "Esta partida não está em andamento.");
         }
 
         lock (session.Gate)
@@ -480,12 +618,12 @@ public class MatchService
 
         if (!_sessions.TryGet(matchId, out var session))
         {
-            return Refused(matchId, "This match is not in progress.");
+            return Refused(matchId, "Esta partida não está em andamento.");
         }
 
         if (playerOutId == playerInId)
         {
-            throw new DomainValidationException("InvalidSubstitution", "A player cannot replace himself.");
+            throw new DomainValidationException("InvalidSubstitution", "Um jogador não pode substituir a si mesmo.");
         }
 
         List<MatchEngineEvent> substitutionEvents;
@@ -495,22 +633,34 @@ public class MatchService
             var isHome = teamId == match.HomeTeamId;
             if (!isHome && teamId != match.AwayTeamId)
             {
-                throw new DomainValidationException("TeamNotInMatch", "The team is not playing this match.");
+                throw new DomainValidationException("TeamNotInMatch", "O time não está disputando esta partida.");
             }
 
             var lineup = isHome ? session.State.HomeLineup : session.State.AwayLineup;
             var bench = isHome ? session.State.HomeBench : session.State.AwayBench;
 
             var outgoing = lineup.FirstOrDefault(player => player.PlayerId == playerOutId);
-            if (outgoing is null)
+            if (outgoing is null || !outgoing.IsOnPitch)
             {
-                throw new DomainValidationException("PlayerNotOnPitch", "The outgoing player is not on the pitch.");
+                throw new DomainValidationException("PlayerNotOnPitch", "O jogador que sai não está em campo.");
             }
 
             var incoming = bench.FirstOrDefault(player => player.PlayerId == playerInId);
             if (incoming is null)
             {
-                throw new DomainValidationException("PlayerNotOnBench", "The incoming player is not on the bench.");
+                throw new DomainValidationException("PlayerNotOnBench", "O jogador que entra não está no banco.");
+            }
+
+            // The last goalkeeper of a club can only be replaced by another goalkeeper. An
+            // outfielder taking his place is what the engine does in an emergency, not
+            // something a manager gets to choose.
+            if (outgoing.KeepsGoal
+                && !incoming.KeepsGoal
+                && lineup.Count(player => player.KeepsGoal) == 1)
+            {
+                throw new DomainValidationException(
+                    "GoalkeeperRequired",
+                    "O único goleiro em campo só pode ser trocado por outro goleiro.");
             }
 
             var used = isHome ? session.State.SubstitutionsHome : session.State.SubstitutionsAway;
@@ -518,7 +668,7 @@ public class MatchService
             {
                 throw new DomainValidationException(
                     "SubstitutionLimitReached",
-                    "This club has already used every substitution.");
+                    "Este clube já usou todas as substituições.");
             }
 
             lineup[lineup.IndexOf(outgoing)] = incoming;
@@ -537,7 +687,7 @@ public class MatchService
             var events = new List<MatchEngineEvent>
             {
                 EmitEvent(session.State, MatchEventType.SubstitutionMade, teamId, incoming.PlayerId,
-                    $"Substitution: {incoming.Name} replaces {outgoing.Name}")
+                    $"Substituição: {incoming.Name} entra no lugar de {outgoing.Name}")
             };
 
             DrainFeed(session.State);
@@ -556,7 +706,9 @@ public class MatchService
     }
 
     /// <summary>
-    /// Chooses the player who will take a penalty the engine awarded.
+    /// Chooses the player who will take a penalty the engine awarded. The manager names
+    /// the taker, but he does not decide the shot: the engine resolves it with the same
+    /// rolls it would have used had the taker been chosen by it.
     /// </summary>
     public async Task<MatchCommandResult> SelectPenaltyTakerAsync(
         Guid matchId,
@@ -568,33 +720,39 @@ public class MatchService
 
         if (!_sessions.TryGet(matchId, out var session))
         {
-            return Refused(matchId, "This match is not in progress.");
+            return Refused(matchId, "Esta partida não está em andamento.");
         }
 
         List<MatchEngineEvent> penaltyEvents;
 
         lock (session.Gate)
         {
-            var lineup = teamId == match.AwayTeamId
-                ? session.State.AwayLineup
-                : session.State.HomeLineup;
-
-            var taker = lineup.FirstOrDefault(player => player.PlayerId == playerId);
-            if (taker is null)
+            if (!session.State.PenaltyAwaitingSelection)
             {
-                throw new DomainValidationException("PlayerNotOnPitch", "The penalty taker is not on the pitch.");
+                return Refused(matchId, "Não há pênalti para cobrar nesta partida.");
             }
 
-            var events = new List<MatchEngineEvent>
+            var isHome = teamId == match.HomeTeamId;
+            if (!isHome && teamId != match.AwayTeamId)
             {
-                EmitEvent(session.State, MatchEventType.PenaltyTaken, teamId, playerId,
-                    $"{taker.Name} takes the penalty")
-            };
+                throw new DomainValidationException("TeamNotInMatch", "O time não está disputando esta partida.");
+            }
 
-            session.State.PenaltyAwaitingSelection = false;
-            session.State.PenaltyTeam = null;
+            if (isHome ? session.State.PenaltyTeam != 1 : session.State.PenaltyTeam != 2)
+            {
+                throw new DomainValidationException("PenaltyNotForTeam", "O pênalti não é deste time.");
+            }
+
+            var lineup = isHome ? session.State.HomeLineup : session.State.AwayLineup;
+            var taker = lineup.FirstOrDefault(player => player.PlayerId == playerId);
+
+            if (taker is null || !taker.IsOnPitch)
+            {
+                throw new DomainValidationException("PlayerNotOnPitch", "O cobrador de pênalti não está em campo.");
+            }
+
+            penaltyEvents = session.Engine.TakePenalty(session.State, isHome, taker).ToList();
             DrainFeed(session.State);
-            penaltyEvents = events;
         }
 
         await PersistEventsAsync(match, penaltyEvents, cancellationToken);
@@ -619,7 +777,7 @@ public class MatchService
 
         if (!_sessions.TryGet(matchId, out var session))
         {
-            return Refused(matchId, "This match is not in progress.");
+            return Refused(matchId, "Esta partida não está em andamento.");
         }
 
         List<MatchEngineEvent> produced;
@@ -628,7 +786,7 @@ public class MatchService
         {
             if (!session.State.HalfTimePauseActive)
             {
-                return Refused(matchId, "The match is not at half-time.");
+                return Refused(matchId, "A partida não está no intervalo.");
             }
 
             session.Engine.ContinueSecondHalf(session.State);
@@ -740,6 +898,75 @@ public class MatchService
         }
     }
 
+    /// <summary>
+    /// Writes what the match did to each player back into his season state. The engine
+    /// only works on snapshots, so this is the single point where goals, cards and the
+    /// energy spent become season totals: without it the scorers table and the
+    /// suspensions of a season would stay empty no matter how many matches were played.
+    /// </summary>
+    private async Task ApplySeasonProgressAsync(
+        Guid fixtureId,
+        MatchState state,
+        CancellationToken cancellationToken)
+    {
+        var seasonId = await ResolveSeasonIdAsync(fixtureId, cancellationToken);
+
+        var players = state.HomeLineup
+            .Concat(state.HomeBench)
+            .Concat(state.AwayLineup)
+            .Concat(state.AwayBench)
+            .GroupBy(player => player.PlayerId)
+            .Select(group => group.First())
+            .ToList();
+
+        foreach (var player in players)
+        {
+            var seasonState = await _playerRepository.GetSeasonStateForUpdateAsync(player.PlayerId, seasonId, cancellationToken);
+            if (seasonState is null)
+            {
+                continue;
+            }
+
+            for (var goal = 0; goal < player.MatchGoals; goal++)
+            {
+                seasonState.AddGoal();
+            }
+
+            for (var card = 0; card < player.MatchYellowCards; card++)
+            {
+                seasonState.AddYellowCard();
+            }
+
+            if (player.RedCard)
+            {
+                seasonState.AddRedCard();
+            }
+
+            // An injury sustained in this match becomes an absence the player carries into
+            // the next ones: the state remembers both how bad it is and for how long.
+            if (player.InjuredOff)
+            {
+                seasonState.AddInjury(player.Injury, MatchesOutForInjury(player.Injury));
+            }
+
+            // The energy the match cost is what the player carries into the next one.
+            seasonState.SetEnergy(player.Energy);
+
+            _playerRepository.UpdateSeasonState(seasonState);
+        }
+    }
+
+    /// <summary>
+    /// How many matches of his club a player misses with a given injury. A light knock is
+    /// played through, a serious one takes him out for a month of football.
+    /// </summary>
+    private static int MatchesOutForInjury(Injury injury) => injury switch
+    {
+        Injury.Grave => 4,
+        Injury.Light => 2,
+        _ => 0
+    };
+
     private static MatchResultView ToResult(MatchState state) => new()    {
         MatchId = state.MatchId,
         HomeScore = state.HomeScore,
@@ -841,10 +1068,23 @@ public class MatchService
             starters.Add(keeper);
         }
 
+        // The eleven has room for one goalkeeper. The other keepers of the roster are
+        // cover for an injury or a red card, and picking by rating alone would put them
+        // on the pitch, because a goalkeeper's attributes are high by design.
         starters.AddRange(snapshots
-            .Where(player => !starters.Contains(player))
+            .Where(player => player.Position != Position.GK)
             .OrderByDescending(player => OverallRating(player))
             .Take(SquadSize - starters.Count));
+
+        // A club with fewer than ten available outfield players still needs eleven names:
+        // a reserve goalkeeper is better than an incomplete eleven.
+        if (starters.Count < SquadSize)
+        {
+            starters.AddRange(snapshots
+                .Where(player => !starters.Contains(player))
+                .OrderByDescending(player => OverallRating(player))
+                .Take(SquadSize - starters.Count));
+        }
 
         var bench = snapshots
             .Where(player => !starters.Contains(player))
@@ -852,7 +1092,35 @@ public class MatchService
             .Take(BenchSize)
             .ToList();
 
-        return new SquadSelection(team, starters, bench, snapshots);
+        // Whatever the manager did not pick is what he gets to look at, so both lists are
+        // read in the same order: position first, name inside the position.
+        var orderedStarters = starters.Apply(player => player.Position, player => player.Name).ToList();
+        var orderedBench = bench.Apply(player => player.Position, player => player.Name).ToList();
+
+        return new SquadSelection(team, orderedStarters, orderedBench, snapshots);
+    }
+
+    /// <summary>
+    /// Counts one match off the absence of every player of both clubs who could not be
+    /// picked. Whoever has no counter left is available again, which is what makes a
+    /// two match suspension a suspension and not a season long ban.
+    /// </summary>
+    private async Task ServeAbsencesAsync(
+        Team homeTeam,
+        Team awayTeam,
+        Guid seasonId,
+        CancellationToken cancellationToken)
+    {
+        foreach (var teamId in new[] { homeTeam.Id, awayTeam.Id })
+        {
+            var states = await _playerRepository.ListSeasonStatesAsync(seasonId, teamId, cancellationToken);
+
+            foreach (var state in states.Where(state => !state.IsAvailable))
+            {
+                state.RecoverFromMatches();
+                _playerRepository.UpdateSeasonState(state);
+            }
+        }
     }
 
     /// <summary>
@@ -871,7 +1139,7 @@ public class MatchService
         {
             throw new DomainValidationException(
                 "InvalidLineup",
-                $"A starting eleven needs exactly {SquadSize} players.");
+                $"O time titular precisa de exatamente {SquadSize} jogadores.");
         }
 
         var available = squad.All.ToDictionary(player => player.PlayerId);
@@ -883,7 +1151,7 @@ public class MatchService
             {
                 throw new DomainValidationException(
                     "PlayerNotAvailable",
-                    "One of the selected players is not available for this club.");
+                    "Um dos jogadores selecionados não está disponível neste clube.");
             }
 
             eleven.Add(player);
@@ -895,13 +1163,15 @@ public class MatchService
             throw new DomainValidationException(
                 "GoalkeeperRequired",
                 goalkeepers == 0
-                    ? "The starting eleven needs exactly one goalkeeper."
-                    : "The starting eleven cannot have more than one goalkeeper.");
+                    ? "O time titular precisa de exatamente um goleiro."
+                    : "O time titular não pode ter mais de um goleiro.");
         }
 
+        // The bench is read the same way as the eleven: by position, and by name inside
+        // the position, so a screen never has to reorder it to make sense.
         var bench = squad.All
             .Where(player => !eleven.Contains(player))
-            .OrderByDescending(OverallRating)
+            .Apply(player => player.Position, player => player.Name)
             .Take(BenchSize)
             .ToList();
 
@@ -1020,8 +1290,36 @@ public class MatchService
         AwayPossession = state.AwayPossession,
         SubstitutionsUsedHome = state.SubstitutionsHome,
         SubstitutionsUsedAway = state.SubstitutionsAway,
-        PenaltyAwaitingSelection = state.PenaltyAwaitingSelection
+        PenaltyAwaitingSelection = state.PenaltyAwaitingSelection,
+        Penalty = PenaltyOptionsFor(state),
+        UserTeamId = state.ManagerTeamId
     };
+
+    /// <summary>
+    /// The penalty a manager has to act on, with the players he can name. The opponent's
+    /// penalty is resolved by the engine itself, so it is never offered to anybody.
+    /// </summary>
+    private static PenaltyTakerOptions PenaltyOptionsFor(MatchState state)
+    {
+        if (!state.PenaltyAwaitingSelection || state.ManagerTeamId is not { } managerTeamId)
+        {
+            return new PenaltyTakerOptions { MatchIsLive = true, AwaitingSelection = false };
+        }
+
+        var isHome = state.HomeTeam.Id == managerTeamId;
+
+        if (isHome ? state.PenaltyTeam != 1 : state.PenaltyTeam != 2)
+        {
+            return new PenaltyTakerOptions { MatchIsLive = true, AwaitingSelection = false };
+        }
+
+        return new PenaltyTakerOptions
+        {
+            MatchIsLive = true,
+            AwaitingSelection = true,
+            Candidates = MatchEngine.PenaltyTakerCandidates(state, isHome)
+        };
+    }
 
     private sealed record SquadSelection(
         Team Team,

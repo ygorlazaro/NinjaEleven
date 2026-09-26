@@ -10,14 +10,32 @@ namespace FootballManager.Application.Matches;
 /// </summary>
 public sealed class LiveMatch
 {
-    public LiveMatch(Guid matchId, MatchEngine engine, MatchState state)
+    public LiveMatch(
+        Guid matchId,
+        Guid roundId,
+        bool autoContinue,
+        MatchEngine engine,
+        MatchState state)
     {
         MatchId = matchId;
+        RoundId = roundId;
+        AutoContinue = autoContinue;
         Engine = engine;
         State = state;
     }
 
     public Guid MatchId { get; }
+
+    /// <summary>Round the fixture belongs to, so a client can follow a whole matchday.</summary>
+    public Guid RoundId { get; }
+
+    /// <summary>
+    /// True for the matches nobody is watching: the ones of the other clubs in the
+    /// round. They are simulated by the same loop, but nobody is there to leave the
+    /// half-time pause, so the loop does it for them.
+    /// </summary>
+    public bool AutoContinue { get; }
+
     public MatchEngine Engine { get; }
     public MatchState State { get; }
 

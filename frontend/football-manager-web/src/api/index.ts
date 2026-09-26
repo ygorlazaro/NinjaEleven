@@ -5,7 +5,7 @@ import type {
   PlayerDto, CompetitionDto, SeasonDto, TeamDto,
   FixtureDto, RoundDto, StandingDto, ScorerDto, LeagueSetupResult,
   MatchDto, MatchEventDto, MatchLineupDto, MatchStateDto,
-  MatchCommandResult, MatchEngineEventDto, MatchResult
+  MatchCommandResult, MatchEngineEventDto, MatchResult, RoundSimulationResult
 } from '../types';
 
 /**
@@ -44,6 +44,10 @@ export const RoundApi = {
   listByCompetitionSeason: (competitionSeasonId: string) =>
     api.get<RoundDto[]>(`/round/by-competition-season/${competitionSeasonId}`).then(r => r.data),
   get: (id: string) => api.get<RoundDto>(`/round/${id}`).then(r => r.data),
+  // Plays every fixture of the round that is still scheduled, without a live session.
+  // The round is over when this resolves, so the next one becomes the current one.
+  simulate: (id: string) =>
+    api.post<RoundSimulationResult>(`/round/${id}/simulate`).then(r => r.data),
 };
 
 export const FixtureApi = {
@@ -80,6 +84,10 @@ export const MatchApi = {
   start: (fixtureId: string, userTeamId?: string, starterIds?: string[]) =>
     api.post<MatchCommandResult>(`/match/start/${fixtureId}`, { userTeamId, starterIds })
       .then(r => r.data),
+  // Plays a fixture to full time with nobody watching, for the matches of the league
+  // the manager is not in.
+  simulate: (fixtureId: string) =>
+    api.post<MatchCommandResult>(`/match/simulate/${fixtureId}`).then(r => r.data),
   getLineup: (matchId: string, userTeamId?: string) =>
     api.get<MatchLineupDto>(
       `/match/lineup/${matchId}${userTeamId ? `?userTeamId=${userTeamId}` : ''}`

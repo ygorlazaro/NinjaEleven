@@ -56,4 +56,14 @@ public class PlayerRepository : IPlayerRepository
 
         return await query.ToListAsync(cancellationToken);
     }
+
+    public async Task<PlayerSeasonState?> GetSeasonStateForUpdateAsync(
+        Guid playerId,
+        Guid seasonId,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.PlayerSeasonStates
+            .FirstOrDefaultAsync(state => state.PlayerId == playerId && state.SeasonId == seasonId, cancellationToken);
+
+    public void UpdateSeasonState(PlayerSeasonState seasonState) =>
+        _dbContext.PlayerSeasonStates.Update(seasonState);
 }

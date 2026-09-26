@@ -5,9 +5,11 @@ interface EndModalProps {
   show: boolean;
   result: MatchResult | null;
   onClose: () => void;
+  /** Goes back to the championship with the router, not by rewriting the url. */
+  onBackToLeague: () => void;
 }
 
-const EndModal: React.FC<EndModalProps> = ({ show, result, onClose }) => {
+const EndModal: React.FC<EndModalProps> = ({ show, result, onClose, onBackToLeague }) => {
   if (!show) return null;
 
   if (!result) {
@@ -48,7 +50,7 @@ const EndModal: React.FC<EndModalProps> = ({ show, result, onClose }) => {
 
         <div className="modal-actions" style={{ marginTop: '18px' }}>
           <button className="ctrl" onClick={onClose}>Fechar</button>
-          <button className="primary" onClick={() => window.location.hash = '#/league'}>Voltar ao campeonato</button>
+          <button className="primary" onClick={onBackToLeague}>Voltar ao campeonato</button>
         </div>
       </div>
     </div>

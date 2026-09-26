@@ -92,4 +92,48 @@ public class MatchStateView
     public required int SubstitutionsUsedHome { get; init; }
     public required int SubstitutionsUsedAway { get; init; }
     public required bool PenaltyAwaitingSelection { get; init; }
+    public PenaltyTakerOptions Penalty { get; init; } = new();
+
+    /// <summary>
+    /// The club a manager is watching, when the match was started by one. A client sends
+    /// it back with the commands it issues, so it never has to guess which side of the
+    /// scoreboard is his.
+    /// </summary>
+    public Guid? UserTeamId { get; init; }
+}
+
+/// <summary>
+/// The score of a match as the rest of the matchday sees it. It is built from the live
+/// session when there is one and from the persisted row after the match ends, so the
+/// scoreboard never shows a match that stopped updating.
+/// </summary>
+public class MatchScoreRow
+{
+    public required Guid RoundId { get; init; }
+    public required Guid MatchId { get; init; }
+    public required Guid FixtureId { get; init; }
+    public required Guid HomeTeamId { get; init; }
+    public required string HomeTeamName { get; init; }
+    public required string HomeShortName { get; init; }
+    public required Guid AwayTeamId { get; init; }
+    public required string AwayTeamName { get; init; }
+    public required string AwayShortName { get; init; }
+    public required int HomeGoals { get; init; }
+    public required int AwayGoals { get; init; }
+    public required int Minute { get; init; }
+    public required string Half { get; init; }
+    public required string Status { get; init; }
+    public required bool IsFinished { get; init; }
+}
+
+/// <summary>
+/// Who can take a penalty right now. The engine decides when a penalty happens and which
+/// club was awarded it; the manager of the awarded club names the taker, and only the
+/// players still on the pitch are offered.
+/// </summary>
+public class PenaltyTakerOptions
+{
+    public bool MatchIsLive { get; init; } = true;
+    public bool AwaitingSelection { get; init; }
+    public IReadOnlyList<MatchPlayerSnapshot> Candidates { get; init; } = Array.Empty<MatchPlayerSnapshot>();
 }

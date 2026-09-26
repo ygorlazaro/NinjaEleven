@@ -35,7 +35,7 @@ public class SeasonService
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            throw new DomainValidationException("SeasonNameRequired", "The season name is required.");
+            throw new DomainValidationException("SeasonNameRequired", "O nome da temporada é obrigatório.");
         }
 
         var season = Season.Create(name.Trim(), startDate, endDate);

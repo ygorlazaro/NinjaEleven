@@ -1,4 +1,5 @@
 using FootballManager.Api.Contracts;
+using FootballManager.Application.Models;
 
 namespace FootballManager.Api.Mappings;
 
@@ -57,6 +58,7 @@ public static class ApiMapper
         RedCards = squadPlayer.SeasonState.RedCards,
         SuspensionMatches = squadPlayer.SeasonState.SuspensionMatches,
         Injury = squadPlayer.SeasonState.Injury,
+        InjuryMatchesRemaining = squadPlayer.SeasonState.InjuryMatchesRemaining,
         IsAvailable = squadPlayer.IsAvailable,
         TeamId = squadPlayer.SeasonState.TeamId,
         SeasonId = squadPlayer.SeasonState.SeasonId
@@ -293,6 +295,7 @@ public static class ApiMapper
         MatchYellowCards = player.MatchYellowCards,
         RedCard = player.RedCard,
         EmergencyGK = player.EmergencyGK,
+        InjuredOff = player.InjuredOff,
         SubbedIn = player.SubbedIn,
         Goals = player.Goals
     };
@@ -307,6 +310,12 @@ public static class ApiMapper
         AwayLineup = lineup.AwayLineup.Select(player => player.ToDto()).ToList(),
         HomeBench = lineup.HomeBench.Select(player => player.ToDto()).ToList(),
         AwayBench = lineup.AwayBench.Select(player => player.ToDto()).ToList()
+    };
+
+    public static PenaltyTakerOptionsDto ToDto(this Application.Models.PenaltyTakerOptions options) => new()
+    {
+        AwaitingSelection = options.AwaitingSelection,
+        Candidates = options.Candidates.Select(player => player.ToDto()).ToArray()
     };
 
     public static MatchStateDto ToDto(this Application.Models.MatchStateView state) => new()
@@ -352,6 +361,8 @@ public static class ApiMapper
             Team = state.HomePossession >= state.AwayPossession ? 0 : 1
         },
         PenaltyAwaitingSelection = state.PenaltyAwaitingSelection,
+        Penalty = state.Penalty.ToDto(),
+        UserTeamId = state.UserTeamId,
         SubstitutionsUsedHome = state.SubstitutionsUsedHome,
         SubstitutionsUsedAway = state.SubstitutionsUsedAway
     };
@@ -377,5 +388,27 @@ public static class ApiMapper
         FormationAway = result.FormationAway,
         SubstitutionsHome = result.SubstitutionsHome,
         SubstitutionsAway = result.SubstitutionsAway
+    };
+}
+
+public static class MatchScoreMapper
+{
+    public static MatchScoreDto ToDto(this MatchScoreRow row) => new()
+    {
+        RoundId = row.RoundId,
+        MatchId = row.MatchId,
+        FixtureId = row.FixtureId,
+        HomeTeamId = row.HomeTeamId,
+        HomeTeamName = row.HomeTeamName,
+        HomeShortName = row.HomeShortName,
+        AwayTeamId = row.AwayTeamId,
+        AwayTeamName = row.AwayTeamName,
+        AwayShortName = row.AwayShortName,
+        HomeGoals = row.HomeGoals,
+        AwayGoals = row.AwayGoals,
+        Minute = row.Minute,
+        Half = row.Half,
+        Status = row.Status,
+        IsFinished = row.IsFinished
     };
 }

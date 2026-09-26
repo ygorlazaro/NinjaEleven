@@ -155,7 +155,7 @@ public class DatabaseSeeder : IDataSeeder
         var seasonStates = new List<PlayerSeasonState>();
         var memberships = new List<TeamMembership>();
 
-        foreach (var position in BuildPositions(_options.PlayersPerTeam))
+        foreach (var position in BuildPositions(_options.PlayersPerTeam, _options.GoalkeepersPerTeam))
         {
             var player = CreatePlayer(position, random);
             var state = PlayerSeasonState.Create(
@@ -182,34 +182,45 @@ public class DatabaseSeeder : IDataSeeder
         var birthDay = random.Next(1, DateTime.DaysInMonth(birthYear, birthMonth) + 1);
         var birthDate = new DateOnly(birthYear, birthMonth, birthDay);
 
+        // A goalkeeper is built for his job: the engine weighs reflexes and power when it
+        // picks the eleven, so a keeper with outfield attributes would never be chosen.
+        var isGoalkeeper = position == Position.GK;
+
         return Player.Create(
             $"{firstName} {surname}",
             birthDate,
             position,
-            RandomAttribute(random),
-            RandomAttribute(random),
-            RandomAttribute(random),
-            RandomAttribute(random),
-            RandomAttribute(random),
-            RandomAttribute(random),
-            RandomAttribute(random));
+            speed: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
+            accuracy: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
+            dribbling: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
+            heading: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
+            strength: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
+            goalkeeperPower: isGoalkeeper ? StrongAttribute(random) : 0,
+            reflexes: isGoalkeeper ? StrongAttribute(random) : 0);
     }
 
     /// <summary>
-    /// A squad needs exactly one goalkeeper; the remaining slots are spread over
-    /// DEF, MID and ATT as evenly as possible. Lineup rules are domain rules, but the
-    /// shape of a starting roster is a data concern, so it lives here.
+    /// A squad needs a couple of goalkeepers, not only the one that starts, and the rest
+    /// of the slots are spread over DEF, MID and ATT as evenly as possible. Lineup rules
+    /// are domain rules, but the shape of a roster is a data concern, so it lives here.
     /// </summary>
-    private static IEnumerable<Position> BuildPositions(int playersPerTeam)
+    private IEnumerable<Position> BuildPositions(int playersPerTeam, int goalkeepers)
     {
         if (playersPerTeam < 1)
         {
             throw new InvalidOperationException("A squad needs at least one player.");
         }
 
-        yield return Position.GK;
+        // Never more goalkeepers than players, and always at least the one the lineup
+        // rules demand.
+        var keeperCount = Math.Clamp(goalkeepers, 1, playersPerTeam);
 
-        var outfield = playersPerTeam - 1;
+        for (var slot = 0; slot < keeperCount; slot++)
+        {
+            yield return Position.GK;
+        }
+
+        var outfield = playersPerTeam - keeperCount;
         var groups = new[] { Position.DEF, Position.MID, Position.ATT };
         var baseSize = outfield / groups.Length;
         var remainder = outfield % groups.Length;
@@ -226,4 +237,24 @@ public class DatabaseSeeder : IDataSeeder
 
     private int RandomAttribute(Random random) =>
         random.Next(_options.MinimumAttribute, _options.MaximumAttribute + 1);
+
+    /// <summary>
+    /// An outfield player, in the upper half of the attribute range: the clubs are seeded
+    /// so a starting eleven is worth watching.
+    /// </summary>
+    private int OutfieldAttribute(Random random)
+    {
+        var low = _options.MinimumAttribute + (_options.MaximumAttribute - _options.MinimumAttribute) / 2;
+        return random.Next(low, _options.MaximumAttribute + 1);
+    }
+
+    /// <summary>
+    /// A goalkeeper's own attributes, well above what an outfield player reaches, so the
+    /// best keeper of a club is recognisable.
+    /// </summary>
+    private int StrongAttribute(Random random)
+    {
+        var low = _options.MinimumAttribute + 3 * (_options.MaximumAttribute - _options.MinimumAttribute) / 4;
+        return random.Next(Math.Min(low, _options.MaximumAttribute), _options.MaximumAttribute + 1);
+    }
 }

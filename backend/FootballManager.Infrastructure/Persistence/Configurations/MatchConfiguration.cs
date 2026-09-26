@@ -46,7 +46,10 @@ public class MatchConfiguration : IEntityTypeConfiguration<Match>
         builder.Property(m => m.Sequence).IsRequired();
         builder.Property(m => m.Seed).IsRequired();
 
-        builder.HasIndex(m => m.FixtureId).IsUnique();
+        // A fixture can hold more than one match: a match interrupted by a restart is
+        // abandoned and the fixture is played again, so the old row stays as history.
+        // The live match of a fixture is the newest row that was not abandoned.
+        builder.HasIndex(m => m.FixtureId);
         builder.HasIndex(m => m.Status);
     }
 }

@@ -1,30 +1,44 @@
 import React from 'react';
-import type { FixtureDto } from '@/types';
+import type { FixtureDto, RoundDto } from '@/types';
 
 interface CalendarProps {
   fixtures: FixtureDto[];
-  currentRound: number;
+  rounds: RoundDto[];
+  currentRoundId?: string;
   userId?: string;
+  onSelect?: (fixture: FixtureDto) => void;
 }
 
-const Calendar: React.FC<CalendarProps> = ({ fixtures, currentRound, userId }) => {
-  const rounds: FixtureDto[][] = [];
+const isPlayed = (f: FixtureDto) => f.status === 'Finished';
+const isLive = (f: FixtureDto) => f.status === 'InProgress';
+
+const Calendar: React.FC<CalendarProps> = ({ fixtures, rounds, currentRoundId, userId, onSelect }) => {
+  // Fixtures carry the round they belong to, so the calendar groups them by their real
+  // round and follows the order the backend gave.
+  const byRound = new Map<string, FixtureDto[]>();
   fixtures.forEach(f => {
-    const roundNum = Math.floor(Math.random() * 14);
-    if (!rounds[roundNum]) rounds[roundNum] = [];
-    rounds[roundNum].push(f);
+    const list = byRound.get(f.roundId) || [];
+    list.push(f);
+    byRound.set(f.roundId, list);
   });
+
+  const ordered = [...rounds]
+    .sort((a, b) => a.number - b.number)
+    .filter(round => (byRound.get(round.id) || []).length > 0);
 
   return (
     <div id="calendarList" style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: 'none', overflow: 'visible', paddingRight: '4px' }}>
-      {rounds.map((roundFixtures, i) => {
-        if (!roundFixtures || roundFixtures.length === 0) return null;
-        const completed = roundFixtures.length === 4 && roundFixtures.every(f => f.status === 'Completed');
-        const isCurrent = i === currentRound;
+      {ordered.length === 0 && <div className="league-empty">Calendário ainda não gerado.</div>}
+
+      {ordered.map(round => {
+        const roundFixtures = byRound.get(round.id) || [];
+        const completed = roundFixtures.every(isPlayed);
+        const isCurrent = round.id === currentRoundId;
+
         return (
-          <div key={i} className={`calendar-round ${isCurrent ? 'current-round' : ''}`}>
+          <div key={round.id} className={`calendar-round ${isCurrent ? 'current-round' : ''}`}>
             <div className="calendar-round-title">
-              Rodada {i + 1}
+              Rodada {round.number}
               {isCurrent ? ' • ATUAL' : ''}
               {completed ? ' • CONCLUÍDA' : ''}
             </div>
@@ -32,25 +46,35 @@ const Calendar: React.FC<CalendarProps> = ({ fixtures, currentRound, userId }) =
               {roundFixtures.map(f => {
                 const home = f.homeTeam;
                 const away = f.awayTeam;
-                const u = userId;
-                const isUserFixture = f.homeTeamId === u || f.awayTeamId === u;
+                const isUserFixture = f.homeTeamId === userId || f.awayTeamId === userId;
                 const homeColor = home?.primaryColor || '#57a6ff';
                 const awayColor = away?.primaryColor || '#ff647c';
-                const result = f.homeGoals !== null && f.homeGoals !== undefined
-                  ? `${f.homeGoals} × ${f.awayGoals}`
-                  : '—';
+                const result =
+                  f.homeGoals !== null && f.homeGoals !== undefined
+                    ? `${f.homeGoals} × ${f.awayGoals}`
+                    : '—';
+
+                // Same rule as the round list: a fixture with a match is watched, a
+                // scheduled fixture of the manager is entered through the lineup.
+                const link = f.matchId
+                  ? `/match/${f.matchId}`
+                  : f.status === 'Scheduled' && isUserFixture
+                    ? `/match/lineup/${f.id}`
+                    : null;
+
                 return (
                   <div
                     key={f.id}
-                    className={`fixture calendar-fixture ${f.status === 'Completed' ? 'played' : ''} ${isUserFixture ? 'user-fixture' : ''}`}
+                    className={`fixture calendar-fixture ${isPlayed(f) ? 'played' : ''} ${isLive(f) ? 'live' : ''} ${isUserFixture ? 'user-fixture' : ''} ${link ? 'clickable' : ''}`}
+                    onClick={link && onSelect ? () => onSelect(f) : undefined}
                   >
-                    <span>{f.status === 'Completed' ? '✓' : ''}</span>
+                    <span>{isPlayed(f) ? '✓' : isLive(f) ? '●' : ''}</span>
                     <span className="home" style={{ color: homeColor }}>
-                      {home?.shortName || 'Casa'}
+                      {home?.name || 'Casa'}
                     </span>
                     <span className="result">{result}</span>
                     <span className="away" style={{ color: awayColor }}>
-                      {away?.shortName || 'Fora'}
+                      {away?.name || 'Fora'}
                     </span>
                   </div>
                 );

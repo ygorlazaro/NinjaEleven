@@ -33,6 +33,13 @@ public class Match
     /// </summary>
     public int Seed { get; private set; }
 
+    /// <summary>
+    /// When this match row was created. A fixture can be replayed after an abandoned
+    /// match, so several rows can point at the same fixture; the newest one is the
+    /// match of the fixture.
+    /// </summary>
+    public DateTimeOffset CreatedAt { get; private set; }
+
     private Match() { }
 
     public static Match Create(Guid fixtureId, Guid homeTeamId, Guid awayTeamId)
@@ -49,7 +56,8 @@ public class Match
             HomeScore = 0,
             AwayScore = 0,
             Sequence = 0,
-            Seed = 0
+            Seed = 0,
+            CreatedAt = DateTimeOffset.UtcNow
         };
     }
 

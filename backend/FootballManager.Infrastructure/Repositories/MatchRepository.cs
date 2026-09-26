@@ -1,4 +1,5 @@
 using FootballManager.Application.Repositories;
+using FootballManager.Domain.Enums;
 using FootballManager.Domain.Matches;
 using FootballManager.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -28,7 +29,16 @@ public class MatchRepository : IMatchRepository
     public async Task<Match?> GetByFixtureAsync(Guid fixtureId, CancellationToken cancellationToken = default) =>
         await _dbContext.Matches
             .AsNoTracking()
-            .FirstOrDefaultAsync(match => match.FixtureId == fixtureId, cancellationToken);
+            .Where(match => match.FixtureId == fixtureId && match.Status != MatchStatus.Abandoned)
+            .OrderByDescending(match => match.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<Match>> ListUnfinishedAsync(CancellationToken cancellationToken = default) =>
+        await _dbContext.Matches
+            .AsNoTracking()
+            .Where(match => match.Status != MatchStatus.Finished && match.Status != MatchStatus.Abandoned)
+            .OrderBy(match => match.CreatedAt)
+            .ToListAsync(cancellationToken);
 
     public async Task AddAsync(Match match, CancellationToken cancellationToken = default) =>
         await _dbContext.Matches.AddAsync(match, cancellationToken);
