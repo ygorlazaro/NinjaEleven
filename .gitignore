@@ -1,0 +1,163 @@
+# ---------------------------------------------------------------------------
+# .NET / C#
+# ---------------------------------------------------------------------------
+
+# Build output
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+*.dll
+*.pdb
+*.exe
+*.so
+*.dylib
+*.a
+*.lib
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+.nuget/
+project.lock.json
+project.fragment.lock.json
+artifacts.lock.json
+*.nuget.props
+*.nuget.targets
+*.nuget.dgspec.json
+*.nuget.g.props
+*.nuget.g.targets
+packages.lock.json
+packages.spec.json
+
+# Test / coverage output
+[Tt]est[Rr]esult*/
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+BenchmarkDotNet.Artifacts/
+TestResults/
+
+# ASP.NET / frontend assets
+publish/
+*.publishsettings
+*.pubxml.user
+*.pubxml
+*.deploy.cmd
+*.deploy.ps1
+*.apphost
+
+# Tooling
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.DotSettings.user
+
+# Rider / ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+*.sln.docstates
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ---------------------------------------------------------------------------
+# Node / React / Vite
+# ---------------------------------------------------------------------------
+
+# Dependencies
+node_modules/
+jspm_packages/
+web_modules/
+.npm/
+
+# Build output
+dist/
+build/
+out/
+.output/
+.vercel/
+.netlify/
+.nuxt/
+.next/
+out-tsc/
+storybook-static/
+
+# Caches
+.cache/
+.parcel-cache/
+.turbo/
+.nx/
+.eslintcache
+.stylelintcache
+.prettiercache
+*.tsbuildinfo
+node_modules/.cache/
+
+# Test / coverage output
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+cypress/screenshots/
+cypress/videos/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+logs/
+*.log
+
+# Editors and tooling
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ---------------------------------------------------------------------------
+# Local configuration and secrets
+# ---------------------------------------------------------------------------
+
+# Machine/user specific files that must never be committed
+appsettings.Local.json
+appsettings.*.Local.json
+*.env.local
+*.pem
+*.pfx
+*.key
+secrets.json
