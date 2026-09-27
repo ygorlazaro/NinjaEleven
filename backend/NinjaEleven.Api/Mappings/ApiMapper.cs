@@ -57,6 +57,7 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
     Stars = Domain.Players.PlayerRating.CalculateStars(squadPlayer.Player),
     Energy = squadPlayer.SeasonState.Energy,
     Goals = squadPlayer.SeasonState.Goals,
+    Saves = squadPlayer.SeasonState.Saves,
     YellowCards = squadPlayer.SeasonState.YellowCards,
     RedCards = squadPlayer.SeasonState.RedCards,
     SuspensionMatches = squadPlayer.SeasonState.SuspensionMatches,
@@ -97,9 +98,27 @@ public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => ne
     public static IReadOnlyList<CompetitionDto> ToDtos(this IEnumerable<Domain.Competitions.Competition> competitions) =>
         competitions.Select(competition => competition.ToDto()).ToList();
 
+    public static CompetitionEditionDto ToDto(this Application.Models.CompetitionSeasonView view) => new()
+    {
+        Id = view.Id,
+        CompetitionId = view.CompetitionId,
+        SeasonId = view.SeasonId,
+        DivisionId = view.DivisionId,
+        Tier = view.Tier,
+        CompetitionName = view.CompetitionName,
+        Type = view.Type,
+        Name = view.Name,
+        IsDivision = view.IsDivision
+    };
+
+    public static IReadOnlyList<CompetitionEditionDto> ToDtos(
+        this IEnumerable<Application.Models.CompetitionSeasonView> views) =>
+        views.Select(view => view.ToDto()).ToList();
+
     public static SeasonDto ToDto(this Domain.Seasons.Season season) => new()
     {
         Id = season.Id,
+        Number = season.Number,
         Name = season.Name,
         StartDate = season.StartDate,
         EndDate = season.EndDate,
@@ -108,16 +127,6 @@ public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => ne
 
     public static IReadOnlyList<SeasonDto> ToDtos(this IEnumerable<Domain.Seasons.Season> seasons) =>
         seasons.Select(season => season.ToDto()).ToList();
-
-    public static RoundDto ToDto(this Domain.Competitions.Round round) => new()
-    {
-        Id = round.Id,
-        CompetitionSeasonId = round.CompetitionSeasonId,
-        Number = round.Number
-    };
-
-    public static IReadOnlyList<RoundDto> ToDtos(this IEnumerable<Domain.Competitions.Round> rounds) =>
-        rounds.Select(round => round.ToDto()).ToList();
 
     public static FixtureDto ToDto(this Application.Models.FixtureDetails details) => new()
     {
@@ -163,7 +172,7 @@ public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => ne
         Sequence = snapshot.Match.Sequence,
         Seed = snapshot.Match.Seed,
         Attendance = snapshot.Match.Attendance,
-        GateRevenue = snapshot.Match.GateRevenue,
+        GateRevenue = snapshot.Match.Gate.GrossRevenue,
         HomeTeam = snapshot.HomeTeam?.ToDto(),
         AwayTeam = snapshot.AwayTeam?.ToDto(),
         Events = snapshot.Events.Select(matchEvent => matchEvent.ToDto()).ToList()
@@ -183,7 +192,7 @@ public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => ne
         Sequence = match.Sequence,
         Seed = match.Seed,
         Attendance = match.Attendance,
-        GateRevenue = match.GateRevenue,
+        GateRevenue = match.Gate.GrossRevenue,
         Events = Array.Empty<MatchEventDto>()
     };
 
@@ -235,25 +244,69 @@ public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => ne
     public static IReadOnlyList<MatchEventDto> ToDtos(this IEnumerable<Domain.Matches.MatchEvent> matchEvents) =>
         matchEvents.Select(matchEvent => matchEvent.ToDto()).ToList();
 
-public static StandingDto ToDto(this Application.Models.StandingRow row) => new()
-{
-    TeamId = row.TeamId,
-    Team = row.Team?.ToDto(),
-    Points = row.Points,
-    Played = row.Played,
-    Wins = row.Wins,
-    Draws = row.Draws,
-    Losses = row.Losses,
-    GoalsFor = row.GoalsFor,
-    GoalsAgainst = row.GoalsAgainst,
-    GoalDifference = row.GoalDifference,
-    YellowCards = row.YellowCards,
-    RedCards = row.RedCards,
-    Stars = row.Stars
-};
+    public static RoundDto ToDto(this Domain.Competitions.Round round) => new()
+    {
+        Id = round.Id,
+        CompetitionSeasonId = round.CompetitionSeasonId,
+        Number = round.Number,
+        MatchDayId = round.MatchDayId,
+        Window = round.Window,
+        CompletedAt = round.CompletedAt
+    };
+
+    public static IReadOnlyList<RoundDto> ToDtos(this IEnumerable<Domain.Competitions.Round> rounds) =>
+        rounds.Select(round => round.ToDto()).ToList();
+
+    public static MatchDayDto ToDto(this Domain.Competitions.MatchDay matchDay) => new()
+    {
+        Id = matchDay.Id,
+        SeasonId = matchDay.SeasonId,
+        Number = matchDay.Number,
+        Date = matchDay.Date
+    };
+
+    public static SeasonCalendarDto ToDto(this Application.Models.SeasonCalendar calendar) => new()
+    {
+        SeasonId = calendar.SeasonId,
+        SeasonName = calendar.SeasonName,
+        MatchDayCount = calendar.MatchDayCount,
+        MatchDays = calendar.MatchDays.Select(matchDay => matchDay.ToDto()).ToList(),
+        Windows = calendar.Windows.ToDtos()
+    };
+
+    public static StandingDto ToDto(this Application.Models.StandingRow row) => new()
+    {
+        TeamId = row.TeamId,
+        Team = row.Team?.ToDto(),
+        Position = row.Position,
+        Points = row.Points,
+        Played = row.Played,
+        Wins = row.Wins,
+        Draws = row.Draws,
+        Losses = row.Losses,
+        GoalsFor = row.GoalsFor,
+        GoalsAgainst = row.GoalsAgainst,
+        GoalDifference = row.GoalDifference,
+        YellowCards = row.YellowCards,
+        RedCards = row.RedCards,
+        Stars = row.Stars,
+        Zone = row.Zone
+    };
 
     public static IReadOnlyList<StandingDto> ToDtos(this IEnumerable<Application.Models.StandingRow> rows) =>
         rows.Select(row => row.ToDto()).ToList();
+
+    public static CompetitionStandingsDto ToDto(this Application.Models.CompetitionStandings standings) => new()
+    {
+        CompetitionSeasonId = standings.CompetitionSeasonId,
+        SeasonId = standings.SeasonId,
+        DivisionId = standings.DivisionId,
+        Tier = standings.Tier,
+        CompetitionName = standings.CompetitionName,
+        Official = standings.Official.ToDtos(),
+        Projected = standings.Projected.ToDtos(),
+        HasLiveMatches = standings.HasLiveMatches
+    };
 
     public static ScorerDto ToDto(this Application.Models.ScorerRow row) => new()
     {
@@ -419,6 +472,14 @@ public static PenaltyTakerOptionsDto ToDto(this Application.Models.PenaltyTakerO
         AwayPossessionPercent = state.AwayPossession,
         PenaltyAwaitingSelection = state.PenaltyAwaitingSelection,
         Penalty = state.Penalty.ToDto(),
+        Injury = new MatchInjuryDto
+        {
+            AwaitingSubstitution = state.Injury.AwaitingSubstitution,
+            PlayerId = state.Injury.PlayerId,
+            PlayerName = state.Injury.PlayerName,
+            Team = state.Injury.Team,
+            Severity = state.Injury.Severity
+        },
         UserTeamId = state.UserTeamId,
         SubstitutionsUsedHome = state.SubstitutionsUsedHome,
         SubstitutionsUsedAway = state.SubstitutionsUsedAway,
@@ -589,5 +650,20 @@ public static class SquadSuggestionMapping
     {
         StarterIds = suggestion.StarterIds,
         BenchIds = suggestion.BenchIds
+    };
+}
+
+public static class TeamMatchRecordMapping
+{
+    public static TeamMatchRecordDto ToDto(this Application.Models.TeamMatchRecord record) => new()
+    {
+        MatchId = record.MatchId,
+        OpponentName = record.OpponentName,
+        OpponentTeamId = record.OpponentTeamId,
+        IsHome = record.IsHome,
+        GoalsFor = record.GoalsFor,
+        GoalsAgainst = record.GoalsAgainst,
+        RoundNumber = record.RoundNumber,
+        PlayedAt = record.PlayedAt
     };
 }

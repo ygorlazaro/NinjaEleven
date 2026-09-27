@@ -1,39 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { SeasonApi, TeamApi } from '@/api';
 import { useGameState } from '@/state';
-import type { Position, SquadPlayerDto, TeamDto } from '@/types';
-import { positionLabel, starsToString } from '@/services/formatters';
-import EnergyBar from '@/components/Match/EnergyBar';
-import { PlayerName } from '@/components/Common/Names';
-
-const POSITION_ORDER: Position[] = ['GK', 'DEF', 'MID', 'ATT'];
-
-const POSITION_LABELS: Record<Position, string> = {
-  GK: 'Goleiros',
-  DEF: 'Defesa',
-  MID: 'Meio-campo',
-  ATT: 'Ataque'
-};
-
-/**
- * What keeps a player out of the squad, said in the words a manager uses. An injury is
- * only meaningful with the number of matches it still costs him.
- */
-function availabilityOf(player: SquadPlayerDto): string {
-  if (player.suspensionMatches > 0) {
-    return `🚫 Suspenso (${player.suspensionMatches})`;
-  }
-
-  if (player.injury !== 'None') {
-    const severity = player.injury === 'Grave' ? 'Lesão grave' : 'Lesão leve';
-    return player.injuryMatchesRemaining > 0
-      ? `🩹 ${severity} (${player.injuryMatchesRemaining})`
-      : `🩹 ${severity}`;
-  }
-
-  return 'Apto';
-}
+import type { SquadPlayerDto, TeamDto } from '@/types';
+import { starsToString } from '@/services/formatters';
+import ClubSquadTable from '@/components/Club/ClubSquadTable';
+import { useClubWindow } from '@/services/clubColors';
 
 const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) => {
   const teams = useGameState((s) => s.leagueTeams);
@@ -96,20 +68,11 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
     };
   }, [urlTeamId, seasonId]);
 
-  /**
-   * The squad as a manager reads it: by position, and by name inside the position.
-   */
-  const rowsByPosition = useMemo(
-    () =>
-      POSITION_ORDER.map(position => ({
-        position,
-        label: POSITION_LABELS[position],
-        players: players
-          .filter(player => player.position === position)
-          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
-      })).filter(group => group.players.length > 0),
-    [players]
-  );
+  // Every hook is above every early return. A hook called after one is a hook that
+  // sometimes is not called, and React counts: the render where the error clears would
+  // reach a hook the failed render never did, and the screen would fall over on the very
+  // recovery it was written to allow.
+  const clubWindow = useClubWindow(team);
 
   if (error) {
     return (
@@ -124,85 +87,26 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
 
   return (
     <div className="team-view-overlay">
-      <div className="card team-view-card">
+      {/* The club's own screen and the modal somebody else opened are the same question, so
+          they are the same table in the same colours: one component, not two layouts that
+          happen to agree today. */}
+      <div className="card team-view-card club-modal" style={clubWindow}>
         <div className="squad-head team-view-summary">
           <div>
-            <h2>{team.name}</h2>
-            <p>Força {team.rating} • {players.length} jogadores • Força do elenco: {starsToString(team.stars)}</p>
+            <h2 className="profile-name">{team.name}</h2>
+            <p className="squad-hint">
+              Força {team.rating} • {players.length} jogadores • Elenco: {starsToString(team.stars)}
+            </p>
           </div>
           <button className="ctrl" onClick={() => navigate('/league')}>Tabela e jogos</button>
         </div>
 
-        <div className="selection-bar team-view-summary">
-          <div>
-            <b>{team.name} • Elenco completo</b>
-            <div className="squad-hint">Acompanhe energia, atributos, gols, cartões e disponibilidade.</div>
-          </div>
-          <div
-            className="team-color-sample"
-            style={{
-              '--team-primary': team.primaryColor,
-              '--team-secondary': team.secondaryColor,
-            } as React.CSSProperties}
-          />
+        <div className="club-colors">
+          <span className="club-swatch" style={{ background: team.primaryColor || '#f2d34f' }} />
+          <span className="club-swatch" style={{ background: team.secondaryColor || '#f2d34f' }} />
         </div>
 
-        <div className="squad-table-wrap">
-          <table className="squad-table team-view-table">
-            <thead>
-              <tr>
-                <th>Pos</th>
-                <th>Jogador</th>
-                <th>Idade</th>
-                <th>Energia</th>
-                <th>Estrelas</th>
-                <th>Atributos</th>
-                <th>Temporada</th>
-              </tr>
-            </thead>
-            {rowsByPosition.map(group => (
-              <tbody key={group.position}>
-                <tr className="squad-group">
-                  <th colSpan={7} scope="colgroup">
-                    {group.label}
-                  </th>
-                </tr>
-
-                {group.players.map(p => (
-                  <tr key={p.id} className={p.isAvailable ? 'squad-row' : 'squad-row unavailable'}>
-                    <td className="col-pos">
-                      <span className="pos-badge">{positionLabel(p.position)}</span>
-                    </td>
-                    <td className="col-name">
-                      <PlayerName playerId={p.id}>
-                        <b>{p.name}</b>
-                      </PlayerName>
-                    </td>
-                    <td className="col-num">{p.age}</td>
-                    <td className="col-num">
-                      <EnergyBar value={p.energy} compact />
-                      <span style={{ fontSize: '10px' }}>{Math.round(p.energy)}%</span>
-                    </td>
-                    <td className="col-num">
-                      <span style={{ color: 'var(--accent)' }}>{starsToString(p.stars)}</span>
-                    </td>
-                    <td style={{ fontSize: '10px', color: 'var(--muted)' }}>
-                      {p.position === 'GK'
-                        ? `Gol ${p.goalkeeperPower} • Ref ${p.reflexes} • Vel ${p.speed}`
-                        : `Vel ${p.speed} • Des ${p.accuracy} • Dri ${p.dribbling} • Cab ${p.heading} • For ${p.strength}`}
-                    </td>
-                    <td className="col-status">
-                      {p.goals} gol{p.goals !== 1 ? 's' : ''} • CA {p.yellowCards}/3
-                      {p.redCards > 0 && ` • 🟥 ${p.redCards}`}
-                      <br />
-                      {availabilityOf(p)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            ))}
-          </table>
-        </div>
+        <ClubSquadTable squad={players} />
       </div>
     </div>
   );

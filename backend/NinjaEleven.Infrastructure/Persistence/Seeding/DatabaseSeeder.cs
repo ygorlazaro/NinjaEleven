@@ -18,16 +18,63 @@ namespace NinjaEleven.Infrastructure.Persistence.Seeding;
 /// </summary>
 public class DatabaseSeeder : IDataSeeder
 {
-    private static readonly (string Name, string ShortName, string Primary, string Secondary)[] TeamCatalog =
+    /// <summary>
+    /// The starting world: thirty-six clubs, twelve to a division, strongest first.
+    ///
+    /// The catalog is a rule rather than a setting because the pyramid is one. A pyramid of
+    /// three divisions of twelve is what promotion and relegation move clubs between, so a
+    /// world seeded with any other number would be a pyramid the season's own rules cannot
+    /// describe. The order of the catalog is the order of the divisions: the first twelve
+    /// clubs are the top flight, the next twelve the second, and the last twelve the third.
+    ///
+    /// Strength is seeded per tier and not per club, so a division means something before a
+    /// ball is kicked. Without that, a third-division club would be as good as a first-
+    /// division one, the table would be noise from the first matchday, and a manager would
+    /// have no reason to want promotion rather than to stay where he is.
+    /// </summary>
+    private static readonly (string Name, string ShortName, string Primary, string Secondary, int Tier)[] TeamCatalog =
     {
-        ("Rio Branco Esporte Clube", "RBE", "#B11226", "#F5F5F5"),
-        ("Ferroviário Atlético", "FER", "#1B3A6B", "#D4AF37"),
-        ("Estrela do Norte", "EDN", "#0F5132", "#FFD700"),
-        ("União Serrana", "UNS", "#7B2D8B", "#F0F0F0"),
-        ("Porto Marítimo", "PTM", "#00693E", "#1F1F1F"),
-        ("Clube Aurora", "CAU", "#E07B00", "#2B2B2B"),
-        ("Real Serrano", "RSE", "#0D6EFD", "#FFFFFF"),
-        ("Vila Nova do Vale", "VNV", "#8B0000", "#D9D9D9")
+        // 1ª Divisão
+        ("Rio Branco Esporte Clube", "RBE", "#B11226", "#F5F5F5", 1),
+        ("Ferroviário Atlético", "FER", "#1B3A6B", "#D4AF37", 1),
+        ("Estrela do Norte", "EDN", "#0F5132", "#FFD700", 1),
+        ("União Serrana", "UNS", "#7B2D8B", "#F0F0F0", 1),
+        ("Porto Marítimo", "PTM", "#00693E", "#1F1F1F", 1),
+        ("Clube Aurora", "CAU", "#E07B00", "#2B2B2B", 1),
+        ("Real Serrano", "RSE", "#0D6EFD", "#FFFFFF", 1),
+        ("Vila Nova do Vale", "VNV", "#8B0000", "#D9D9D9", 1),
+        ("Atlético do Planalto", "ADP", "#004B8D", "#FFD700", 1),
+        ("Grêmio Litorâneo", "GLI", "#0B6623", "#F5F5F5", 1),
+        ("Esporte Clube Serra Azul", "SAZ", "#5C2D91", "#FFFFFF", 1),
+        ("Rio Pardo Futebol Clube", "RPF", "#C8102E", "#000000", 1),
+
+        // 2ª Divisão
+        ("Nacional Serranense", "NSE", "#1E6F5C", "#F0E68C", 2),
+        ("Clube Atlético Barreiras", "CAB", "#0F4C81", "#FFD700", 2),
+        ("Esporte Clube Laranjeiras", "ECL", "#E85A0C", "#2B2B2B", 2),
+        ("Grêmio Ferroviário do Sul", "GFS", "#37474F", "#E53935", 2),
+        ("Atlético Bandeirante", "ATB", "#2E7D32", "#FFFFFF", 2),
+        ("Sociedade Esportiva Cerradão", "SEC", "#6A1B9A", "#F5F5F5", 2),
+        ("União Atlético Maravilha", "UAM", "#00838F", "#FFEB3B", 2),
+        ("Clube Náutico Ipanema", "CNI", "#0277BD", "#FFFFFF", 2),
+        ("Esporte Clube Palmeiral", "EPL", "#EF6C00", "#1B5E20", 2),
+        ("Grêmio Esportivo Andorinha", "GEA", "#455A64", "#FFCA28", 2),
+        ("Clube Atlético Santa Clara", "CSC", "#7B1FA2", "#F5F5F5", 2),
+        ("Sport Club Interface", "SCI", "#212121", "#00E5FF", 2),
+
+        // 3ª Divisão
+        ("Associação Atlética Guarani", "AAG", "#1565C0", "#FFFFFF", 3),
+        ("Clube Esportivo Tijuco", "CET", "#2E7D32", "#212121", 3),
+        ("Grêmio Operário Seridoense", "GOS", "#4527A0", "#FFD700", 3),
+        ("Esporte Clube Riachuelo", "ECR", "#AD1457", "#F5F5F5", 3),
+        ("Sociedade Recreativa Estância", "SRE", "#00695C", "#FF8F00", 3),
+        ("Clube Atlético Juazeirense", "CAJ", "#283593", "#FFFFFF", 3),
+        ("Grêmio Esportivo Várzea Nova", "GVN", "#33691E", "#F5F5F5", 3),
+        ("Sport Club Aurora Sul", "SAS", "#5D4037", "#FFD54F", 3),
+        ("Associação Esportiva Cristal", "AEC", "#00838F", "#263238", 3),
+        ("Clube Esportivo Umbuzeiro", "CEU", "#9E9D24", "#FFFFFF", 3),
+        ("Grêmio Atlético Potiguar", "GAP", "#C62828", "#FFFFFF", 3),
+        ("Esporte Clube Dourado", "ECD", "#F9A825", "#212121", 3)
     };
 
     private readonly NinjaElevenDbContext _dbContext;
@@ -60,9 +107,26 @@ public class DatabaseSeeder : IDataSeeder
         }
 
         var season = CreateSeason();
-        var competition = Competition.Create("Campeonato Brasileiro", CompetitionType.League);
-        var competitionSeason = CompetitionSeason.Create(competition.Id, season.Id);
         var startDate = season.StartDate;
+
+        // The three divisions of the pyramid are permanent rows: a club is in a division, and
+        // a division is a tier of the country rather than something a season invents. The
+        // season's three league editions point at them, one per tier, which is what lets a
+        // club be promoted out of one edition and into another without moving in the database.
+        var divisions = CompetitionRules.Tiers()
+            .Select(tier => Division.Create(null, tier))
+            .ToList();
+
+        var championship = Competition.Create("Campeonato Brasileiro", CompetitionType.League);
+        var cup = Competition.Create("Copa do Brasil", CompetitionType.Cup);
+        var superCup = Competition.Create("Supercopa Nacional", CompetitionType.SuperCup);
+
+        var leagueEditions = divisions
+            .Select(division => CompetitionSeason.Create(championship.Id, season.Id, division.Id))
+            .ToList();
+
+        var cupEdition = CompetitionSeason.Create(cup.Id, season.Id);
+        var superCupEdition = CompetitionSeason.Create(superCup.Id, season.Id);
 
         var participants = new List<CompetitionParticipant>();
         var teams = new List<Team>();
@@ -70,25 +134,24 @@ public class DatabaseSeeder : IDataSeeder
         var players = new List<Player>();
         var seasonStates = new List<PlayerSeasonState>();
         var memberships = new List<TeamMembership>();
-        var faces = DealFaces(_options.Teams * _options.PlayersPerTeam, random);
+        var faces = DealFaces(TeamCatalog.Length * _options.PlayersPerTeam, random);
 
-        var teamCount = _options.Teams;
-        if (teamCount < 1 || teamCount > TeamCatalog.Length)
-        {
-            throw new InvalidOperationException(
-                $"The team catalog holds {TeamCatalog.Length} teams but {teamCount} were requested.");
-        }
-
-        for (var index = 0; index < teamCount; index++)
+        for (var index = 0; index < TeamCatalog.Length; index++)
         {
             var definition = TeamCatalog[index];
             var team = CreateTeam(definition, random);
-            var stadium = Stadium.Create(team.Id);
+            var stadium = Stadium.Create(team.Id, definition.Name);
 
             teams.Add(team);
             stadiums.Add(stadium);
             team.SetStadium(stadium);
-            participants.Add(CompetitionParticipant.Create(competitionSeason.Id, team.Id));
+
+            // Each club enters the edition of the tier it is in, which is the only league
+            // entry it has. The cup and the Supercup are entered by CupQualification and by
+            // the season that follows, not by the seeder guessing at a draw.
+            participants.Add(CompetitionParticipant.Create(
+                leagueEditions[definition.Tier - 1].Id,
+                team.Id));
 
             var squad = CreateSquad(team, season.Id, startDate, random, faces);
 
@@ -98,8 +161,10 @@ public class DatabaseSeeder : IDataSeeder
         }
 
         _dbContext.Seasons.Add(season);
-        _dbContext.Competitions.Add(competition);
-        _dbContext.CompetitionSeasons.Add(competitionSeason);
+        _dbContext.Divisions.AddRange(divisions);
+        _dbContext.Competitions.AddRange(championship, cup, superCup);
+        _dbContext.CompetitionSeasons.AddRange(leagueEditions);
+        _dbContext.CompetitionSeasons.AddRange(cupEdition, superCupEdition);
         _dbContext.CompetitionParticipants.AddRange(participants);
         _dbContext.Teams.AddRange(teams);
         _dbContext.Stadiums.AddRange(stadiums);
@@ -110,8 +175,11 @@ public class DatabaseSeeder : IDataSeeder
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "Seeded season {SeasonName} with {TeamCount} teams and {PlayerCount} players.",
+            "Seeded {SeasonName}: {DivisionCount} divisions of {ClubsPerDivision} clubs, a cup of {CupSize} and a Supercup, with {TeamCount} teams and {PlayerCount} players.",
             season.Name,
+            CompetitionRules.DivisionCount,
+            CompetitionRules.ClubsPerDivision,
+            CompetitionRules.CupSize,
             teams.Count,
             players.Count);
     }
@@ -133,24 +201,48 @@ public class DatabaseSeeder : IDataSeeder
         }
     }
 
+    /// <summary>
+    /// The first season of a new world.
+    ///
+    /// It is numbered one rather than named for a year, because the number is the season's
+    /// identity: a world that started at "Temporada IX" because it happened to begin in 2026
+    /// would have to be renumbered the day somebody played nine seasons.
+    /// </summary>
     private static Season CreateSeason()
     {
-        var season = Season.Create("2026", new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31));
+        var season = Season.Create(1, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31));
         season.Start();
         return season;
     }
 
+    /// <summary>
+    /// A club, with a reputation drawn from the band its division occupies.
+    ///
+    /// The bands overlap on purpose. A top-division club and a second-division club are two
+    /// draws from adjacent ranges, so a strong second-division side can still be a promotion
+    /// candidate, which is what makes a table worth managing rather than a foregone conclusion
+    /// written down before kick-off.
+    /// </summary>
     private static Team CreateTeam(
-        (string Name, string ShortName, string Primary, string Secondary) definition,
+        (string Name, string ShortName, string Primary, string Secondary, int Tier) definition,
         Random random)
     {
+        var (low, high) = ReputationBand(definition.Tier);
+
         return Team.Create(
             definition.Name,
             definition.ShortName,
             definition.Primary,
             definition.Secondary,
-            random.Next(50, 91));
+            random.Next(low, high + 1));
     }
+
+    private static (int Low, int High) ReputationBand(int tier) => tier switch
+    {
+        1 => (62, 90),
+        2 => (52, 78),
+        _ => (42, 68)
+    };
 
     private (List<Player> Players, List<PlayerSeasonState> SeasonStates, List<TeamMembership> Memberships) CreateSquad(
         Team team,

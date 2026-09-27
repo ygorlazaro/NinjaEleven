@@ -2,6 +2,7 @@ using NinjaEleven.Api.Contracts;
 using NinjaEleven.Api.Mappings;
 using NinjaEleven.Api.Realtime;
 using NinjaEleven.Application.Matches;
+using NinjaEleven.Domain.Common;
 using NinjaEleven.Application.Services;
 
 namespace NinjaEleven.Api.Realtime;
@@ -134,6 +135,14 @@ public sealed class MatchLoopService : BackgroundService
                 return Math.Max(1, state.Speed);
             }
 
+            // A man who cannot carry on is waiting for the manager to name who comes on.
+            // Same answer as the penalty: the loop leaves the match alone, because a tick
+            // here would move the clock over a decision nobody has made yet.
+            if (state.Injury.AwaitingSubstitution)
+            {
+                return Math.Max(1, state.Speed);
+            }
+
             if (state.IsHalfTime)
             {
                 // A watched match waits for the manager to press "second half". A match
@@ -176,6 +185,23 @@ public sealed class MatchLoopService : BackgroundService
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            return 1;
+        }
+        catch (EntityNotFoundException exception)
+        {
+            // The match this session was playing is not in the database. It is not coming
+            // back — a match row that has been removed is not a match that is merely slow to
+            // load — so the session is dropped rather than left to fail again on the next
+            // pass. Keeping it would turn one deleted row into the same error once a second
+            // for the rest of the process's life, which is how a real problem gets lost in
+            // noise that never stops.
+            _sessions.Remove(matchId);
+
+            _logger.LogWarning(
+                exception,
+                "Dropped a live session for match {MatchId}: the match is no longer in the database",
+                matchId);
+
             return 1;
         }
         catch (Exception exception)

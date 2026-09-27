@@ -68,6 +68,15 @@ public class MatchPlayerDto
     public bool RedCard { get; init; }
     public bool EmergencyGK { get; init; }
     public bool InjuredOff { get; init; }
+
+    /// <summary>
+    /// How bad the knock of this match was, and not a sentence about it. A player who is
+    /// carrying a light injury is still on the pitch and is still playing, so <see cref="InjuredOff"/>
+    /// says nothing about him; the severity is what a screen draws beside his name so the
+    /// manager can see who is playing hurt rather than reading it out of the feed.
+    /// </summary>
+    public Domain.Common.Injury Injury { get; init; }
+
     public bool SubbedIn { get; init; }
 
     /// <summary>
@@ -131,6 +140,13 @@ public class MatchStateDto
     public TeamMatchStatsDto[] Stats { get; init; } = Array.Empty<TeamMatchStatsDto>();
     public MatchPossessionDto Possession { get; init; } = new();
     public bool PenaltyAwaitingSelection { get; init; }
+
+    /// <summary>
+    /// The player who cannot continue and whose replacement the manager has to name. The
+    /// clock is held while it is out, so this is not a notification about something that
+    /// already happened: it is the question the match is waiting on.
+    /// </summary>
+    public MatchInjuryDto Injury { get; init; } = new();
 
     /// <summary>
     /// The share of the ball each side has actually had, as a percentage. It is a fact
@@ -347,4 +363,25 @@ public class SquadSuggestionDto
 {
     public IReadOnlyList<Guid> StarterIds { get; init; } = Array.Empty<Guid>();
     public IReadOnlyList<Guid> BenchIds { get; init; } = Array.Empty<Guid>();
+}
+
+/// <summary>
+/// A man who is hurt, his side, and how bad it was. The severity travels with it rather
+/// than being read out of the feed's prose, because a screen that has to parse a sentence
+/// to know whether to put a bandage next to a name is a screen that gets it wrong the day
+/// somebody rewords the sentence.
+/// </summary>
+public class MatchInjuryDto
+{
+    public bool AwaitingSubstitution { get; init; }
+    public Guid? PlayerId { get; init; }
+    public string? PlayerName { get; init; }
+    public int? Team { get; init; }
+
+    /// <summary>
+    /// How bad it is, and <see cref="Domain.Common.Injury.None"/> when there is nothing to
+    /// report. A severity that defaulted to the worst case would make every healthy match
+    /// read as a grave injury to a screen that asked before it checked.
+    /// </summary>
+    public Domain.Common.Injury Severity { get; init; }
 }

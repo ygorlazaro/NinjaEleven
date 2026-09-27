@@ -1,3 +1,4 @@
+using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Teams;
 
@@ -42,18 +43,41 @@ namespace NinjaEleven.Domain.Matches;
         public DateTimeOffset CreatedAt { get; private set; }
 
         /// <summary>
-        /// Calculated attendance for this match.
+        /// Which competition this match belongs to. A match is a match in a competition and
+        /// never just a match: the table counts a league game and nothing else, the aggregate
+        /// counts a cup leg and nothing else, and a fixture row cannot be read without it.
         /// </summary>
+        public CompetitionType CompetitionType { get; private set; }
+
+        /// <summary>Which window of the matchday it was played in.</summary>
+        public int Window { get; private set; }
+
+        /// <summary>How many people turned up, worked out from the ground and the match.</summary>
         public int Attendance { get; private set; }
 
-        /// <summary>
-        /// Gate revenue in limos (attendance * ticket price).
-        /// </summary>
-        public decimal GateRevenue { get; private set; }
+        /// <summary>What a seat cost on the day. Kept, so a price change never rewrites history.</summary>
+        public decimal TicketPrice { get; private set; }
+
+        /// <summary>Everything the gate took, in limos.</summary>
+        public decimal GrossRevenue { get; private set; }
+
+        /// <summary>The two thirds the club that hosted the match took.</summary>
+        public decimal HomeRevenue { get; private set; }
+
+        /// <summary>The one third the club that travelled took.</summary>
+        public decimal AwayRevenue { get; private set; }
+
+        /// <summary>The gate as one value, for a caller that wants all of it at once.</summary>
+        public GateReceipt Gate => GateReceipt.For(Attendance, TicketPrice);
 
         private Match() { }
 
-    public static Match Create(Guid fixtureId, Guid homeTeamId, Guid awayTeamId)
+    public static Match Create(
+        Guid fixtureId,
+        Guid homeTeamId,
+        Guid awayTeamId,
+        CompetitionType competitionType = CompetitionType.League,
+        int window = Competitions.CompetitionRules.ChampionshipWindow)
     {
         return new Match
         {
@@ -68,7 +92,9 @@ namespace NinjaEleven.Domain.Matches;
             AwayScore = 0,
             Sequence = 0,
             Seed = 0,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = DateTimeOffset.UtcNow,
+            CompetitionType = competitionType,
+            Window = window
         };
     }
 
@@ -76,7 +102,15 @@ namespace NinjaEleven.Domain.Matches;
 
     public bool IsInProgress => Status is MatchStatus.InProgress or MatchStatus.SecondHalf;
 
-    public void KickOff(int seed, Stadium homeStadium, double homeStars, double awayStars, bool isDerby = false, double matchImportance = 1.0, double weatherFactor = 1.0, double dayOfWeekFactor = 1.0)
+    /// <summary>
+    /// Works out the crowd and the gate, and stamps them onto the match.
+    ///
+    /// It happens at kick-off rather than at the end because a manager watching a match should
+    /// see who is in the stand from the first whistle, and because the crowd is a fact about
+    /// the fixture rather than about how the game turned out: a 5-0 does not empty a stand
+    /// that had already filled it.
+    /// </summary>
+    public void KickOff(int seed, Stadium homeStadium, AttendanceContext attendance)
     {
         EnsureNotFinished();
 
@@ -85,12 +119,23 @@ namespace NinjaEleven.Domain.Matches;
         Half = MatchHalf.First;
         CurrentMinute = 0;
 
-        // Calculate attendance and revenue at kick-off
-        if (homeStadium != null)
-        {
-            Attendance = AttendanceCalculator.Calculate(homeStadium, homeStars, awayStars, isDerby, matchImportance, weatherFactor, dayOfWeekFactor);
-            GateRevenue = AttendanceCalculator.CalculateRevenue(Attendance);
-        }
+        if (homeStadium is null) return;
+
+        // The crowd is drawn from the match's own seed, so a replayed match fills the same
+        // seats. A ground that draws its crowd from a shared source is a ground whose crowd
+        // can differ between two runs of the same fixture, and a manager who sees 4,100 the
+        // first time and 1,900 the second has been given two different facts.
+        var random = new DeterministicRandomSource(seed);
+        var noise = AttendanceCalculator.RandomFloor + random.NextDouble()
+            * (AttendanceCalculator.RandomCeiling - AttendanceCalculator.RandomFloor);
+
+        Attendance = AttendanceCalculator.Calculate(homeStadium, attendance, noise);
+
+        var gate = GateReceipt.For(Attendance, homeStadium.TicketPrice);
+        TicketPrice = gate.TicketPrice;
+        GrossRevenue = gate.GrossRevenue;
+        HomeRevenue = gate.HomeRevenue;
+        AwayRevenue = gate.AwayRevenue;
     }
 
     public void AdvanceClockTo(int minute)

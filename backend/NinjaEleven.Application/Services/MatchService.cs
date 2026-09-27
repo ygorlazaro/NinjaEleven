@@ -3,6 +3,7 @@ using NinjaEleven.Application.Matches;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
+using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Players;
@@ -47,7 +48,9 @@ public class MatchService
     private readonly IRoundRepository _roundRepository;
     private readonly ICompetitionRepository _competitionRepository;
     private readonly IMatchSessionRegistry _sessions;
+    private readonly AttendanceContextFactory _attendanceContextFactory;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly CupProgressionService _cupProgression;
 
     public MatchService(
         IMatchRepository matchRepository,
@@ -57,7 +60,9 @@ public class MatchService
         IRoundRepository roundRepository,
         ICompetitionRepository competitionRepository,
         IMatchSessionRegistry sessions,
-        IUnitOfWork unitOfWork)
+        AttendanceContextFactory attendanceContextFactory,
+        IUnitOfWork unitOfWork,
+        CupProgressionService cupProgression)
     {
         _matchRepository = matchRepository;
         _teamRepository = teamRepository;
@@ -66,7 +71,9 @@ public class MatchService
         _roundRepository = roundRepository;
         _competitionRepository = competitionRepository;
         _sessions = sessions;
+        _attendanceContextFactory = attendanceContextFactory;
         _unitOfWork = unitOfWork;
+        _cupProgression = cupProgression;
     }
 
     public async Task<IReadOnlyList<Match>> GetAllAsync(CancellationToken cancellationToken = default) =>
@@ -222,21 +229,36 @@ public class MatchService
         await ServeAbsencesAsync(homeTeam, awayTeam, seasonId, cancellationToken);
 
         var matchSeed = seed ?? Random.Shared.Next(int.MinValue, int.MaxValue);
-        var match = Match.Create(fixtureId, homeTeam.Id, awayTeam.Id);
 
-        // Calculate team stars for attendance (using match snapshots - lineup + bench)
-        var allHomePlayers = homeSquad.Lineup.Concat(homeSquad.Bench).ToList();
-        var allAwayPlayers = awaySquad.Lineup.Concat(awaySquad.Bench).ToList();
-        var homeStars = PlayerRating.CalculateTeamStarsFromSnapshots(allHomePlayers);
-        var awayStars = PlayerRating.CalculateTeamStarsFromSnapshots(allAwayPlayers);
+        // The competition a fixture belongs to decides whether it is a league game or a cup
+        // leg, and the whole of a fixture's identity — the window it is played in, the crowd
+        // that turns up for it — follows from that and is read off the fixture's round rather
+        // than being assumed to be a league.
+        var competition = await ResolveCompetitionAsync(fixture, cancellationToken);
+        var competitionType = competition.Type;
+        var match = Match.Create(fixtureId, homeTeam.Id, awayTeam.Id, competitionType, competition.Window);
 
-        // Get home stadium
-        var homeStadium = homeTeam.Stadium;
+        // The squad strength behind the crowd is the eleven that is about to play and the bench
+        // behind it, because that is the team the supporters are coming to watch on the day.
+        var homeStars = PlayerRating.CalculateTeamStarsFromSnapshots(
+            homeSquad.Lineup.Concat(homeSquad.Bench).ToList());
+        var awayStars = PlayerRating.CalculateTeamStarsFromSnapshots(
+            awaySquad.Lineup.Concat(awaySquad.Bench).ToList());
 
-        // Determine if it's a derby (for now, check if teams are from same "region" - we'll use a simple heuristic)
-        bool isDerby = false; // Could be enhanced with actual derby logic
+        // The crowd is a fact about the fixture rather than about how the game turns out: a
+        // 5-0 does not empty a stand that had already filled it. It is worked out once, here,
+        // and the noise in it is drawn from the match's own seed so a replayed match has the
+        // same crowd in the same ground.
+        var attendanceContext = await _attendanceContextFactory.ForFixtureAsync(
+            fixtureId,
+            homeTeam.Id,
+            awayTeam.Id,
+            competitionType,
+            homeStars,
+            awayStars,
+            cancellationToken);
 
-        match.KickOff(matchSeed, homeStadium, homeStars, awayStars, isDerby);
+        match.KickOff(matchSeed, homeTeam.Stadium, attendanceContext);
         match.StartFirstHalf();
 
         var context = new MatchContext(
@@ -524,7 +546,7 @@ public class MatchService
                 FormationHome = Played(played?.HomeFormation) ?? DefaultFormation,
                 FormationAway = Played(played?.AwayFormation) ?? DefaultFormation,
                 Attendance = match.Attendance,
-                GateRevenue = match.GateRevenue,
+                GateRevenue = match.Gate.GrossRevenue,
                 UserTeamId = null
             };
         }
@@ -622,6 +644,13 @@ public class MatchService
             {
                 _fixtureRepository.Update(fixture);
             }
+
+            // A match can be half of a cup tie, and only the second leg decides one. The cup
+            // is told about every finish and works out for itself which of the two this was:
+            // a championship match is not a cup match, and a first leg is not a decision.
+            await _cupProgression.AdvanceAsync(
+                BuildCupLegOutcome(match, session.State),
+                cancellationToken);
         }
 
         if (dueForSnapshot)
@@ -784,6 +813,12 @@ public class MatchService
             }
 
             MatchSubstitution.Swap(session.State, isHome, outgoing, incoming);
+
+            // A man who cannot carry on is off the pitch because this change happened, and
+            // the season absence is written from the same instant. Settling it here rather
+            // than in the engine keeps the hold the engine opened from outliving the
+            // decision that closes it.
+            session.State.ResolvePendingInjury(outgoing);
 
             var events = new List<MatchEngineEvent>
             {
@@ -1109,6 +1144,49 @@ public class MatchService
     /// energy spent become season totals: without it the scorers table and the
     /// suspensions of a season would stay empty no matter how many matches were played.
     /// </summary>
+    /// <summary>
+    /// What the cup needs to know about a match that has just finished: the score, and the men
+    /// who would take the penalties if the tie comes to them.
+    ///
+    /// The takers are the engine's own choice, taken from the elevens that played this leg. A
+    /// shootout decided by a different eleven than the one that played the tie would be a
+    /// shootout nobody watched, and the clubs whose forwards cannot finish should not win one on
+    /// a coin. Keyed by club, because the two legs swap ends and "the home side" is not the same
+    /// pair of clubs twice.
+    /// </summary>
+    private static CupLegOutcome BuildCupLegOutcome(Match match, MatchState state)
+    {
+        var takers = new Dictionary<Guid, PenaltyTaker>();
+
+        foreach (var (teamId, isHome) in new[]
+                 {
+                     (state.HomeTeam.Id, true),
+                     (state.AwayTeam.Id, false)
+                 })
+        {
+            var taker = MatchEngine.PenaltyTakerCandidates(state, isHome).FirstOrDefault();
+            if (taker is null)
+            {
+                continue;
+            }
+
+            // The keeper this man would face: the one in the other goal, not his own.
+            var keeper = MatchEngine.PenaltyTakerCandidates(state, !isHome)
+                .FirstOrDefault(player => player.KeepsGoal);
+
+            takers[teamId] = new PenaltyTaker(taker, keeper);
+        }
+
+        return new CupLegOutcome
+        {
+            FixtureId = match.FixtureId,
+            HomeScore = state.HomeScore,
+            AwayScore = state.AwayScore,
+            Seed = match.Seed,
+            Takers = takers
+        };
+    }
+
     private async Task ApplySeasonProgressAsync(
         Guid fixtureId,
         MatchState state,
@@ -1142,6 +1220,11 @@ public class MatchService
             for (var goal = 0; goal < player.MatchGoals; goal++)
             {
                 seasonState.AddGoal();
+            }
+
+            for (var save = 0; save < player.MatchSaves; save++)
+            {
+                seasonState.AddSave();
             }
 
             for (var card = 0; card < player.MatchYellowCards; card++)
@@ -1226,6 +1309,45 @@ public class MatchService
             ?? throw new EntityNotFoundException("CompetitionSeason", round.CompetitionSeasonId);
 
         return competitionSeason.SeasonId;
+    }
+
+    /// <summary>
+    /// The competition a fixture is a match of, and the window of the matchday it is played
+    /// in. Both are read off the round the fixture belongs to and are never assumed: a match
+    /// that believed it was in a league because that is what a match usually is would put a
+    /// cup leg into the table and take the gate at the wrong price.
+    ///
+    /// A fixture whose round names a window that does not exist is corrected to the window
+    /// its own competition implies, because a round written before the cup existed still has
+    /// to produce a match the cup's rules apply to.
+    /// </summary>
+    private async Task<(CompetitionType Type, int Window)> ResolveCompetitionAsync(
+        Fixture fixture,
+        CancellationToken cancellationToken)
+    {
+        var round = await _roundRepository.GetAsync(fixture.RoundId, cancellationToken);
+        if (round is null)
+        {
+            return (CompetitionType.League, CompetitionRules.ChampionshipWindow);
+        }
+
+        var season = await _competitionRepository.GetSeasonByIdAsync(round.CompetitionSeasonId, cancellationToken);
+        if (season is null)
+        {
+            return (CompetitionType.League, CompetitionRules.ChampionshipWindow);
+        }
+
+        var competition = await _competitionRepository.GetAsync(season.CompetitionId, cancellationToken);
+        if (competition is null)
+        {
+            return (CompetitionType.League, CompetitionRules.ChampionshipWindow);
+        }
+
+        var expected = competition.Type == CompetitionType.League
+            ? CompetitionRules.ChampionshipWindow
+            : CompetitionRules.CupWindow;
+
+        return (competition.Type, round.Window == expected ? round.Window : expected);
     }
 
     private async Task<Guid> ResolveSeasonIdAsync(Guid fixtureId, CancellationToken cancellationToken)
@@ -1666,15 +1788,41 @@ public class MatchService
         SubstitutionsUsedHome = state.SubstitutionsHome,
         SubstitutionsUsedAway = state.SubstitutionsAway,
         PenaltyAwaitingSelection = state.PenaltyAwaitingSelection,
+        Injury = InjuryViewFor(state),
         PossessionTeam = state.PossessionTeam,
         PossessionPlayerId = state.PossessionPlayerId,
         FormationHome = state.HomeFormation.ToString(),
         FormationAway = state.AwayFormation.ToString(),
         Attendance = match.Attendance,
-        GateRevenue = match.GateRevenue,
+        GateRevenue = match.Gate.GrossRevenue,
         Penalty = PenaltyOptionsFor(state),
         UserTeamId = state.ManagerTeamId
     };
+
+    /// <summary>
+    /// The injury a manager has to act on: who cannot continue, for which club, and how
+    /// bad it is. He is still in the eleven at this point, because the change that takes
+    /// him off is the change he has not made yet.
+    /// </summary>
+    private static MatchInjuryView InjuryViewFor(MatchState state)
+    {
+        if (!state.InjuryAwaitingSubstitution || state.InjuryPlayerId is not { } playerId)
+        {
+            return new MatchInjuryView();
+        }
+
+        var isHome = state.InjuryTeam == 1;
+        var lineup = isHome ? state.HomeLineup : state.AwayLineup;
+
+        return new MatchInjuryView
+        {
+            AwaitingSubstitution = true,
+            PlayerId = playerId,
+            PlayerName = lineup.FirstOrDefault(player => player.PlayerId == playerId)?.Name,
+            Team = state.InjuryTeam,
+            Severity = Injury.Grave
+        };
+    }
 
     /// <summary>
     /// The penalty a manager has to act on, with the players he can name. The opponent's

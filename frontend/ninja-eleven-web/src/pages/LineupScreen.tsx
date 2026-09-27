@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useGameState } from '@/state';
-import { FixtureApi, MatchApi, SeasonApi, TeamApi } from '@/api';
-import type { FixtureDto, Position, SquadPlayerDto, TacticDto } from '@/types';
-import { positionLabel, starsToString } from '@/services/formatters';
+import { FixtureApi, MatchApi, RoundApi, SeasonApi, TeamApi } from '@/api';
+import type { FixtureDto, Position, RoundDto, SquadPlayerDto, TacticDto } from '@/types';
+import { positionLabel } from '@/services/formatters';
+import ClubSquadTable from '@/components/Club/ClubSquadTable';
+import { useClubWindow } from '@/services/clubColors';
+import NextMatchPanel from '@/components/Club/NextMatchPanel';
 
 const STARTERS = 11;
 const BENCH_SIZE = 7;
@@ -14,40 +17,6 @@ const BENCH_SIZE = 7;
  * rows arrive already sorted and this only has to group them under a heading.
  */
 const POSITION_ORDER: Position[] = ['GK', 'DEF', 'MID', 'ATT'];
-
-const POSITION_LABELS: Record<Position, string> = {
-  GK: 'Goleiros',
-  DEF: 'Defesa',
-  MID: 'Meio-campo',
-  ATT: 'Ataque'
-};
-
-/** What the squad list can be ordered by. Age and every attribute the engine reads. */
-type SortKey = 'position' | 'age' | 'speed' | 'accuracy' | 'dribbling' | 'heading' | 'strength' | 'goalkeeperPower' | 'reflexes' | 'energy';
-
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: 'position', label: 'Posição' },
-  { key: 'age', label: 'Idade' },
-  { key: 'speed', label: 'Velocidade' },
-  { key: 'accuracy', label: 'Finalização' },
-  { key: 'dribbling', label: 'Drible' },
-  { key: 'heading', label: 'Cabeceio' },
-  { key: 'strength', label: 'Força' },
-  { key: 'goalkeeperPower', label: 'Poder de goleiro' },
-  { key: 'reflexes', label: 'Reflexos' },
-  { key: 'energy', label: 'Energia' },
-];
-
-/** Every attribute a row shows on its second line, in reading order. */
-const ATTRIBUTE_CHIPS: { key: keyof SquadPlayerDto; label: string }[] = [
-  { key: 'speed', label: 'Vel' },
-  { key: 'accuracy', label: 'Fin' },
-  { key: 'dribbling', label: 'Dri' },
-  { key: 'heading', label: 'Cab' },
-  { key: 'strength', label: 'For' },
-  { key: 'reflexes', label: 'Ref' },
-  { key: 'goalkeeperPower', label: 'Gle' },
-];
 
 type SquadRow = SquadPlayerDto;
 
@@ -73,10 +42,10 @@ const LineupScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [positionFilter, setPositionFilter] = useState<Position | 'ALL'>('ALL');
-  const [sortKey, setSortKey] = useState<SortKey>('position');
   const [tactics, setTactics] = useState<TacticDto[]>([]);
   const [tacticCode, setTacticCode] = useState<string | undefined>(undefined);
   const seasonId = useGameState((s) => s.selectedSeason?.id);
+  const selectedCompetition = useGameState((s) => s.selectedCompetition);
 
   /**
    * The eleven and bench the staff would put out, asked of the backend for the shape the manager
@@ -189,60 +158,23 @@ const LineupScreen: React.FC = () => {
   }, [fixture, selectedTeam]);
 
   /**
-   * The squad under the filter and the order the manager asked for. The position filter
-   * narrows what is on offer; the sort decides how it is read. Neither ever changes who is
-   * in the eleven, so filtering a position out never quietly drops a selected player from
-   * the count.
+   * The squad under the filter. The order is the table's own: it opens by position and the
+   * manager reorders it by clicking a column, which is the same table a club's squad is
+   * read from on the club's own screen. The filter narrows what is on offer and never
+   * changes who is in the eleven, so filtering a position out never quietly drops a
+   * selected player from the count.
    */
-  const visibleSquad = useMemo(() => {
-    const filtered =
-      positionFilter === 'ALL' ? squad : squad.filter(player => player.position === positionFilter);
+  const visibleSquad = useMemo(
+    () =>
+      positionFilter === 'ALL' ? squad : squad.filter(player => player.position === positionFilter),
+    [squad, positionFilter]
+  );
 
-    if (sortKey === 'position') {
-      return filtered;
-    }
-
-    return [...filtered].sort((a, b) => {
-      const left = a[sortKey] as number;
-      const right = b[sortKey] as number;
-
-      // Best first on every number, and the name settles a tie so the list never jitters.
-      return right - left || a.name.localeCompare(b.name, 'pt-BR');
-    });
-  }, [squad, positionFilter, sortKey]);
-
-  /**
-   * The whole squad under the heading of each position. Grouping only makes sense while
-   * the list is grouped by position: a list sorted by finishing has no groups to head.
-   */
-  const rowsByPosition = useMemo(() => {
-    if (sortKey !== 'position') {
-      return [{ position: positionFilter, label: '', players: visibleSquad }];
-    }
-
-    return POSITION_ORDER.map(position => ({
-      position,
-      label: POSITION_LABELS[position],
-      players: visibleSquad.filter(player => player.position === position)
-    })).filter(group => group.players.length > 0);
-  }, [visibleSquad, positionFilter, sortKey]);
-
-  // Bench players = all available players NOT in starters
-  const benchRowsByPosition = useMemo(() => {
-    const availableForBench = squad.filter(
-      player => player.isAvailable && !selected.has(player.id)
-    );
-
-    if (sortKey !== 'position') {
-      return [{ position: positionFilter, label: '', players: availableForBench }];
-    }
-
-    return POSITION_ORDER.map(position => ({
-      position,
-      label: POSITION_LABELS[position],
-      players: availableForBench.filter(player => player.position === position)
-    })).filter(group => group.players.length > 0);
-  }, [squad, selected, positionFilter, sortKey]);
+  // The bench is everybody available who is not in the eleven.
+  const availableForBench = useMemo(
+    () => squad.filter(player => player.isAvailable && !selected.has(player.id)),
+    [squad, selected]
+  );
 
   const toggle = (player: SquadRow) => {
     setError(null);
@@ -366,10 +298,37 @@ const LineupScreen: React.FC = () => {
     }
   };
 
+  // The matchday this eleven is for. The screen was opened for a fixture, so the round is
+  // that fixture's own round — asked once, because it is the one thing about a fixture that
+  // the fixture itself does not carry. A screen opened for a matchday already played is
+  // still described correctly by this, which "the next fixture" would not be.
+  const [thisRound, setThisRound] = useState<RoundDto | null>(null);
+
+  useEffect(() => {
+    if (!fixture?.roundId) return undefined;
+
+    let cancelled = false;
+
+    RoundApi.get(fixture.roundId)
+      .then(round => {
+        if (!cancelled) setThisRound(round);
+      })
+      .catch(err => console.error('Failed to load the matchday:', err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fixture?.roundId]);
+
+  // The manager's own colours, measured the same way as everywhere else a club is read.
+  // It is a hook and not an inline style so the lineup, the club's screen and the club's
+  // modal are given the same two colours by the same measure rather than by three.
+  const clubWindow = useClubWindow(selectedTeam);
+
   return (
     <div className="app">
-      <div className="card match-header">
-        <h2>Escalação</h2>
+      <div className="card match-header club-modal club-squad-picker" style={clubWindow}>
+        <h2 className="profile-name">Escalação</h2>
         <p className="competition">
           {selectedTeam?.name} {opponent ? `x ${opponent.name}` : ''}
         </p>
@@ -377,6 +336,18 @@ const LineupScreen: React.FC = () => {
           {selected.size}/{STARTERS} titulares • {selectedBench.size}/{BENCH_SIZE} reservas • {goalkeepersSelected} goleiro(s) em campo •{' '}
           {goalkeepersAvailable} goleiro(s) no elenco
         </p>
+
+        {thisRound && selectedTeam && fixture && (
+          <NextMatchPanel
+            fixture={fixture}
+            round={thisRound}
+            managerTeam={selectedTeam}
+            competitionName={selectedCompetition?.name ?? ''}
+            /* The round knows which edition it belongs to, and that is the edition the
+               table is addressed by — one less thing that has to be remembered correctly. */
+            competitionSeasonId={thisRound.competitionSeasonId}
+          />
+        )}
 
         {error && <p className="competition" style={{ color: 'var(--danger)' }}>{error}</p>}
 
@@ -425,117 +396,28 @@ const LineupScreen: React.FC = () => {
             </div>
           </div>
 
-          <label className="squad-filters">
-            <span className="squad-toolbar-label">Ordenar por</span>
-            <select value={sortKey} onChange={event => setSortKey(event.target.value as SortKey)}>
-              {SORT_OPTIONS.map(option => (
-                <option key={option.key} value={option.key}>{option.label}</option>
-              ))}
-            </select>
-          </label>
         </div>
 
-        {/* Starters Section */}
-        <div className="squad-section">
-          <h3 className="squad-section-title">Titulares ({selected.size}/{STARTERS})</h3>
-          <div className="squad-table-wrap">
-            <table className="squad-table">
-              <thead>
-                <tr>
-                  <th className="col-pos">Pos</th>
-                  <th className="col-name">Jogador</th>
-                  <th className="col-num">★</th>
-                  <th className="col-num">Idade</th>
-                  <th className="col-num">Energia</th>
-                  <th className="col-num">Gols</th>
-                  <th className="col-num">Amarelos</th>
-                  <th className="col-num">Vermelhos</th>
-                  <th className="col-status">Situação</th>
-                </tr>
-              </thead>
+        {/* The same table a club's squad is read from on the club's own screen, twice: once
+            for the eleven and once for the bench. The row is the pick, because a manager
+            filling in a team sheet is not reading a table, he is filling one in. */}
+        <ClubSquadTable
+          squad={visibleSquad}
+          caption={`Titulares (${selected.size}/${STARTERS})`}
+          selectedIds={selected}
+          elsewhereIds={selectedBench}
+          onToggle={toggle}
+          describeAbsence={absenceReason}
+        />
 
-              {rowsByPosition.map(group => (
-                <tbody key={group.position}>
-                  {group.label && (
-                    <tr className="squad-group">
-                      <th colSpan={9} scope="colgroup">
-                        {group.label}
-                      </th>
-                    </tr>
-                  )}
-
-                  {group.players.map(player => (
-                    <PlayerRows
-                      key={player.id}
-                      player={player}
-                      isSelected={selected.has(player.id)}
-                      isOnBench={selectedBench.has(player.id)}
-                      isReserveGoalkeeper={
-                        player.position === 'GK' && goalkeepersSelected > 0 && !selected.has(player.id)
-                      }
-                      onToggle={() => toggle(player)}
-                    />
-                  ))}
-                </tbody>
-              ))}
-            </table>
-
-            {rowsByPosition.length === 0 && (
-              <div className="league-empty">Nenhum jogador nesta posição.</div>
-            )}
-          </div>
-        </div>
-
-        {/* Bench Section */}
-        <div className="squad-section">
-          <h3 className="squad-section-title">Banco de Reservas ({selectedBench.size}/{BENCH_SIZE})</h3>
-          <div className="squad-table-wrap">
-            <table className="squad-table">
-              <thead>
-                <tr>
-                  <th className="col-pos">Pos</th>
-                  <th className="col-name">Jogador</th>
-                  <th className="col-num">★</th>
-                  <th className="col-num">Idade</th>
-                  <th className="col-num">Energia</th>
-                  <th className="col-num">Gols</th>
-                  <th className="col-num">Amarelos</th>
-                  <th className="col-num">Vermelhos</th>
-                  <th className="col-status">Situação</th>
-                </tr>
-              </thead>
-
-              {benchRowsByPosition.map(group => (
-                <tbody key={`bench-${group.position}`}>
-                  {group.label && (
-                    <tr className="squad-group">
-                      <th colSpan={9} scope="colgroup">
-                        {group.label}
-                      </th>
-                    </tr>
-                  )}
-
-                  {group.players.map(player => (
-                    <PlayerRows
-                      key={`bench-${player.id}`}
-                      player={player}
-                      isSelected={selectedBench.has(player.id)}
-                      isOnBench={selected.has(player.id)}
-                      isReserveGoalkeeper={
-                        player.position === 'GK' && goalkeepersOnBench > 0 && !selectedBench.has(player.id)
-                      }
-                      onToggle={() => toggle(player)}
-                    />
-                  ))}
-                </tbody>
-              ))}
-            </table>
-
-            {benchRowsByPosition.length === 0 && (
-              <div className="league-empty">Nenhum jogador disponível para o banco.</div>
-            )}
-          </div>
-        </div>
+        <ClubSquadTable
+          squad={availableForBench}
+          caption={`Banco de Reservas (${selectedBench.size}/${BENCH_SIZE})`}
+          selectedIds={selectedBench}
+          elsewhereIds={selected}
+          onToggle={toggle}
+          describeAbsence={absenceReason}
+        />
 
         <div className="squad-actions">
           <button className="ctrl" onClick={() => navigate('/league')} disabled={starting}>
@@ -554,79 +436,6 @@ const LineupScreen: React.FC = () => {
         </div>
       </div>
     </div>
-  );
-};
-
-interface PlayerRowsProps {
-  player: SquadRow;
-  isSelected: boolean;
-  isOnBench: boolean;
-  onToggle: () => void;
-}
-
-/**
- * One player, two lines. The first is everything a manager reads at a glance — name, age,
- * energy, cards and situation; the second is his attributes, which are the reason a name is
- * on the list at all. Both lines belong to the same player, so both are clickable and both
- * light up together.
- */
-const PlayerRows: React.FC<PlayerRowsProps> = ({ player, isSelected, isOnBench, onToggle }) => {
-  const classes = [
-    'squad-row',
-    isSelected ? 'selected' : '',
-    isOnBench ? 'bench' : '',
-    player.isAvailable ? '' : 'unavailable'
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  return (
-    <>
-      <tr className={classes} title={absenceReason(player)} onClick={onToggle}>
-        <td className="col-pos">
-          <span className="pos-badge">{positionLabel(player.position)}</span>
-        </td>
-        <td className="col-name">
-          <strong>{player.name}</strong>
-        </td>
-        <td className="col-num" style={{ textAlign: 'center', color: 'var(--accent)', fontWeight: 'bold' }}>
-          {starsToString(player.stars)}
-        </td>
-        <td className="col-num">{player.age}</td>
-        <td className="col-num">{player.energy}%</td>
-        <td className="col-num">{player.goals}</td>
-        <td className="col-num">{player.yellowCards}</td>
-        <td className="col-num">{player.redCards}</td>
-        <td className="col-status">{situationOf(player)}</td>
-      </tr>
-
-      <tr className={`squad-attrs-row ${classes}`} title={absenceReason(player)} onClick={onToggle}>
-        <td className="col-pos" />
-        <td className="col-num" style={{ textAlign: 'center', color: 'var(--accent)', fontWeight: 'bold' }} />
-        <td className="squad-attrs" colSpan={7}>
-          {ATTRIBUTE_CHIPS.map(chip => {
-            // A goalkeeper's own numbers and an outfielder's are the ones the engine reads
-            // for him, so a keeper is never judged on a heading he will never head.
-            const relevant =
-              player.position === 'GK'
-                ? chip.key === 'speed' || chip.key === 'reflexes' || chip.key === 'goalkeeperPower'
-                : chip.key === 'reflexes' || chip.key === 'goalkeeperPower'
-                  ? false
-                  : true;
-
-            if (!relevant) return null;
-
-            const value = player[chip.key] as number;
-
-            return (
-              <span key={chip.label as string} className="attr-chip">
-                {chip.label} <b>{value}</b>
-              </span>
-            );
-          })}
-        </td>
-      </tr>
-    </>
   );
 };
 
@@ -653,23 +462,6 @@ function absenceReason(player: SquadRow): string {
   }
 
   return 'Indisponível';
-}
-
-/**
- * The short version of the situation, for the table cell.
- */
-function situationOf(player: SquadRow): string {
-  if (player.suspensionMatches > 0) {
-    return `Suspenso (${player.suspensionMatches})`;
-  }
-
-  if (player.injury !== 'None') {
-    const remaining = player.injuryMatchesRemaining;
-    const severity = player.injury === 'Grave' ? 'Grave' : 'Leve';
-    return remaining > 0 ? `${severity} (${remaining})` : severity;
-  }
-
-  return 'Apto';
 }
 
 export default LineupScreen;

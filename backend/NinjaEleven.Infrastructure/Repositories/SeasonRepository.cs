@@ -18,13 +18,18 @@ public class SeasonRepository : ISeasonRepository
     public async Task<IReadOnlyList<Season>> ListAsync(CancellationToken cancellationToken = default) =>
         await _dbContext.Seasons
             .AsNoTracking()
-            .OrderBy(season => season.StartDate)
+            .OrderBy(season => season.Number)
             .ToListAsync(cancellationToken);
 
     public async Task<Season?> GetAsync(Guid id, CancellationToken cancellationToken = default) =>
         await _dbContext.Seasons
             .AsNoTracking()
             .FirstOrDefaultAsync(season => season.Id == id, cancellationToken);
+
+    public async Task<Season?> GetByNumberAsync(int number, CancellationToken cancellationToken = default) =>
+        await _dbContext.Seasons
+            .AsNoTracking()
+            .FirstOrDefaultAsync(season => season.Number == number, cancellationToken);
 
     public async Task<Season?> GetCurrentAsync(CancellationToken cancellationToken = default) =>
         await _dbContext.Seasons

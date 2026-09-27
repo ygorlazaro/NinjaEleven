@@ -1,18 +1,28 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SeasonApi, TeamApi } from '@/api';
-import type { SquadPlayerDto, TeamDto } from '@/types';
-import { positionLabel } from '@/services/formatters';
-import { PlayerName } from '@/components/Common/Names';
+import type { SquadPlayerDto, TeamDto, TeamMatchRecordDto } from '@/types';
+import { ClubName } from '@/components/Common/Names';
+import ClubSquadTable from '@/components/Club/ClubSquadTable';
+import FormRun, { formOf } from '@/components/Club/FormRun';
+import { useClubWindow } from '@/services/clubColors';
 
 interface TeamProfileModalProps {
   teamId: string;
   onClose: () => void;
 }
 
+/** How many of the club's matches the form guide shows. The backend defaults to this too. */
+const FORM_GUIDE_LENGTH = 10;
+
+/** What a match meant for the club, and the one word that says it beside the colour. */
+type Form = 'win' | 'draw' | 'loss';
+
+const FORM_LABEL: Record<Form, string> = { win: 'V', draw: 'E', loss: 'D' };
+
 /**
- * A club, the way a manager looks one up: what it is called, what it wears, how many
- * players it has, and who they are.
+ * A club, the way a manager looks one up: what it is called, what it wears, who plays
+ * for it and what those men are, and how the club has been doing.
  *
  * It is a modal because a club is looked up from inside something else — a scoreline, a
  * sentence in the feed, a player's profile — and the manager wants to see the club and go
@@ -23,6 +33,7 @@ const TeamProfileModal: React.FC<TeamProfileModalProps> = ({ teamId, onClose }) 
 
   const [team, setTeam] = useState<TeamDto | null>(null);
   const [squad, setSquad] = useState<SquadPlayerDto[]>([]);
+  const [matches, setMatches] = useState<TeamMatchRecordDto[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,11 +41,19 @@ const TeamProfileModal: React.FC<TeamProfileModalProps> = ({ teamId, onClose }) 
 
     const load = async () => {
       const [found, season] = await Promise.all([TeamApi.get(teamId), SeasonApi.current()]);
-      const players = await TeamApi.getSquad(teamId, season.id);
+
+      // The squad and the form guide are two more questions about the same club, so they
+      // travel together rather than one after the other: a manager opening a card is
+      // looking for the whole club, and drawing it in two rounds of waiting reads as two.
+      const [players, form] = await Promise.all([
+        TeamApi.getSquad(teamId, season.id),
+        TeamApi.getMatches(teamId, FORM_GUIDE_LENGTH),
+      ]);
 
       if (cancelled) return;
       setTeam(found);
       setSquad(players);
+      setMatches(form);
     };
 
     load().catch(err => {
@@ -56,23 +75,14 @@ const TeamProfileModal: React.FC<TeamProfileModalProps> = ({ teamId, onClose }) 
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const byPosition = useMemo(() => {
-    const order: Record<string, number> = { GK: 0, DEF: 1, MID: 2, ATT: 3 };
-
-    return [...squad].sort(
-      (a, b) => order[a.position] - order[b.position] || a.name.localeCompare(b.name, 'pt-BR')
-    );
-  }, [squad]);
+  const clubWindow = useClubWindow(team);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
-        className="modal profile-modal"
+        className="modal profile-modal club-modal"
         onClick={event => event.stopPropagation()}
-        style={team ? ({
-          '--team-primary': team.primaryColor || '#f2d34f',
-          '--team-secondary': team.secondaryColor || '#f2d34f'
-        } as React.CSSProperties) : undefined}
+        style={clubWindow}
       >
         <header className="profile-head">
           <div>
@@ -97,32 +107,47 @@ const TeamProfileModal: React.FC<TeamProfileModalProps> = ({ teamId, onClose }) 
 
         {error && <p className="competition" style={{ color: 'var(--danger)' }}>{error}</p>}
 
-        <section className="profile-history">
-          {byPosition.length === 0 ? (
-            <p className="league-empty">Nenhum jogador no elenco.</p>
+        <ClubSquadTable squad={squad} />
+
+        <section className="club-form">
+          <div className="club-form__head">
+            <h4 className="club-form__title">Forma recente</h4>
+            <div className="form-run" title="Os resultados mais recentes, do mais antigo ao mais novo">
+              <FormRun matches={matches} length={FORM_GUIDE_LENGTH} />
+            </div>
+          </div>
+
+          <h4 className="club-form__title">Últimas {FORM_GUIDE_LENGTH} partidas</h4>
+
+          {matches.length === 0 ? (
+            <p className="league-empty">Este clube ainda não jogou.</p>
           ) : (
-            <table className="history-table">
-              <thead>
-                <tr>
-                  <th>Posição</th>
-                  <th>Jogador</th>
-                  <th>Idade</th>
-                  <th>Energia</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byPosition.map(player => (
-                  <tr key={player.id} className="history-row">
-                    <td>{positionLabel(player.position)}</td>
-                    <td>
-                      <PlayerName playerId={player.id}>{player.name}</PlayerName>
-                    </td>
-                    <td>{player.age}</td>
-                    <td>{player.energy}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ul className="form-list">
+              {matches.map(record => {
+                const form = formOf(record);
+
+                return (
+                  <li key={record.matchId} className={`form-item form-${form}`}>
+                    <span className="form-result" title={FORM_LABEL[form]}>{FORM_LABEL[form]}</span>
+                    <span className="form-score">
+                      {record.goalsFor} <span className="form-sep">x</span> {record.goalsAgainst}
+                    </span>
+                    <span className="form-opponent">
+                      {record.isHome ? 'vs' : 'fora'}{' '}
+                      {/* A name is a door when we know which door. A backend that has not
+                          sent the id yet leaves text rather than a button wired to nothing,
+                          because a link that opens a broken card is worse than plain text. */}
+                      {record.opponentTeamId ? (
+                        <ClubName teamId={record.opponentTeamId}>{record.opponentName}</ClubName>
+                      ) : (
+                        record.opponentName
+                      )}
+                    </span>
+                    <span className="form-round">R{record.roundNumber}</span>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </section>
 

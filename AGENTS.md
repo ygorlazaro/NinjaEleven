@@ -44,6 +44,11 @@ dotnet ef database update             # apply migrations
 dotnet ef migrations add <Name> --project NinjaEleven.Infrastructure --startup-project NinjaEleven.Infrastructure
 ```
 
+`dotnet test` does not rebuild the API, so an API started with `--no-build` keeps its own
+copy of the Domain, Application and Infrastructure assemblies and can be running code that is
+several edits old. `dotnet build` before restarting it, or the check you are making is of the
+wrong binary.
+
 The API runs on `http://localhost:5100` with Hot Reload enabled.
 
 ## Database
@@ -81,6 +86,7 @@ GET  /player/{playerId}/season/{seasonId}   GET  /fixture/by-round/{roundId}
 GET  /competition                           GET  /match
 GET  /competition/{id}                      GET  /match/{id}
 GET  /competition/by-season/{seasonId}      GET  /match/{id}/event?afterSequence=
+GET  /competition/{editionId}/club          POST /match
 POST /competition                           GET  /match/tactics
                                           GET  /match/round-report/{roundId}
                                           GET  /match/squad-suggestion?teamId=&seasonId=&tacticCode=
@@ -139,8 +145,69 @@ five accounts of the same afternoon. Two consequences worth keeping:
 - **A goal in another match is silent.** `useMatchAudio` is bound to the watched match's
   own feed, and a goal next door has no business sounding in the manager's stadium.
 
+**A hub argument is the argument, not a wrapper around it.** SignalR binds by position:
+`SubscribeMatchday(Guid roundId)` is invoked as `invoke('SubscribeMatchday', roundId)` and
+never as `{ roundId }`, while a method taking a DTO is invoked with the DTO *as* its one
+argument. Handing a `Guid` parameter an object is refused by the binder with "Parameters to
+hub method are incorrect", and the refusal is invisible to the manager: the scoreboard simply
+never moves, while the backend publishes every other match to a group nobody is in. It fails
+silently because the only thing that changes is the absence of a stream, and a screen with
+one frozen panel looks like a match that is going badly.
+
+**Joining the round is an effect of its own.** The round id arrives from the fixture list,
+after the screen mounts, so an effect that reads it must depend on it. A subscription asked
+for inside the match's own effect tests an empty string, never joins, and is never retried,
+because that effect does not run again.
+
 The REST match commands and the hub expose the same behaviour, so the game works over
 REST alone and SignalR only replaces polling.
+
+## The Pyramid
+
+Brazil is not one league, and the code stopped pretending otherwise in three divisions of
+twelve. Three things follow from that, and they are the three things that were got wrong first:
+
+- **A club has no division. An edition has a division.** `Division` is permanent and a club
+  belongs to one for a season through `competition_participants`, so a club that is relegated
+  is the same club next season in a different division. A `divisionId` on `teams` would make
+  the move delete the club.
+- **A competition is not an edition.** `POST /league/setup` used to take a list of clubs and
+  a season, which is a request that cannot say which of the three divisions it means. The
+  client asks `GET /competition/by-season/{id}` for the editions, picks one, and reads its
+  clubs from `GET /competition/{editionId}/club`. A client that joins a club list to a
+  division list itself is how a club ends up in the 3ª Divisão.
+- **A table is official or projected, and the backend says which.** `GET /league/standing/{id}`
+  returns both, plus `hasLiveMatches`. Projected rows are what the table would say if the
+  matches in progress went the way the strength says they go; official rows only move when a
+  match is finished.
+
+**The calendar is the season, and it is drawn once.** `GET /season/{id}/calendar?build=true`
+draws 22 matchdays, a championship window in each of the three divisions and a cup window in
+the second slot. `MatchDay`, `Round.CompletedAt` and `WindowsPerMatchDay` are what energy
+recovery is measured against, so a squad's rest is a fact about the calendar rather than a
+number a client invents.
+
+**A cup cannot be drawn all at once, because nobody knows who is in the quarter-finals before
+the round of 16 is played.** So the calendar draws the first round and nothing else, and
+`CupProgressionService` draws each round after the one before it is decided. Three rules:
+
+- **The cup advances on the finish of a match, not on a timer.** A bracket that advances on a
+  clock is a bracket that can be ahead of the football: the quarter-finals would be drawn
+  before the last second leg of the round of 16 had been played. The moment the last leg of a
+  round is over, the round is complete and the next one exists in the same breath.
+- **The cup commits its own writes before it reads the round back.** The round is read
+  untracked, so a tie decided only in memory reads back as undecided. A service that asked
+  first and saved afterwards would see the last tie of the round as still being played, decide
+  the round was unfinished, and never draw another one — a cup that stops after two matchdays
+  with no error anywhere to explain why.
+- **The aggregate is added by club, not by side.** The two legs swap ends, so a sum taken by
+  side credits a club with a goal it did not score and can send the winner out of the cup.
+
+A level tie goes straight to penalties — there is no extra time in a cup tie — and the taker is
+the engine's own choice from the eleven that played, measured by `MatchEngine.PenaltyConversion`
+against the keeper in the other goal. `CupTie` records the winner *and* the loser, because the
+losing side of a final is a fact in its own right: it is the runner-up and it goes on the shelf.
+Trophies are written, not recomputed, so a club that is relegated after winning still won.
 
 ## The Match Model
 

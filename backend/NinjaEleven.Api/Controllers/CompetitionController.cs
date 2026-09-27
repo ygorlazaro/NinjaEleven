@@ -24,8 +24,26 @@ public class CompetitionController : ControllerBase
         return Ok(competitions.ToDtos());
     }
 
+    /// <summary>
+    /// The clubs entered in one edition of a competition.
+    ///
+    /// This is the list the club picker is built from, and it is asked of the backend because
+    /// a club's division is a fact about its enrolment in an edition rather than a column on
+    /// the club: a client handed a list of clubs and a list of divisions has to join them up
+    /// itself, and joining them up itself is how a club ends up in the 3ª Divisão because the
+    /// two lists were sorted differently.
+    /// </summary>
+    [HttpGet("{competitionSeasonId:guid}/club")]
+    public async Task<ActionResult<IReadOnlyList<TeamDto>>> ListClubs(
+        Guid competitionSeasonId,
+        CancellationToken cancellationToken)
+    {
+        var clubs = await _competitionService.GetClubsAsync(competitionSeasonId, cancellationToken);
+        return Ok(clubs.ToDtos());
+    }
+
     [HttpGet("by-season/{seasonId:guid}")]
-    public async Task<ActionResult<IReadOnlyList<CompetitionDto>>> ListBySeason(
+    public async Task<ActionResult<IReadOnlyList<CompetitionEditionDto>>> ListBySeason(
         Guid seasonId,
         CancellationToken cancellationToken)
     {

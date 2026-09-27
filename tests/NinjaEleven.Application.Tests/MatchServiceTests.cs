@@ -33,6 +33,9 @@ public class MatchServiceTests
     private readonly Mock<IRoundRepository> _rounds = new(MockBehavior.Loose);
     private readonly Mock<ICompetitionRepository> _competitions = new(MockBehavior.Loose);
     private readonly Mock<IUnitOfWork> _unitOfWork = new(MockBehavior.Loose);
+    private readonly Mock<ICupTieRepository> _cupTies = new(MockBehavior.Loose);
+    private readonly Mock<ITrophyRepository> _trophies = new(MockBehavior.Loose);
+    private readonly Mock<IMatchDayRepository> _matchDays = new(MockBehavior.Loose);
     private readonly MatchSessionRegistry _sessions = new();
 
     private readonly Guid _seasonId = Guid.NewGuid();
@@ -133,6 +136,26 @@ public class MatchServiceTests
             .ReturnsAsync(1);
     }
 
+    /// <summary>
+    /// The crowd factory a match starts with.
+    ///
+    /// These tests are about the match, not about a stadium, and none of them builds a season's
+    /// worth of division behind the fixture. The factory answers with its neutral context for
+    /// a fixture it can find no competition for, which is the honest answer and the reason the
+    /// fallback exists at all.
+    /// </summary>
+    private AttendanceContextFactory CreateAttendanceContextFactory() => new(
+        _rounds.Object,
+        _fixtures.Object,
+        _competitions.Object,
+        new StandingsService(
+            _rounds.Object,
+            _fixtures.Object,
+            _matches.Object,
+            _competitions.Object,
+            _teams.Object,
+            _players.Object));
+
     private MatchService CreateService() => new(
         _matches.Object,
         _teams.Object,
@@ -141,7 +164,17 @@ public class MatchServiceTests
         _rounds.Object,
         _competitions.Object,
         _sessions,
-        _unitOfWork.Object);
+        CreateAttendanceContextFactory(),
+        _unitOfWork.Object,
+        new CupProgressionService(
+            _cupTies.Object,
+            _trophies.Object,
+            _matches.Object,
+            _rounds.Object,
+            _fixtures.Object,
+            _matchDays.Object,
+            _competitions.Object,
+            _unitOfWork.Object));
 
     private void AddSquad(Team team, int energy)
     {
@@ -315,7 +348,7 @@ public class MatchServiceTests
         var service = CreateService();
         var chosen = HomeSquadIds().Take(SquadSize).ToList();
         var orphan = Match.Create(_fixture.Id, _home.Id, _away.Id);
-        orphan.KickOff(11, null, 0, 0);
+        orphan.KickOff(11, null, default);
         orphan.StartFirstHalf();
         orphan.ApplyEngineState(20, 1, 0, 6);
         _fixture.MarkInProgress();
@@ -399,7 +432,7 @@ public class MatchServiceTests
     {
         var seasons = new Mock<ISeasonRepository>(MockBehavior.Loose);
         seasons.Setup(repo => repo.GetAsync(_seasonId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Season.Create("Temporada 2026", new DateOnly(2026, 1, 1), new DateOnly(2027, 1, 1)));
+            .ReturnsAsync(Season.Create(1, new DateOnly(2026, 1, 1), new DateOnly(2027, 1, 1)));
 
         var service = new PlayerService(_players.Object, _teams.Object, seasons.Object, _matches.Object);
 
@@ -657,6 +690,7 @@ public class MatchServiceTests
         for (var minute = 0; minute < 300 && runningState(matchId) is { } state && !state.MatchFinished; minute++)
         {
             await TakePenaltyIfItIsTheManagersTurnAsync(service, matchId);
+            await ReplaceAPlayerWhoCannotContinueAsync(service, matchId);
             var tick = await service.TickAsync(matchId);
 
             foreach (var goal in tick.Events.Where(engineEvent => engineEvent.Type == MatchEventType.GoalScored))
@@ -699,6 +733,7 @@ public class MatchServiceTests
         {
             lastState = state;
             await TakePenaltyIfItIsTheManagersTurnAsync(service, matchId);
+            await ReplaceAPlayerWhoCannotContinueAsync(service, matchId);
             var tick = await service.TickAsync(matchId);
             if (!tick.Accepted)
             {
@@ -735,6 +770,79 @@ public class MatchServiceTests
         var result = await service.StartAsync(_fixture.Id, 7, _home.Id, HomeSquadIds().Take(SquadSize).ToList());
         Assert.True(result.Accepted);
         return result.MatchId;
+    }
+
+    /// <summary>
+    /// The other thing a match can stop and wait for. What the engine decides is covered in
+    /// the domain; what the manager is handed is a question, and this is that question as
+    /// the screen receives it.
+    /// </summary>
+    [Fact]
+    public async Task A_serious_injury_to_the_managers_club_waits_for_him_to_name_the_replacement()
+    {
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        var state = serviceState(matchId);
+        var hurt = state.HomeLineup.First(player => player.Position == Position.DEF);
+
+        // What the engine leaves behind when the answer is the manager's to give.
+        state.InjuryAwaitingSubstitution = true;
+        state.InjuryPlayerId = hurt.PlayerId;
+        state.InjuryTeam = 1;
+        state.PendingInjuryMatchesOut = 3;
+
+        var minute = state.Minute;
+        var tick = await service.TickAsync(matchId);
+
+        // The clock stands still while the manager decides.
+        Assert.Empty(tick.Events);
+        Assert.Equal(minute, serviceState(matchId).Minute);
+        Assert.True(serviceState(matchId).InjuryAwaitingSubstitution);
+
+        var view = await service.GetStateAsync(matchId);
+
+        // The screen is told who, for which club, and how bad it is, so the dialog can open
+        // already pointed at him instead of asking the manager to go and find him.
+        Assert.True(view.Injury.AwaitingSubstitution);
+        Assert.Equal(hurt.PlayerId, view.Injury.PlayerId);
+        Assert.Equal(hurt.Name, view.Injury.PlayerName);
+        Assert.Equal(1, view.Injury.Team);
+        Assert.Equal(Injury.Grave, view.Injury.Severity);
+    }
+
+    [Fact]
+    public async Task The_hurt_player_is_still_in_the_eleven_while_the_answer_is_outstanding()
+    {
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        var state = serviceState(matchId);
+        var hurt = state.HomeLineup.First(player => player.Position == Position.MID);
+
+        state.InjuryAwaitingSubstitution = true;
+        state.InjuryPlayerId = hurt.PlayerId;
+        state.InjuryTeam = 1;
+        state.PendingInjuryMatchesOut = 2;
+
+        // He is playing until the change is made. A player who is not on the pitch cannot
+        // be the one a substitution is made for, and the eleven under the scoreboard would
+        // show a club that had already picked somebody.
+        Assert.True(hurt.IsOnPitch);
+        Assert.Equal(Injury.None, hurt.Injury);
+        Assert.Equal(11, state.HomeLineup.Count);
+    }
+
+    [Fact]
+    public async Task A_match_waits_on_nobody_when_nobody_is_hurt()
+    {
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        var view = await service.GetStateAsync(matchId);
+
+        Assert.False(view.Injury.AwaitingSubstitution);
+        Assert.Null(view.Injury.PlayerId);
     }
 
     [Fact]
@@ -887,6 +995,7 @@ public class MatchServiceTests
         for (var minute = 0; minute < 300 && runningState(matchId) is { } running && !running.MatchFinished; minute++)
         {
             await TakePenaltyIfItIsTheManagersTurnAsync(service, matchId);
+            await ReplaceAPlayerWhoCannotContinueAsync(service, matchId);
             var tick = await service.TickAsync(matchId);
 
             if (!tick.Accepted)
@@ -917,6 +1026,7 @@ public class MatchServiceTests
         for (var minute = 0; minute < 300 && runningState(matchId) is { } running && !running.MatchFinished; minute++)
         {
             await TakePenaltyIfItIsTheManagersTurnAsync(service, matchId);
+            await ReplaceAPlayerWhoCannotContinueAsync(service, matchId);
             var tick = await service.TickAsync(matchId);
 
             if (!tick.Accepted)
@@ -948,6 +1058,7 @@ public class MatchServiceTests
         for (var minute = 0; minute < 300 && runningState(matchId) is { } running && !running.MatchFinished; minute++)
         {
             await TakePenaltyIfItIsTheManagersTurnAsync(service, matchId);
+            await ReplaceAPlayerWhoCannotContinueAsync(service, matchId);
             var tick = await service.TickAsync(matchId);
 
             if (!tick.Accepted)
@@ -996,6 +1107,42 @@ public class MatchServiceTests
     /// stops the clock until he decides, so any test that plays minutes of football has to
     /// answer it the way the client does.
     /// </summary>
+    /// <summary>
+    /// Answers the other thing a match can stop and wait for. A serious injury to the
+    /// manager's own club holds the clock until he names the replacement, so a test that
+    /// plays a match out has to answer it the way a manager would — otherwise the match
+    /// stands still for the rest of the test and never reaches full time.
+    /// </summary>
+    private async Task ReplaceAPlayerWhoCannotContinueAsync(MatchService service, Guid matchId, Guid? keepOnBench = null)
+    {
+        if (!_sessions.TryGet(matchId, out var session) || !session!.State.InjuryAwaitingSubstitution)
+        {
+            return;
+        }
+
+        var isHome = session.State.InjuryTeam == 1;
+        var lineup = isHome ? session.State.HomeLineup : session.State.AwayLineup;
+        var bench = isHome ? session.State.HomeBench : session.State.AwayBench;
+        var teamId = isHome ? _home.Id : _away.Id;
+        var hurt = lineup.Single(player => player.PlayerId == session.State.InjuryPlayerId);
+
+        // <paramref name="keepOnBench"/> is a man a test is measuring as unused, and
+        // answering an injury with him would change what the test is about.
+        var incoming = bench.FirstOrDefault(player => player.PlayerId != keepOnBench
+            && !player.SubbedOff
+            && NinjaEleven.Domain.Matches.MatchSubstitution.CanSwap(lineup, hurt, player));
+
+        Assert.NotNull(incoming);
+
+        var result = await service.SubstituteAsync(
+            matchId,
+            teamId,
+            hurt.PlayerId,
+            incoming!.PlayerId);
+
+        Assert.True(result.Accepted);
+    }
+
     private async Task TakePenaltyIfItIsTheManagersTurnAsync(MatchService service, Guid matchId)
     {
         if (!_sessions.TryGet(matchId, out var session) || !session!.State.PenaltyAwaitingSelection)
@@ -1044,6 +1191,7 @@ public class MatchServiceTests
         for (var minute = 0; minute < 300 && runningState(matchId) is { } running && !running.MatchFinished; minute++)
         {
             await TakePenaltyIfItIsTheManagersTurnAsync(service, matchId);
+            await ReplaceAPlayerWhoCannotContinueAsync(service, matchId);
             var tick = await service.TickAsync(matchId);
 
             // The interval stops the loop, and only the manager walks out of it.
@@ -1092,6 +1240,7 @@ public class MatchServiceTests
         for (var minute = 0; minute < 300 && runningState(matchId) is { } running && !running.MatchFinished; minute++)
         {
             await TakePenaltyIfItIsTheManagersTurnAsync(service, matchId);
+            await ReplaceAPlayerWhoCannotContinueAsync(service, matchId);
             var tick = await service.TickAsync(matchId);
 
             announced += tick.Events.Count(engineEvent => engineEvent.Type == MatchEventType.GoalScored);

@@ -256,27 +256,40 @@ class MatchHubClient {
     }
 
     if (this.connection.state === signalR.HubConnectionState.Connecting) {
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Connection timeout')), 10000);
-        const handler = () => {
+      // `onreconnected` is a setter and not a subscription: it holds one callback and a
+      // second call replaces the first, so there is nothing to take off again afterwards.
+      // The wait is therefore settled once and only once, by a flag the two paths share —
+      // a reconnect arriving on its own and the connection being up already both settle it,
+      // and neither can settle it twice.
+      await new Promise<void>(resolve => {
+        let settled = false;
+        const settle = () => {
+          if (settled) return;
+          settled = true;
           clearTimeout(timeout);
-          this.connection!.offreconnected(handler);
           resolve();
         };
-        this.connection!.onreconnected(handler);
+        const timeout = setTimeout(settle, 10000);
+        this.connection!.onreconnected(settle);
         // Also resolve if already connected
         if (this.connection!.state === signalR.HubConnectionState.Connected) {
-          clearTimeout(timeout);
-          this.connection!.offreconnected(handler);
-          resolve();
+          settle();
         }
-      }).catch(() => {
-        // Ignore timeout, will try onreconnected
       });
     }
 
     if (this.connection.state === signalR.HubConnectionState.Connected) {
-      return this.connection.invoke('SubscribeMatchday', { roundId });
+      // The round id goes as the argument itself, not wrapped in an object. SignalR binds
+      // arguments by position: a hub method declared `SubscribeMatchday(Guid roundId)` is
+      // sent `arguments: ["<the guid>"]`, and handing it `{ roundId }` instead is not a
+      // shape it can be lenient about — the binder tries to read a Guid and finds an
+      // object, and the join is refused with "Parameters to hub method are incorrect".
+      //
+      // That refusal is silent from the manager's side: the scoreboard simply never moves,
+      // while the backend is publishing every other match of the matchday to a group nobody
+      // is in. The methods that take a DTO really are called with an object — that is their
+      // one argument — which is why the rest of the screen works and this does not.
+      return this.connection.invoke('SubscribeMatchday', roundId);
     }
   }
 
@@ -284,16 +297,36 @@ class MatchHubClient {
     return this.invoke('ContinueSecondHalf', { matchId });
   }
 
-  /** Explicitly leave the round group (call when truly navigating away). */
+  /**
+   * Explicitly leave the round group (call when truly navigating away).
+   *
+   * It goes through the same queue as {@link subscribeMatchday}, and that is the whole
+   * point: a leave issued while a join is still waiting for the connection would otherwise
+   * go straight out and overtake it, and the screen would end up having left a group it had
+   * only just joined. Ordered, the last word on membership is the last thing asked for.
+   */
   async leaveRound(roundId: string): Promise<void> {
-    if (this.connection?.state === signalR.HubConnectionState.Connected) {
-      try {
-        await this.connection.invoke('LeaveMatchday', roundId);
-      } catch {
-        // Ignore
-      }
+    if (!roundId) {
+      return;
     }
-    this.currentRoundId = null;
+
+    await this.serialize(async () => {
+      // A leave for a round is not a leave for whichever round is current now: a manager who
+      // has already moved on to the next matchday keeps following that one.
+      if (this.currentRoundId !== roundId) {
+        return;
+      }
+
+      if (this.connection?.state === signalR.HubConnectionState.Connected) {
+        try {
+          await this.connection.invoke('LeaveMatchday', roundId);
+        } catch {
+          // The connection may already be gone; nothing left to leave.
+        }
+      }
+
+      this.currentRoundId = null;
+    }).catch(() => undefined);
   }
 
   async makeSubstitution(matchId: string, teamId: string, playerOutId: string, playerInId: string) {

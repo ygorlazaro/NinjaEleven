@@ -3,11 +3,18 @@ using NinjaEleven.Domain.Enums;
 
 namespace NinjaEleven.Api.Contracts;
 
+/// <summary>
+/// A season to be created.
+///
+/// There is no name in it, and that is the point. A season is identified by its number and
+/// shown as a roman numeral, both derived from the same count, so there is nothing for a
+/// client to disagree with and nothing to keep in step. A request that carried a name would
+/// be a request that could ask for "Temporada IX" in a world that is on season two.
+/// </summary>
 public class CreateSeasonRequestDto
 {
-    [Required]
-    [StringLength(60, MinimumLength = 1)]
-    public string Name { get; init; } = string.Empty;
+    /// <summary>The number to create, when the caller insists on one. Normally the next one.</summary>
+    public int? Number { get; init; }
 
     [Required]
     public DateOnly? StartDate { get; init; }

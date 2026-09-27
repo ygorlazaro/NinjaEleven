@@ -59,6 +59,13 @@ public class SquadPlayerDto
 
     public int Energy { get; init; }
     public int Goals { get; init; }
+
+    /// <summary>
+    /// Saves for the club this season. A keeper's answer to "how has he done", and the
+    /// same number the player profile shows, drawn from the same season state rather than
+    /// reassembled a second way.
+    /// </summary>
+    public int Saves { get; init; }
     public int YellowCards { get; init; }
     public int RedCards { get; init; }
     public int SuspensionMatches { get; init; }

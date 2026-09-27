@@ -28,6 +28,15 @@ public class TeamRepository : ITeamRepository
             .Include(team => team.Stadium)
             .FirstOrDefaultAsync(team => team.Id == id, cancellationToken);
 
+    public async Task<IReadOnlyList<Team>> ListByIdsAsync(
+        IEnumerable<Guid> ids,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.Teams
+            .AsNoTracking()
+            .Include(team => team.Stadium)
+            .Where(team => ids.Contains(team.Id))
+            .ToListAsync(cancellationToken);
+
     public async Task AddAsync(Team team, CancellationToken cancellationToken = default) =>
         await _dbContext.Teams.AddAsync(team, cancellationToken);
 

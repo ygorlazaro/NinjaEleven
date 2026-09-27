@@ -23,6 +23,9 @@ export function useLeagueSetup() {
     setScorers(scorers);
   };
 
+  // Both tables travel together, so the store is handed both. A store that kept only the
+  // official one is a store that has thrown away the live half, and the screen that wanted
+  // it would be back to working it out for itself.
   const refreshStandings = async (compSeasonId: string) => {
     const standings = await LeagueApi.getStandings(compSeasonId);
     setStandings(standings);

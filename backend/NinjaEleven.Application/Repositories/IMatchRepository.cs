@@ -24,6 +24,26 @@ public interface IMatchRepository
     void Update(Match match);
 
     /// <summary>
+    /// The matches played in a set of fixtures, finished or not.
+    ///
+    /// Both states are wanted at once and for different reasons: a table is built from the
+    /// finished ones, a live table from the ones in progress, and a cup aggregate from the
+    /// two legs of a tie whatever state they are in. Reading them separately to answer one
+    /// question about a matchday is how the two tables end up disagreeing about what happened.
+    /// </summary>
+    Task<IReadOnlyList<Match>> ListByFixtureIdsAsync(
+        IEnumerable<Guid> fixtureIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The statistics rows of a set of matches, keyed by match. A tiebreaker needs the card
+    /// counters, and a card counter is only in the statistics row.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, MatchStatistics>> ListStatisticsByMatchIdsAsync(
+        IEnumerable<Guid> matchIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Persisted event log of a match, ordered by sequence. A client that reconnects
     /// uses it to fill the gap between the snapshot and the new SignalR events.
     /// </summary>
@@ -71,5 +91,19 @@ public interface IMatchRepository
     /// </summary>
     Task<IReadOnlyList<Application.Models.PlayerMatchRecord>> GetPlayerHistoryAsync(
         Guid playerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A club's last finished matches, newest first, each already resolved into opponent,
+    /// goals for and against. A club looked up in a modal has to be drawn in one query: a
+    /// form guide assembled a match at a time is a form guide that asks the database ten
+    /// times to answer "how has this club been doing".
+    ///
+    /// Only finished matches are here. A match in progress has no result to show and an
+    /// abandoned one never had one.
+    /// </summary>
+    Task<IReadOnlyList<Application.Models.TeamMatchRecord>> GetTeamHistoryAsync(
+        Guid teamId,
+        int limit,
         CancellationToken cancellationToken = default);
 }

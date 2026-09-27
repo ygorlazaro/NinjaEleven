@@ -9,7 +9,6 @@ import type {
   MatchLineupDto,
   MatchPlayerDto,
   MatchResult,
-  StandingDto
 } from '@/types';
 import { convertToFeedEvent } from '@/services/formatters';
 import MatchFeed from '@/components/Match/MatchFeed';
@@ -23,8 +22,7 @@ import HalfTimeModal from '@/components/Modals/HalfTimeModal';
 import PenaltyModal from '@/components/Modals/PenaltyModal';
 import SubstitutionModal from '@/components/Modals/SubstitutionModal';
 import MatchdayScoreboard, { type MatchScore } from '@/components/Match/MatchdayScoreboard';
-import LiveStandings from '@/components/Match/LiveStandings';
-import { FixtureApi, RoundApi, LeagueApi } from '@/api';
+import { FixtureApi } from '@/api';
 import { useMatchAudio } from '@/hooks/useMatchAudio';
 import { ClubName } from '@/components/Common/Names';
 import { starsToString } from '@/services/formatters';
@@ -72,9 +70,6 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   const [matchdayScores, setMatchdayScores] = useState<MatchScore[]>([]);
   const [roundId, setRoundId] = useState<string>('');
   const [matchdayEvents, setMatchdayEvents] = useState<Record<string, FeedEvent[]>>({});
-  const [standings, setStandings] = useState<StandingDto[]>([]);
-  const [isStandingsLoading, setIsStandingsLoading] = useState(false);
-  const [competitionSeasonId, setCompetitionSeasonId] = useState<string>('');
 
   // Last sequence the feed already holds. The hub stream can leave a hole when the
   // browser tab is busy or a subscription is replaced, and the sequence is how that
@@ -83,11 +78,6 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
 
   /** The matches of the round whose history has already been asked for, once each. */
   const seededMatchday = useRef<Set<string>>(new Set());
-
-  // Track if we've truly unmounted (not just React Strict Mode double-mount)
-  const unmountedRef = useRef(false);
-  const roundIdRef = useRef<string>('');
-  const roundSubscribedRef = useRef(false);
 
   // The sound of the match: the crowd for as long as it is being watched, and a whistle or
   // a goal for each thing the engine reports from now on.
@@ -136,15 +126,9 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
         const fixture = fixtures.find(item => item.matchId === matchId);
         if (fixture && !disposed) {
           setRoundId(fixture.roundId);
-          // Also fetch the competition season ID for standings
-          if (fixture.roundId) {
-            RoundApi.get(fixture.roundId).then(round => {
-              if (!disposed && round) {
-                setCompetitionSeasonId(round.competitionSeasonId);
-              }
-            }).catch(() => undefined);
 
-            // Fetch all fixtures for this round to populate initial matchday scores
+          if (fixture.roundId) {
+            // The rest of the matchday: what the other clubs are doing this afternoon.
             FixtureApi.listByRound(fixture.roundId).then(roundFixtures => {
               if (!disposed) {
                 const initialScores: MatchScore[] = roundFixtures
@@ -280,8 +264,22 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
     // watched, not a second guess at it.
     const offScore = MatchHubClient.onScore(score => {
       setMatchdayScores(previous => {
-        const rest = previous.filter(item => item.matchId !== score.matchId);
-        return [...rest, score];
+        // Matched on the fixture, which is known from the round's fixture list, and not on
+        // the match: a fixture that has not kicked off has no match id yet, so a line keyed
+        // by match id is missing for exactly the matches the manager is waiting to see start,
+        // and the first score each of them sends lands as a second row for the same game.
+        const index = previous.findIndex(item => item.fixtureId === score.fixtureId);
+
+        if (index === -1) {
+          return [...previous, score];
+        }
+
+        // Updated where it is, not moved to the end. A scoreboard that drops the updated row
+        // and appends it reorders the whole matchday on every tick of every match, and a
+        // manager cannot follow four games that will not sit still.
+        const next = [...previous];
+        next[index] = { ...previous[index], ...score };
+        return next;
       });
     });
 
@@ -301,30 +299,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
     // arrives late cannot close the connection the next mount just opened.
     const lease = MatchHubClient.connect(matchId);
 
-    if (!matchId) return;
-
-    // Track current roundId for cleanup
-    roundIdRef.current = roundId;
-
-    // Subscribe to round when available (only once per mount)
-    if (roundId && !roundSubscribedRef.current) {
-      roundSubscribedRef.current = true;
-      MatchHubClient.subscribeMatchday(roundId).catch(error =>
-        console.error('Failed to subscribe to the round scores:', error)
-      );
-    }
-
     return () => {
-      // React Strict Mode in dev: cleanup runs, then effect runs again
-      // Set a timeout to detect true unmount vs double-mount
-      unmountedRef.current = true;
-      setTimeout(() => {
-        if (unmountedRef.current && roundIdRef.current) {
-          // True unmount - leave the round group
-          MatchHubClient.leaveRound(roundIdRef.current).catch(() => undefined);
-        }
-      }, 0);
-
       disposed = true;
       offState();
       offEvent();
@@ -332,10 +307,35 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
       offScore();
       offMatchdayEvent();
       MatchHubClient.disconnect(lease);
-      // Reset round subscription flag for next mount
-      roundSubscribedRef.current = false;
     };
   }, [matchId]);
+
+  /**
+   * The matchday is followed on the round group, and joining it is a question about the
+   * round rather than about the match being watched.
+   *
+   * The round is not known when this screen mounts: it comes from reading the fixture list,
+   * which is another request. Asking for it inside the match's own effect therefore tests an
+   * empty string, never joins, and is never retried, because the effect that would retry it
+   * does not run again. The panel then shows one REST snapshot taken when the screen opened —
+   * every minute hard-coded to 1 and every card to 0 — and no more, while the backend is
+   * publishing every other match's score and beats to a group nobody is in. That is the whole
+   * reason the other matches of a matchday used to look frozen.
+   */
+  useEffect(() => {
+    if (!roundId) return;
+
+    MatchHubClient.subscribeMatchday(roundId).catch(error =>
+      console.error('Failed to subscribe to the round scores:', error)
+    );
+
+    return () => {
+      // Nothing is awaited here: membership in a group is idempotent, so React running this
+      // twice in development costs one extra join and leave rather than a screen left
+      // following the matchday of a match it is no longer watching.
+      MatchHubClient.leaveRound(roundId).catch(() => undefined);
+    };
+  }, [roundId]);
 
   // A new round is a new set of matches, so the beats of the last one are dropped: a
   // scoreline in the panel must never be illustrated by a goal from a matchday ago.
@@ -343,16 +343,6 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
     setMatchdayEvents({});
     seededMatchday.current = new Set();
   }, [roundId]);
-
-  // Load standings when competition season is known
-  useEffect(() => {
-    if (!competitionSeasonId) return;
-    setIsStandingsLoading(true);
-    LeagueApi.getStandings(competitionSeasonId)
-      .then(data => setStandings(data))
-      .catch(err => console.error('Failed to load standings:', err))
-      .finally(() => setIsStandingsLoading(false));
-  }, [competitionSeasonId]);
 
   /**
    * The other matches are told what they have already done.
@@ -496,6 +486,13 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
       }
 
       appendCommandEvents(result.events);
+
+      // The change is made, so the screen that asked for it has nothing left to say. This
+      // matters most when a man who cannot carry on was the reason it was open: the modal
+      // is bound to the question, and the backend has answered it.
+      setShowSubstitutionModal(false);
+      setSubstitutionFor(null);
+
       await loadLineup();
     } catch (err: any) {
       const code = err?.response?.data?.code;
@@ -762,10 +759,6 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
               onClick={() => setMatchScreen('lineup')}
             >Escalação</div>
             <div
-              className={`tab ${matchScreen === 'standings' ? 'active' : ''}`}
-              onClick={() => setMatchScreen('standings')}
-            >Classificação</div>
-            <div
               className={`tab ${matchScreen === 'matchday' ? 'active' : ''}`}
               onClick={() => setMatchScreen('matchday')}
             >
@@ -789,24 +782,6 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
               busy={substituting}
               onSubstitute={substitute}
             />
-          </div>
-
-          <div className="tabpane active" style={{ display: matchScreen === 'standings' ? 'block' : 'none' }}>
-            {isStandingsLoading ? (
-              <div className="league-empty">Carregando classificação...</div>
-            ) : (
-              <LiveStandings
-                standings={standings}
-                matchId={matchId}
-                homeTeamId={homeTeam.id}
-                awayTeamId={awayTeam.id}
-                homeScore={state?.homeScore ?? 0}
-                awayScore={state?.awayScore ?? 0}
-                homeTeamName={homeTeam.name}
-                awayTeamName={awayTeam.name}
-                matchStatus={state?.status ?? 'Scheduled'}
-              />
-            )}
           </div>
 
           <div className="tabpane active" style={{ display: matchScreen === 'matchday' ? 'block' : 'none' }}>
@@ -846,20 +821,29 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
         onSubstitute={substitute}
         onContinue={continueSecondHalf}
       />
+      {/* A man who cannot carry on holds the clock until somebody is named, so this screen
+          opens on its own and cannot be dismissed. The pick follows the state the server
+          publishes, the way the penalty dialog does, rather than a local flag: an injury
+          that happened while the screen was closed still has to reach the manager. */}
       <SubstitutionModal
-        show={showSubstitutionModal}
+        show={showSubstitutionModal || !!state?.injury?.awaitingSubstitution}
         team={userTeamIdx === 0 ? homeTeam : awayTeam}
         lineup={userLineup}
         bench={userBench}
         substitutionsUsed={userSubstitutionsUsed}
-        preselectOut={substitutionFor}
+        preselectOut={state?.injury?.awaitingSubstitution ? state.injury.playerId : substitutionFor}
+        forcedFor={state?.injury?.awaitingSubstitution ? state.injury.playerName : null}
         busy={substituting}
         onSubstitute={substitute}
-        onClose={() => {
-          setShowSubstitutionModal(false);
-          setSubstitutionFor(null);
-          setSubstitutionError(null);
-        }}
+        onClose={
+          state?.injury?.awaitingSubstitution
+            ? undefined
+            : () => {
+                setShowSubstitutionModal(false);
+                setSubstitutionFor(null);
+                setSubstitutionError(null);
+              }
+        }
       />
       {/* A penalty of the manager's own club stops the clock until he names the taker, so
           the dialog follows the state the server publishes rather than a local flag. */}

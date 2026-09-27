@@ -15,6 +15,13 @@ public class PlayerSeasonState
 
     public int Energy { get; private set; }
     public int Goals { get; private set; }
+
+    /// <summary>
+    /// Saves made for his club this season. It is a counter of its own for the same reason
+    /// the goals are: a squad table reads the season's own tally, and it must not be
+    /// reassembled a second way on one screen and another way on the next.
+    /// </summary>
+    public int Saves { get; private set; }
     public int YellowCards { get; private set; }
     public int RedCards { get; private set; }
     public int SuspensionMatches { get; private set; }
@@ -43,6 +50,7 @@ public class PlayerSeasonState
             TeamId = teamId,
             Energy = ClampEnergy(energy),
             Goals = 0,
+            Saves = 0,
             YellowCards = 0,
             RedCards = 0,
             SuspensionMatches = 0,
@@ -60,6 +68,8 @@ public class PlayerSeasonState
     public bool IsAvailable => Injury == Injury.None && SuspensionMatches == 0;
 
     public void AddGoal() => Goals++;
+
+    public void AddSave() => Saves++;
     public void AddYellowCard()
     {
         YellowCards++;

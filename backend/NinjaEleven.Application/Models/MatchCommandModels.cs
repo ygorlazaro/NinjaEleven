@@ -106,6 +106,13 @@ public class MatchStateView
     public Guid? PossessionPlayerId { get; init; }
 
     /// <summary>
+    /// A player who cannot carry on and whose replacement the manager has to name, when
+    /// there is one. Nothing is asked for the other club: the engine covers that absence
+    /// itself, so a state with an injury in it is always a decision of the manager's.
+    /// </summary>
+    public MatchInjuryView Injury { get; init; } = new();
+
+    /// <summary>
     /// The shape each side is playing, as three numbers on a team sheet.
     /// </summary>
     public required string FormationHome { get; init; }
@@ -186,4 +193,18 @@ public class PenaltyTakerOptions
     /// chance he would really have against him.
     /// </summary>
     public MatchPlayerSnapshot? DefendingGoalkeeper { get; init; }
+}
+
+/// <summary>
+/// The man who is hurt and the club he plays for, so a substitution screen can open already
+/// pointed at him instead of asking the manager to find him in the eleven. It is asked
+/// because the clock is held: nothing else about the match moves while it is out.
+/// </summary>
+public class MatchInjuryView
+{
+    public bool AwaitingSubstitution { get; init; }
+    public Guid? PlayerId { get; init; }
+    public string? PlayerName { get; init; }
+    public int? Team { get; init; }
+    public Domain.Common.Injury Severity { get; init; }
 }

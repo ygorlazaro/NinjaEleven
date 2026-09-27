@@ -152,6 +152,13 @@ public class MatchEngine
             return events;
         }
 
+        // A man who cannot continue has to be replaced, and his manager is the one who
+        // names the replacement. The clock waits for that the way it waits for a taker.
+        if (state.InjuryAwaitingSubstitution)
+        {
+            return events;
+        }
+
         // A goal, a red card and a serious injury all need a moment before the next half
         // minute. The clock waits; the rest of the match is unaffected.
         if (state.HoldTicksRemaining > 0)
@@ -1317,7 +1324,7 @@ public class MatchEngine
             return;
         }
 
-        player.Injure(Injury.Grave, _random.Next(MatchRules.MinMatchesOutSevere, MatchRules.MaxMatchesOutSevere));
+        var matchesOut = _random.Next(MatchRules.MinMatchesOutSevere, MatchRules.MaxMatchesOutSevere);
 
         events.Add(Emit(
             state,
@@ -1331,8 +1338,49 @@ public class MatchEngine
                 teamName),
             "injury"));
 
+        // A man who cannot continue has to come off, and when he is the manager's own the
+        // replacement is his to name. He is not marked as hurt until that decision is made:
+        // a player who is already off the pitch cannot be the one a substitution is made
+        // for, so the eleven under the scoreboard would show a club that had already picked
+        // somebody instead of a club one man short and waiting. The clock is held by the
+        // tick, so nothing moves while the decision is open.
+        if (state.ManagerSelectsInjuryReplacement(teamId) && CanCoverWithSubstitute(state, home, player))
+        {
+            state.InjuryAwaitingSubstitution = true;
+            state.InjuryPlayerId = player.PlayerId;
+            state.InjuryTeam = home ? 1 : 2;
+            state.PendingInjuryMatchesOut = matchesOut;
+            return;
+        }
+
+        player.Injure(Injury.Grave, matchesOut);
+
         Hold(state);
         ForceInjurySubstitution(state, events, home, player);
+    }
+
+    /// <summary>
+    /// Whether this club has somebody to put on for a player who cannot carry on. A bench
+    /// that is empty and a club that has spent its changes are the same answer: the engine
+    /// covers the absence itself instead of asking a manager to name somebody who is not
+    /// there.
+    /// </summary>
+    private static bool CanCoverWithSubstitute(MatchState state, bool home, MatchPlayerSnapshot outgoing)
+    {
+        var used = home ? state.SubstitutionsHome : state.SubstitutionsAway;
+        if (used >= MatchRules.MaxSubstitutions)
+        {
+            return false;
+        }
+
+        var lineup = home ? state.HomeLineup : state.AwayLineup;
+        var bench = home ? state.HomeBench : state.AwayBench;
+
+        // "Somebody on the bench" is not enough to ask the question. If the last
+        // goalkeeper went and every man left is an outfielder there is no change he is
+        // allowed to make, and a match holding its clock on a question with no answer in
+        // it is a match that never finishes.
+        return AvailableOnBench(bench).Any(incoming => MatchSubstitution.CanSwap(lineup, outgoing, incoming));
     }
 
     /// <summary>

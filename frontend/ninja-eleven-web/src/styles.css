@@ -32,9 +32,69 @@ button { cursor: pointer; }
 
 .app { max-width: 1180px; margin: auto; padding: 22px; }
 .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
-.brand { font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
-.brand span { color: var(--accent); }
 .badge { padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 12px; }
+
+/* The frame: the game in a column on the left, the screen beside it. The column is fixed
+   and the screen takes the rest, because a table of a division and a squad of twenty-three
+   are both things that need every pixel of width they can be given. */
+.shell { display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 100vh; }
+.shell-main { min-width: 0; padding: 22px 22px 40px; }
+.shell-main > .app { padding: 0; max-width: none; margin: 0; }
+
+.sidebar {
+  display: flex; flex-direction: column; gap: 18px; padding: 22px 14px;
+  border-right: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(13, 25, 37, .98), rgba(7, 15, 23, .98));
+  position: sticky; top: 0; height: 100vh;
+}
+.sidebar-brand {
+  display: block; padding: 4px 8px 0; font-weight: 900; letter-spacing: .1em;
+  text-transform: uppercase; font-size: 15px; text-decoration: none; color: var(--text);
+}
+.sidebar-brand:hover { color: var(--text); }
+.sidebar-brand__eleven { color: var(--accent); }
+
+.sidebar-nav { display: grid; gap: 4px; }
+.sidebar-link {
+  display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px;
+  padding: 9px 10px; border-radius: 9px; text-decoration: none;
+  color: var(--muted); font-size: 13px; border: 1px solid transparent;
+}
+.sidebar-link:hover { color: var(--text); background: #10202e; }
+.sidebar-link.active {
+  color: var(--text); background: #122334; border-color: var(--line);
+}
+.sidebar-link.active .sidebar-link__label { color: var(--accent); }
+.sidebar-link__icon { font-size: 14px; }
+/* The round he is about to play, said in the column, so the link to the lineup says which
+   lineup: "Escalação" on its own is a place, and the round is the thing he is going there
+   to decide. */
+.sidebar-link__round {
+  padding: 2px 6px; border-radius: 999px; background: #0d1a26;
+  color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums;
+}
+
+.sidebar-club {
+  display: grid; gap: 6px; margin-top: auto; padding: 10px;
+  border: 1px solid var(--line); border-radius: 10px; background: #0a1520;
+}
+.sidebar-club__swatch { width: 28px; height: 8px; border-radius: 3px; border: 1px solid; }
+.sidebar-club__name {
+  color: var(--text); font-size: 12px; line-height: 1.3;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.sidebar-back {
+  padding: 8px; border: 1px solid var(--line); border-radius: 9px;
+  background: none; color: var(--muted); font-size: 11px; cursor: pointer;
+}
+.sidebar-back:hover { color: var(--text); border-color: #46657d; }
+
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { position: static; height: auto; flex-direction: row; align-items: center; }
+  .sidebar-club { margin-top: 0; margin-left: auto; }
+  .sidebar-nav { grid-auto-flow: column; }
+}
 
 .card {
   background: linear-gradient(180deg, rgba(17, 31, 45, .96), rgba(9, 19, 29, .96));
@@ -82,6 +142,11 @@ button { cursor: pointer; }
 .standings tr.projected { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .standings tr.current-match { background: color-mix(in srgb, var(--team-primary) 10%, transparent); }
 .standings tr.current-match.projected { background: color-mix(in srgb, var(--accent) 8%, var(--team-primary) 10%); }
+/* The promotion race is the top four and the relegation battle the bottom four. The bands are
+   tagged by the backend, so the screen only paints what it is told — the same green and red the
+   season's end will move clubs by, never the client's own arithmetic. */
+.standings tr.promotion { background: color-mix(in srgb, var(--green) 15%, transparent); }
+.standings tr.relegation { background: color-mix(in srgb, var(--red) 15%, transparent); }
 .standings td b { color: var(--text); }
 .standings .position-cell { display: inline-flex; align-items: center; gap: 4px; }
 .standings .pos-change { font-size: 9px; font-weight: bold; }
@@ -92,6 +157,8 @@ button { cursor: pointer; }
 .live-badge { animation: pulse 1s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 .standings-legend { border-top: 1px solid var(--line); padding-top: 8px; }
+.standings-legend .zone-promotion { color: var(--green); font-weight: 700; margin-left: 8px; }
+.standings-legend .zone-relegation { color: var(--red); font-weight: 700; margin-left: 8px; }
 .team-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 
 /* A played round, told back. The scoreline is the shape; the summary underneath is the
@@ -158,15 +225,24 @@ button { cursor: pointer; }
    career is read from this table more than from anything else. */
 .team-view-overlay { padding: 0; }
 .team-view-card { padding: 20px; }
+/* The club's own screen and the lineup are full pages, not modals, so the fifteen-column
+   squad table is not squeezed to fit. It scrolls sideways: a column of numbers squeezed is
+   a column nobody can compare down. */
+.team-view-card .profile-history,
+.club-squad-picker .profile-history { overflow-x: auto; }
+
+/* A row that is a pick. The row lights up when the man is chosen, because a manager
+   filling in a team sheet needs to see at a glance who is already in it. */
+.club-squad-table .history-row.picking { cursor: pointer; }
+.club-squad-table .history-row.picking:hover { background: #122334; }
+.club-squad-table .history-row.picked { background: rgba(63, 186, 118, .14); }
+.club-squad-table .history-row.picked:hover { background: rgba(63, 186, 118, .2); }
+.club-squad-table .history-row.picked-elsewhere { background: rgba(224, 172, 45, .1); }
+.pick-mark { margin-right: 4px; color: var(--green); font-weight: 900; }
+.club-squad-table .history-row.picked-elsewhere .pick-mark { color: var(--orange); }
 .team-view-summary { position: sticky; top: 0; z-index: 2; background: linear-gradient(180deg, rgba(17, 31, 45, .97), rgba(9, 19, 29, .94)); margin: -20px -20px 14px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
 .team-view-summary h2 { margin: 0 0 4px; }
 .team-color-sample { width: 150px; height: 28px; border-radius: 999px; border: 1px solid var(--line); background: linear-gradient(90deg, var(--team-primary), var(--team-secondary)); box-shadow: 0 0 0 2px rgba(255, 255, 255, .03) inset; }
-.team-view-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.team-view-table th { color: var(--muted); font-size: 9px; text-transform: uppercase; padding: 7px; text-align: center; }
-.team-view-table th:first-child, .team-view-table td:first-child { text-align: left; }
-.team-view-table td { padding: 7px 6px; border-top: 1px solid rgba(34, 56, 75, .65); text-align: center; font-size: 10px; }
-.team-view-table tr:hover { background: #0a1520; }
-
 .match-header { padding: 16px 20px 18px; }
 .match-attendance { margin-top: 10px; font-size: 12px; color: var(--muted); }
 .match-attendance b { color: var(--text); }
@@ -495,6 +571,10 @@ button { cursor: pointer; }
 .player-stats-table .subtle { color: var(--muted); font-weight: 600; }
 .player-stats-table .event-minutes { font-size: 9px; color: var(--muted); line-height: 1.25; min-width: 90px; }
 .injury-mark { color: var(--orange); }
+/* The bandage sits inside the name rather than in a row of numbers, so it is nudged off
+   the letters instead of being laid out: a name with a space before the mark reads as two
+   words, and a team sheet is read down a column of names. */
+.injury-mark.hurt { margin-left: 4px; font-size: 0.85em; }
 
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 7px; }
 .formation { padding: 10px; border: 1px solid var(--line); background: #0a1520; color: var(--text); border-radius: 7px; text-align: center; font-size: 12px; cursor: pointer; }
@@ -729,4 +809,165 @@ button { cursor: pointer; }
 .history-row.result-v .history-score { color: var(--green); }
 .history-row.result-d .history-score { color: var(--red); }
 .history-row.result-e .history-score { color: var(--muted); }
+/* The club card gives the whole modal to a squad, so it is wider than a player profile
+   and the columns get the room they need to be compared rather than scanned. */
+/* The club card is the club's own colours, and the whole card rather than one panel of it.
+   --club-wash is the primary mixed down into the panel dark; --club-ink is the secondary,
+   measured against that wash by clubColors.inkOf before it is used as a letter. */
+.club-modal {
+  width: min(1100px, 100%);
+  border-top-width: 3px;
+  background:
+    linear-gradient(180deg, var(--club-wash, #0a1520) 0%, rgba(9, 19, 29, .99) 320px);
+  color: var(--club-ink, var(--text));
+}
+.club-modal .profile-name { color: var(--club-ink, var(--text)); }
+.club-modal .profile-position,
+.club-modal .club-form__title { color: var(--club-ink, var(--muted)); }
+.club-modal .profile-attrs .attr-value,
+.club-modal .career-value { color: var(--club-ink, var(--text)); }
+/* The rows are lifted off the wash so a line of numbers stays a line of numbers and not a
+   block of club colour: the wash is the card, the rows are the table on it. */
+.club-modal .profile-history { background: rgba(9, 19, 29, .5); }
+.club-squad-table { font-size: 12px; }
+/* The club's own screen is the same card as the modal, so it is held open rather than
+   scrolled: a manager reading a squad of twenty-three is reading a list, not a page, and
+   a list that stops half way is a list he has to scroll to finish. */
+.team-view-card .profile-history { max-height: none; }
+.team-view-card .squad-head h2 { margin: 0 0 4px; }
+.club-squad-table th, .club-squad-table td { padding: 6px 7px; white-space: nowrap; }
+.club-squad-table .squad-name { min-width: 168px; white-space: normal; }
+/* The attributes are a grid of numbers, so they line up on the digit. Anything ragged
+   here turns a column into a column of shapes to compare instead of a column of ratings. */
+.club-squad-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* A column that can be ordered says so with a pointer and a hover, and the one that is
+   ordered says which way with an arrow. A sortable header that looks identical to a plain
+   one is a sort nobody is told exists. */
+.club-squad-table th.sort-head { cursor: pointer; user-select: none; white-space: nowrap; }
+.club-squad-table th.sort-head:hover { color: var(--text); background: #122334; }
+.club-squad-table th.sorted { color: var(--accent); }
+.sort-arrow { margin-left: 4px; font-size: 8px; }
+.club-squad-table th.accent-col { color: var(--accent); }
+.club-squad-table th.num { text-align: right; }
+.club-squad-table .accent { color: var(--accent); font-weight: 800; }
+/* The name is the door, and only the name: a whole row that looks clickable and is not is
+   worse than a row that is obviously a row. */
+.club-squad-table .history-row { cursor: default; }
+.club-squad-table .history-row:hover { background: transparent; }
+.club-squad-table .history-row.injured { background: rgba(224, 132, 45, .09); }
+.club-squad-table .history-row.unavailable { opacity: .6; }
+
+/* The form guide. It no longer paints its own window: the card is already the club, and a
+   second wash inside it would be the same colour twice with a border between them. It is
+   held apart by a rule in the primary instead. */
+.club-form {
+  margin-top: 18px; padding: 10px 0 4px; border-radius: 10px;
+  border-top: 1px solid var(--team-primary, var(--line));
+}
+.club-form__head { margin-bottom: 12px; }
+.club-form__title {
+  margin: 0 0 8px; color: var(--muted); font-size: 10px;
+  text-transform: uppercase; letter-spacing: .09em;
+}
+.club-form__head .club-form__title { color: var(--club-ink, var(--muted)); }
+
+/* The run itself: the ten letters in a row, the shape of a fortnight readable at a glance
+   before a single opponent name is. */
+.form-run { display: flex; flex-wrap: wrap; gap: 4px; }
+.form-run__letter {
+  display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px;
+  font-size: 11px; font-weight: 900; background: #10202e; color: var(--muted);
+}
+.form-run__letter.form-win { background: rgba(63, 186, 118, .2); color: var(--green); }
+.form-run__letter.form-draw { background: rgba(224, 172, 45, .2); color: var(--orange); }
+.form-run__letter.form-loss { background: rgba(214, 74, 74, .2); color: var(--red); }
+.form-run__empty { color: var(--muted); font-size: 11px; align-self: center; }
+.form-list { background: transparent; }
+.form-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.form-item {
+  display: grid; grid-template-columns: 26px 74px 1fr auto; align-items: center; gap: 10px;
+  padding: 6px 9px; border-radius: 7px; border-left: 3px solid var(--line);
+  background: rgba(9, 19, 29, .45); font-size: 12px;
+}
+.form-item.form-win { border-left-color: var(--green); }
+.form-item.form-draw { border-left-color: var(--orange); }
+.form-item.form-loss { border-left-color: var(--red); }
+.form-result {
+  display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px;
+  font-size: 11px; font-weight: 900;
+  background: #10202e; color: var(--muted);
+}
+.form-win .form-result { background: rgba(63, 186, 118, .18); color: var(--green); }
+.form-draw .form-result { background: rgba(224, 172, 45, .18); color: var(--orange); }
+.form-loss .form-result { background: rgba(214, 74, 74, .18); color: var(--red); }
+.form-score { font-weight: 800; font-variant-numeric: tabular-nums; }
+.form-sep { color: var(--muted); }
+.form-opponent { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.form-round { color: var(--muted); font-size: 10px; }
+
 .profile-footer { display: flex; justify-content: flex-end; margin-top: 16px; }
+
+/* The match a lineup is for, said before the lineup. The two clubs face each other across
+   the middle because that is how the fixture is written down, and each one carries its own
+   run of results: the two questions are only interesting answered next to each other. */
+.next-match {
+  margin: 14px 0 18px; padding: 12px 14px; border-radius: 12px;
+  background: rgba(9, 19, 29, .55); border: 1px solid var(--line);
+}
+.next-match__head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 10px;
+}
+.next-match__kicker {
+  color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .09em;
+}
+.next-match__competition { color: var(--club-ink, var(--text)); font-size: 13px; font-weight: 800; }
+.next-match__round { color: var(--muted); font-size: 11px; }
+
+.next-match__clubs {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 14px;
+}
+.next-match__club { display: grid; gap: 5px; }
+.next-match__club:last-child { text-align: right; justify-items: end; }
+.next-match__side {
+  color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .09em;
+}
+.next-match__name { font-size: 15px; font-weight: 800; }
+.next-match__versus { color: var(--muted); font-size: 13px; }
+.next-match__standing { margin: 10px 0 0; color: var(--muted); font-size: 11px; }
+
+/* The run sits under the club it belongs to, so the form is never mistaken for the
+   opponent's. */
+.next-match__club .form-run { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* The calendar. A season is four hundred and some games, so the header sticks and the list
+   is the thing that scrolls: a manager reading a season is reading a list, and a list he
+   has to scroll to find today's date in is a list he will not read. */
+.calendar-list {
+  margin-top: 14px; max-height: 620px; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.calendar-table { font-size: 12px; }
+.calendar-table th, .calendar-table td { padding: 6px 8px; }
+.calendar-table th { position: sticky; top: 0; z-index: 1; background: #0d1924; }
+.calendar-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.calendar-date { white-space: nowrap; color: var(--muted); }
+.calendar-type {
+  display: inline-block; margin-right: 6px; padding: 1px 5px; border-radius: 4px;
+  background: #10202e; color: var(--muted); font-size: 9px; text-transform: uppercase;
+  letter-spacing: .07em;
+}
+.calendar-edition { color: var(--text); }
+.calendar-team { min-width: 150px; }
+.calendar-score {
+  text-align: center; font-weight: 800; font-variant-numeric: tabular-nums;
+  white-space: nowrap; min-width: 62px;
+}
+/* A played game is a door to the match; one that has not been is a row of the season, and
+   a row that looks like a door and is not is worse than a row that obviously is not. */
+.calendar-row { cursor: default; }
+.calendar-row:hover { background: transparent; }
+.calendar-row[title^="Ver"] { cursor: pointer; }
+.calendar-row[title^="Ver"]:hover { background: #122334; }
+/* The manager's own club, said once and quietly rather than shouted. */
+.calendar-row.is-mine { background: rgba(242, 211, 79, .07); }
+.calendar-row.is-mine .calendar-team { color: var(--accent); }

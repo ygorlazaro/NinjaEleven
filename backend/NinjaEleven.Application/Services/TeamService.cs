@@ -14,15 +14,36 @@ public class TeamService
     private readonly ITeamRepository _teamRepository;
     private readonly IPlayerRepository _playerRepository;
     private readonly ISeasonRepository _seasonRepository;
+    private readonly IMatchRepository _matchRepository;
 
     public TeamService(
         ITeamRepository teamRepository,
         IPlayerRepository playerRepository,
-        ISeasonRepository seasonRepository)
+        ISeasonRepository seasonRepository,
+        IMatchRepository matchRepository)
     {
         _teamRepository = teamRepository;
         _playerRepository = playerRepository;
         _seasonRepository = seasonRepository;
+        _matchRepository = matchRepository;
+    }
+
+    /// <summary>
+    /// The last matches a club has finished, newest first, for the form guide on its card.
+    /// A club that does not exist has no form, and saying so beats drawing an empty list
+    /// for an id that was never one.
+    /// </summary>
+    public async Task<IReadOnlyList<TeamMatchRecord>> GetRecentMatchesAsync(
+        Guid teamId,
+        int limit = TeamHistoryRules.DefaultHistoryLength,
+        CancellationToken cancellationToken = default)
+    {
+        if (await _teamRepository.GetAsync(teamId, cancellationToken) is null)
+        {
+            throw new EntityNotFoundException(nameof(Team), teamId);
+        }
+
+        return await _matchRepository.GetTeamHistoryAsync(teamId, TeamHistoryRules.Clamp(limit), cancellationToken);
     }
 
     public async Task<IReadOnlyList<Team>> GetAllAsync(CancellationToken cancellationToken = default) =>

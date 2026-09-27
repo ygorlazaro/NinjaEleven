@@ -1,5 +1,6 @@
 using NinjaEleven.Api.Contracts;
 using NinjaEleven.Api.Mappings;
+using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -43,5 +44,18 @@ public class TeamController : ControllerBase
     {
         var squad = await _teamService.GetSquadAsync(teamId, seasonId, cancellationToken);
         return Ok(squad.Select(player => player.ToDto()).ToList());
+    }
+
+    /// <summary>
+    /// The club's last finished matches, newest first, for the form guide on its card.
+    /// </summary>
+    [HttpGet("{teamId:guid}/matches")]
+    public async Task<ActionResult<IReadOnlyList<TeamMatchRecordDto>>> GetRecentMatches(
+        Guid teamId,
+        [FromQuery] int limit = TeamHistoryRules.DefaultHistoryLength,
+        CancellationToken cancellationToken = default)
+    {
+        var matches = await _teamService.GetRecentMatchesAsync(teamId, limit, cancellationToken);
+        return Ok(matches.Select(match => match.ToDto()).ToList());
     }
 }

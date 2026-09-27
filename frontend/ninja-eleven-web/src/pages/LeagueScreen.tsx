@@ -2,7 +2,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CompetitionApi, FixtureApi, LeagueApi, MatchApi, RoundApi, SeasonApi, TeamApi } from '@/api';
 import { useGameState } from '@/state';
-import type { FixtureDto, LeagueSetupResult, MatchdayReportDto, RoundDto, TeamDto } from '@/types';
+import type {
+  CompetitionEditionDto,
+  FixtureDto,
+  MatchdayReportDto,
+  RoundDto,
+  SeasonDto,
+  TeamDto
+} from '@/types';
 import StandingsTable from '@/components/League/StandingsTable';
 import FixtureList from '@/components/League/FixtureList';
 import Calendar from '@/components/League/Calendar';
@@ -18,11 +25,11 @@ const LeagueScreen: React.FC = () => {
   const leagueTeams = useGameState((s) => s.leagueTeams);
   const standings = useGameState((s) => s.standings);
   const scorers = useGameState((s) => s.scorers);
-  const leagueSetup = useGameState((s) => s.leagueSetup);
   const setStandings = useGameState((s) => s.setStandings);
   const setScorers = useGameState((s) => s.setScorers);
-  const setLeagueSetup = useGameState((s) => s.setLeagueSetup);
   const setLeagueTeams = useGameState((s) => s.setLeagueTeams);
+  const selectedCompetition = useGameState((s) => s.selectedCompetition);
+  const setCompetitionInfo = useGameState((s) => s.setCompetitionInfo);
   const forgetClub = useGameState((s) => s.forgetClub);
 
   const navigate = useNavigate();
@@ -32,6 +39,11 @@ const LeagueScreen: React.FC = () => {
   const [roundFixtures, setRoundFixtures] = useState<FixtureDto[]>([]);
   const [currentRoundId, setCurrentRoundId] = useState('');
   const [compSeasonId, setCompSeasonId] = useState('');
+  const [editions, setEditions] = useState<CompetitionEditionDto[]>([]);
+  // Seasons drive the divisions on top, so the list is read once: the dropdown lets a
+  // manager visit a past table, and the default is always the season in progress.
+  const [seasons, setSeasons] = useState<SeasonDto[]>([]);
+  const [seasonsLoading, setSeasonsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<MatchdayReportDto | null>(null);
 
@@ -60,56 +72,89 @@ const LeagueScreen: React.FC = () => {
     [setStandings, setScorers]
   );
 
+  // Which division the screen is showing, and which season it belongs to.
+  //
+  // The division is the manager's choice, and it is the screen's whole subject: a pyramid of
+  // three divisions has three tables, and one of them is chosen. It travels in the query
+  // string, which is what makes a table somebody is looking at a link they can send on.
   useEffect(() => {
-    const season = params.get('season') || '';
-    const competition = params.get('competition') || '';
+    let cancelled = false;
 
     const initialize = async () => {
       setError(null);
 
       try {
-        // The persisted career may not have the club list yet (first visit after a
-        // reload), so the teams always come from the API and are stored afterwards.
-        const seasonId = season || (await SeasonApi.current()).id;
-        const competitionId = competition || (await CompetitionApi.listBySeason(seasonId))[0]?.id;
+        const seasonId = params.get('season') || (await SeasonApi.current()).id;
+        const editionList = await CompetitionApi.listEditionsBySeason(seasonId);
 
-        if (!competitionId) {
-          setError('Nenhuma competição disponível para a temporada escolhida.');
+        if (cancelled) return;
+
+        const divisions = editionList.filter(edition => edition.isDivision);
+        const wanted = params.get('edition') || '';
+        const division =
+          divisions.find(edition => edition.id === wanted) ||
+          divisions.find(edition => edition.id === selectedCompetition?.id) ||
+          divisions[0];
+
+        if (!division) {
+          setError('Nenhuma divisão disponível para a temporada escolhida.');
           return;
         }
 
-        const teams: TeamDto[] = await TeamApi.list();
-        if (teams.length < 2) {
-          setError('O campeonato precisa de pelo menos dois clubes.');
-          return;
-        }
-        setLeagueTeams(teams);
+        setEditions(divisions);
+        setCompSeasonId(division.id);
+        setCompetitionInfo(division);
 
-        const setup: LeagueSetupResult = await LeagueApi.setup(
-          competitionId,
-          seasonId,
-          teams.map(t => t.id)
-        );
-        setLeagueSetup(setup);
+        // The clubs of this division, and only this division's: they are the ones the table
+        // is about and the ones the calendar below belongs to.
+        const clubs = await CompetitionApi.listClubs(division.id);
+        if (cancelled) return;
+        setLeagueTeams(clubs);
 
-        const id = setup.competitionSeasonId || '';
-        setCompSeasonId(id);
-
-        const roundList = await RoundApi.listByCompetitionSeason(id);
+        // The calendar was drawn with the season, so it is read rather than built. Asking for
+        // it to be set up again would draw a second schedule for clubs that already have one,
+        // and with thirty-six clubs in one edition it would draw the wrong one: the pyramid
+        // gives each division its own twelve, and that is not something a client can hand in.
+        const roundList = await RoundApi.listByCompetitionSeason(division.id);
+        if (cancelled) return;
         setRounds(roundList);
 
-        await refresh(id, seasonId);
+        await refresh(division.id, seasonId);
 
         const fixtureData = await FixtureApi.list();
+        if (cancelled) return;
+        setAllFixtures(fixtureData);
         setCurrentRoundId(pickCurrentRound(roundList, fixtureData));
       } catch (err: any) {
         const code = err?.response?.data?.code;
-        setError(code ? `${code}: ${err.response.data.detail}` : 'Não foi possível carregar o campeonato.');
+        if (!cancelled) {
+          setError(code ? `${code}: ${err.response.data.detail}` : 'Não foi possível carregar o campeonato.');
+        }
       }
     };
 
     initialize();
-  }, [params, pickCurrentRound, refresh, setLeagueSetup, setLeagueTeams]);
+
+    return () => { cancelled = true; };
+  }, [params, pickCurrentRound, refresh, setCompetitionInfo, setLeagueTeams]);
+
+  // The season list is independent of the chosen division, so it is read once. The dropdown
+  // reads it; the default the screen falls back to is the season that is in progress, exactly
+  // the one `SeasonApi.current` would answer — the dropdown just lets a manager look back.
+  useEffect(() => {
+    let cancelled = false;
+    setSeasonsLoading(true);
+
+    SeasonApi.list()
+      .then(loaded => {
+        if (cancelled) return;
+        setSeasons(loaded);
+      })
+      .catch(() => { if (!cancelled) setSeasons([]); })
+      .finally(() => { if (!cancelled) setSeasonsLoading(false); });
+
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!currentRoundId) {
@@ -175,6 +220,36 @@ const LeagueScreen: React.FC = () => {
     navigate('/');
   };
 
+  // Switching division keeps the season and drops the division, so the season the manager is
+  // in is not something they have to choose again every time they look at another table.
+  const changeDivision = (editionId: string) => {
+    const season = params.get('season') || '';
+    setCompSeasonId('');
+    setCurrentRoundId('');
+    setRounds([]);
+    setAllFixtures([]);
+    navigate(`/league?season=${season}&edition=${editionId}`);
+  };
+
+  // Editions are owned by a season, so changing the season drops the division and lets the
+  // screen pick the first division of the new one. The season itself travels in the query
+  // string so a table a manager is looking at is a link they can send on.
+  const changeSeason = (seasonId: string) => {
+    if (!seasonId) return;
+    setCompSeasonId('');
+    setEditions([]);
+    setCurrentRoundId('');
+    setRounds([]);
+    setAllFixtures([]);
+    navigate(`/league?season=${seasonId}`);
+  };
+
+  const currentSeason = seasons.find(season => season.status === 'InProgress');
+  // The dropdown defaults to the current season when the manager has not chosen one.
+  const seasonValue = params.get('season') || currentSeason?.id || '';
+
+  const activeDivision = editions.find(edition => edition.id === compSeasonId);
+
   // How many games of the round nobody has played yet. The round is over when this is zero,
   // which is what the note under the fixtures says in the manager's own words.
   const pendingCount = roundFixtures.filter(isScheduled).length;
@@ -183,17 +258,67 @@ const LeagueScreen: React.FC = () => {
     <div className="card league-screen">
       <div className="league-head">
         <div>
-          <h2>Campeonato</h2>
+          <h2>{activeDivision?.name ?? 'Campeonato'}</h2>
           <div className="badge" style={{ display: 'inline-block', marginTop: '7px' }}>
             {currentRound ? `Rodada ${currentRound.number}/${totalRounds}` : 'Sem rodada'}
           </div>
+          {seasons.length > 1 && (
+            <div style={{ marginTop: '8px' }}>
+              <label style={{ fontSize: '11px', color: 'var(--muted)' }}>Temporada:</label>{' '}
+              <select
+                value={seasonValue}
+                onChange={e => changeSeason(e.target.value)}
+                disabled={seasonsLoading}
+                aria-label="Temporada"
+                style={{
+                  padding: '4px 6px',
+                  background: '#0a1520',
+                  color: 'var(--text)',
+                  border: '1px solid var(--line)',
+                  borderRadius: '6px',
+                  fontSize: '12px'
+                }}
+              >
+                {seasons
+                  .slice()
+                  .sort((a, b) => b.number - a.number)
+                  .map(season => (
+                    <option key={season.id} value={season.id}>{season.name}</option>
+                  ))}
+              </select>
+            </div>
+          )}
+          {editions.length > 1 && (
+            <div style={{ marginTop: '8px' }}>
+              <label style={{ fontSize: '11px', color: 'var(--muted)' }}>Divisão:</label>{' '}
+              <select
+                value={compSeasonId}
+                onChange={e => changeDivision(e.target.value)}
+                aria-label="Divisão"
+                style={{
+                  padding: '4px 6px',
+                  background: '#0a1520',
+                  color: 'var(--text)',
+                  border: '1px solid var(--line)',
+                  borderRadius: '6px',
+                  fontSize: '12px'
+                }}
+              >
+                {editions.map(edition => (
+                  <option key={edition.id} value={edition.id}>{edition.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {selectedTeam && (
             <>
               <button
                 className="ctrl"
-                onClick={() => navigate(`/team/${selectedTeam.id}${params.get('season') ? `?season=${params.get('season')}` : ''}`)}
+                onClick={() => navigate(
+                  `/team/${selectedTeam.id}?season=${params.get('season') || ''}&edition=${compSeasonId}`
+                )}
               >
                 Meu elenco
               </button>
@@ -217,7 +342,11 @@ const LeagueScreen: React.FC = () => {
           <div className="league-panel">
             <h3>📊 Classificação</h3>
             <div id="standingsWrap">
-              <StandingsTable standings={standings} userId={selectedTeam?.id} teams={leagueTeams} />
+              <StandingsTable
+                standings={standings?.official ?? []}
+                userId={selectedTeam?.id}
+                teams={leagueTeams}
+              />
             </div>
             <MatchdayReportPanel
               report={report}

@@ -18,10 +18,12 @@ public class LeagueController : ControllerBase
     private const int DefaultTopScorers = 15;
 
     private readonly LeagueService _leagueService;
+    private readonly StandingsService _standingsService;
 
-    public LeagueController(LeagueService leagueService)
+    public LeagueController(LeagueService leagueService, StandingsService standingsService)
     {
         _leagueService = leagueService;
+        _standingsService = standingsService;
     }
 
     [HttpPost("setup")]
@@ -57,13 +59,21 @@ public class LeagueController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// The table of one competition edition, with the live one beside it.
+    ///
+    /// Both are computed by the backend, because a table sorted in the browser is a table
+    /// that can disagree with the promotion rules — and a manager told his club is sixth by
+    /// the promotion pass and seventh by the screen has been given two answers to one
+    /// question.
+    /// </summary>
     [HttpGet("standing/{competitionSeasonId:guid}")]
-    public async Task<ActionResult<IReadOnlyList<StandingDto>>> GetStandings(
+    public async Task<ActionResult<CompetitionStandingsDto>> GetStandings(
         Guid competitionSeasonId,
         CancellationToken cancellationToken)
     {
-        var standings = await _leagueService.GetStandingsAsync(competitionSeasonId, cancellationToken);
-        return Ok(standings.ToDtos());
+        var standings = await _standingsService.GetAsync(competitionSeasonId, cancellationToken);
+        return Ok(standings.ToDto());
     }
 
     [HttpGet("standing/{competitionSeasonId:guid}/team/{teamId:guid}")]
@@ -72,7 +82,7 @@ public class LeagueController : ControllerBase
         Guid teamId,
         CancellationToken cancellationToken)
     {
-        var standing = await _leagueService.GetStandingAsync(competitionSeasonId, teamId, cancellationToken);
+        var standing = await _standingsService.GetRowAsync(competitionSeasonId, teamId, cancellationToken);
         return Ok(standing.ToDto());
     }
 

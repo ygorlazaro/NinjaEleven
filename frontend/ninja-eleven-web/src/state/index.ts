@@ -4,7 +4,7 @@ import type {
   TeamDto,
   PlayerDto,
   FixtureDto,
-  StandingDto,
+  CompetitionStandingsDto,
   ScorerDto,
   MatchStateDto,
   MatchEngineEventDto,
@@ -21,7 +21,7 @@ interface GameState {
   selectedCompetition: CompetitionDto | null;
   leagueTeams: TeamDto[];
   currentMatch: ActiveMatch | null;
-  standings: StandingDto[];
+  standings: CompetitionStandingsDto | null;
   fixtures: FixtureDto[];
   scorers: ScorerDto[];
   leagueSetup: LeagueSetupResult | null;
@@ -38,12 +38,13 @@ interface GameState {
   feedMatchId: string | null;
   lastEvents: MatchEngineEventDto[];
   isPaused: boolean;
+  /** The tab on the match screen. 'standings' is the table beside the match. */
   matchScreen: 'stats' | 'lineup' | 'matchday';
 
   setSelectedTeam: (team: TeamDto | null) => void;
   setLeagueTeams: (teams: TeamDto[]) => void;
   setCurrentMatch: (match: ActiveMatch | null) => void;
-  setStandings: (standings: StandingDto[]) => void;
+  setStandings: (standings: CompetitionStandingsDto | null) => void;
   setFixtures: (fixtures: FixtureDto[]) => void;
   setScorers: (scorers: ScorerDto[]) => void;
   setLeagueSetup: (setup: LeagueSetupResult | null) => void;
@@ -51,7 +52,7 @@ interface GameState {
   addFeedEvent: (event: FeedEvent, matchId?: string) => void;
   setLastEvents: (events: MatchEngineEventDto[]) => void;
   setIsPaused: (paused: boolean) => void;
-  setMatchScreen: (screen: 'stats' | 'lineup' | 'matchday') => void;
+  setMatchScreen: (screen: GameState['matchScreen']) => void;
   setSeasonInfo: (season: SeasonDto | null) => void;
   setCompetitionInfo: (competition: CompetitionDto | null) => void;
   forgetClub: () => void;
@@ -97,7 +98,7 @@ const usePersistedGameState = create<GameState>()(
       selectedCompetition: null,
       leagueTeams: [],
       currentMatch: null,
-      standings: [],
+      standings: null,
       fixtures: [],
       scorers: [],
       leagueSetup: null,
@@ -146,7 +147,7 @@ const usePersistedGameState = create<GameState>()(
           selectedCompetition: null,
           leagueTeams: [],
           currentMatch: null,
-          standings: [],
+          standings: null,
           fixtures: [],
           scorers: [],
           leagueSetup: null,

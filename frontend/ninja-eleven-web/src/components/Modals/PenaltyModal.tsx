@@ -1,6 +1,7 @@
 import React from 'react';
 import { positionLabel } from '@/services/formatters';
 import type { MatchPlayerDto } from '@/types';
+import HurtBadge from '@/components/Match/HurtBadge';
 
 interface PenaltyModalProps {
   show: boolean;
@@ -40,7 +41,10 @@ const PenaltyModal: React.FC<PenaltyModalProps> = ({ show, candidates, onSelecte
                 onClick={() => onSelected(p.playerId)}
                 style={{ '--team-primary': '#f2d34f', '--team-secondary': '#f2d34f' } as React.CSSProperties}
               >
-                <b>{p.name}</b>
+                <b>
+                  {p.name}
+                  <HurtBadge player={p} />
+                </b>
                 <span>
                   {positionLabel(p.position)} • Fin {p.accuracy} • Dri {p.dribbling} • For{' '}
                   {p.strength}

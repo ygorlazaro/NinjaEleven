@@ -32,6 +32,7 @@ public class PlayerSeasonStateConfiguration : IEntityTypeConfiguration<PlayerSea
 
         builder.Property(s => s.Energy).IsRequired();
         builder.Property(s => s.Goals).IsRequired();
+        builder.Property(s => s.Saves).IsRequired();
         builder.Property(s => s.YellowCards).IsRequired();
         builder.Property(s => s.RedCards).IsRequired();
         builder.Property(s => s.SuspensionMatches).IsRequired();

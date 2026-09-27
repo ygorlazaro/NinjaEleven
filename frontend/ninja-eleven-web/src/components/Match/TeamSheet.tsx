@@ -4,6 +4,7 @@ import { positionLabel, sortByPosition, starsToString } from '@/services/formatt
 import EnergyBar from '@/components/Match/EnergyBar';
 import SubstitutionPanel from '@/components/Match/SubstitutionPanel';
 import { ClubName, PlayerName } from '@/components/Common/Names';
+import HurtBadge from '@/components/Match/HurtBadge';
 
 interface TeamSheetProps {
   lineup: MatchLineupDto;
@@ -123,6 +124,7 @@ const SheetCard: React.FC<SheetCardProps> = ({ player, isBench = false, opponent
       </span>
       <span className="player-card__name">
         <PlayerName playerId={player.playerId}>{player.name}</PlayerName>
+        <HurtBadge player={player} />
         <span className="player-stars" style={{ color: 'var(--accent)', marginLeft: '6px' }}>{starsToString(player.stars)}</span>
       </span>
       <span className="player-energy">{Math.round(player.energy)}%</span>

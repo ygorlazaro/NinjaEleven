@@ -7,7 +7,6 @@ public class DatabaseSeedOptions
 {
     public const string SectionName = "DatabaseSeed";
 
-    public int Teams { get; set; } = 8;
     public int PlayersPerTeam { get; set; } = 23;
 
     /// <summary>

@@ -2,40 +2,54 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useGameState } from '@/state';
+import { useCareerCheck } from '@/hooks/useCareerCheck';
 import { ProfileProvider } from '@/state/ProfileProvider';
+import AppShell from '@/components/Common/AppShell';
 import StartScreen from '@/pages/StartScreen';
 import LeagueScreen from '@/pages/LeagueScreen';
 import LineupScreen from '@/pages/LineupScreen';
 import TeamViewScreen from '@/pages/TeamViewScreen';
 import MatchScreen from '@/pages/MatchScreen';
+import CalendarScreen from '@/pages/CalendarScreen';
 import '@/styles.css';
 
-function App() {
+/**
+ * The root of the game.
+ *
+ * It goes to the manager's club when there is one, and to the club list when there is not —
+ * but it never navigates on the strength of a club the browser merely remembers. A remembered
+ * club is checked against the backend first, and the check is not skippable: navigating to
+ * `/team/{id}` for a club that is not in the world is a screen that cannot answer anything,
+ * and the manager's only way out of it is to edit the address bar.
+ */
+function Root() {
   const selectedTeam = useGameState((s) => s.selectedTeam);
+  const career = useCareerCheck();
 
+  if (career === 'checking') {
+    return <div className="card start"><p>Carregando...</p></div>;
+  }
+
+  return selectedTeam
+    ? <Navigate to={`/team/${selectedTeam.id}`} replace />
+    : <StartScreen />;
+}
+
+function App() {
+  // The logo and the two places a manager goes live in the column on the left, so the
+  // screen has the whole width to itself.
   return (
-    <div className="app">
-      <div className="topbar">
-        <div className="brand">Ninja <span>Eleven</span></div>
-        <div className="badge">POC 0.1 • Motor de partida</div>
-      </div>
-
-      {/* A career starts at the club: the manager's own squad is the first thing he reads,
-          and the fixtures are one click away from there. */}
+    <AppShell>
       <Routes>
-        <Route
-          path="/"
-          element={
-            selectedTeam ? <Navigate to={`/team/${selectedTeam.id}`} replace /> : <StartScreen />
-          }
-        />
+        <Route path="/" element={<Root />} />
         <Route path="/league" element={<LeagueScreen />} />
+        <Route path="/calendar" element={<CalendarScreen />} />
         <Route path="/match/lineup/:fixtureId" element={<LineupScreen />} />
         <Route path="/team/:teamId" element={<TeamViewScreen />} />
         <Route path="/match/:matchId" element={<MatchScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </div>
+    </AppShell>
   );
 }
 

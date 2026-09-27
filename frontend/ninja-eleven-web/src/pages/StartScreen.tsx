@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TeamApi, SeasonApi, CompetitionApi } from '@/api';
+import { CompetitionApi, SeasonApi, TeamApi } from '@/api';
 import { API_BASE_URL } from '@/config/env';
 import { useGameState } from '@/state';
-import type { TeamDto, SeasonDto, CompetitionDto } from '@/types';
+import { divisionsOf } from '@/types';
+import type { CompetitionEditionDto, SeasonDto, TeamDto } from '@/types';
 import { TEAM_COLOR_PALETTES, pick } from '@/services/formatters';
 
 const StartScreen: React.FC = () => {
@@ -12,54 +13,105 @@ const StartScreen: React.FC = () => {
   const setLeagueTeams = useGameState((s) => s.setLeagueTeams);
   const setSeasonInfo = useGameState((s) => s.setSeasonInfo);
   const setCompetitionInfo = useGameState((s) => s.setCompetitionInfo);
+  const selectedCompetition = useGameState((s) => s.selectedCompetition);
 
-  const [teams, setTeams] = useState<TeamDto[]>([]);
+  const [clubs, setClubs] = useState<TeamDto[]>([]);
   const [seasons, setSeasons] = useState<SeasonDto[]>([]);
-  const [competitions, setCompetitions] = useState<CompetitionDto[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [editions, setEditions] = useState<CompetitionEditionDto[]>([]);
+  const [selectedClubId, setSelectedClubId] = useState<string | null>(null);
   const [selectedSeasonId, setSelectedSeasonId] = useState<string>('');
-  const [selectedCompetitionId, setSelectedCompetitionId] = useState<string>('');
+  const [selectedEditionId, setSelectedEditionId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  const divisions = useMemo(() => divisionsOf(editions), [editions]);
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       setConnectionError(null);
+
       try {
-        const [teamsData, seasonsData] = await Promise.all([
+        const [teamData, seasonData] = await Promise.all([
           TeamApi.list(),
           SeasonApi.list(),
         ]);
-        setTeams(teamsData);
-        setSeasons(seasonsData);
 
-        let compList: CompetitionDto[] = [];
-        if (seasonsData.length > 0) {
-          compList = await CompetitionApi.listBySeason(seasonsData[0].id);
-        }
-        setCompetitions(compList);
-        if (compList.length > 0) {
-          setSelectedCompetitionId(compList[0].id);
-        }
-        if (seasonsData.length > 0) {
-          setSelectedSeasonId(seasonsData[0].id);
+        setClubs(teamData);
+        setSeasons(seasonData);
+
+        // The current season first, and the newest first otherwise: seasons are counted from
+        // one and a manager opening a new career wants the one in progress, not the oldest
+        // one the backend still has.
+        const ordered = [...seasonData].sort((a, b) => b.number - a.number);
+        const current = ordered.find(season => season.status === 'InProgress') ?? ordered[0];
+
+        if (current) setSelectedSeasonId(current.id);
+
+        if (current) {
+          const editionList = await CompetitionApi.listEditionsBySeason(current.id);
+          setEditions(editionList);
+
+          // The division the manager left on last time, when it is still one of this season's
+          // divisions. Otherwise the top flight, because that is where a career starts.
+          const remembered = divisionsOf(editionList).find(
+            division => division.id === selectedCompetition?.id
+          );
+          const first = remembered ?? divisionsOf(editionList)[0] ?? editionList[0];
+
+          if (first) setSelectedEditionId(first.id);
         }
       } catch (err: any) {
         // Never fake the world: a broken backend must be visible, not hidden behind
         // invented teams that cannot start a match.
-        const code = err?.response?.status ? `HTTP ${err.response.status}` : err?.message || 'erro desconhecido';
+        const code = err?.response?.status
+          ? `HTTP ${err.response.status}`
+          : err?.message || 'erro desconhecido';
         setConnectionError(code);
-        setTeams([]);
+        setClubs([]);
         setSeasons([]);
-        setCompetitions([]);
+        setEditions([]);
       } finally {
         setLoading(false);
       }
     };
 
     loadData();
-  }, []);
+  }, [selectedCompetition?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The clubs of the chosen division. They are asked of the backend rather than filtered out
+  // of the whole pyramid on the client: a club's division is a fact about its enrolment in an
+  // edition, and two lists joined up in a browser is how a club ends up in the wrong one.
+  const [divisionClubs, setDivisionClubs] = useState<TeamDto[]>([]);
+  const [clubsLoading, setClubsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedEditionId) {
+      setDivisionClubs([]);
+      return;
+    }
+
+    let cancelled = false;
+    setClubsLoading(true);
+
+    CompetitionApi.listClubs(selectedEditionId)
+      .then(loaded => {
+        if (!cancelled) setDivisionClubs(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setDivisionClubs([]);
+      })
+      .finally(() => {
+        if (!cancelled) setClubsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedEditionId]);
+
+  // A club chosen in another division is not a club of this one.
+  useEffect(() => {
+    setSelectedClubId(null);
+  }, [selectedEditionId]);
 
   if (loading) {
     return (
@@ -84,60 +136,46 @@ const StartScreen: React.FC = () => {
     );
   }
 
-  if (teams.length === 0) {
+  if (clubs.length === 0) {
     return (
       <div className="card start">
         <h1>Nova carreira</h1>
-        <p>Nenhuma equipe disponível. Crie equipes no backend primeiro.</p>
+        <p>Nenhuma equipe disponível. Rode a API com <code>--seed</code> para criar o mundo.</p>
       </div>
     );
   }
 
   const startPressed = () => {
-    if (selectedIndex === null) return;
-    const team = { ...teams[selectedIndex] };
-    setSelectedTeam(team);
-    setLeagueTeams(teams);
-    setSeasonInfo(seasons.find(s => s.id === (selectedSeasonId || seasons[0]?.id)) || null);
-    setCompetitionInfo(competitions.find(c => c.id === (selectedCompetitionId || competitions[0]?.id)) || null);
+    const club = divisionClubs.find(team => team.id === selectedClubId);
+    if (!club) return;
 
-    // The season is a query of the championship screen, not a rewrite of the url: the
-    // router owns the path, so navigation has to go through it. A career opens on the club
-    // the manager just took over, because that squad is the first thing he reads.
-    const seasonId = selectedSeasonId || seasons[0]?.id || '';
+    setSelectedTeam(club);
+    setLeagueTeams(divisionClubs);
+    setSeasonInfo(seasons.find(s => s.id === selectedSeasonId) || null);
+    setCompetitionInfo(editions.find(e => e.id === selectedEditionId) || null);
 
-    navigate(`/team/${team.id}?season=${seasonId}`);
+    // The season and the division are queries of the screens behind this one, not a rewrite
+    // of the url: the router owns the path, so navigation has to go through it. A career
+    // opens on the club the manager just took over, because that squad is the first thing he
+    // reads — and the division he is about to manage is named alongside it, because a club
+    // with no division is a club with no table.
+    navigate(`/team/${club.id}?season=${selectedSeasonId}&edition=${selectedEditionId}`);
   };
 
-  const canStart = selectedIndex !== null && seasons.length > 0 && competitions.length > 0;
+  const canStart = selectedClubId !== null && selectedSeasonId !== '' && selectedEditionId !== '';
 
   return (
     <div className="card start">
       <h1>Nova carreira</h1>
-      <p>Escolha um dos clubes e coloque seu time em campo.</p>
+      <p>Escolha a divisão, escolha um dos clubes e coloque seu time em campo.</p>
 
-      {competitions.length > 0 && (
-        <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '11px', color: 'var(--muted)' }}>Competição:</label>
-          <select
-            value={selectedCompetitionId}
-            onChange={(e) => setSelectedCompetitionId(e.target.value)}
-            style={{ width: '100%', padding: '6px', background: '#0a1520', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: '7px' }}
-          >
-            {competitions.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {seasons.length > 0 && (
+      {seasons.length > 1 && (
         <div style={{ marginBottom: '12px' }}>
           <label style={{ fontSize: '11px', color: 'var(--muted)' }}>Temporada:</label>
           <select
-            value={selectedSeasonId || seasons[0]?.id || ''}
+            value={selectedSeasonId}
             onChange={(e) => setSelectedSeasonId(e.target.value)}
-            style={{ width: '100%', padding: '6px', background: '#0a1520', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: '7px' }}
+            style={selectStyle}
           >
             {seasons.map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
@@ -146,32 +184,56 @@ const StartScreen: React.FC = () => {
         </div>
       )}
 
+      {divisions.length > 0 && (
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ fontSize: '11px', color: 'var(--muted)' }}>Divisão:</label>
+          <select
+            value={selectedEditionId}
+            onChange={(e) => setSelectedEditionId(e.target.value)}
+            style={selectStyle}
+          >
+            {divisions.map(division => (
+              <option key={division.id} value={division.id}>{division.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div className="small" style={{ marginBottom: '8px' }}>
+        {clubsLoading
+          ? 'Carregando clubes...'
+          : `${divisionClubs.length} clubes nesta divisão`}
+      </div>
+
       <div className="team-grid">
-        {teams.map((team, i) => {
-          const colors = team.primaryColor && team.secondaryColor
-            ? { primary: team.primaryColor, secondary: team.secondaryColor }
+        {divisionClubs.map((club, i) => {
+          const colors = club.primaryColor && club.secondaryColor
+            ? { primary: club.primaryColor, secondary: club.secondaryColor }
             : pick(TEAM_COLOR_PALETTES);
+
           return (
             <div
-              key={team.id}
-              className={`team-choice ${selectedIndex === i ? 'selected' : ''}`}
-              onClick={() => setSelectedIndex(i)}
+              key={club.id}
+              className={`team-choice ${selectedClubId === club.id ? 'selected' : ''}`}
+              onClick={() => setSelectedClubId(club.id)}
               data-i={i}
               style={{ '--team-primary': colors.primary, '--team-secondary': colors.secondary } as React.CSSProperties}
             >
               <div
                 className="crest"
-                style={{
-                  background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-                }}
+                style={{ background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})` }}
               >
-                {team.shortName.split(' ').map(w => w[0]).slice(0, 2).join('')}
+                {club.shortName.split(' ').map(w => w[0]).slice(0, 2).join('')}
               </div>
-              <h3>{team.name}</h3>
-              <div className="small">Campeonato • {teams.length} equipes</div>
+              <h3>{club.name}</h3>
               <div className="rating" style={{ color: colors.primary }}>
-                FORÇA DO ELENCO {team.rating}
+                FORÇA DO ELENCO {club.rating}
               </div>
+              {club.stadium && (
+                <div className="small">
+                  {club.stadium.name} • {club.stadium.capacity.toLocaleString('pt-BR')} lugares
+                </div>
+              )}
             </div>
           );
         })}
@@ -187,6 +249,15 @@ const StartScreen: React.FC = () => {
       </button>
     </div>
   );
+};
+
+const selectStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '6px',
+  background: '#0a1520',
+  color: 'var(--text)',
+  border: '1px solid var(--line)',
+  borderRadius: '7px'
 };
 
 export default StartScreen;

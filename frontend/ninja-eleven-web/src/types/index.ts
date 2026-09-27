@@ -48,6 +48,8 @@ export interface SquadPlayerDto {
   stars: number;
   energy: number;
   goals: number;
+  /** Saves for the club this season. Zero for everyone who is not a goalkeeper. */
+  saves: number;
   yellowCards: number;
   redCards: number;
   suspensionMatches: number;
@@ -72,6 +74,8 @@ export interface TeamDto {
 
 export interface StadiumDto {
   id: Guid;
+  /** A ground has a name of its own, not one composed from the club's name. */
+  name: string;
   capacity: number;
   ticketPrice: number;
 }
@@ -91,8 +95,50 @@ export interface CompetitionDto {
   type: string;
 }
 
+/**
+ * One edition of a competition inside one season.
+ *
+ * This is what a club list, a table and a fixture list are all addressed by. "Campeonato
+ * Brasileiro" runs three times in a season, once per tier, and a list of competitions has
+ * nowhere to say which of the three a club is in.
+ */
+export interface CompetitionEditionDto {
+  /** The edition's id: what a table, a fixture and a trophy are addressed by. */
+  id: string;
+  competitionId: string;
+  seasonId: string;
+  divisionId?: string | null;
+  /** 1 is the top of the pyramid. Null for a cup and a Supercup. */
+  tier?: number | null;
+  /** The competition's own name, without the tier. */
+  competitionName: string;
+  type: CompetitionType;
+  /** "1ª Divisão" for a division, or the competition's name for a knockout. */
+  name: string;
+  /** Whether this edition is one tier's table rather than a knockout. */
+  isDivision: boolean;
+}
+
+export type CompetitionType = 'League' | 'Cup' | 'SuperCup';
+
+/**
+ * The divisions of a season, top first.
+ *
+ * It is a derived list rather than a stored one: a division is a tier of the pyramid, and
+ * the tiers are a rule (`CompetitionRules.DivisionCount`) rather than a fact a database has
+ * to be told. Reading them off the editions the season actually has keeps the two in step —
+ * a pyramid with a division in it and a list of divisions that disagrees is a manager who
+ * picks a 4ª Divisão that nobody plays in.
+ */
+export const divisionsOf = (editions: CompetitionEditionDto[]) =>
+  editions
+    .filter(edition => edition.isDivision && edition.tier != null)
+    .sort((a, b) => (a.tier! - b.tier!));
+
 export interface SeasonDto {
   id: Guid;
+  /** The season's number, counted from one. Its identity, and what orders the list. */
+  number: number;
   name: string;
   startDate: string;
   endDate: string;
@@ -114,7 +160,36 @@ export interface CompetitionParticipantDto {
 export interface RoundDto {
   id: Guid;
   competitionSeasonId: Guid;
+  /** Counted from one inside its own competition, which is why it is not a date. */
   number: number;
+  /** The matchday this window belongs to: the link between a cup tie and a league game. */
+  matchDayId?: Guid | null;
+  /** Which window of the matchday: the championship is 1, the cup is 2. */
+  window: number;
+  completedAt?: string | null;
+}
+
+/** One day of a season's football, with a date. */
+export interface MatchDayDto {
+  id: Guid;
+  seasonId: Guid;
+  number: number;
+  date: string;
+}
+
+/**
+ * A season's calendar: the days, and the windows of football scheduled on them.
+ *
+ * It is asked for as a whole because a calendar that showed a fixture without the day it is
+ * on is a list, and a manager reading a season wants to know when his club plays rather than
+ * only in which order.
+ */
+export interface SeasonCalendarDto {
+  seasonId: Guid;
+  seasonName: string;
+  matchDayCount: number;
+  matchDays: MatchDayDto[];
+  windows: RoundDto[];
 }
 
 export type Injury = 'None' | 'Light' | 'Grave';
@@ -196,6 +271,12 @@ export interface MatchStateDto {
   penaltyAwaitingSelection: boolean;
   /** Who can take the penalty the engine awarded, when one is waiting for the manager. */
   penalty: PenaltyTakerOptionsDto;
+  /**
+   * A man who cannot carry on and whose replacement the manager has to name. It is not a
+   * notification about something that has happened: the clock is held while it is out, so
+   * while this is set the match is waiting on this and nothing else is moving.
+   */
+  injury: MatchInjuryDto;
   /** The club the manager is watching: what commands are sent for. */
   userTeamId: Guid | null;
   substitutionsUsedHome: number;
@@ -218,6 +299,20 @@ export interface PenaltyTakerOptionsDto {
   candidates: MatchPlayerDto[];
 }
 
+/**
+ * Who is hurt, for which club, and how bad it is. He is still in the eleven at this point,
+ * because the change that takes him off is the change the manager has not made yet.
+ */
+export interface MatchInjuryDto {
+  awaitingSubstitution: boolean;
+  playerId: Guid | null;
+  playerName: string | null;
+  /** Which side he plays for: 1 home, 2 away. */
+  team: number | null;
+  /** None whenever there is nothing to report, so a healthy match does not read as hurt. */
+  severity: Injury;
+}
+
 export interface TeamMatchStatsDto {
   shots: number;
   shotsOnTarget: number;
@@ -234,11 +329,21 @@ export interface MatchPossessionDto {
   playerId?: Guid | null;
 }
 
+/** The band a club sits in across a divisions table, worked out by the backend. */
+export type TableZone = 'None' | 'Safe' | 'Promotion' | 'Relegation';
+
+/**
+ * One line of a classification table, as the backend worked it out.
+ *
+ * `position` is decided by the backend and is not recomputed here. A table sorted again in
+ * the browser is a table that can disagree with the promotion rules, and a manager told his
+ * club is sixth by the promotion pass and seventh by the screen has been given two answers to
+ * one question.
+ */
 export interface StandingDto {
-  id: Guid;
-  competitionSeasonId: Guid;
   teamId: Guid;
   team?: TeamDto | null;
+  position: number;
   points: number;
   played: number;
   wins: number;
@@ -250,6 +355,30 @@ export interface StandingDto {
   yellowCards: number;
   redCards: number;
   stars: number;
+  /** Which band of the table this line is in, from the backend's own rules. */
+  zone?: TableZone;
+}
+
+/**
+ * A table as a manager reads it: where the clubs are, and where they would be if the games
+ * still being played went a certain way.
+ *
+ * Both tables are ordered by the same rules and the same tiebreakers, so a club that is sixth
+ * officially can be third live without either screen disagreeing with itself. `projected`
+ * counts every unfinished game of the competition at its current score, not only the match on
+ * screen: a projection that ignored the other games of the matchday would be wrong in a way
+ * nobody could see, since noticing it means watching a match the manager is not in.
+ */
+export interface CompetitionStandingsDto {
+  competitionSeasonId: Guid;
+  seasonId?: Guid | null;
+  divisionId?: Guid | null;
+  /** 1 is the top of the pyramid. Null for a cup and a Supercup. */
+  tier?: number | null;
+  competitionName: string;
+  official: StandingDto[];
+  projected: StandingDto[];
+  hasLiveMatches: boolean;
 }
 
 export interface ScorerDto {
@@ -365,6 +494,12 @@ export interface MatchPlayerDto {
   redCard: boolean;
   emergencyGK: boolean;
   injuredOff: boolean;
+  /**
+   * How bad the knock of this match was. It is a separate fact from `injuredOff`, because
+   * a player carrying a light injury is still on the pitch: he is hurt and still playing,
+   * and a screen that reads `injuredOff` alone shows a healthy eleven.
+   */
+  injury: Injury;
   subbedIn: boolean;
   /**
    * He left the pitch and is spent. A substitute who has been taken off cannot be named
@@ -585,3 +720,19 @@ export type SquadSuggestionDto = {
   starterIds: Guid[];
   benchIds: Guid[];
 };
+
+/**
+ * One finished match of a club, from the club's side. `goalsFor` and `goalsAgainst` are
+ * already ordered for the club, so a screen does not have to know which end it was on.
+ */
+export interface TeamMatchRecordDto {
+  matchId: Guid;
+  opponentName: string;
+  /** So the opponent's name is a door to that club, as every name in the game is. */
+  opponentTeamId: Guid;
+  isHome: boolean;
+  goalsFor: number;
+  goalsAgainst: number;
+  roundNumber: number;
+  playedAt: string;
+}

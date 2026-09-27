@@ -24,10 +24,14 @@ public class NinjaElevenDbContext : DbContext
     public DbSet<Stadium> Stadiums => Set<Stadium>();
 
     public DbSet<Season> Seasons => Set<Season>();
+    public DbSet<Division> Divisions => Set<Division>();
     public DbSet<Competition> Competitions => Set<Competition>();
     public DbSet<CompetitionSeason> CompetitionSeasons => Set<CompetitionSeason>();
     public DbSet<CompetitionParticipant> CompetitionParticipants => Set<CompetitionParticipant>();
+    public DbSet<MatchDay> MatchDays => Set<MatchDay>();
     public DbSet<Round> Rounds => Set<Round>();
+    public DbSet<CupTie> CupTies => Set<CupTie>();
+    public DbSet<TrophyAward> TrophyAwards => Set<TrophyAward>();
 
     public DbSet<Fixture> Fixtures => Set<Fixture>();
     public DbSet<Match> Matches => Set<Match>();

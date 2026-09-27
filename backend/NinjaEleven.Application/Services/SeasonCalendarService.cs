@@ -1,0 +1,586 @@
+using NinjaEleven.Application.Abstractions;
+using NinjaEleven.Application.Leagues;
+using NinjaEleven.Application.Models;
+using NinjaEleven.Application.Repositories;
+using NinjaEleven.Domain.Common;
+using NinjaEleven.Domain.Competitions;
+using NinjaEleven.Domain.Enums;
+using NinjaEleven.Domain.Matches;
+using NinjaEleven.Domain.Seasons;
+using NinjaEleven.Domain.Teams;
+
+namespace NinjaEleven.Application.Services;
+
+/// <summary>
+/// Lays a season out: the matchdays, and the fixtures in every window of every one of them.
+///
+/// The season is a calendar before it is a set of matches. A matchday is a date, a window is
+/// a slice of that date, and a fixture belongs to exactly one window — so "when does this
+/// club play" has an answer, "has the club that is resting played" has an answer, and the
+/// recovery after a window can be applied once and only once, because the window it belongs
+/// to is a row rather than a guess from the fixture's date.
+///
+/// It is idempotent for the same reason <c>POST /league/setup</c> is: a season that already
+/// has matchdays is a season that has been drawn, and asking again returns what is there
+/// instead of a second calendar.
+/// </summary>
+public class SeasonCalendarService
+{
+    private readonly ISeasonRepository _seasonRepository;
+    private readonly IMatchDayRepository _matchDayRepository;
+    private readonly IRoundRepository _roundRepository;
+    private readonly IFixtureRepository _fixtureRepository;
+    private readonly ICupTieRepository _cupTieRepository;
+    private readonly ICompetitionRepository _competitionRepository;
+    private readonly IMatchRepository _matchRepository;
+    private readonly ITeamRepository _teamRepository;
+    private readonly ITrophyRepository _trophyRepository;
+    private readonly StandingsService _standingsService;
+    private readonly IUnitOfWork _unitOfWork;
+
+    public SeasonCalendarService(
+        ISeasonRepository seasonRepository,
+        IMatchDayRepository matchDayRepository,
+        IRoundRepository roundRepository,
+        IFixtureRepository fixtureRepository,
+        ICupTieRepository cupTieRepository,
+        ICompetitionRepository competitionRepository,
+        IMatchRepository matchRepository,
+        ITeamRepository teamRepository,
+        ITrophyRepository trophyRepository,
+        StandingsService standingsService,
+        IUnitOfWork unitOfWork)
+    {
+        _seasonRepository = seasonRepository;
+        _matchDayRepository = matchDayRepository;
+        _roundRepository = roundRepository;
+        _fixtureRepository = fixtureRepository;
+        _cupTieRepository = cupTieRepository;
+        _competitionRepository = competitionRepository;
+        _matchRepository = matchRepository;
+        _teamRepository = teamRepository;
+        _trophyRepository = trophyRepository;
+        _standingsService = standingsService;
+        _unitOfWork = unitOfWork;
+    }
+
+    /// <summary>
+    /// The matchdays of a season, and the windows scheduled on them. A season that has already
+    /// been drawn is returned as it stands.
+    /// </summary>
+    public async Task<SeasonCalendar> GetAsync(Guid seasonId, CancellationToken cancellationToken = default)
+    {
+        var season = await _seasonRepository.GetAsync(seasonId, cancellationToken)
+            ?? throw new EntityNotFoundException("Season", seasonId);
+
+        var matchDays = await _matchDayRepository.ListBySeasonAsync(seasonId, cancellationToken);
+        var views = await _competitionRepository.ListSeasonViewsAsync(seasonId, cancellationToken);
+
+        var rounds = views.Count == 0
+            ? Array.Empty<Round>()
+            : await _roundRepository.ListAsync(cancellationToken);
+
+        var windows = rounds
+            .Where(round => round.MatchDayId is not null
+                && views.Any(view => view.Id == round.CompetitionSeasonId))
+            .OrderBy(round => round.Number)
+            .ThenBy(round => round.Window)
+            .ToList();
+
+        return new SeasonCalendar
+        {
+            SeasonId = season.Id,
+            SeasonName = season.Name,
+            MatchDays = matchDays.OrderBy(matchDay => matchDay.Number).ToList(),
+            Windows = windows
+        };
+    }
+
+    /// <summary>
+    /// Draws the whole season, or returns the calendar that is already there.
+    ///
+    /// Everything about the shape comes from <see cref="CompetitionRules"/>: twenty-two
+    /// matchdays a week apart, the three divisions' round-robins in the first window, the
+    /// cup's five tie-rounds over two legs each in the second, and the Supercup on the first
+    /// matchday of the second window where nothing else is playing.
+    /// </summary>
+    public async Task<SeasonCalendar> BuildAsync(Guid seasonId, CancellationToken cancellationToken = default)
+    {
+        var season = await _seasonRepository.GetAsync(seasonId, cancellationToken)
+            ?? throw new EntityNotFoundException("Season", seasonId);
+
+        // The guard is the fixtures, not the matchdays. A season that was interrupted halfway
+        // through its first draw has matchdays and no windows, and stopping there would leave
+        // it undrawable for good: every later call would find matchdays, decide the season was
+        // already drawn, and return an empty calendar. A calendar with nothing in it is not a
+        // calendar.
+        var existing = await _matchDayRepository.ListBySeasonAsync(seasonId, cancellationToken);
+        if (existing.Count > 0 && await HasFixturesAsync(seasonId, cancellationToken))
+        {
+            return await GetAsync(seasonId, cancellationToken);
+        }
+
+        if (existing.Count > 0)
+        {
+            await DiscardTheHalfDrawnCalendarAsync(seasonId, cancellationToken);
+        }
+
+        var views = await _competitionRepository.ListSeasonViewsAsync(seasonId, cancellationToken);
+        var leagueViews = views.Where(view => view.Type == CompetitionType.League).ToList();
+        var cupViews = views.Where(view => view.Type == CompetitionType.Cup).ToList();
+        var superCupViews = views.Where(view => view.Type == CompetitionType.SuperCup).ToList();
+
+        if (leagueViews.Count == 0)
+        {
+            throw new DomainValidationException(
+                "SeasonHasNoLeague",
+                "A season with no division in it has no calendar to draw.");
+        }
+
+        var matchDays = CreateMatchDays(season);
+        await _matchDayRepository.AddRangeAsync(matchDays, cancellationToken);
+
+        var byNumber = matchDays.ToDictionary(matchDay => matchDay.Number);
+
+        var rounds = new List<Round>();
+        var fixtures = new List<Fixture>();
+        var ties = new List<CupTie>();
+
+        foreach (var view in leagueViews)
+        {
+            await DrawLeagueAsync(view, byNumber, rounds, fixtures, cancellationToken);
+        }
+
+        foreach (var view in cupViews)
+        {
+            var entrants = await EnrolTheCupAsync(view, cancellationToken);
+
+            if (entrants.Count >= 2)
+            {
+                DrawFirstRound(view, entrants, byNumber, rounds, fixtures, ties);
+            }
+        }
+
+        foreach (var view in superCupViews)
+        {
+            var entrants = await EnrolTheSuperCupAsync(view, cancellationToken);
+
+            if (entrants.Count >= 2)
+            {
+                DrawSuperCup(view, entrants, byNumber, rounds, fixtures);
+            }
+        }
+
+        foreach (var round in rounds)
+        {
+            await _roundRepository.AddAsync(round, cancellationToken);
+        }
+
+        await _fixtureRepository.AddRangeAsync(fixtures, cancellationToken);
+
+        if (ties.Count > 0)
+        {
+            await _cupTieRepository.AddRangeAsync(ties, cancellationToken);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return await GetAsync(seasonId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Whether a season's calendar has anything in it yet.
+    /// </summary>
+    private async Task<bool> HasFixturesAsync(Guid seasonId, CancellationToken cancellationToken)
+    {
+        var views = await _competitionRepository.ListSeasonViewsAsync(seasonId, cancellationToken);
+        if (views.Count == 0) return false;
+
+        var rounds = await _roundRepository.ListAsync(cancellationToken);
+        var ids = rounds
+            .Where(round => views.Any(view => view.Id == round.CompetitionSeasonId))
+            .Select(round => round.Id)
+            .ToList();
+
+        if (ids.Count == 0) return false;
+
+        var fixtures = await _fixtureRepository.ListByRoundIdsAsync(ids, cancellationToken);
+        return fixtures.Count > 0;
+    }
+
+    /// <summary>
+    /// Throws away a calendar that was started and never finished, so that the draw can start
+    /// again from nothing rather than from a half of it.
+    ///
+    /// A fixture is only deleted when nothing has been played in it, which is what makes this
+    /// safe: once a window has a match in it, a half-drawn calendar is no longer a half-drawn
+    /// calendar, it is a season in progress, and a season in progress is repaired by a person
+    /// rather than by a rebuild.
+    /// </summary>
+    private async Task DiscardTheHalfDrawnCalendarAsync(Guid seasonId, CancellationToken cancellationToken)
+    {
+        var views = await _competitionRepository.ListSeasonViewsAsync(seasonId, cancellationToken);
+        var rounds = await _roundRepository.ListAsync(cancellationToken);
+
+        var mine = rounds.Where(round => views.Any(view => view.Id == round.CompetitionSeasonId)).ToList();
+        if (mine.Count == 0) return;
+
+        var fixtures = await _fixtureRepository.ListByRoundIdsAsync(
+            mine.Select(round => round.Id), cancellationToken);
+
+        var played = new HashSet<Guid>(
+            (await _matchRepository.ListByFixtureIdsAsync(
+                fixtures.Select(fixture => fixture.Id), cancellationToken))
+            .Select(match => match.FixtureId));
+
+        var untouched = fixtures.Where(fixture => !played.Contains(fixture.Id)).ToList();
+
+        if (untouched.Count != fixtures.Count)
+        {
+            // Something has been played. Half-deleting a season in progress is not this
+            // method's decision to make, and the windows that already hold a match are the
+            // ones a person has to look at.
+            return;
+        }
+
+        _fixtureRepository.RemoveRange(untouched);
+        _roundRepository.RemoveRange(mine);
+    }
+
+    /// <summary>
+    /// The matchdays of a season: one a week, starting on the day the season starts.
+    ///
+    /// The count is the championship's, and it is the spine of the calendar. The cup's final
+    /// is forced onto the last of them, so a calendar longer or shorter than the
+    /// championship's would either leave the final off the end of the season or stretch the
+    /// season past its own last matchday.
+    /// </summary>
+    private static List<MatchDay> CreateMatchDays(Season season)
+    {
+        var matchDays = new List<MatchDay>(CompetitionRules.LeagueMatchDays);
+
+        for (var number = 1; number <= CompetitionRules.LeagueMatchDays; number++)
+        {
+            matchDays.Add(MatchDay.Create(
+                season.Id,
+                number,
+                season.StartDate.AddDays((number - 1) * CompetitionRules.DaysBetweenMatchDays)));
+        }
+
+        return matchDays;
+    }
+
+    /// <summary>
+    /// A division's round-robin, one round per matchday in the first window.
+    ///
+    /// A division of twelve plays every other eleven twice, so twenty-two rounds fill
+    /// twenty-two matchdays exactly. The participants are the edition's own, read from the
+    /// database, because the edition is what says who is in this division this season — a
+    /// club promoted into it is not in it until the season that promoted it.
+    /// </summary>
+    private async Task DrawLeagueAsync(
+        CompetitionSeasonView view,
+        IReadOnlyDictionary<int, MatchDay> matchDays,
+        List<Round> rounds,
+        List<Fixture> fixtures,
+        CancellationToken cancellationToken)
+    {
+        var participants = await _competitionRepository.ListParticipantsAsync(view.Id, cancellationToken);
+        var teams = await _teamRepository.ListByIdsAsync(
+            participants.Select(participant => participant.TeamId), cancellationToken);
+
+        if (teams.Count < 2)
+        {
+            return;
+        }
+
+        var pairs = RoundRobin.Build(teams.OrderBy(team => team.Id).ToList());
+        var count = Math.Min(pairs.Count, CompetitionRules.LeagueMatchDays);
+
+        for (var index = 0; index < count; index++)
+        {
+            var matchDayNumber = index + 1;
+            if (!matchDays.TryGetValue(matchDayNumber, out var matchDay))
+            {
+                continue;
+            }
+
+            var round = Round.Create(view.Id, matchDayNumber, CompetitionRules.ChampionshipWindow);
+            round.ScheduleOn(matchDay.Id);
+            rounds.Add(round);
+
+            foreach (var (home, away) in pairs[index])
+            {
+                fixtures.Add(Fixture.Create(round.Id, home.Id, away.Id));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The thirty-two clubs in the cup, in the order the tie-round is drawn from.
+    ///
+    /// Entrants live on the edition rather than being worked out every time a draw is needed,
+    /// because a cup that is re-seeded on every read is a cup whose draw can change between
+    /// two questions asked of the same state. An edition that already has entrants keeps them.
+    /// </summary>
+    private async Task<IReadOnlyList<Guid>> EnrolTheCupAsync(
+        CompetitionSeasonView view,
+        CancellationToken cancellationToken)
+    {
+        var enrolled = await _competitionRepository.ListParticipantsAsync(view.Id, cancellationToken);
+        if (enrolled.Count > 0)
+        {
+            return enrolled.Select(participant => participant.TeamId).ToList();
+        }
+
+        var seeds = await SeedTheCupAsync(view, cancellationToken);
+        if (seeds.Count < 2)
+        {
+            return seeds.Select(seed => seed.TeamId).ToList();
+        }
+
+        await _competitionRepository.AddParticipantsAsync(
+            seeds.Select(seed => CompetitionParticipant.Create(view.Id, seed.TeamId)).ToList(),
+            cancellationToken);
+
+        return seeds.Select(seed => seed.TeamId).ToList();
+    }
+
+    /// <summary>
+    /// The two clubs in the Supercup: the club that won the championship and the club that won
+    /// the cup.
+    ///
+    /// Both of them are the winners of the season *before* this one, which is why the first
+    /// season of a world has no Supercup at all rather than a Supercup between two clubs that
+    /// have not won anything. The trophies are read from the shelf rather than worked out from
+    /// last season's tables, because a table read again is a table that could be read
+    /// differently after a correction.
+    /// </summary>
+    private async Task<IReadOnlyList<Guid>> EnrolTheSuperCupAsync(
+        CompetitionSeasonView view,
+        CancellationToken cancellationToken)
+    {
+        var enrolled = await _competitionRepository.ListParticipantsAsync(view.Id, cancellationToken);
+        if (enrolled.Count >= 2)
+        {
+            return enrolled.Select(participant => participant.TeamId).Take(2).ToList();
+        }
+
+        var current = await _seasonRepository.GetAsync(view.SeasonId, cancellationToken);
+        if (current is null)
+        {
+            return Array.Empty<Guid>();
+        }
+
+        var previous = (await _seasonRepository.ListAsync(cancellationToken))
+            .Where(season => season.Number < current.Number)
+            .OrderByDescending(season => season.Number)
+            .FirstOrDefault();
+
+        if (previous is null)
+        {
+            return Array.Empty<Guid>();
+        }
+
+        var trophies = await _trophyRepository.ListBySeasonAsync(previous.Id, cancellationToken);
+        var views = await _competitionRepository.ListSeasonViewsAsync(previous.Id, cancellationToken);
+
+        var champion = trophies.FirstOrDefault(trophy => views.Any(other =>
+            other.Id == trophy.CompetitionSeasonId && other.Type == CompetitionType.League));
+        var cupWinner = trophies.FirstOrDefault(trophy => views.Any(other =>
+            other.Id == trophy.CompetitionSeasonId && other.Type == CompetitionType.Cup));
+
+        if (champion is null || cupWinner is null)
+        {
+            return Array.Empty<Guid>();
+        }
+
+        await _competitionRepository.AddParticipantsAsync(
+            new List<CompetitionParticipant>
+            {
+                CompetitionParticipant.Create(view.Id, champion.TeamId),
+                CompetitionParticipant.Create(view.Id, cupWinner.TeamId)
+            },
+            cancellationToken);
+
+        return new[] { champion.TeamId, cupWinner.TeamId };
+    }
+
+    /// <summary>
+    /// The cup's first tie-round: sixteen ties, two legs each, in the second window of two
+    /// consecutive matchdays.
+    ///
+    /// Only the first round is drawn here. The rounds after it are drawn from the winners of
+    /// the round before, and a bracket drawn on the first day of the season would be a
+    /// bracket that had decided who was in the final before anything had been played.
+    /// </summary>
+    private static void DrawFirstRound(
+        CompetitionSeasonView view,
+        IReadOnlyList<Guid> entrants,
+        IReadOnlyDictionary<int, MatchDay> matchDays,
+        List<Round> rounds,
+        List<Fixture> fixtures,
+        List<CupTie> ties)
+    {
+        if (entrants.Count < 2 || entrants.Count % 2 != 0)
+        {
+            return;
+        }
+
+        var seeds = entrants
+            .Select(teamId => new CupQualification.Seed(teamId, 1, 1))
+            .ToList();
+
+        var pairings = CupQualification.FirstRoundPairings(seeds);
+        var (firstLegDay, secondLegDay) = CompetitionRules.CupLegMatchDays(1);
+
+        if (!matchDays.TryGetValue(firstLegDay, out var firstMatchDay)
+            || !matchDays.TryGetValue(secondLegDay, out var secondMatchDay))
+        {
+            return;
+        }
+
+        var firstRound = Round.Create(view.Id, CompetitionRules.CupWindowNumber(1, 1), CompetitionRules.CupWindow);
+        firstRound.ScheduleOn(firstMatchDay.Id);
+        rounds.Add(firstRound);
+
+        var secondRound = Round.Create(view.Id, CompetitionRules.CupWindowNumber(1, 2), CompetitionRules.CupWindow);
+        secondRound.ScheduleOn(secondMatchDay.Id);
+        rounds.Add(secondRound);
+
+        foreach (var (home, away) in pairings)
+        {
+            var firstLeg = Fixture.Create(firstRound.Id, home, away);
+            var secondLeg = Fixture.Create(secondRound.Id, away, home);
+
+            fixtures.Add(firstLeg);
+            fixtures.Add(secondLeg);
+
+            var tie = CupTie.Create(view.Id, 1, home, away);
+            tie.SetLegs(firstLeg.Id, secondLeg.Id);
+            ties.Add(tie);
+        }
+    }
+
+    /// <summary>
+    /// The Supercup: one match, in the second window of the first matchday, where nothing else
+    /// is playing. The cup's first tie-round is not until the fifth matchday, so the window is
+    /// free and the season stays exactly twenty-two matchdays long with its final last.
+    /// </summary>
+    private static void DrawSuperCup(
+        CompetitionSeasonView view,
+        IReadOnlyList<Guid> entrants,
+        IReadOnlyDictionary<int, MatchDay> matchDays,
+        List<Round> rounds,
+        List<Fixture> fixtures)
+    {
+        if (entrants.Count < 2 || !matchDays.TryGetValue(CompetitionRules.SuperCupMatchDay, out var matchDay))
+        {
+            return;
+        }
+
+        var round = Round.Create(view.Id, 1, CompetitionRules.SuperCupWindow);
+        round.ScheduleOn(matchDay.Id);
+        rounds.Add(round);
+
+        fixtures.Add(Fixture.Create(round.Id, entrants[0], entrants[1]));
+    }
+
+    /// <summary>
+    /// The thirty-two clubs in the cup, in seed order.
+    ///
+    /// The last finished season's tables decide it, and that is the rule from the second
+    /// season on. A brand new world has no such tables — nothing has been played — and then
+    /// the pyramid and the squads themselves are the only things that are known: the clubs are
+    /// ordered by the division they are in, and inside a division by the strength of the
+    /// squad on their books. The four left out are the weakest clubs of the weakest division.
+    ///
+    /// That is a weaker rule than a table, and it is said out loud rather than pretended
+    /// away: a first cup drawn from a first season is drawn from what the world knows, and
+    /// every season after it is drawn from a table.
+    /// </summary>
+    private async Task<IReadOnlyList<CupQualification.Seed>> SeedTheCupAsync(
+        CompetitionSeasonView view,
+        CancellationToken cancellationToken)
+    {
+        var views = await _competitionRepository.ListSeasonViewsAsync(view.SeasonId, cancellationToken);
+
+        var byTier = new Dictionary<int, IReadOnlyList<StandingEntry>>();
+        var seedsByTier = new Dictionary<int, List<(Guid TeamId, double Stars)>>();
+
+        foreach (var tierView in views.Where(candidate => candidate.Tier is not null))
+        {
+            var collection = await _standingsService.CollectAsync(tierView.Id, tierView, cancellationToken);
+
+            if (collection.Seeds.Count == 0) continue;
+
+            byTier[tierView.Tier!.Value] = StandingTable.Build(collection.Seeds, collection.Finished);
+            seedsByTier[tierView.Tier!.Value] = collection.Seeds
+                .Select(seed => (seed.TeamId, seed.Stars))
+                .ToList();
+        }
+
+        if (byTier.Count == 0)
+        {
+            // Nothing in the pyramid to seed the cup from, and a cup with no draw is not a cup
+            // that is waiting to be drawn: it is a season whose calendar is missing a
+            // competition, and saying so is the only honest answer.
+            throw new DomainValidationException(
+                "CupCannotBeDrawn",
+                "A copa é sorteada a partir do campeonato, e a temporada não tem nenhuma divisão " +
+                "com clubes para servir de semente.");
+        }
+
+        // From the second season on the tables decide, and the pyramid is not consulted.
+        if (byTier.Values.Any(standings => standings.Any(entry => entry.Played > 0)))
+        {
+            return CupQualification.Rank(byTier);
+        }
+
+        // A cup of thirty-two cannot be drawn from a pyramid of twenty, and drawing one from
+        // twenty anyway would be a competition that is quietly not the one the rules describe.
+        if (ClubsInPyramid(byTier) < CompetitionRules.CupSize)
+        {
+            throw new DomainValidationException(
+                "CupTooSmall",
+                $"A copa precisa de {CompetitionRules.CupSize} clubes e a pirâmide só tem " +
+                $"{ClubsInPyramid(byTier)}.");
+        }
+
+        var fallback = new List<CupQualification.Seed>();
+        foreach (var tier in byTier.Keys.OrderBy(tier => tier))
+        {
+            var clubs = seedsByTier[tier]
+                .OrderByDescending(seed => seed.Stars)
+                .ThenBy(seed => seed.TeamId)
+                .ToList();
+
+            for (var position = 0; position < clubs.Count; position++)
+            {
+                fallback.Add(new CupQualification.Seed(clubs[position].TeamId, tier, position + 1));
+            }
+        }
+
+        return fallback
+            .OrderBy(seed => seed.Rank)
+            .Take(CompetitionRules.CupSize)
+            .ToList();
+    }
+
+
+    /// <summary>
+    /// The window number a leg is played in. The legs of a tie-round are two consecutive
+    /// windows of the cup, because a round is one window and a tie is two of them: counting
+    /// the tie-rounds instead would leave the second leg of a round sharing a window number
+    /// with the first leg of the next.
+    /// </summary>
+    /// <summary>How many clubs the pyramid holds, counted from the tables of its divisions.</summary>
+    private static int ClubsInPyramid(IReadOnlyDictionary<int, IReadOnlyList<StandingEntry>> byTier) =>
+        byTier.Values.Sum(standings => standings.Count);
+
+    private static IEnumerable<(int FirstLeg, int SecondLeg)> Legs(int tieRound)
+    {
+        var (first, second) = CompetitionRules.CupLegMatchDays(tieRound);
+        return new[] { (first, second) };
+    }
+}

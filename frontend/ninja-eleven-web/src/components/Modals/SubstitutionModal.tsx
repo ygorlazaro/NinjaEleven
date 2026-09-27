@@ -13,9 +13,16 @@ interface SubstitutionModalProps {
    * card under the scoreboard. He only has to say who replaces him.
    */
   preselectOut?: string | null;
+  /**
+   * A player who cannot carry on, when the screen was opened because of him rather than
+   * because the manager asked. The clock is held for that decision, so there is nowhere to
+   * go until somebody is named.
+   */
+  forcedFor?: string | null;
   busy?: boolean;
   onSubstitute: (playerOutId: string, playerInId: string) => void;
-  onClose: () => void;
+  /** Omitted when the match is waiting on the answer: the screen cannot be dismissed. */
+  onClose?: () => void;
 }
 
 /**
@@ -30,6 +37,7 @@ const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
   bench,
   substitutionsUsed,
   preselectOut = null,
+  forcedFor = null,
   busy = false,
   onSubstitute,
   onClose,
@@ -39,8 +47,15 @@ const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
   return (
     <div className="modal">
       <div className="modal-card">
-        <h2>🔁 Substituições</h2>
+        <h2>{forcedFor ? '🩹 Substituição obrigatória' : '🔁 Substituições'}</h2>
         <p style={{ color: 'var(--muted)', fontSize: '12px' }}>{team.name}</p>
+
+        {forcedFor && (
+          <p style={{ color: 'var(--danger)', fontSize: '13px', margin: '0 0 8px' }}>
+            {forcedFor} não pode continuar. O relógio está parado até alguém entrar no lugar
+            dele.
+          </p>
+        )}
 
         {/* The key restarts the panel whenever a different player is reached from the team
             sheet, so the pick the manager made there is the pick the panel opens with. */}
@@ -54,9 +69,11 @@ const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
           onSubstitute={onSubstitute}
         />
 
-        <div className="modal-actions" style={{ marginTop: '16px' }}>
-          <button className="ctrl" onClick={onClose}>Fechar</button>
-        </div>
+        {onClose && (
+          <div className="modal-actions" style={{ marginTop: '16px' }}>
+            <button className="ctrl" onClick={onClose}>Fechar</button>
+          </div>
+        )}
       </div>
     </div>
   );

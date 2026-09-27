@@ -35,6 +35,19 @@ public class RoundRepository : IRoundRepository
             .OrderBy(round => round.Number)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<Round>> ListByMatchDayAsync(
+        Guid matchDayId,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.Rounds
+            .AsNoTracking()
+            .Where(round => round.MatchDayId == matchDayId)
+            .OrderBy(round => round.Window)
+            .ToListAsync(cancellationToken);
+
     public async Task AddAsync(Round round, CancellationToken cancellationToken = default) =>
         await _dbContext.Rounds.AddAsync(round, cancellationToken);
+
+    public void Update(Round round) => _dbContext.Rounds.Update(round);
+
+    public void RemoveRange(IEnumerable<Round> rounds) => _dbContext.Rounds.RemoveRange(rounds);
 }

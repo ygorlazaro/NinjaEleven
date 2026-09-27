@@ -33,8 +33,22 @@ public class FixtureRepository : IFixtureRepository
             .Where(fixture => fixture.RoundId == roundId)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<Fixture>> ListByRoundIdsAsync(
+        IEnumerable<Guid> roundIds,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.Fixtures
+            .AsNoTracking()
+            .Where(fixture => roundIds.Contains(fixture.RoundId))
+            .OrderBy(fixture => fixture.RoundId)
+            .ToListAsync(cancellationToken);
+
     public async Task AddAsync(Fixture fixture, CancellationToken cancellationToken = default) =>
         await _dbContext.Fixtures.AddAsync(fixture, cancellationToken);
 
+    public async Task AddRangeAsync(IEnumerable<Fixture> fixtures, CancellationToken cancellationToken = default) =>
+        await _dbContext.Fixtures.AddRangeAsync(fixtures, cancellationToken);
+
     public void Update(Fixture fixture) => _dbContext.Fixtures.Update(fixture);
+
+    public void RemoveRange(IEnumerable<Fixture> fixtures) => _dbContext.Fixtures.RemoveRange(fixtures);
 }

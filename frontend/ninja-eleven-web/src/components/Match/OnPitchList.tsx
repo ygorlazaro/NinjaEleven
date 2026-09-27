@@ -3,6 +3,7 @@ import type { Guid, MatchPlayerDto } from '@/types';
 import { positionLabel, sortByPosition, starsToString } from '@/services/formatters';
 import EnergyBar from '@/components/Match/EnergyBar';
 import { PlayerName } from '@/components/Common/Names';
+import HurtBadge from '@/components/Match/HurtBadge';
 
 interface OnPitchListProps {
   /** Only the club the manager commands: the list is his team sheet, not both. */
@@ -58,6 +59,9 @@ const OnPitchList: React.FC<OnPitchListProps> = ({ players, onSelect, ballCarrie
             <span className="pc-pos">{positionLabel(p.position)}</span>
             <span className="pc-name">
               <PlayerName playerId={p.playerId}>{p.name}</PlayerName>
+              {/* A man playing through a knock is still in the eleven, so the card that
+                  says who is on the pitch is also the card that says who is hurt. */}
+              <HurtBadge player={p} />
               <span className="pc-stars" style={{ color: 'var(--accent)', marginLeft: '6px' }}>{starsToString(p.stars)}</span>
             </span>
             <span className="on-pitch-icons">

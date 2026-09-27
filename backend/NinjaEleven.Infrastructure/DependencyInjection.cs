@@ -36,9 +36,13 @@ public static class DependencyInjection
         services.AddScoped<IPlayerRepository, PlayerRepository>();
         services.AddScoped<ICompetitionRepository, CompetitionRepository>();
         services.AddScoped<ISeasonRepository, SeasonRepository>();
+        services.AddScoped<IDivisionRepository, DivisionRepository>();
+        services.AddScoped<IMatchDayRepository, MatchDayRepository>();
         services.AddScoped<IRoundRepository, RoundRepository>();
         services.AddScoped<IFixtureRepository, FixtureRepository>();
         services.AddScoped<IMatchRepository, MatchRepository>();
+        services.AddScoped<ICupTieRepository, CupTieRepository>();
+        services.AddScoped<ITrophyRepository, TrophyRepository>();
 
         return services;
     }
@@ -48,11 +52,17 @@ public static class DependencyInjection
         services.AddScoped<TeamService>();
         services.AddScoped<PlayerService>();
         services.AddScoped<SeasonService>();
+        services.AddScoped<SeasonCalendarService>();
         services.AddScoped<CompetitionService>();
         services.AddScoped<RoundService>();
         services.AddScoped<FixtureService>();
+        // The cup advances on the finish of a match rather than on a timer, so it is a scoped
+        // service the match service calls, not a hosted one that sweeps the ties on a schedule.
+        services.AddScoped<CupProgressionService>();
         services.AddScoped<MatchService>();
         services.AddScoped<LeagueService>();
+        services.AddScoped<StandingsService>();
+        services.AddScoped<AttendanceContextFactory>();
 
         services.AddSingleton<IMatchSessionRegistry, MatchSessionRegistry>();
 
@@ -60,10 +70,21 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// Brings the database up to date and seeds the starting world. The API never talks
-    /// to the database outside of this step, controllers and hubs only use services.
+    /// Brings the database up to date and, when it is asked for, seeds the starting world.
+    /// The API never talks to the database outside of this step, controllers and hubs only
+    /// use services.
     /// </summary>
-    public static async Task InitializeDatabaseAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
+    /// <param name="seed">
+    /// Whether the world should be created. It is false by default and it is false on
+    /// purpose: a manager who has decided what his world looks like should be able to start
+    /// the API and find it exactly as he left it, and a developer working on the schema
+    /// should be able to start the API and find an empty database. Seeding is something a
+    /// human asks for, not something that happens because the process booted.
+    /// </param>
+    public static async Task InitializeDatabaseAsync(
+        this IServiceProvider services,
+        bool seed = false,
+        CancellationToken cancellationToken = default)
     {
         using var scope = services.CreateScope();
 
@@ -73,6 +94,13 @@ public static class DependencyInjection
 
         await dbContext.Database.MigrateAsync(cancellationToken);
         logger.LogInformation("Database schema is up to date.");
+
+        if (!seed)
+        {
+            logger.LogInformation(
+                "Seeding not requested. The database was left as it is; pass --seed to create the starting world.");
+            return;
+        }
 
         await provider.GetRequiredService<IDataSeeder>().SeedAsync(cancellationToken);
     }

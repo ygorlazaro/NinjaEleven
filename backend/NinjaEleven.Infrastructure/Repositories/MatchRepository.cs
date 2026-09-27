@@ -40,6 +40,26 @@ public class MatchRepository : IMatchRepository
             .OrderBy(match => match.CreatedAt)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<Match>> ListByFixtureIdsAsync(
+        IEnumerable<Guid> fixtureIds,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.Matches
+            .AsNoTracking()
+            .Where(match => fixtureIds.Contains(match.FixtureId))
+            // A fixture can hold an abandoned match and a replay, and only the newest row that
+            // was not abandoned is the match of that fixture. Ordering by creation and taking
+            // the last one per fixture is what keeps an abandoned 3-0 out of a table.
+            .OrderBy(match => match.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyDictionary<Guid, MatchStatistics>> ListStatisticsByMatchIdsAsync(
+        IEnumerable<Guid> matchIds,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.MatchStatistics
+            .AsNoTracking()
+            .Where(statistics => matchIds.Contains(statistics.MatchId))
+            .ToDictionaryAsync(statistics => statistics.MatchId, cancellationToken);
+
     public async Task AddAsync(Match match, CancellationToken cancellationToken = default) =>
         await _dbContext.Matches.AddAsync(match, cancellationToken);
 
@@ -125,5 +145,36 @@ public class MatchRepository : IMatchRepository
                     AwayGoals = match.AwayScore,
                     RoundNumber = round.Number
                 })
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<Application.Models.TeamMatchRecord>> GetTeamHistoryAsync(
+        Guid teamId,
+        int limit,
+        CancellationToken cancellationToken = default) =>
+        await (
+                from match in _dbContext.Matches.AsNoTracking()
+                join fixture in _dbContext.Fixtures.AsNoTracking()
+                    on match.FixtureId equals fixture.Id
+                join round in _dbContext.Rounds.AsNoTracking()
+                    on fixture.RoundId equals round.Id
+                join home in _dbContext.Teams.AsNoTracking()
+                    on fixture.HomeTeamId equals home.Id
+                join away in _dbContext.Teams.AsNoTracking()
+                    on fixture.AwayTeamId equals away.Id
+                where (fixture.HomeTeamId == teamId || fixture.AwayTeamId == teamId)
+                    && match.Status == MatchStatus.Finished
+                orderby match.CreatedAt descending, match.Id descending
+                select new Application.Models.TeamMatchRecord
+                {
+                    MatchId = match.Id,
+                    OpponentName = fixture.HomeTeamId == teamId ? away.Name : home.Name,
+                    OpponentTeamId = fixture.HomeTeamId == teamId ? away.Id : home.Id,
+                    IsHome = fixture.HomeTeamId == teamId,
+                    GoalsFor = fixture.HomeTeamId == teamId ? match.HomeScore : match.AwayScore,
+                    GoalsAgainst = fixture.HomeTeamId == teamId ? match.AwayScore : match.HomeScore,
+                    RoundNumber = round.Number,
+                    PlayedAt = match.CreatedAt
+                })
+            .Take(limit)
             .ToListAsync(cancellationToken);
 }

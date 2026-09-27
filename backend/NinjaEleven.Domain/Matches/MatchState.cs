@@ -134,6 +134,56 @@ public class MatchState
     /// </summary>
     public bool ManagerSelectsPenaltyTaker(Guid teamId) => ManagerTeamId == teamId;
 
+    /// <summary>
+    /// A player who cannot continue and whose club the manager is running, waiting for the
+    /// manager to name who comes on. It stands the clock still in exactly the way a penalty
+    /// waiting for its taker does, and it is cleared by the substitution itself.
+    /// </summary>
+    public bool InjuryAwaitingSubstitution { get; set; }
+
+    /// <summary>Who is off the pitch until that substitution is made.</summary>
+    public Guid? InjuryPlayerId { get; set; }
+
+    /// <summary>Which of the two sides the injured player belongs to: 1 home, 2 away.</summary>
+    public int? InjuryTeam { get; set; }
+
+    /// <summary>
+    /// How many matches the injury takes out of him, drawn the moment the knock happened.
+    /// It is held here rather than on the player because the player is not marked as hurt
+    /// until the change is made: he is still on the pitch until then, and a player who is
+    /// not on the pitch cannot be the one a substitution is made for.
+    /// </summary>
+    public int PendingInjuryMatchesOut { get; set; }
+
+    /// <summary>
+    /// Whether a player of <paramref name="teamId"/> going off is the manager's decision.
+    /// He decides for his own club only; the engine covers the other side itself, because
+    /// nobody is watching that choice.
+    /// </summary>
+    public bool ManagerSelectsInjuryReplacement(Guid teamId) => ManagerTeamId == teamId;
+
+    /// <summary>
+    /// Settles an injury the manager was asked about, once he has named the replacement.
+    /// The knock is applied here rather than when it happened, because the man was still
+    /// playing until the change was made; a player who is not marked hurt stays off the
+    /// match statistics as well, so a season absence is written for an injury the manager
+    /// actually saw and acted on.
+    /// </summary>
+    public void ResolvePendingInjury(MatchPlayerSnapshot outgoing)
+    {
+        if (!InjuryAwaitingSubstitution || InjuryPlayerId != outgoing.PlayerId)
+        {
+            return;
+        }
+
+        outgoing.Injure(Common.Injury.Grave, PendingInjuryMatchesOut);
+
+        InjuryAwaitingSubstitution = false;
+        InjuryPlayerId = null;
+        InjuryTeam = null;
+        PendingInjuryMatchesOut = 0;
+    }
+
     public List<MatchEngineEvent> PendingFeed { get; set; } = new();
 
     public MatchState(MatchContext context)

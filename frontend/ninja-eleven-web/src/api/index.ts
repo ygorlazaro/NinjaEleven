@@ -1,12 +1,15 @@
 import api from './client';
 import type {
   SquadPlayerDto,
+  SeasonCalendarDto,
+  TeamMatchRecordDto,
   PlayerSeasonStateDto,
-  PlayerDto, CompetitionDto, SeasonDto, TeamDto,
-  FixtureDto, RoundDto, StandingDto, ScorerDto, LeagueSetupResult,
+  PlayerDto, CompetitionDto, CompetitionEditionDto, SeasonDto, TeamDto,
+  FixtureDto, RoundDto, StandingDto, CompetitionStandingsDto, ScorerDto, LeagueSetupResult,
   MatchDto, MatchEventDto, MatchLineupDto, MatchStateDto,
   MatchCommandResult, MatchEngineEventDto, MatchResult, RoundSimulationResult, TacticDto, Guid, MatchdayReportDto,
-  PlayerProfileDto
+  PlayerProfileDto,
+  SquadSuggestionDto
 } from '../types';
 
 /**
@@ -24,6 +27,9 @@ export const TeamApi = {
   get: (id: string) => api.get<TeamDto>(`/team/${id}`).then(r => r.data),
   getSquad: (teamId: string, seasonId: string) =>
     api.get<SquadPlayerDto[]>(`/team/${teamId}/squad/${seasonId}`).then(r => r.data),
+  /** The club's last finished matches, newest first, for the form guide on its card. */
+  getMatches: (teamId: string, limit = 10) =>
+    api.get<TeamMatchRecordDto[]>(`/team/${teamId}/matches?limit=${limit}`).then(r => r.data),
 };
 
 export const PlayerApi = {
@@ -43,8 +49,23 @@ export const PlayerApi = {
 
 export const CompetitionApi = {
   list: () => api.get<CompetitionDto[]>('/competition').then(r => r.data),
-  listBySeason: (seasonId: string) =>
-    api.get<CompetitionDto[]>(`/competition/by-season/${seasonId}`).then(r => r.data),
+
+  /**
+   * The editions running in a season — the three divisions of the championship, the cup and
+   * the Supercup — rather than the competitions themselves. "Campeonato Brasileiro" runs three
+   * times a season, once per tier, so a list of competitions cannot say which of the three a
+   * table belongs to.
+   */
+  listEditionsBySeason: (seasonId: string) =>
+    api.get<CompetitionEditionDto[]>(`/competition/by-season/${seasonId}`).then(r => r.data),
+
+  /**
+   * The clubs entered in one edition. A club's division is a fact about this list and not
+   * about the club, so it is asked for rather than worked out from two other lists.
+   */
+  listClubs: (competitionSeasonId: string) =>
+    api.get<TeamDto[]>(`/competition/${competitionSeasonId}/club`).then(r => r.data),
+
   get: (id: string) => api.get<CompetitionDto>(`/competition/${id}`).then(r => r.data),
 };
 
@@ -52,6 +73,13 @@ export const SeasonApi = {
   list: () => api.get<SeasonDto[]>('/season').then(r => r.data),
   current: () => api.get<SeasonDto>('/season/current').then(r => r.data),
   get: (id: string) => api.get<SeasonDto>(`/season/${id}`).then(r => r.data),
+  /**
+   * The season's matchdays and the windows of football scheduled on them. It is a GET that
+   * draws the calendar when the season has none, because the draw is idempotent: asking
+   * again gives back the calendar that is already there rather than a second one.
+   */
+  getCalendar: (id: string, build = true) =>
+    api.get<SeasonCalendarDto>(`/season/${id}/calendar?build=${build}`).then(r => r.data),
 };
 
 export const RoundApi = {
@@ -76,8 +104,12 @@ export const LeagueApi = {
   setup: (competitionId: string, seasonId: string, teamIds: string[]) =>
     api.post<LeagueSetupResult>('/league/setup', { competitionId, seasonId, teamIds })
       .then(r => r.data),
+  /**
+   * The table of a competition edition, and the table it would be with the games in progress
+   * counted in. Both are worked out by the backend and neither is sorted here.
+   */
   getStandings: (compSeasonId: string) =>
-    api.get<StandingDto[]>(`/league/standing/${compSeasonId}`).then(r => r.data),
+    api.get<CompetitionStandingsDto>(`/league/standing/${compSeasonId}`).then(r => r.data),
   getStanding: (compSeasonId: string, teamId: string) =>
     api.get<StandingDto>(`/league/standing/${compSeasonId}/team/${teamId}`).then(r => r.data),
   /**

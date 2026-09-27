@@ -14,8 +14,17 @@ public class StadiumConfiguration : IEntityTypeConfiguration<Stadium>
         builder.Property(s => s.Id).ValueGeneratedNever();
 
         builder.Property(s => s.ClubId).IsRequired();
-        builder.Property(s => s.Capacity).IsRequired().HasDefaultValue(5000);
-        builder.Property(s => s.TicketPrice).HasPrecision(10, 2).IsRequired().HasDefaultValue(10m);
+
+        // The name is stored, not composed. A ground a manager has renamed is a different
+        // name from the one the club was founded with, and a screen that builds the name from
+        // the club's would keep showing the old one after he changed it.
+        builder.Property(s => s.Name).HasMaxLength(120).IsRequired();
+
+        builder.Property(s => s.Capacity).IsRequired().HasDefaultValue(Stadium.DefaultCapacity);
+        builder.Property(s => s.TicketPrice)
+            .HasPrecision(10, 2)
+            .IsRequired()
+            .HasDefaultValue(Stadium.DefaultTicketPrice);
 
         builder.HasIndex(s => s.ClubId).IsUnique();
     }
