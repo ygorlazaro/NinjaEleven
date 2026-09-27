@@ -74,18 +74,68 @@ button { cursor: pointer; }
   color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums;
 }
 
+/* The club's own block. The shield sits above the name, so the badge is read first: a
+   manager knows his club by its colours long before he reads its name, and a block that put
+   the name above the badge made him read a word to recognise a club he could have seen. */
 .sidebar-club {
-  display: grid; gap: 6px; margin-top: auto; padding: 10px;
+  display: grid; justify-items: center; gap: 6px; margin-top: auto; padding: 10px;
   border: 1px solid var(--line); border-radius: 10px; background: #0a1520;
   color: inherit; text-decoration: none;
 }
 .sidebar-club:hover { border-color: #46657d; }
 .sidebar-club.active { border-color: var(--accent); }
-.sidebar-club__swatch { width: 28px; height: 8px; border-radius: 3px; border: 1px solid; }
+.sidebar-club .club-crest { width: 34px; height: 38px; font-size: 12px; }
 .sidebar-club__name {
-  color: var(--text); font-size: 12px; line-height: 1.3;
-  overflow: hidden; text-overflow: ellipsis;
+  color: var(--text); font-size: 12px; line-height: 1.3; text-align: center;
+  overflow: hidden; text-overflow: ellipsis; width: 100%;
 }
+
+/* The next match, in the foot of the column. A card is the right shape here rather than
+   another row in the list above: it is not a place the manager goes, it is the thing he is
+   going to have to deal with, and it is the only box in the column that is a link to a
+   decision rather than to a screen. */
+.next-match {
+  display: grid; gap: 5px; padding: 10px;
+  border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: 10px; background: linear-gradient(180deg, #0f1e2b, #0a1520);
+  color: inherit; text-decoration: none;
+}
+.next-match:hover { border-color: #46657d; border-left-color: var(--accent); }
+
+.next-match__label {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 9px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase;
+  color: var(--muted);
+}
+.next-match__round {
+  padding: 1px 5px; border-radius: 999px; background: #0d1a26;
+  font-size: 9px; font-variant-numeric: tabular-nums; letter-spacing: 0;
+}
+.next-match__fixture { display: flex; align-items: center; gap: 7px; min-width: 0; }
+
+/* C or F, and a colour that says which. A manager reads a side before he reads an opponent,
+   because "fora" changes the whole shape of the lineup he is about to pick. */
+.next-match__side {
+  flex: 0 0 auto; width: 19px; height: 19px; border-radius: 5px;
+  display: grid; place-items: center;
+  font-size: 10px; font-weight: 800;
+  background: #12283a; color: var(--muted); border: 1px solid var(--line);
+}
+.next-match__side--home { background: rgba(56, 211, 159, .18); color: var(--green); border-color: rgba(56, 211, 159, .45); }
+
+.next-match__opponent {
+  color: var(--text); font-size: 12px; font-weight: 700; line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.next-match__where { display: grid; gap: 1px; }
+.next-match__stadium {
+  font-size: 10.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.next-match__competition { font-size: 10px; color: var(--accent); opacity: .85; }
+
+.next-match--empty { border-left-color: var(--line); }
+.next-match__none { font-size: 10.5px; color: var(--muted); line-height: 1.35; }
 .sidebar-back {
   padding: 8px; border: 1px solid var(--line); border-radius: 9px;
   background: none; color: var(--muted); font-size: 11px; cursor: pointer;
@@ -97,6 +147,11 @@ button { cursor: pointer; }
   .sidebar { position: static; height: auto; flex-direction: row; align-items: center; }
   .sidebar-club { margin-top: 0; margin-left: auto; }
   .sidebar-nav { grid-auto-flow: column; }
+  /* The column lies down on a narrow screen, so the club's block and the next match stop
+     being a foot and become two more cells in a row — which only works if each keeps a width
+     of its own instead of stretching to whatever is left of the line. */
+  .sidebar-club { flex: 0 0 auto; width: 96px; }
+  .next-match { flex: 1 1 200px; min-width: 0; }
 }
 
 .card {

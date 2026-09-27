@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { SeasonApi } from '@/api';
 import { useGameState } from '@/state';
 import { useNextFixture } from '@/hooks/useNextFixture';
+import ClubCrest from '@/components/Club/ClubCrest';
+import NextMatchBox from '@/components/Common/NextMatchBox';
 
 /**
  * The frame every screen is read in: the game on the left, the screen on the right.
@@ -15,14 +18,34 @@ import { useNextFixture } from '@/hooks/useNextFixture';
 const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
   const selectedTeam = useGameState((s) => s.selectedTeam);
-  const selectedCompetition = useGameState((s) => s.selectedCompetition);
+  // The season being played. The sidebar's next match is a question about the calendar and
+  // not about a store value, so the season is asked for rather than remembered — and the
+  // career's season can change between matches.
+  const [currentSeasonId, setCurrentSeasonId] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    let alive = true;
+
+    SeasonApi.current()
+      .then(season => alive && setCurrentSeasonId(season.id))
+      .catch(() => alive && setCurrentSeasonId(undefined));
+
+    return () => {
+      alive = false;
+    };
+  }, []);
   const forgetClub = useGameState((s) => s.forgetClub);
 
   // The lineup is addressed by fixture, so the link has to know which one. When there is
   // none to play the link is not a broken door: it goes to the calendar, which is where a
   // manager goes to find out what there is.
-  const { next } = useNextFixture(selectedTeam?.id, selectedCompetition?.id);
-  const lineupTarget = next ? `/match/lineup/${next.fixture.id}` : '/league';
+  //
+  // It is the next match of the *season* and not of the competition on the filter, because the
+  // link and the box at the foot of the column are the same door: a sidebar offering two
+  // different games in two different places is a sidebar that has to be read twice to be
+  // believed.
+  const { next } = useNextFixture(selectedTeam?.id, currentSeasonId);
+  const lineupTarget = next ? `/match/lineup/${next.fixture.id}` : '/calendar';
 
   return (
     <div className="shell">
@@ -125,16 +148,23 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             to="/club"
             className={({ isActive }) => `sidebar-club${isActive ? ' active' : ''}`}
           >
-            <span
-              className="sidebar-club__swatch"
-              style={{
-                background: selectedTeam.primaryColor || '#f2d34f',
-                borderColor: selectedTeam.secondaryColor || '#f2d34f'
-              }}
+            {/* The shield, not a pair of stripes: the block in the column is the club, and a
+                club is recognised by its badge before it is read by its name. It is a
+                placeholder drawn in the club's own colours, like the one on the club's page. */}
+            <ClubCrest
+              primary={selectedTeam.primaryColor}
+              secondary={selectedTeam.secondaryColor}
+              name={selectedTeam.name}
             />
             <span className="sidebar-club__name">{selectedTeam.name}</span>
           </NavLink>
         )}
+
+        {/* The match he is about to play, said before he goes and play it, and pinned to the
+            foot of the column so it is on every screen: the eleven he picks is chosen for
+            this opponent, at this ground, and the column is the one place a manager is on
+            whatever screen he happens to be reading. */}
+        {selectedTeam && <NextMatchBox team={selectedTeam} next={next} />}
 
         {/* The club has to be forgotten before the root can be reached: the root sends a
             manager with a club to that club, so navigating there with one still selected

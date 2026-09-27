@@ -16,9 +16,21 @@ public class TeamDto
     public StadiumDto? Stadium { get; init; }
 }
 
+/// <summary>
+/// A club's ground, as a card about it carries the ground.
+/// </summary>
+/// <remarks>
+/// The name is on the wire because a ground has one and the world keeps it: a club's stadium is
+/// stored as a name of its own rather than composed from the club's name on the way to a
+/// screen, precisely so it can be something else later. It was left out of this DTO while the
+/// column already existed, which is how a screen came to have to invent a ground's name — a
+/// stadium is the one thing a manager reads the name of before he reads anything else about
+/// the match.
+/// </remarks>
 public class StadiumDto
 {
     public Guid Id { get; init; }
+    public string Name { get; init; } = string.Empty;
     public int Capacity { get; init; }
     public decimal TicketPrice { get; init; }
 }

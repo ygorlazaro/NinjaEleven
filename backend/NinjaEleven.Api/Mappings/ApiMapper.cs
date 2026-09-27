@@ -87,6 +87,7 @@ public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => ne
     Stadium = team.Stadium != null ? new StadiumDto
     {
         Id = team.Stadium.Id,
+        Name = team.Stadium.Name,
         Capacity = team.Stadium.Capacity,
         TicketPrice = team.Stadium.TicketPrice
     } : null
