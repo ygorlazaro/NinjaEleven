@@ -5,6 +5,7 @@ using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Teams;
 using Microsoft.EntityFrameworkCore;
+using NinjaEleven.Domain.Finance;
 
 namespace NinjaEleven.Infrastructure.Persistence;
 
@@ -22,6 +23,7 @@ public class NinjaElevenDbContext : DbContext
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<TeamMembership> TeamMemberships => Set<TeamMembership>();
     public DbSet<Stadium> Stadiums => Set<Stadium>();
+    public DbSet<FinanceMovement> FinanceMovements => Set<FinanceMovement>();
 
     public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Division> Divisions => Set<Division>();

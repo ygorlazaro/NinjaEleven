@@ -38,6 +38,31 @@ public class PlayerProfile
     public string Injury { get; set; } = string.Empty;
     public int InjuryMatchesRemaining { get; set; }
 
+    /// <summary>
+    /// What he is worth on the market and what the club owes for his contract, in limos.
+    ///
+    /// They are read off the same season state the market reads, so the price on a profile
+    /// and the wage on the club's wage bill are one number and its share rather than two
+    /// screens that each have their own idea of what a player is.
+    /// </summary>
+    public decimal MarketValue { get; set; }
+    public decimal Salary { get; set; }
+    public int ContractSeasons { get; set; } = NinjaEleven.Domain.Finance.FinanceRules.DefaultContractSeasons;
+
+    /// <summary>
+    /// How much of the contract is left, and what it would cost another club to break it.
+    ///
+    /// Seasons left is what a manager negotiates with: a man in the last year of his deal can
+    /// be signed without paying a club two more seasons of wages, and a man with two years
+    /// to run costs a fifth more than he is worth. The two numbers are kept apart on the card
+    /// for the same reason they are kept apart in the domain — one is what the player is
+    /// worth and the other is what taking him costs, and a manager who is shown only the
+    /// first will offer the second.
+    /// </summary>
+    public int SeasonsLeft { get; set; }
+    public bool IsInLastSeason { get; set; }
+    public decimal AskingPrice { get; set; }
+
     /// <summary>The season's line, and the career's, so a table can show both.</summary>
     public PlayerCareerLine Season { get; set; } = new();
 

@@ -4,11 +4,13 @@ using NinjaEleven.Application.Repositories;
 using NinjaEleven.Application.Services;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
+using NinjaEleven.Domain.Finance;
 using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Teams;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 using Match = NinjaEleven.Domain.Matches.Match;
@@ -36,6 +38,10 @@ public class MatchServiceTests
     private readonly Mock<ICupTieRepository> _cupTies = new(MockBehavior.Loose);
     private readonly Mock<ITrophyRepository> _trophies = new(MockBehavior.Loose);
     private readonly Mock<IMatchDayRepository> _matchDays = new(MockBehavior.Loose);
+    private readonly Mock<IFinanceRepository> _finance = new(MockBehavior.Loose);
+    private readonly List<FinanceMovement> _book = [];
+    private readonly MatchDay _matchDay;
+    private readonly Mock<ISeasonRepository> _seasons = new(MockBehavior.Loose);
     private readonly MatchSessionRegistry _sessions = new();
 
     private readonly Guid _seasonId = Guid.NewGuid();
@@ -52,6 +58,10 @@ public class MatchServiceTests
     {
         _competitionSeason = CompetitionSeason.Create(Guid.NewGuid(), _seasonId);
         _round = Round.Create(_competitionSeason.Id, 1);
+        _matchDay = MatchDay.Create(_seasonId, 1, new DateOnly(2026, 3, 1));
+        _round.ScheduleOn(_matchDay.Id);
+        _matchDays.Setup(repo => repo.GetAsync(_matchDay.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_matchDay);
         _home = Team.Create("Clube Aurora", "CAU", "#E07B00", "#2B2B2B", 80);
         _away = Team.Create("Estrela do Norte", "EDN", "#0F5132", "#FFD700", 70);
         _fixture = Fixture.Create(_round.Id, _home.Id, _away.Id);
@@ -102,8 +112,45 @@ public class MatchServiceTests
         _teams.Setup(repo => repo.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns((Guid id, CancellationToken _) => Task.FromResult<Team?>(
                 id == _home.Id ? _home : id == _away.Id ? _away : null));
+        // Who is on each club's books, which is what the wage bill is worked out from: a
+        // season state without a membership is a player on nobody's contract, and the club
+        // that has to pay for him is not a club at all.
+        _teams.Setup(repo => repo.GetSquadAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns((Guid teamId, Guid _, CancellationToken __) => Task.FromResult<IReadOnlyList<TeamMembership>>(
+                _states
+                    .Where(state => state.TeamId == teamId)
+                    .Select(state => TeamMembership.Create(state.PlayerId, teamId, new DateOnly(2026, 1, 1)))
+                    .ToList()));
+        // A book that remembers what was written in it, because the two rules of a ledger
+        // are the two questions it has to answer honestly: what the balance is now, and
+        // whether a line that must happen once has already happened.
+        _finance.Setup(repo => repo.AddAsync(It.IsAny<FinanceMovement>(), It.IsAny<CancellationToken>()))
+            .Returns((FinanceMovement movement, CancellationToken _) =>
+            {
+                _book.Add(movement);
+                return Task.CompletedTask;
+            });
+        _finance.Setup(repo => repo.GetLastAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns((Guid teamId, CancellationToken _) => Task.FromResult<FinanceMovement?>(
+                _book.LastOrDefault(movement => movement.TeamId == teamId)));
+        _finance.Setup(repo => repo.ExistsInSeasonAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<FinanceMovementKind>(), It.IsAny<CancellationToken>()))
+            .Returns((Guid teamId, Guid seasonId, FinanceMovementKind kind, CancellationToken _) =>
+                Task.FromResult(_book.Any(movement =>
+                    movement.TeamId == teamId && movement.SeasonId == seasonId && movement.Kind == kind)));
+        // The guard that makes a line happen once per match, and once per match *of that
+        // kind*: a match writes a gate line and a wage line, and a book that asked only about
+        // the match would answer for the wages as well and refuse to pay them.
+        _finance.Setup(repo => repo.ExistsForMatchAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<FinanceMovementKind>(), It.IsAny<CancellationToken>()))
+            .Returns((Guid teamId, Guid matchId, FinanceMovementKind kind, CancellationToken _) =>
+                Task.FromResult(_book.Any(movement =>
+                    movement.TeamId == teamId && movement.MatchId == matchId && movement.Kind == kind)));
         _players.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>()))
             .Returns(() => Task.FromResult<IReadOnlyList<Player>>(_roster));
+        _players.Setup(repo => repo.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns((Guid id, CancellationToken _) => Task.FromResult<Player?>(
+                _roster.FirstOrDefault(player => player.Id == id)));
         _players.Setup(repo => repo.ListSeasonStatesAsync(_seasonId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .Returns((Guid _, Guid? teamId, CancellationToken __) => Task.FromResult<IReadOnlyList<PlayerSeasonState>>(
                 _states.Where(state => teamId is null || state.TeamId == teamId).ToList()));
@@ -174,7 +221,17 @@ public class MatchServiceTests
             _fixtures.Object,
             _matchDays.Object,
             _competitions.Object,
-            _unitOfWork.Object));
+            _unitOfWork.Object),
+        new FinanceService(
+            _finance.Object,
+            _teams.Object,
+            _players.Object,
+            _fixtures.Object,
+            _rounds.Object,
+            _matchDays.Object,
+            _seasons.Object,
+            _unitOfWork.Object,
+            NullLogger<FinanceService>.Instance));
 
     private void AddSquad(Team team, int energy)
     {
@@ -1046,6 +1103,130 @@ public class MatchServiceTests
     }
 
     [Fact]
+    public async Task A_finished_match_puts_the_gate_of_both_clubs_in_their_books()
+    {
+        GiveTheHomeClubAGround();
+        var service = CreateService();
+        await PlayTheWholeMatchAsync(service, await StartAsync(service));
+
+        var gates = _book.Where(movement => movement.Kind == FinanceMovementKind.GateRevenue).ToList();
+
+        // The public paid at the gate, so the money belongs to the club that hosted the
+        // match. Both clubs get a line because both are owed it, and the host's is the
+        // larger share of the same takings.
+        Assert.Equal(2, gates.Count);
+        Assert.All(gates, gate => Assert.True(gate.Amount > 0m));
+        Assert.Equal(
+            _home.Id,
+            gates.OrderByDescending(gate => gate.Amount).First().TeamId);
+    }
+
+    [Fact]
+    public async Task A_gate_is_written_against_the_day_the_match_was_played()
+    {
+        GiveTheHomeClubAGround();
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        await PlayTheWholeMatchAsync(service, matchId);
+
+        var gate = _book.Single(movement =>
+            movement.Kind == FinanceMovementKind.GateRevenue && movement.TeamId == _home.Id);
+
+        // A line of money belongs to a day of the season, because that is when the money
+        // moved, and a ledger that could not say when is a list of amounts.
+        Assert.Equal(_matchDay.Number, gate.MatchDayNumber);
+        Assert.Equal(matchId, gate.MatchId);
+    }
+
+    [Fact]
+    public async Task A_club_pays_its_squad_at_the_end_of_a_league_match()
+    {
+        GiveTheHomeClubAGround();
+        var service = CreateService();
+        await PlayTheWholeMatchAsync(service, await StartAsync(service));
+
+        // The bill is settled at the whistle: one line per club for the matchday, written
+        // against the day it was played and carrying the match it was paid for.
+        var bills = _book.Where(movement => movement.Kind == FinanceMovementKind.Wages).ToList();
+
+        Assert.Equal(2, bills.Count);
+        Assert.All(bills, bill => Assert.True(bill.Amount < 0m));
+        Assert.All(bills, bill => Assert.Equal(_matchDay.Number, bill.MatchDayNumber));
+        Assert.All(bills, bill => Assert.NotEqual(Guid.Empty, bill.MatchId ?? Guid.Empty));
+
+        // Both clubs and both of them once. Set membership rather than an order: which club's
+        // bill was written first is a fact about the order the match finished in, and a test
+        // that insisted on one of the two orders would be failing for a reason that has
+        // nothing to do with the books.
+        Assert.Contains(_home.Id, bills.Select(bill => bill.TeamId));
+        Assert.Contains(_away.Id, bills.Select(bill => bill.TeamId));
+    }
+
+    [Fact]
+    public async Task A_match_pays_its_wages_once_and_not_once_per_tick_that_finishes_it()
+    {
+        GiveTheHomeClubAGround();
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        await PlayTheWholeMatchAsync(service, matchId);
+
+        // A match that blew its own whistle and one that arrives after it are the same match,
+        // and the book is told so by the line existing for that match: no flag, nothing to
+        // keep in step, and no way for a client to charge a club twice by asking again.
+        var bills = _book
+            .Where(movement => movement.Kind == FinanceMovementKind.Wages && movement.TeamId == _home.Id)
+            .ToList();
+
+        Assert.Equal(1, bills.Count);
+
+        // Asking again about the same match writes nothing further.
+        var again = await service.TickAsync(matchId);
+        Assert.False(again.Accepted);
+        Assert.Equal(1, _book.Count(movement =>
+            movement.Kind == FinanceMovementKind.Wages && movement.TeamId == _home.Id));
+    }
+
+    [Fact]
+    public async Task A_cup_tie_is_not_paid_in_wages()
+    {
+        GiveTheHomeClubAGround();
+
+        // The fixture's competition becomes a cup, which is the only thing that changes: a tie
+        // is a matchday of the cup's own calendar and not one of the league's, and the league's
+        // calendar is what a club's wages are spread over.
+        _competitions.Setup(repo => repo.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Competition.Create("Copa do Mundo", CompetitionType.Cup));
+
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        await PlayTheWholeMatchAsync(service, matchId);
+
+        // The gate is still paid: a cup tie is a match somebody bought a ticket for. The wages
+        // are not, because the club entered the tie for the prize and not for the season.
+        Assert.NotEmpty(_book.Where(movement => movement.Kind == FinanceMovementKind.GateRevenue));
+        Assert.Empty(_book.Where(movement => movement.Kind == FinanceMovementKind.Wages));
+    }
+
+    [Fact]
+    public async Task A_balance_continues_from_the_line_before_it()
+    {
+        GiveTheHomeClubAGround();
+        var service = CreateService();
+        await PlayTheWholeMatchAsync(service, await StartAsync(service));
+
+        // Every line carries the balance it left behind, and the two lines of a club's book
+        // are joined by it: the second starts where the first finished. A book whose lines
+        // each said their own balance without checking would be two accounts of one match.
+        var home = _book.Where(movement => movement.TeamId == _home.Id).ToList();
+
+        Assert.Equal(2, home.Count);
+        Assert.Equal(home[0].BalanceAfter + home[1].Amount, home[1].BalanceAfter);
+    }
+
+    [Fact]
     public async Task A_rest_worth_more_than_a_match_is_what_makes_rotation_work()
     {
         var service = CreateService();
@@ -1265,6 +1446,35 @@ public class MatchServiceTests
     /// The running state, or null once the match is over: the service drops the session
     /// when it finishes, which is how a caller knows there is nothing left to tick.
     /// </summary>
+    /// <summary>
+    /// Gives the home club a ground, which the rest of these tests do without and the tests
+    /// about money cannot: a match played in an empty ground has a crowd of nobody and a gate
+    /// of nothing, so there is no money to write down and a test about the books would be
+    /// asserting on an absence.
+    /// </summary>
+    private void GiveTheHomeClubAGround() =>
+        _home.SetStadium(Stadium.Create(_home.Id, _home.Name));
+
+    /// <summary>
+    /// Plays a match from the whistle to the last tick, answering the things a manager
+    /// answers and the engine does not answer itself. What the engine decided is what the
+    /// match is afterwards.
+    /// </summary>
+    private async Task PlayTheWholeMatchAsync(MatchService service, Guid matchId)
+    {
+        for (var minute = 0; minute < 300 && runningState(matchId) is { } running && !running.MatchFinished; minute++)
+        {
+            await TakePenaltyIfItIsTheManagersTurnAsync(service, matchId);
+            await ReplaceAPlayerWhoCannotContinueAsync(service, matchId);
+            var tick = await service.TickAsync(matchId);
+
+            if (!tick.Accepted)
+            {
+                await service.ContinueSecondHalfAsync(matchId);
+            }
+        }
+    }
+
     private MatchState? runningState(Guid matchId) =>
         _sessions.TryGet(matchId, out var session) && !session!.State.MatchFinished ? session.State : null;
 }

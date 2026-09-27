@@ -364,6 +364,72 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                     b.ToTable("trophy_awards", (string)null);
                 });
 
+            modelBuilder.Entity("NinjaEleven.Domain.Finance.FinanceMovement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<decimal>("BalanceAfter")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("balance_after");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<int?>("MatchDayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("match_day_number");
+
+                    b.Property<Guid?>("MatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("match_id");
+
+                    b.Property<Guid>("SeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_id");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence");
+
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("team_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_finance_movements");
+
+                    b.HasIndex("MatchId")
+                        .HasDatabaseName("ix_finance_movements_match_id");
+
+                    b.HasIndex("SeasonId")
+                        .HasDatabaseName("ix_finance_movements_season_id");
+
+                    b.HasIndex("TeamId", "Sequence")
+                        .HasDatabaseName("ix_finance_movements_team_id_sequence");
+
+                    b.HasIndex("TeamId", "SeasonId", "Sequence")
+                        .HasDatabaseName("ix_finance_movements_team_id_season_id_sequence");
+
+                    b.ToTable("finance_movements", (string)null);
+                });
+
             modelBuilder.Entity("NinjaEleven.Domain.Matches.Fixture", b =>
                 {
                     b.Property<Guid>("Id")
@@ -870,6 +936,10 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("goals");
 
+                    b.Property<int>("Injuries")
+                        .HasColumnType("integer")
+                        .HasColumnName("injuries");
+
                     b.Property<string>("Injury")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -1094,6 +1164,12 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<int>("ContractSeasons")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(3)
+                        .HasColumnName("contract_seasons");
+
                     b.Property<DateOnly?>("EndDate")
                         .HasColumnType("date")
                         .HasColumnName("end_date");
@@ -1105,6 +1181,12 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date")
                         .HasColumnName("start_date");
+
+                    b.Property<int>("StartSeasonNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("start_season_number");
 
                     b.Property<Guid>("TeamId")
                         .HasColumnType("uuid")
@@ -1264,6 +1346,29 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_trophy_awards_teams_team_id");
+                });
+
+            modelBuilder.Entity("NinjaEleven.Domain.Finance.FinanceMovement", b =>
+                {
+                    b.HasOne("NinjaEleven.Domain.Matches.Match", null)
+                        .WithMany()
+                        .HasForeignKey("MatchId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_finance_movements_matches_match_id");
+
+                    b.HasOne("NinjaEleven.Domain.Seasons.Season", null)
+                        .WithMany()
+                        .HasForeignKey("SeasonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_finance_movements_seasons_season_id");
+
+                    b.HasOne("NinjaEleven.Domain.Teams.Team", null)
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_finance_movements_teams_team_id");
                 });
 
             modelBuilder.Entity("NinjaEleven.Domain.Matches.Fixture", b =>

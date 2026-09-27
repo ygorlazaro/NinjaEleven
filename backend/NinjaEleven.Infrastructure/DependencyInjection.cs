@@ -43,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<IMatchRepository, MatchRepository>();
         services.AddScoped<ICupTieRepository, CupTieRepository>();
         services.AddScoped<ITrophyRepository, TrophyRepository>();
+        services.AddScoped<IFinanceRepository, FinanceRepository>();
 
         return services;
     }
@@ -50,6 +51,7 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddScoped<TeamService>();
+        services.AddScoped<FinanceService>();
         services.AddScoped<PlayerService>();
         services.AddScoped<SeasonService>();
         services.AddScoped<SeasonCalendarService>();

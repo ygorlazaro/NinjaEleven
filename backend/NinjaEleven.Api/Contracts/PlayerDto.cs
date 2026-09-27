@@ -77,6 +77,26 @@ public class SquadPlayerDto
     /// </summary>
     public int InjuryMatchesRemaining { get; init; }
 
+    /// <summary>How many times he has been hurt this season, which is not the same as the
+    /// injury he is carrying: a player who came back from a knock has none and has still
+    /// been knocked. The market reads this one.</summary>
+    public int Injuries { get; init; }
+
+    /// <summary>What he is worth, in limos, and what the club owes for his contract.</summary>
+    public decimal MarketValue { get; init; }
+    public decimal Salary { get; init; }
+    public int ContractSeasons { get; init; }
+
+    /// <summary>
+    /// How many seasons of the contract are left, one being the last, and what another club
+    /// would have to pay for him. The asking price equals his value in the last season of a
+    /// contract and is a fifth more than it while he is not, so a manager reading a transfer
+    /// list sees the price he would have to agree rather than the price the player is worth.
+    /// </summary>
+    public int SeasonsLeft { get; init; }
+    public bool IsInLastSeason { get; init; }
+    public decimal AskingPrice { get; init; }
+
     public bool IsAvailable { get; init; }
     public Guid TeamId { get; init; }
     public Guid SeasonId { get; init; }
@@ -109,6 +129,25 @@ public class PlayerProfileDto
     public bool IsAvailable { get; init; }
     public string Injury { get; init; } = string.Empty;
     public int InjuryMatchesRemaining { get; init; }
+
+    /// <summary>
+    /// What he is worth, and what the club owes for his contract, in limos. The wage is a
+    /// share of the price, so a manager can see the two and know which players are costing
+    /// the club more than they are worth.
+    /// </summary>
+    public decimal MarketValue { get; init; }
+    public decimal Salary { get; init; }
+    public int ContractSeasons { get; init; }
+
+    /// <summary>
+    /// How many seasons of the contract are left, one being the last, and what another club
+    /// would have to pay for him. The asking price is his own value in the last season of a
+    /// contract and a fifth more on top of it while he is not, so a card shows the price a
+    /// rival would have to agree rather than only what the player is worth.
+    /// </summary>
+    public int SeasonsLeft { get; init; }
+    public bool IsInLastSeason { get; init; }
+    public decimal AskingPrice { get; init; }
 
     /// <summary>
     /// The player's face as the raw JSON of a faces.js <c>FaceConfig</c>, null when he has

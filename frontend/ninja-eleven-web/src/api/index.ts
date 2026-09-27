@@ -9,7 +9,10 @@ import type {
   MatchDto, MatchEventDto, MatchLineupDto, MatchStateDto,
   MatchCommandResult, MatchEngineEventDto, MatchResult, RoundSimulationResult, TacticDto, Guid, MatchdayReportDto,
   PlayerProfileDto,
-  SquadSuggestionDto
+  SquadSuggestionDto,
+  FinanceLedgerDto,
+  ClubScorerDto,
+  CompetitionFilter
 } from '../types';
 
 /**
@@ -30,6 +33,38 @@ export const TeamApi = {
   /** The club's last finished matches, newest first, for the form guide on its card. */
   getMatches: (teamId: string, limit = 10) =>
     api.get<TeamMatchRecordDto[]>(`/team/${teamId}/matches?limit=${limit}`).then(r => r.data),
+  /**
+   * The club's scorers of a season, optionally for one kind of competition.
+   *
+   * The competition is the world's own name on the wire, and the season is required: goals
+   * belong to a season and a table of scorers with no season is a table of everything, which
+   * is a different question and a much slower one. The list comes whole, because a club's
+   * scorers is a page about its history and a list that stopped at fifteen would be a list of
+   * the men the endpoint felt like sending.
+   */
+  getScorers: (teamId: string, seasonId: string, competition?: CompetitionFilter, topN = 100) =>
+    api
+      .get<ClubScorerDto[]>(
+        `/team/${teamId}/scorer?seasonId=${seasonId}&topN=${topN}` +
+          (competition ? `&competition=${competition}` : '')
+      )
+      .then(r => r.data),
+  /**
+   * A page of the club's book and the three numbers above it.
+   *
+   * The page is asked for by number and not by skipping lines, because a ledger that is
+   * skipped through can be read wrong: a line that arrives is a line the manager can see, and
+   * a gap where one should be would be the screen's doing rather than the club's. The season
+   * is optional because a career's books are a long read and a manager asking how last season
+   * went is asking about one of them.
+   */
+  getFinance: (teamId: string, seasonId?: string, page = 1, pageSize = 10) =>
+    api
+      .get<FinanceLedgerDto>(
+        `/team/${teamId}/finance?page=${page}&pageSize=${pageSize}` +
+          (seasonId ? `&seasonId=${seasonId}` : '')
+      )
+      .then(r => r.data),
 };
 
 export const PlayerApi = {

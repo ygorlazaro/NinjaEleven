@@ -96,6 +96,8 @@ GET  /season/{id}                           GET  /league/standing/{competitionSe
 GET  /season/current                        GET  /league/standing/{competitionSeasonId}/team/{teamId}
 POST /season                                GET  /league/scorer/{seasonId}?topN=
 GET  /player/{id}/profile?seasonId=
+
+GET  /team/{teamId}/scorer?seasonId=&competition=&topN=
 ```
 
 Domain errors return RFC 7807 with a stable `code` (e.g. `TeamNotFound`,
@@ -417,6 +419,31 @@ Two rules the code depends on:
 - **The finished match answers from the statistics row**, not from zeros, and
   `match_statistics` carries the two formations so a results screen cannot report 4-3-3 for
   a match that was played 4-4-2.
+
+## The Club's Scorers
+
+`GET /team/{teamId}/scorer` is the league's own list with the club's name on it, and the
+three filters it answers are all decided by the backend:
+
+- **The competition is a walk, not a column.** A match line knows its match, a match knows its
+  fixture, a fixture knows its round, and only the round knows whether the tie was a division
+  match, a cup tie or a Supercup. So `?competition=Cup` is a query that joins five tables
+  rather than a filter, and a scorers table that could only answer for the championship would
+  have a cup final's goals *missing* rather than zero — which a manager reads as a cup where
+  nobody scored.
+- **An own goal is never a goal.** `OwnGoals` is summed into its own column. It is a
+  defender's error, and a table that added it would put a centre-back on the list for the
+  mistakes he made.
+- **`IsStillAtClub` is a contract, not a shirt.** A membership with no end date. A man who has
+  left stays in the answer with the flag against him rather than being filtered out, because a
+  club's all-time scorers is the one page that must never lose a name: a screen that showed
+  only the men under contract would quietly rewrite the club's history every time a window
+  opened. The flag is what the client's "Ainda no clube" box filters on, so the answer is the
+  whole list and the question is asked on top of it.
+- **The order is goals, then the fewest games for them, then the name.** Eight in ten and
+  eight in twenty are not the same striker, and `GoalsPerAppearance` is worked out in the
+  service for the same reason every other number is: a rate the client invents is a rate two
+  clients may invent differently. A player who never appeared is given `null` and not zero.
 
 ## Faces
 

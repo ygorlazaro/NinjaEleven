@@ -2,6 +2,7 @@ using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
+using NinjaEleven.Domain.Finance;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Teams;
@@ -103,6 +104,7 @@ public class DatabaseSeeder : IDataSeeder
         {
             _logger.LogInformation("Seeding skipped: the world already contains teams.");
             await GiveFacesToTheWorldAlreadySeededAsync(random, cancellationToken);
+            await OpenTheBooksOfTheWorldAlreadySeededAsync(cancellationToken);
             return;
         }
 
@@ -134,6 +136,7 @@ public class DatabaseSeeder : IDataSeeder
         var players = new List<Player>();
         var seasonStates = new List<PlayerSeasonState>();
         var memberships = new List<TeamMembership>();
+        var movements = new List<FinanceMovement>();
         var faces = DealFaces(TeamCatalog.Length * _options.PlayersPerTeam, random);
 
         for (var index = 0; index < TeamCatalog.Length; index++)
@@ -153,7 +156,12 @@ public class DatabaseSeeder : IDataSeeder
                 leagueEditions[definition.Tier - 1].Id,
                 team.Id));
 
-            var squad = CreateSquad(team, season.Id, startDate, random, faces);
+            // Every club in the world opens a book, the thirty-five the manager never picks
+            // included: a table of clubs with money in a country of clubs without it would be
+            // a game where being nobody matters.
+            movements.Add(FinanceMovement.Seed(team.Id, season.Id, FinanceRules.StartingBalance));
+
+            var squad = CreateSquad(team, season.Id, season.Number, startDate, random, faces);
 
             players.AddRange(squad.Players);
             seasonStates.AddRange(squad.SeasonStates);
@@ -171,6 +179,7 @@ public class DatabaseSeeder : IDataSeeder
         _dbContext.Players.AddRange(players);
         _dbContext.PlayerSeasonStates.AddRange(seasonStates);
         _dbContext.TeamMemberships.AddRange(memberships);
+        _dbContext.FinanceMovements.AddRange(movements);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -247,6 +256,7 @@ public class DatabaseSeeder : IDataSeeder
     private (List<Player> Players, List<PlayerSeasonState> SeasonStates, List<TeamMembership> Memberships) CreateSquad(
         Team team,
         Guid seasonId,
+        int startSeasonNumber,
         DateOnly startDate,
         Random random,
         Queue<string> faces)
@@ -266,7 +276,7 @@ public class DatabaseSeeder : IDataSeeder
 
             players.Add(player);
             seasonStates.Add(state);
-            memberships.Add(TeamMembership.Create(player.Id, team.Id, startDate));
+            memberships.Add(TeamMembership.Create(player.Id, team.Id, startDate, startSeasonNumber: startSeasonNumber));
         }
 
         return (players, seasonStates, memberships);
@@ -361,6 +371,46 @@ public class DatabaseSeeder : IDataSeeder
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Gave a face to {Count} players that had none.", faceless.Count);
+    }
+
+    /// <summary>
+    /// The books of a world that was seeded before clubs had one.
+    ///
+    /// Every club without a single line in its book is given the capital a new club is
+    /// founded with. A world that predates the money is not given a backdated history of gate
+    /// receipts and wage bills invented for it: the honest opening line of a book whose
+    /// earlier pages nobody kept is the capital, and everything after it is a movement the
+    /// game actually made.
+    /// </summary>
+    private async Task OpenTheBooksOfTheWorldAlreadySeededAsync(CancellationToken cancellationToken)
+    {
+        var season = await _dbContext.Seasons
+            .OrderBy(candidate => candidate.Number)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (season is null)
+        {
+            return;
+        }
+
+        var withoutABook = await _dbContext.Teams
+            .Where(team => !_dbContext.FinanceMovements.Any(movement => movement.TeamId == team.Id))
+            .ToListAsync(cancellationToken);
+
+        if (withoutABook.Count == 0)
+        {
+            return;
+        }
+
+        _dbContext.FinanceMovements.AddRange(withoutABook.Select(
+            team => FinanceMovement.Seed(team.Id, season.Id, FinanceRules.StartingBalance)));
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Opened the books of {Count} clubs with {Capital} limos each.",
+            withoutABook.Count,
+            FinanceRules.StartingBalance);
     }
 
     /// <summary>

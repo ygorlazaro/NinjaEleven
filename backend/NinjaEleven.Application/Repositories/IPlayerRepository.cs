@@ -1,3 +1,5 @@
+using NinjaEleven.Application.Models;
+using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Players;
 
 namespace NinjaEleven.Application.Repositories;
@@ -36,4 +38,26 @@ public interface IPlayerRepository
         CancellationToken cancellationToken = default);
 
     void UpdateSeasonState(PlayerSeasonState seasonState);
+
+    /// <summary>
+    /// The goals every player of one club scored in one season, summed from the match lines,
+    /// optionally restricted to one kind of competition.
+    ///
+    /// The competition is not on a match line — a line knows the match, and a match knows its
+    /// fixture, and a fixture knows the round, and only the round knows whether the tie was a
+    /// division match, a cup tie or a Supercup. So the competition is reached by walking that
+    /// chain, which is why this is a query and not a filter on a column: a scorers table that
+    /// could only answer for the championship would be a table whose cup goals are missing
+    /// rather than zero, and a manager reading it would take a cup final's goals for nothing.
+    /// </summary>
+    /// <param name="teamId">The club whose men are counted.</param>
+    /// <param name="seasonId">The season the goals are of.</param>
+    /// <param name="competitionType">
+    /// League, Cup or Supercup; null for every kind at once, which is the club's whole season.
+    /// </param>
+    Task<IReadOnlyList<ClubScorerLine>> ListClubScorerLinesAsync(
+        Guid teamId,
+        Guid seasonId,
+        CompetitionType? competitionType = null,
+        CancellationToken cancellationToken = default);
 }

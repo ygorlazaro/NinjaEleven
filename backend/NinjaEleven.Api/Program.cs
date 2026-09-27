@@ -68,7 +68,11 @@ builder.Services.AddScoped<MatchCommandPublisher>();
 
 var app = builder.Build();
 
-await app.Services.InitializeDatabaseAsync();
+// Seeding is a thing a human asks for and not a thing that happens because the process
+// booted, so the flag has to actually be read from the command line: the initializer has
+// always taken one, and nothing was passing it, so a world could only be drawn by editing
+// this line.
+await app.Services.InitializeDatabaseAsync(args.Contains("--seed"));
 
 app.UseExceptionHandler();
 app.UseCors(CorsPolicy);

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { SquadPlayerDto } from '@/types';
 import { positionLabel } from '@/services/formatters';
+import { formatLimo } from '@/services/limo';
 import { PlayerName } from '@/components/Common/Names';
 
 /**
@@ -11,7 +12,8 @@ import { PlayerName } from '@/components/Common/Names';
 type SortKey =
   | 'position' | 'name' | 'age' | 'speed' | 'accuracy' | 'dribbling' | 'heading'
   | 'strength' | 'goalkeeperPower' | 'reflexes' | 'goals' | 'saves'
-  | 'yellowCards' | 'redCards' | 'energy';
+  | 'yellowCards' | 'redCards' | 'energy'
+  | 'marketValue' | 'askingPrice' | 'salary' | 'seasonsLeft';
 
 const POSITION_RANK: Record<string, number> = { GK: 0, DEF: 1, MID: 2, ATT: 3 };
 
@@ -43,6 +45,28 @@ const commonColumns: Column[] = [
 const keeperColumns: Column[] = [
   { key: 'goalkeeperPower', label: 'Gol', className: 'num' },
   { key: 'reflexes', label: 'Ref', className: 'num' }
+];
+
+/**
+ * The money, as four numbers a manager negotiates with: what the player is worth, what a
+ * rival would have to pay for him, what the club pays him and how much of his contract is
+ * left.
+ *
+ * The value and the price are two columns because they are two questions. A man with two
+ * seasons still to run is worth what he is worth and costs a fifth more, and a table with
+ * one money column would have to pick one of the two — the one that reads as cheap, and so
+ * the first offer a club makes. The fine is said on the price rather than hidden inside it,
+ * so a manager can see that the extra exists and why.
+ *
+ * The amounts are limos and the unit is said once in the header rather than on every cell:
+ * twenty-three rows repeating "L$" is twenty-three repetitions of a fact the column already
+ * says, and the width it costs is the width a name does not have.
+ */
+const moneyColumns: Column[] = [
+  { key: 'marketValue', label: 'Valor L$', className: 'num money' },
+  { key: 'askingPrice', label: 'Preço L$', className: 'num money' },
+  { key: 'salary', label: 'Salário L$', className: 'num money' },
+  { key: 'seasonsLeft', label: 'Contrato', className: 'num contract-cell' }
 ];
 
 const tallyColumns: Column[] = [
@@ -106,6 +130,7 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
     () => [
       ...commonColumns,
       ...(hasKeeper ? keeperColumns : []),
+      ...moneyColumns,
       ...tallyColumns
     ],
     [hasKeeper]
@@ -213,6 +238,27 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
               {hasKeeper && (
                 <td className="num">{player.position === 'GK' ? player.reflexes : '—'}</td>
               )}
+              {/* The money a manager negotiates with. The price carries the fine as a mark
+                  rather than as a second number, so the two are read as one figure with a
+                  reason attached and not as two prices to choose between. */}
+              <td className="num money">{formatLimo(player.marketValue)}</td>
+              <td
+                className={`num money ${player.isInLastSeason ? '' : 'under-contract'}`}
+                title={
+                  player.isInLastSeason
+                    ? 'Última temporada de contrato: sem multa'
+                    : `${player.contractSeasons - player.seasonsLeft} de ${player.contractSeasons} temporadas de contrato ainda a correr: multa de 20%`
+                }
+              >
+                {formatLimo(player.askingPrice)}
+                {!player.isInLastSeason && <span className="contract-fine">+20%</span>}
+              </td>
+              <td className="num money">{formatLimo(player.salary)}</td>
+              <td className="num contract-cell">
+                {player.contractSeasons > 0
+                  ? `${player.seasonsLeft}/${player.contractSeasons}`
+                  : '—'}
+              </td>
               {/* The season's own tallies, read from the same place the player profile
                   reads them, so a card and a profile cannot disagree. */}
               <td className="num accent">{player.goals}</td>

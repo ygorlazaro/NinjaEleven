@@ -11,6 +11,11 @@ import LineupScreen from '@/pages/LineupScreen';
 import TeamViewScreen from '@/pages/TeamViewScreen';
 import MatchScreen from '@/pages/MatchScreen';
 import CalendarScreen from '@/pages/CalendarScreen';
+import FinanceiroScreen from '@/pages/FinanceiroScreen';
+import ClubScreen from '@/pages/ClubScreen';
+import StadiumScreen from '@/pages/StadiumScreen';
+import SponsorsScreen from '@/pages/SponsorsScreen';
+import ScorersScreen from '@/pages/ScorersScreen';
 import '@/styles.css';
 
 /**
@@ -44,6 +49,11 @@ function App() {
         <Route path="/" element={<Root />} />
         <Route path="/league" element={<LeagueScreen />} />
         <Route path="/calendar" element={<CalendarScreen />} />
+        <Route path="/financeiro" element={<FinanceiroScreen />} />
+        <Route path="/club" element={<ClubScreen />} />
+        <Route path="/estadio" element={<StadiumScreen />} />
+        <Route path="/patrocinadores" element={<SponsorsScreen />} />
+        <Route path="/artilheiros" element={<ScorersScreen />} />
         <Route path="/match/lineup/:fixtureId" element={<LineupScreen />} />
         <Route path="/team/:teamId" element={<TeamViewScreen />} />
         <Route path="/match/:matchId" element={<MatchScreen />} />

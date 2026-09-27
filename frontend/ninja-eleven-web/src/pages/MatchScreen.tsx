@@ -24,6 +24,7 @@ import SubstitutionModal from '@/components/Modals/SubstitutionModal';
 import MatchdayScoreboard, { type MatchScore } from '@/components/Match/MatchdayScoreboard';
 import { FixtureApi } from '@/api';
 import { useMatchAudio } from '@/hooks/useMatchAudio';
+import { formatLimo } from '@/services/limo';
 import { ClubName } from '@/components/Common/Names';
 import { starsToString } from '@/services/formatters';
 
@@ -587,7 +588,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
           Público: <b>{state?.attendance?.toLocaleString('pt-BR') ?? '—'}</b> pagantes
           {state?.gateRevenue && (
             <span style={{ marginLeft: '16px' }}>
-              Bilheteria: <b>{state.gateRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</b>
+              Bilheteria: <b>{formatLimo(state.gateRevenue)}</b>
             </span>
           )}
         </div>

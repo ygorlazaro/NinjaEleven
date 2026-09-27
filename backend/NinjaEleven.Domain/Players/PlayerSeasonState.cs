@@ -34,6 +34,14 @@ public class PlayerSeasonState
     /// </summary>
     public int InjuryMatchesRemaining { get; private set; }
 
+    /// <summary>
+    /// How many times he has been injured this season, which is not the same thing as the
+    /// injury he is carrying: a player who was hurt in the first matchday and came back has
+    /// no injury and has still been hurt. The count is what the market reads, because a club
+    /// signing a man pays for the season he has had and not for the bandage on him today.
+    /// </summary>
+    public int Injuries { get; private set; }
+
     private PlayerSeasonState() { }
 
     public static PlayerSeasonState Create(
@@ -56,6 +64,7 @@ public class PlayerSeasonState
             SuspensionMatches = 0,
             Injury = Injury.None,
             InjuryMatchesRemaining = 0,
+            Injuries = 0,
         };
     }
 
@@ -97,6 +106,11 @@ public class PlayerSeasonState
         {
             return;
         }
+
+        // Every knock counts, whatever the worst of the season turns out to be. The injury he
+        // carries is the worst one and only one of them; the market is told how many times he
+        // was hurt, which is a different number and a bigger one.
+        Injuries++;
 
         // The worst injury of a season is the one that counts.
         if (injury > Injury && InjuryMatchesRemaining < matches)

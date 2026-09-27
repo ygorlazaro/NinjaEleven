@@ -1,7 +1,7 @@
 import React from 'react';
 import type { StandingDto, TableZone, TeamDto } from '@/types';
 import { ClubName } from '@/components/Common/Names';
-import { starsToString } from '@/services/formatters';
+import StarRating from '@/components/Common/StarRating';
 
 interface StandingsTableProps {
   standings: StandingDto[];
@@ -88,7 +88,9 @@ const StandingsTable: React.FC<StandingsTableProps> = ({ standings, userId, team
                   ></span>
                   <ClubName teamId={team.id}>{team.name}</ClubName>
                 </td>
-                <td style={{ color: 'var(--accent)', fontWeight: 'bold' }}>{starsToString(stars)}</td>
+                <td>
+                  <StarRating stars={stars} />
+                </td>
                 <td><b>{row.points}</b></td>
                 <td>{row.played}</td>
                 <td>{row.wins}</td>

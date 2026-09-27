@@ -26,6 +26,12 @@ public class TeamMembershipConfiguration : IEntityTypeConfiguration<TeamMembersh
 
         builder.Property(m => m.StartDate).HasColumnType("date").IsRequired();
         builder.Property(m => m.EndDate).HasColumnType("date");
+        builder.Property(m => m.ContractSeasons)
+            .IsRequired()
+            .HasDefaultValue(Domain.Finance.FinanceRules.DefaultContractSeasons);
+        builder.Property(m => m.StartSeasonNumber)
+            .IsRequired()
+            .HasDefaultValue(1);
 
         builder.HasIndex(m => m.PlayerId);
         builder.HasIndex(m => new { m.TeamId, m.StartDate });

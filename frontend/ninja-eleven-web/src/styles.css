@@ -77,7 +77,10 @@ button { cursor: pointer; }
 .sidebar-club {
   display: grid; gap: 6px; margin-top: auto; padding: 10px;
   border: 1px solid var(--line); border-radius: 10px; background: #0a1520;
+  color: inherit; text-decoration: none;
 }
+.sidebar-club:hover { border-color: #46657d; }
+.sidebar-club.active { border-color: var(--accent); }
 .sidebar-club__swatch { width: 28px; height: 8px; border-radius: 3px; border: 1px solid; }
 .sidebar-club__name {
   color: var(--text); font-size: 12px; line-height: 1.3;
@@ -769,18 +772,39 @@ button { cursor: pointer; }
 .club-swatch { width: 46px; height: 14px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, .4); }
 
 /* The attributes are the point of a profile: seven numbers, read at a glance. */
+/* The attributes in one line, read across. A row of numbers a manager compares with each
+   other belongs side by side, and a column of seven of them is a list he has to walk down:
+   the strip is one row always, and a modal too narrow for it scrolls sideways rather than
+   folding it back into the column it was read as before. */
 .profile-attrs {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: 8px; margin-bottom: 18px;
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(74px, 1fr);
+  gap: 6px; margin-bottom: 10px; overflow-x: auto; padding-bottom: 2px;
 }
 .attr-box {
-  display: grid; gap: 5px; padding: 10px 8px; text-align: center;
+  display: grid; gap: 4px; padding: 8px 6px; text-align: center;
   border: 1px solid var(--line); border-radius: 9px; background: #0a1520;
 }
-.attr-value { font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.attr-value { font-size: 18px; }
+.attr-value { font-weight: 900; font-variant-numeric: tabular-nums; }
 .attr-bar { display: block; height: 4px; border-radius: 999px; background: #16283a; overflow: hidden; }
 .attr-bar-fill { display: block; height: 100%; background: var(--team-primary); }
-.attr-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
+.attr-label { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
+
+/* The rating, in the two places a player is read: a badge beside his name and the reading
+   of it under his attributes. Both are the same number — the engine's — and they are drawn
+   by one component so a card cannot show two ideas of how good a player is. */
+.star-rating { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.star-rating__marks { color: var(--accent); font-weight: 700; letter-spacing: .06em; }
+.star-rating__label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
+.star-rating--badge .star-rating__marks { font-size: 15px; }
+.star-rating--full {
+  display: flex; width: 100%; justify-content: center; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: #0a1520;
+}
+.star-rating--full .star-rating__marks { font-size: 22px; }
+.star-rating--full .star-rating__label { font-size: 11px; }
+.profile-name .star-rating { margin-left: 10px; vertical-align: middle; }
+.profile-stars { margin-bottom: 18px; }
 
 /* Career: this season or every season, said as four numbers rather than a paragraph. */
 .profile-totals { display: grid; gap: 10px; margin-bottom: 18px; }
@@ -792,7 +816,7 @@ button { cursor: pointer; }
 .career-value { font-size: 18px; font-weight: 900; font-variant-numeric: tabular-nums; }
 .career-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
 
-.profile-history { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 9px; }
+.profile-history { max-height: 320px; overflow-y: auto; overflow-x: auto; border: 1px solid var(--line); border-radius: 9px; }
 .history-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .history-table th {
   position: sticky; top: 0; z-index: 1; padding: 8px; text-align: left;
@@ -951,6 +975,13 @@ button { cursor: pointer; }
 .calendar-table th { position: sticky; top: 0; z-index: 1; background: #0d1924; }
 .calendar-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .calendar-date { white-space: nowrap; color: var(--muted); }
+/* The day is said once per block of games and a rule says where one day ends. Repeating
+   "Dia 12" down sixteen rows is the noise the day was chosen to remove. */
+.calendar-day {
+  width: 74px; white-space: nowrap; font-weight: 700; color: var(--accent);
+  border-top: 1px solid var(--line);
+}
+.calendar-day__same { color: var(--muted); opacity: .35; }
 .calendar-type {
   display: inline-block; margin-right: 6px; padding: 1px 5px; border-radius: 4px;
   background: #10202e; color: var(--muted); font-size: 9px; text-transform: uppercase;
@@ -971,3 +1002,584 @@ button { cursor: pointer; }
 /* The manager's own club, said once and quietly rather than shouted. */
 .calendar-row.is-mine { background: rgba(242, 211, 79, .07); }
 .calendar-row.is-mine .calendar-team { color: var(--accent); }
+/* A knockout stage is a name, not a number to line up on the digit: "16-avos de final" read
+   right-aligned in a narrow column is the one column on the screen nobody can scan. */
+.calendar-phase { width: 140px; white-space: nowrap; color: var(--muted); }
+
+/* The club's books. The balance is the only number on the screen said twice as large as
+   anything else, because it is the one a manager opens the screen for. */
+.finance-summary {
+  display: flex; align-items: flex-end; gap: 28px; flex-wrap: wrap;
+  margin: 14px 0 4px;
+}
+.finance-summary__main { display: flex; flex-direction: column; gap: 2px; }
+.finance-summary__side {
+  display: flex; flex-direction: column; gap: 2px;
+  padding-left: 22px; border-left: 1px solid var(--line);
+}
+.finance-summary__label {
+  font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+}
+.finance-summary__balance {
+  font-size: 30px; font-weight: 800; color: var(--accent);
+  font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.finance-summary__side .finance-in,
+.finance-summary__side .finance-out { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* A movement is a sign first and an amount second, and the sign is what the eye reads. */
+.finance-in { color: var(--green); }
+.finance-out { color: var(--red); }
+.finance-list { max-height: 520px; }
+.finance-table { font-size: 12px; }
+.finance-table td { vertical-align: top; }
+.finance-amount { white-space: nowrap; width: 120px; font-weight: 700; }
+.finance-balance { white-space: nowrap; width: 120px; color: var(--muted); }
+.finance-kind { display: block; white-space: nowrap; }
+.finance-kind__icon { margin-right: 6px; }
+.finance-kind__label { color: var(--text); }
+.finance-description { display: block; color: var(--muted); font-size: 11px; }
+/* The turner is where the manager finds out whether the line he is reading is the last one. */
+.finance-row--balance { background: rgba(255, 255, 255, 0.03); font-style: italic; }
+
+/* The wage bill, said apart from the rest of the column. It is the one line a manager pays
+   on every matchday whether the result was a win or a defeat, and a book where it looks like
+   any other movement is a book where the club's biggest recurring cost is invisible. */
+.finance-row--wages { background: rgba(224, 123, 0, 0.08); }
+.finance-row--wages td { border-top: 1px solid rgba(224, 123, 0, 0.18); }
+.finance-row--wages .finance-kind__label { color: var(--text); font-weight: 600; }
+
+/* The money on a squad table and on a card. A price carrying a fine is said in the warning
+   colour, because the fine is the one number on the card a manager is meant to react to. */
+.money { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.under-contract .career-value, .under-contract { color: var(--danger); }
+.contract-fine { margin-left: 4px; font-size: 10px; font-weight: 700; opacity: 0.85; }
+.contract-cell { white-space: nowrap; color: var(--muted); }
+.profile-money {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+}
+.profile-money__cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.profile-money__cell .career-value { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.profile-money__cell .career-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.finance-pager { justify-content: center; align-items: center; gap: 8px; }
+.finance-pager__status { color: var(--muted); font-size: 11px; padding: 0 8px; }
+
+
+/* ---------------------------------------------------------------------------
+   A club's own page. The screen a career starts on: the shield, the figures, the
+   shelf and the history. Everything is drawn from what the backend decided; the
+   page adds the classes a value maps to and not one number of its own.
+   --------------------------------------------------------------------------- */
+.club-page__head {
+  display: flex; align-items: center; gap: 16px; margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+/* The shield, until the club has one. A blank space would read as a page that failed
+   to load; a shield in the club's own colours reads as a page whose artwork is not
+   finished yet, which is what it is. */
+.club-crest {
+  display: grid; place-items: center; flex: 0 0 auto;
+  width: 76px; height: 88px; border: 3px solid; border-radius: 8px 8px 26px 26px;
+  font-size: 20px; font-weight: 900; letter-spacing: .04em;
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .35);
+}
+.club-page__identity { flex: 1 1 220px; min-width: 0; }
+.club-page__identity .profile-name { margin-bottom: 4px; }
+.club-page__tag { margin: 0; color: var(--muted); font-size: 12px; }
+.club-page__actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.club-page__actions .ctrl { text-decoration: none; }
+
+/* The four figures. The balance is the one that answers a question worth asking:
+   a club becomes a manager's problem the day he cannot pay a wage. */
+.club-figures {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px; margin-bottom: 20px;
+}
+.club-figure {
+  display: grid; gap: 2px; padding: 12px; text-align: center;
+  border: 1px solid var(--line); border-radius: 9px; background: #0a1520;
+}
+.club-figure__icon { font-size: 16px; }
+.club-figure__value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.club-figure__label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+.club-figure--accent { border-color: var(--accent); }
+.club-figure--accent .club-figure__value { color: var(--accent); }
+
+.club-section-title {
+  margin: 0 0 10px; color: var(--muted); font-size: 11px; font-weight: 800;
+  letter-spacing: .09em; text-transform: uppercase;
+}
+
+/* The shelf. Medals stand on a plank: a border under the row is what makes it a
+   shelf rather than a list, and the border-top of the plank is the shelf's own edge. */
+.club-shelf { margin-bottom: 20px; }
+.club-shelf__row {
+  display: grid; grid-template-columns: minmax(140px, 1fr) auto auto; gap: 12px;
+  align-items: end; margin-bottom: 12px;
+}
+.club-shelf__name { display: grid; gap: 2px; }
+.club-shelf__competition { font-size: 13px; font-weight: 700; }
+.club-shelf__division { color: var(--muted); font-size: 11px; }
+.club-shelf__plank {
+  display: flex; align-items: flex-end; gap: 4px; min-height: 40px;
+  padding: 0 8px 4px; border-bottom: 3px solid #2c4459; border-radius: 3px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .04), transparent);
+}
+.club-medal { font-size: 22px; line-height: 1.1; }
+.club-medal--more { font-size: 12px; color: var(--muted); font-weight: 700; align-self: center; }
+.club-shelf__none { color: var(--muted); }
+.club-shelf__count { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.club-shelf--empty .league-empty { margin: 0; }
+
+/* The history, newest first. A career is read from now backwards, so the moment a
+   manager is living through is the first line and the founding is the last. */
+.club-timeline { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.club-timeline__item {
+  display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--line);
+}
+.club-timeline__item:last-child { border-bottom: 0; }
+.club-timeline__icon {
+  display: grid; place-items: center; width: 34px; height: 34px; font-size: 16px;
+  border: 1px solid var(--line); border-radius: 50%; background: #0a1520;
+}
+.club-timeline__body { display: grid; gap: 2px; min-width: 0; }
+.club-timeline__label { color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.club-timeline__text { font-size: 13px; }
+.club-timeline__season { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+@media (max-width: 620px) {
+  .club-shelf__row { grid-template-columns: 1fr; gap: 6px; align-items: start; }
+  .club-timeline__item { grid-template-columns: 34px 1fr; }
+  .club-timeline__season { grid-column: 2; }
+}
+
+/* ---------------------------------------------------------------------------
+   Uniformes, estádio e patrocinadores
+   --------------------------------------------------------------------------- */
+
+/* The two shirts. A kit is a thing to look at, so the wall is wide, the shirts are
+   big, and the caption is small: the drawing is the content. */
+.kit-wall {
+  margin: 1.4rem 0 0.4rem;
+}
+
+.kit-wall__row {
+  display: flex;
+  gap: 1.6rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.kit {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.kit__shirt {
+  width: 150px;
+  height: 150px;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
+}
+
+.kit__caption {
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The ground: a stand, a pitch, a stand. Drawn in the club's own colours, because a
+   stadium in somebody else's colours is a stadium of no club at all. */
+.stadium-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.stadium-drawing {
+  --pitch-a: #f2d34f;
+  --pitch-b: #1a1a1a;
+  position: relative;
+  height: 190px;
+  border-radius: 50% / 22%;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--pitch-b) 0 14px,
+    var(--pitch-a) 14px 28px
+  );
+  border: 3px solid rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.stadium-drawing__stand {
+  display: block;
+  height: 34px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(0, 0, 0, 0.35));
+}
+
+.stadium-drawing__pitch {
+  position: absolute;
+  inset: 46px 18%;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-radius: 3px;
+}
+
+.stadium-figures {
+  display: flex;
+  gap: 0.8rem;
+  margin: 1.1rem 0;
+  flex-wrap: wrap;
+}
+
+.club-figure {
+  flex: 1 1 130px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.7rem 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.club-figure--accent {
+  background: rgba(255, 210, 79, 0.12);
+  border: 1px solid rgba(255, 210, 79, 0.35);
+}
+
+.club-figure__value {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.club-figure__label {
+  font-size: 0.74rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* The price controls. A range the manager drags, the price it says out loud, and a line
+   saying what a season ticket is worth on a night the opposition is nobody. */
+.stadium-prices {
+  margin-top: 0.6rem;
+}
+
+.price-control {
+  margin: 0.8rem 0;
+}
+
+.price-control__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.price-control__label {
+  font-weight: 600;
+}
+
+.price-control__value {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--accent, #ffd24f);
+}
+
+.price-control__hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.stadium-prices__note {
+  margin: 1rem 0 0;
+  padding: 0.7rem 0.8rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--muted);
+  border-left: 3px solid rgba(255, 210, 79, 0.5);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 0 8px 8px 0;
+}
+
+/* The master sponsor: a mark in the sponsor's own colour, the name, the three numbers of
+   the deal, and how many matches are left to play on it. */
+.sponsor-master {
+  --sponsor: #e0a800;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--sponsor) 26%, transparent),
+    rgba(255, 255, 255, 0.05)
+  );
+  border: 1px solid color-mix(in srgb, var(--sponsor) 55%, transparent);
+}
+
+.sponsor-master__mark {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  border-radius: 9px;
+  background: var(--sponsor);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.25);
+}
+
+.sponsor-master__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.sponsor-master__label {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sponsor-master__name {
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.sponsor-master__deal {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.sponsor-master__left {
+  margin-left: auto;
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+.sponsor-master__left-value {
+  display: block;
+  font-size: 1.7rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.sponsor-master__left-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+/* The rule, said out loud, and a button that is greyed because the contract says so
+   rather than because nobody got round to it. */
+.sponsor-lock {
+  margin: 0.9rem 0 0;
+  padding: 0.7rem 0.85rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 3px solid #8a8a8a;
+}
+
+.sponsor-lock--open {
+  border-left-color: #4caf50;
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.sponsor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 0.9rem;
+}
+
+.sponsor-card {
+  padding: 0.9rem;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.sponsor-card--current {
+  border-color: rgba(76, 175, 80, 0.5);
+}
+
+.sponsor-card__head {
+  border-left: 4px solid transparent;
+  padding-left: 0.6rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.sponsor-card__name {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.sponsor-card__industry {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.sponsor-card__figures {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.sponsor-card__figure {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.sponsor-card__value {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.sponsor-card__label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.sponsor-card__status {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #4caf50;
+}
+
+.sponsor-card__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------------
+   Artilheiros do clube
+   --------------------------------------------------------------------------- */
+
+/* Three filters in a row: a season, a competition and a yes or no. They are above the
+   table and not in it, because a filter that sits among the rows it filters is a control
+   that looks like a row. */
+.scorer-error {
+  color: var(--red);
+  font-size: 0.85rem;
+  padding: 0.4rem 0;
+}
+
+.scorer-filters {
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.scorer-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+}
+
+.scorer-filter__label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.scorer-filter__select {
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  min-width: 150px;
+}
+
+.scorer-filter--check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  padding-bottom: 0.45rem;
+  font-size: 0.88rem;
+}
+
+.scorer-figures {
+  display: flex;
+  gap: 0.8rem;
+  margin: 0 0 1rem;
+  flex-wrap: wrap;
+}
+
+/* The table. A scorers list is read in a column, so the goals are the widest thing in it
+   and the position is the narrowest. */
+.scorer-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.scorer-table th {
+  text-align: left;
+  font-size: 0.7rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  padding: 0.4rem 0.5rem;
+}
+
+.scorer-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid rgba(34, 56, 75, 0.6);
+}
+
+.scorer-table__pos {
+  width: 2.2rem;
+  color: var(--muted);
+}
+
+.scorer-table__name {
+  display: flex;
+  flex-direction: column;
+}
+
+.scorer-table__meta {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+/* A man who has left the club is still on the list — a club's scorers is a page about its
+   history — but he is said to have left, because a list that quietly mixed the two would
+   read as a list of the men the manager can still pick. */
+.scorer-table__row--gone {
+  opacity: 0.62;
+}
+
+.scorer-table__goals {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.scorer-table__rate {
+  color: var(--muted);
+}

@@ -48,6 +48,14 @@ public class PlayerServiceTests
             .ReturnsAsync(PlayerSeasonState.Create(_player.Id, _seasonId, _team.Id, 80));
         _teams.Setup(repo => repo.GetAsync(_team.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(_team);
+        // Who is on the club's books. A profile reads the contract off the membership rather
+        // than off a number it kept to itself, so the card and the wage bill cannot disagree
+        // about how long a man is committed for.
+        _teams.Setup(repo => repo.GetSquadAsync(_team.Id, _seasonId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TeamMembership>
+            {
+                TeamMembership.Create(_player.Id, _team.Id, new DateOnly(2026, 1, 1))
+            });
     }
 
     private void History(params PlayerMatchRecord[] lines) =>

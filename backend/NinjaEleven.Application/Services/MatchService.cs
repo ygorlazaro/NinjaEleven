@@ -52,6 +52,13 @@ public class MatchService
     private readonly IUnitOfWork _unitOfWork;
     private readonly CupProgressionService _cupProgression;
 
+    /// <summary>
+    /// A club's money. It is here rather than inside the season progress because the gate is
+    /// not a season's business: it belongs to both clubs, the one the manager follows and
+    /// the one the engine played without him.
+    /// </summary>
+    private readonly FinanceService _financeService;
+
     public MatchService(
         IMatchRepository matchRepository,
         ITeamRepository teamRepository,
@@ -62,7 +69,8 @@ public class MatchService
         IMatchSessionRegistry sessions,
         AttendanceContextFactory attendanceContextFactory,
         IUnitOfWork unitOfWork,
-        CupProgressionService cupProgression)
+        CupProgressionService cupProgression,
+        FinanceService financeService)
     {
         _matchRepository = matchRepository;
         _teamRepository = teamRepository;
@@ -74,6 +82,7 @@ public class MatchService
         _attendanceContextFactory = attendanceContextFactory;
         _unitOfWork = unitOfWork;
         _cupProgression = cupProgression;
+        _financeService = financeService;
     }
 
     public async Task<IReadOnlyList<Match>> GetAllAsync(CancellationToken cancellationToken = default) =>
@@ -637,6 +646,7 @@ public class MatchService
                 session.State,
                 cancellationToken);
             await ApplySeasonProgressAsync(match.FixtureId, session.State, match.Seed, cancellationToken);
+            await SettleTheBooksAsync(match, cancellationToken);
 
             var fixture = await _fixtureRepository.GetAsync(match.FixtureId, cancellationToken);
             fixture?.MarkFinished();
@@ -1187,6 +1197,64 @@ public class MatchService
         };
     }
 
+    /// <summary>
+    /// What the match was worth to the two clubs that played it, written into their books.
+    ///
+    /// It happens here, in the one place a match is ever finished, and the same place for a
+    /// match a manager is watching and for one the engine plays with an empty stand: a ticket
+    /// sold is a ticket sold, and the thirty-five clubs nobody manages are clubs too. The
+    /// split of the gate and the season's first wage bill are the finance service's decision
+    /// to make — this only tells it that a match is over.
+    ///
+    /// The gate is read off the match row rather than the live state, because the state is
+    /// this tick's state and the row is the match's own record: a match that is replayed
+    /// pays the same gate both times.
+    ///
+    /// The wage bill is paid for the championship and for nothing else. A cup tie and a
+    /// supercup are competitions a club enters for the prize, and neither is a matchday of
+    /// the league whose calendar the bill is spread over — so a cup run costs a club nothing
+    /// in wages, which is what makes the cup a gamble a manager takes with his own money.
+    /// </summary>
+    private async Task SettleTheBooksAsync(Match match, CancellationToken cancellationToken)
+    {
+        var seasonId = await ResolveSeasonIdAsync(match.FixtureId, cancellationToken);
+
+        await _financeService.RecordMatchGateAsync(
+            match.FixtureId,
+            match.Id,
+            seasonId,
+            match.HomeRevenue,
+            match.AwayRevenue,
+            cancellationToken);
+
+        var fixture = await _fixtureRepository.GetAsync(match.FixtureId, cancellationToken);
+        if (fixture is null)
+        {
+            return;
+        }
+
+        if (await IsChampionshipMatchAsync(fixture, cancellationToken) is false)
+        {
+            return;
+        }
+
+        var day = await _financeService.ResolveMatchDayAsync(match.FixtureId, cancellationToken);
+
+        await _financeService.RecordMatchWagesAsync(
+            fixture.HomeTeamId,
+            seasonId,
+            day,
+            match.Id,
+            cancellationToken);
+
+        await _financeService.RecordMatchWagesAsync(
+            fixture.AwayTeamId,
+            seasonId,
+            day,
+            match.Id,
+            cancellationToken);
+    }
+
     private async Task ApplySeasonProgressAsync(
         Guid fixtureId,
         MatchState state,
@@ -1348,6 +1416,17 @@ public class MatchService
             : CompetitionRules.CupWindow;
 
         return (competition.Type, round.Window == expected ? round.Window : expected);
+    }
+
+    /// <summary>
+    /// Whether a fixture is a match of the championship, which is the only competition whose
+    /// matchdays a club's wages are settled on.
+    /// </summary>
+    private async Task<bool> IsChampionshipMatchAsync(Fixture fixture, CancellationToken cancellationToken)
+    {
+        var competition = await ResolveCompetitionAsync(fixture, cancellationToken);
+
+        return competition.Type == CompetitionType.League;
     }
 
     private async Task<Guid> ResolveSeasonIdAsync(Guid fixtureId, CancellationToken cancellationToken)

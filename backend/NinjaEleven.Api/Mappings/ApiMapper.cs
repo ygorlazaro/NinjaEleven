@@ -63,6 +63,13 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
     SuspensionMatches = squadPlayer.SeasonState.SuspensionMatches,
     Injury = squadPlayer.SeasonState.Injury,
     InjuryMatchesRemaining = squadPlayer.SeasonState.InjuryMatchesRemaining,
+    Injuries = squadPlayer.SeasonState.Injuries,
+    ContractSeasons = squadPlayer.ContractSeasons,
+    SeasonsLeft = squadPlayer.SeasonsLeft,
+    IsInLastSeason = squadPlayer.IsInLastSeason,
+    MarketValue = squadPlayer.MarketValue,
+    AskingPrice = squadPlayer.AskingPrice,
+    Salary = squadPlayer.Salary,
     IsAvailable = squadPlayer.IsAvailable,
     TeamId = squadPlayer.SeasonState.TeamId,
     SeasonId = squadPlayer.SeasonState.SeasonId
@@ -317,6 +324,23 @@ public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => ne
         TeamId = row.TeamId,
         TeamName = row.TeamName
     };
+
+    public static ClubScorerDto ToDto(this Application.Models.ClubScorerRow row) => new()
+    {
+        PlayerId = row.PlayerId,
+        PlayerName = row.PlayerName,
+        Age = row.Age,
+        Position = row.Position,
+        Goals = row.Goals,
+        OwnGoals = row.OwnGoals,
+        Started = row.Started,
+        CameOn = row.CameOn,
+        GoalsPerAppearance = row.GoalsPerAppearance,
+        IsStillAtClub = row.IsStillAtClub
+    };
+
+    public static IReadOnlyList<ClubScorerDto> ToDtos(this IEnumerable<Application.Models.ClubScorerRow> rows) =>
+        rows.Select(row => row.ToDto()).ToList();
 
     public static IReadOnlyList<ScorerDto> ToDtos(this IEnumerable<Application.Models.ScorerRow> rows) =>
         rows.Select(row => row.ToDto()).ToList();
@@ -618,6 +642,12 @@ public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profi
     IsAvailable = profile.IsAvailable,
     Injury = profile.Injury,
     InjuryMatchesRemaining = profile.InjuryMatchesRemaining,
+    MarketValue = profile.MarketValue,
+    Salary = profile.Salary,
+    ContractSeasons = profile.ContractSeasons,
+    SeasonsLeft = profile.SeasonsLeft,
+    IsInLastSeason = profile.IsInLastSeason,
+    AskingPrice = profile.AskingPrice,
     Season = profile.Season.ToDto(),
     Total = profile.Total.ToDto(),
     History = profile.History.Select(line => new PlayerMatchLineDto
@@ -655,6 +685,32 @@ public static class SquadSuggestionMapping
 
 public static class TeamMatchRecordMapping
 {
+    public static FinanceLedgerDto ToDto(this Application.Models.FinanceLedger ledger) => new()
+    {
+        Balance = ledger.Balance,
+        Income = ledger.Income,
+        Expenses = ledger.Expenses,
+        Page = ledger.Page,
+        PageSize = ledger.PageSize,
+        TotalItems = ledger.TotalItems,
+        TotalPages = ledger.TotalPages,
+        Movements = ledger.Movements.Select(line => line.ToDto()).ToList()
+    };
+
+    public static FinanceMovementDto ToDto(this Application.Models.FinanceLedgerLine line) => new()
+    {
+        Id = line.Id,
+        SeasonId = line.SeasonId,
+        SeasonNumber = line.SeasonNumber,
+        SeasonName = line.SeasonName,
+        MatchDayNumber = line.MatchDayNumber,
+        Kind = line.Kind.ToString(),
+        Description = line.Description,
+        Amount = line.Amount,
+        BalanceAfter = line.BalanceAfter,
+        StatesABalance = line.StatesABalance
+    };
+
     public static TeamMatchRecordDto ToDto(this Application.Models.TeamMatchRecord record) => new()
     {
         MatchId = record.MatchId,

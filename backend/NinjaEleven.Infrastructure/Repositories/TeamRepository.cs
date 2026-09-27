@@ -63,4 +63,19 @@ public class TeamRepository : ITeamRepository
             .OrderBy(membership => membership.PlayerId)
             .ToListAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// The contracts a club still holds. A membership with no end date is a deal that has not
+    /// been called off, and that is the whole test: the day a player leaves — by transfer or
+    /// by retirement — his membership is given an end date, and he stops being a man of this
+    /// club on the same day, whatever else the game grows to say about him.
+    /// </summary>
+    public async Task<IReadOnlyList<TeamMembership>> GetLiveContractsAsync(
+        Guid teamId,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => membership.TeamId == teamId && membership.EndDate == null)
+            .OrderBy(membership => membership.PlayerId)
+            .ToListAsync(cancellationToken);
 }

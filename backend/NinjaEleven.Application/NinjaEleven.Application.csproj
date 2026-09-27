@@ -4,6 +4,12 @@
     <ProjectReference Include="..\NinjaEleven.Domain\NinjaEleven.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The abstractions only, so a service can say what it did and did not do without
+         taking a dependency on a logging implementation. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.4" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

@@ -247,6 +247,33 @@ public class ScorerDto
     public string? TeamName { get; init; }
 }
 
+/// <summary>
+/// One line of a club's scorers table: a man of that club, his goals in a season, and whether
+/// he is still there.
+/// </summary>
+/// <remarks>
+/// `isStillAtClub` is the field that makes the table a page about a club's history rather than
+/// a list of the men currently under contract. An own goal is carried apart from the goals
+/// because a goal conceded into his own net is not his scoring, and the appearances are the
+/// two counts a manager reads: games started, and games entered off the bench.
+/// </remarks>
+public class ClubScorerDto
+{
+    public Guid PlayerId { get; init; }
+    public string PlayerName { get; init; } = string.Empty;
+    public int Age { get; init; }
+    public int Position { get; init; }
+    public int Goals { get; init; }
+    public int OwnGoals { get; init; }
+    public int Started { get; init; }
+    public int CameOn { get; init; }
+
+    /// <summary>Goals per appearance, or null when the player never appeared.</summary>
+    public double? GoalsPerAppearance { get; init; }
+
+    public bool IsStillAtClub { get; init; }
+}
+
 public class LeagueSetupResultDto
 {
     public Guid CompetitionSeasonId { get; init; }

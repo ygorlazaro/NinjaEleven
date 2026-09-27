@@ -61,7 +61,14 @@ public class PlayerService
             Face = player.Face
         };
 
-        if (seasonId is { } season)
+        // A card without a season is not a card without a price. A player is worth what he is
+        // worth today, and the season that says so is the one being played, so a caller that
+        // asks for a player rather than for a player's season gets the current one. The season
+        // asked for still decides the season's own line of numbers; this only decides the
+        // season the money is read in.
+        var moneySeasonId = seasonId ?? (await _seasonRepository.GetCurrentAsync(cancellationToken))?.Id;
+
+        if (moneySeasonId is { } season)
         {
             var state = await _playerRepository.GetSeasonStateAsync(playerId, season, cancellationToken);
             if (state is not null)
@@ -72,6 +79,33 @@ public class PlayerService
                 profile.IsAvailable = state.IsAvailable;
                 profile.Injury = state.Injury.ToString();
                 profile.InjuryMatchesRemaining = state.InjuryMatchesRemaining;
+
+                // The price is asked for with the season the caller asked about, because the
+                // season state is where a player's knocks and sendings-off live: a price read
+                // from last season's knocks would be a different man's price, and a profile
+                // without a season has no knocks to read and no price to quote.
+                var contract = await ResolveContractAsync(
+                    player.Id,
+                    state.TeamId,
+                    state.SeasonId,
+                    cancellationToken);
+
+                profile.MarketValue = PlayerValuation.MarketValue(player, state);
+                profile.Salary = PlayerValuation.SeasonWage(player, state);
+
+                // How much of the contract is left is read against the same season, so the
+                // card and the squad table cannot say a man is two seasons from freedom in
+                // one place and one season from it in the other.
+                var contractSeason = await _seasonRepository.GetAsync(state.SeasonId, cancellationToken);
+                if (contract is not null && contractSeason is not null)
+                {
+                    profile.ContractSeasons = contract.ContractSeasons;
+                    profile.SeasonsLeft = contract.SeasonsLeft(contractSeason.Number);
+                    profile.IsInLastSeason = contract.IsInHisLastSeason(contractSeason.Number);
+                    profile.AskingPrice = PlayerValuation.AskingPrice(
+                        profile.MarketValue,
+                        profile.IsInLastSeason);
+                }
             }
         }
 
@@ -117,6 +151,25 @@ public class PlayerService
         profile.Season = Sum(ofSeason);
 
         return profile;
+    }
+
+    /// <summary>
+    /// How many seasons the club has him signed for, which is what his wage is a share of.
+    ///
+    /// A player with no active membership in that club and season is read at the default
+    /// contract rather than at zero: he is on a squad, a squad is paid, and a profile that
+    /// showed a wage of nothing for a player in the eleven would be wrong in the way a
+    /// manager notices first.
+    /// </summary>
+    private async Task<TeamMembership?> ResolveContractAsync(
+        Guid playerId,
+        Guid teamId,
+        Guid seasonId,
+        CancellationToken cancellationToken)
+    {
+        var memberships = await _teamRepository.GetSquadAsync(teamId, seasonId, cancellationToken);
+
+        return memberships.FirstOrDefault(membership => membership.PlayerId == playerId);
     }
 
     private static PlayerCareerLine Sum(IReadOnlyList<PlayerMatchRecord> lines)
@@ -176,10 +229,16 @@ public class PlayerService
             throw new EntityNotFoundException(nameof(Team), teamId);
         }
 
-        if (await _seasonRepository.GetAsync(seasonId, cancellationToken) is null)
-        {
-            throw new EntityNotFoundException("Season", seasonId);
-        }
+        var season = await _seasonRepository.GetAsync(seasonId, cancellationToken)
+            ?? throw new EntityNotFoundException("Season", seasonId);
+
+        // The contracts come from the memberships rather than from the season states, because
+        // a season state is what a player did and a contract is what the club owes: a player
+        // whose contract has ended keeps his goals in the state and is not on the wage bill.
+        var contracts = await _teamRepository.GetSquadAsync(teamId, seasonId, cancellationToken);
+        var contractByPlayer = contracts.ToDictionary(
+            membership => membership.PlayerId,
+            membership => membership);
 
         var seasonStates = await _playerRepository.ListSeasonStatesAsync(seasonId, teamId, cancellationToken);
         var squad = new List<SquadPlayer>(seasonStates.Count);
@@ -189,7 +248,13 @@ public class PlayerService
             var player = await _playerRepository.GetAsync(seasonState.PlayerId, cancellationToken);
             if (player is not null)
             {
-                squad.Add(new SquadPlayer { Player = player, SeasonState = seasonState });
+                squad.Add(new SquadPlayer
+                {
+                    Player = player,
+                    SeasonState = seasonState,
+                    Membership = contractByPlayer.GetValueOrDefault(player.Id),
+                    Season = season
+                });
             }
         }
 

@@ -56,6 +56,23 @@ export interface SquadPlayerDto {
   injury: Injury;
   /** Matches of his club the injury still keeps him out of. */
   injuryMatchesRemaining: number;
+  /** How many times he has been hurt this season, which the market reads. */
+  injuries: number;
+
+  /**
+   * The money, in limos: what he is worth, what another club would have to pay for him and
+   * what the club owes for him this season. The first and the second are different numbers
+   * on purpose — a player with years left on his contract costs a fifth more than he is
+   * worth, and a table that showed only the first would have a manager offering the second.
+   */
+  marketValue: number;
+  askingPrice: number;
+  salary: number;
+  /** Seasons of the contract, and how many of them are left. */
+  contractSeasons: number;
+  seasonsLeft: number;
+  isInLastSeason: boolean;
+
   isAvailable: boolean;
   teamId: Guid;
   seasonId: Guid;
@@ -665,6 +682,20 @@ export type PlayerProfileDto = {
   isAvailable: boolean;
   injury: string;
   injuryMatchesRemaining: number;
+
+  /**
+   * The money, in limos, read from the same contract the squad table reads: what he is
+   * worth, what a rival would have to pay to take him, and what this club owes him for the
+   * season. `seasonsLeft` of `contractSeasons` is the clock on the deal, and it is what makes
+   * the price a price rather than a valuation.
+   */
+  marketValue: number;
+  askingPrice: number;
+  salary: number;
+  contractSeasons: number;
+  seasonsLeft: number;
+  isInLastSeason: boolean;
+
   season: PlayerCareerLineDto;
   total: PlayerCareerLineDto;
   history: PlayerMatchLineDto[];
@@ -736,3 +767,241 @@ export interface TeamMatchRecordDto {
   roundNumber: number;
   playedAt: string;
 }
+
+/**
+ * One line of a club's books.
+ *
+ * `amount` is signed — positive money in, negative money out — and `balanceAfter` is the
+ * balance the club was left with after the line was booked. The running balance is the
+ * backend's to say and not the screen's to work out: a page of a ledger that starts halfway
+ * down the history has no way of knowing what came before it, so a screen that added the
+ * column up itself would be right on the first page and wrong on the second.
+ *
+ * `statesABalance` says the line is not a movement at all but a statement of what the club
+ * had — the capital it was founded on, the balance a season was handed. Such a line is drawn
+ * as a balance, because calling it money in would show the manager a fortune twice.
+ */
+export interface FinanceMovementDto {
+  id: Guid;
+  /** The season the money moved in. A career outlives a season and the books are read per season. */
+  seasonId: Guid;
+  seasonNumber: number;
+  seasonName: string;
+  /** The day of the season the line belongs to, or null for one that belongs to no day. */
+  matchDayNumber: number | null;
+  /** A stable key, as a name. The mark and the words beside it are the screen's. */
+  kind: string;
+  description: string;
+  amount: number;
+  balanceAfter: number;
+  statesABalance: boolean;
+}
+
+/**
+ * A page of a club's book and the three numbers above it.
+ *
+ * The page and the summary arrive together because they are asked about together, and a
+ * screen that fetched the totals separately could draw a balance and an income from two
+ * different moments of a matchday still being played. The totals are of the filter asked for:
+ * with no season chosen they are of the whole career, and with one chosen they are of that
+ * season. The balance is always the club's own, because the club has one balance whichever
+ * season is being read.
+ */
+export interface FinanceLedgerDto {
+  balance: number;
+  income: number;
+  expenses: number;
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  movements: FinanceMovementDto[];
+}
+
+/**
+ * What kind of thing happened to a club.
+ *
+ * The key is the contract and the sentence beside it is the club's own account of the event,
+ * the same way the match feed's event types are a contract and the narration is the screen's.
+ * A kind the screen has never seen still gets a line and a mark, because refusing to show a
+ * moment of a club's history is not the same as not understanding it.
+ */
+export type ClubHistoryKind =
+  | 'FirstSeason'
+  | 'NameChange'
+  | 'CrestChange'
+  | 'StadiumUpgrade'
+  | 'TopScorer'
+  | 'Title'
+  | 'Promotion'
+  | 'Relegation';
+
+/** One moment in a club's history, as the shelf of memory says it. */
+export type ClubHistoryEventDto = {
+  id: string;
+  kind: ClubHistoryKind | string;
+  seasonNumber: number;
+  seasonName: string;
+  /** The club's account of what happened, in a sentence. */
+  description: string;
+  /** What the moment carried, when it carried a number: goals in a season, a season won. */
+  value?: number | null;
+};
+
+/**
+ * A place on a podium, which is a different claim from the place next to it.
+ *
+ * "Champion of the 1st division" and "champion of the 3rd" are not the same trophy, and the
+ * division is carried with it so a shelf can say which one it is holding rather than a number
+ * of medals with nothing to tell them apart.
+ */
+export type ClubTrophyDto = {
+  id: string;
+  /** The competition as the shelf names it. */
+  competition: string;
+  kind: 'Champion' | 'RunnerUp' | 'Third';
+  seasonNumber: number;
+  seasonName: string;
+  divisionName?: string | null;
+};
+
+/**
+ * A club, whole: who it is, who runs it, what it costs to keep, what it has won, where it
+ * has been and what has happened to it.
+ *
+ * The fields are the ones the screen shows and the numbers are the ones a club is judged by,
+ * so a screen that assembled its own totals would be answering a question the backend already
+ * has. `squadSize` and `balance` are read from the roster and the book rather than counted
+ * here: a club's strength is the sum of the two the game already keeps.
+ */
+export type ClubProfileDto = {
+  teamId: Guid;
+  name: string;
+  shortName: string;
+  primaryColor: string;
+  secondaryColor: string;
+  /** The manager's name. A club has a manager before it has a stadium. */
+  coachName: string;
+  /** How many men are on the books, which is not the eleven. */
+  squadSize: number;
+  /** What the club has in the bank, in limos. */
+  balance: number;
+  /** Times the club has gone up a division and times it has come down one. */
+  promotions: number;
+  relegations: number;
+  /** Everything on the shelf, newest first. */
+  trophies: ClubTrophyDto[];
+  /** The club's history, newest first. */
+  history: ClubHistoryEventDto[];
+};
+
+/**
+ * A ground, as a manager sees it: where it is, how big it is and what a seat costs.
+ *
+ * The two prices are two numbers on purpose. A league match and a cup tie are not the same
+ * occasion — a cup tie is a match somebody will travel for, and a season ticket is worth
+ * nothing on a night when the opposition is a second-division club — and a ground that sells
+ * both at the championship price prices the league and the cup at the same thing. The
+ * `league` and `cup` names are the screen's; the division factor the attendance model
+ * applies to a price is the engine's and is not restated here.
+ */
+export type StadiumProfileDto = {
+  teamId: Guid;
+  name: string;
+  city: string;
+  capacity: number;
+  /** What a seat costs for a match of the championship. */
+  leagueTicketPrice: number;
+  /** What a seat costs for a match of the cup. */
+  cupTicketPrice: number;
+  /** The club's colours, so the ground can be drawn in them. */
+  primaryColor: string;
+  secondaryColor: string;
+};
+
+/**
+ * A sponsor's offer, which is money a club does not have to earn on a Saturday.
+ *
+ * A sponsorship is paid per match rather than per season because that is how one is sold: a
+ * club takes a sponsor's money against the games it plays, and a sponsor whose name is on a
+ * shirt for a season that never happens has been promised a season that does not exist. The
+ * count is the number of matches the club has left to play under the deal, which is what
+ * decides when a club may change its mind about it.
+ */
+export type SponsorOfferDto = {
+  id: string;
+  name: string;
+  /** The sector the money comes from, which is what a shirt says above the name. */
+  industry: string;
+  /** What the sponsor pays for a match, in limos. */
+  perMatchFee: number;
+  /** The length of the deal in matches, which is the contract the club signs. */
+  contractMatches: number;
+  /** The mark's own colour, so a sponsor is a thing the screen can draw. */
+  color: string;
+};
+
+/**
+ * A club's sponsor book: who is on the shirt, and who is waiting to be.
+ *
+ * `matchesLeft` is the whole of the rule that governs a change: a club that has matches left
+ * on its deal has already been paid for them, and the sponsor's name is what was sold. So the
+ * deal has to run out before another one can start, and a screen that let a manager change it
+ * on any matchday would be a club taking money for games it is still going to play under
+ * somebody else's name.
+ */
+export type SponsorBookDto = {
+  teamId: Guid;
+  /** The sponsor on the shirt, and the deal it was signed on. */
+  current: SponsorOfferDto;
+  /** Matches of the deal still to be played. Zero is the only moment a change is allowed. */
+  matchesLeft: number;
+  /** The offers on the table, five of them, which is a shortlist and not a market. */
+  candidates: SponsorOfferDto[];
+  /** The one the club is carrying, so the card can say who it is at a glance. */
+  masterSponsorId: string;
+};
+
+/**
+ * One line of a club's scorers table: a man of that club, his goals in a season, and whether
+ * he is still there.
+ *
+ * The goals are the sum of his match lines and the appearances are the two counts a manager
+ * reads — games started, and games entered off the bench — because "14 (3)" is a fact about
+ * how the staff trusted a man, and a single number throws that away.
+ *
+ * `isStillAtClub` is the field that keeps the table honest. A scorer who has left is still on
+ * the list with the flag against him: a club's all-time scorers is the one page that must
+ * never lose a name, and a screen that showed only the men under contract would quietly
+ * rewrite the club's history every time a window opened. The flag is decided by the backend,
+ * which is the only thing in the game that knows a contract from a shirt.
+ */
+export type ClubScorerDto = {
+  playerId: Guid;
+  playerName: string;
+  age: number;
+  position: number;
+  goals: number;
+  ownGoals: number;
+  started: number;
+  cameOn: number;
+  /** Goals per appearance, decided by the backend; null when he never appeared. */
+  goalsPerAppearance: number | null;
+  isStillAtClub: boolean;
+};
+
+/**
+ * The kinds of competition a club's goals can be counted over.
+ *
+ * These are the world's own names and they are the query's, not the screen's: the request
+ * carries one of them and the backend binds it to the enum, so a client asking for a cup and
+ * being handed league goals would be given a number that answers a different question, with
+ * nothing in the answer to say so.
+ */
+export type CompetitionFilter = 'League' | 'Cup' | 'SuperCup';
+
+export const COMPETITION_LABELS: Record<CompetitionFilter, string> = {
+  League: 'Liga',
+  Cup: 'Copa',
+  SuperCup: 'Supercopa'
+};
