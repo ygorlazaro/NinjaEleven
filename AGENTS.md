@@ -16,6 +16,7 @@ npm install         # install dependencies
 npm run dev         # start Vite dev server (http://localhost:5173)
 npm run build       # build for production
 npm run lint        # run ESLint
+npm run faces:generate  # redraw the pool of player faces into the backend's embedded resource
 ```
 
 The dev server proxies `/api` and `/matchHub` to the .NET backend at `http://localhost:5100`.
@@ -349,6 +350,36 @@ Two rules the code depends on:
 - **The finished match answers from the statistics row**, not from zeros, and
   `match_statistics` carries the two formations so a results screen cannot report 4-3-3 for
   a match that was played 4-4-2.
+
+## Faces
+
+A player has a face, it is drawn once, and it is the same face every time:
+
+- **The face is part of the identity, not of a season.** It lives on `players.face`, beside
+  the birth date, for the same reason the birth date is there: the same man is recognised in
+  every edition, and a face that changed on transfer would be a different man.
+- **A face is stored, never redrawn.** `players.face` is a `jsonb` column holding the raw
+  `FaceConfig` of [faces.js](https://github.com/zengm-games/facesjs). A profile screen that
+  generated one on the spot would show a manager a different man every time he opened the
+  card, and recognition is the whole point of a face.
+- **The contract is the library's, on both sides.** C# carries the face as a `string?` and
+  TypeScript as a JSON string, because the shape belongs to the library that draws it and a
+  C# class mirroring `FaceConfig` would be a second copy of it to keep in step. The only
+  thing that reads it on the client is `parseFace` in `components/Common/PlayerFace.tsx`.
+- **The pool is drawn in JavaScript and embedded.** faces.js is a JavaScript library, so
+  `npm run faces:generate` (in the frontend) draws the pool and writes it to
+  `backend/NinjaEleven.Infrastructure/Resources/faces.json` as an embedded resource, read by
+  `FaceCatalog`. The draw is seeded, so running it twice produces the same pool.
+- **No face is a real state, and it is `null`.** `''` is not a JSON document, so a `jsonb`
+  column cannot hold it: a player who was never drawn has `NULL`, and `PlayerFace` renders
+  nothing at all rather than a placeholder. A profile screen must survive a manager without a
+  face.
+- **A face is dealt, not drawn, per player.** A club of twenty-three men with two of them
+  sharing a nose reads as a copy-paste, so a new world and a backfill both shuffle the pool
+  and deal from the front. The pool is larger than a squad for exactly this.
+- **Resuming a seeded world still has work to do.** The seeder skips a world that already has
+  teams, so a pool that arrives later would leave everybody faceless; `DatabaseSeeder` gives a
+  face to every player whose `face` is null before it returns.
 
 ## Sound
 

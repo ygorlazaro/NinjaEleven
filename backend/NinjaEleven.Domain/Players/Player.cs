@@ -22,6 +22,16 @@ public class Player
     public int GoalkeeperPower { get; private set; }
     public int Reflexes { get; private set; }
 
+    /// <summary>
+    /// The player's face, as the JSON of a faces.js <c>FaceConfig</c>, or null when he has
+    /// none. It belongs to the identity rather than to a season, for the same reason the
+    /// birth date does: the same man is recognised in every edition, and a face that changed
+    /// on transfer would be a different man. It is optional rather than an empty string
+    /// because the column is <c>jsonb</c> and <c>''</c> is not a JSON document — "no face" is
+    /// a real state here, and the profile screen has to survive it.
+    /// </summary>
+    public string? Face { get; private set; }
+
     private Player() { }
 
     public static Player Create(
@@ -34,7 +44,8 @@ public class Player
         int heading,
         int strength,
         int goalkeeperPower,
-        int reflexes)
+        int reflexes,
+        string? face = null)
     {
         return new Player
         {
@@ -49,7 +60,24 @@ public class Player
             Strength = Clamp(strength),
             GoalkeeperPower = position == Position.GK ? Clamp(goalkeeperPower) : 0,
             Reflexes = position == Position.GK ? Clamp(reflexes) : 0,
+            Face = face,
         };
+    }
+
+    /// <summary>
+    /// Gives a player the face he was drawn with. It exists because the pool of faces
+    /// arrived after the world was seeded, and a player already in the database cannot be
+    /// created again — a career that is thrown away to give a man a nose is not worth a
+    /// nose.
+    /// </summary>
+    public void SetFace(string face)
+    {
+        if (string.IsNullOrWhiteSpace(face))
+        {
+            throw new ArgumentException("A face cannot be empty.", nameof(face));
+        }
+
+        Face = face;
     }
 
     private static int Clamp(int value) => Math.Max(1, Math.Min(20, value));

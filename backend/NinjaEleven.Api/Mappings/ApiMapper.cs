@@ -549,6 +549,7 @@ public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profi
     Stars = profile.Position == "GK"
         ? Domain.Players.PlayerRating.CalculateGoalkeeperStars(profile.Speed, profile.Accuracy, profile.GoalkeeperPower, profile.Reflexes, profile.Strength)
         : Domain.Players.PlayerRating.CalculateOutfieldStars(profile.Speed, profile.Accuracy, profile.Dribbling, profile.Heading, profile.Strength),
+    Face = profile.Face,
     SeasonId = profile.SeasonId,
     TeamId = profile.TeamId,
     TeamName = profile.TeamName,

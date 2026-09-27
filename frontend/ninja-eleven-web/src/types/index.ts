@@ -533,6 +533,13 @@ export type PlayerProfileDto = {
   season: PlayerCareerLineDto;
   total: PlayerCareerLineDto;
   history: PlayerMatchLineDto[];
+  /**
+   * The player's face, as the raw JSON of a faces.js FaceConfig, and null when he has none.
+   * It stays a string on this side of the wire on purpose — the shape belongs to the library
+   * that draws it, and a copy of it in TypeScript would be a second one to keep in step.
+   * `parseFace` is the only thing that reads it.
+   */
+  face?: string | null;
 };
 
 /**

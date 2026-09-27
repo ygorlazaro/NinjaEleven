@@ -57,7 +57,8 @@ public class PlayerService
             Heading = player.Heading,
             Strength = player.Strength,
             GoalkeeperPower = player.GoalkeeperPower,
-            Reflexes = player.Reflexes
+            Reflexes = player.Reflexes,
+            Face = player.Face
         };
 
         if (seasonId is { } season)

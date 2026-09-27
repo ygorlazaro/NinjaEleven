@@ -19,6 +19,13 @@ public class PlayerProfile
     public int GoalkeeperPower { get; set; }
     public int Reflexes { get; set; }
 
+    /// <summary>
+    /// The player's face as the raw JSON of a faces.js <c>FaceConfig</c>, or null when he has
+    /// none. It is carried as a string on purpose: the shape belongs to the library that draws
+    /// it, and a copy of that shape in C# would be a second one to keep in step.
+    /// </summary>
+    public string? Face { get; set; }
+
     /// <summary>Season, energy and availability, when the player belongs to one.</summary>
     public Guid? SeasonId { get; set; }
 

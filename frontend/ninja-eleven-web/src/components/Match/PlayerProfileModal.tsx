@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { PlayerApi, SeasonApi } from '@/api';
 import type { PlayerProfileDto } from '@/types';
 import { positionLabel } from '@/services/formatters';
+import { PlayerFace } from '@/components/Common/PlayerFace';
 
 interface PlayerProfileModalProps {
   playerId: string;
@@ -142,7 +143,15 @@ const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({ playerId, onClo
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal profile-modal" onClick={event => event.stopPropagation()}>
         <header className="profile-head">
-          <div>
+          {/*
+            The face comes first, before the name. It is how a manager recognises the man he
+            clicked on among twenty-three of them, and a name is a label he has to read while
+            a face is a thing he already knows. A player with no face renders nothing here,
+            so the header looks exactly as it did before — the face is not allowed to cost a
+            name its place.
+          */}
+          <PlayerFace face={profile.face} size={92} />
+          <div className="profile-id">
             <h2 className="profile-name">{profile.name}</h2>
             <p className="profile-role">
               <span className="profile-position">{positionLabel(profile.position)}</span>

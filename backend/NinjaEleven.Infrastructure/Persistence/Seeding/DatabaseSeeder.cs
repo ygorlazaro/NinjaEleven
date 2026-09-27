@@ -48,15 +48,16 @@ public class DatabaseSeeder : IDataSeeder
     {
         await SeedNamePoolsAsync(cancellationToken);
 
-        if (await _dbContext.Teams.AnyAsync(cancellationToken))
-        {
-            _logger.LogInformation("Seeding skipped: the world already contains teams.");
-            return;
-        }
-
         var random = _options.RandomSeed.HasValue
             ? new Random(_options.RandomSeed.Value)
             : Random.Shared;
+
+        if (await _dbContext.Teams.AnyAsync(cancellationToken))
+        {
+            _logger.LogInformation("Seeding skipped: the world already contains teams.");
+            await GiveFacesToTheWorldAlreadySeededAsync(random, cancellationToken);
+            return;
+        }
 
         var season = CreateSeason();
         var competition = Competition.Create("Campeonato Brasileiro", CompetitionType.League);
@@ -69,6 +70,7 @@ public class DatabaseSeeder : IDataSeeder
         var players = new List<Player>();
         var seasonStates = new List<PlayerSeasonState>();
         var memberships = new List<TeamMembership>();
+        var faces = DealFaces(_options.Teams * _options.PlayersPerTeam, random);
 
         var teamCount = _options.Teams;
         if (teamCount < 1 || teamCount > TeamCatalog.Length)
@@ -88,7 +90,7 @@ public class DatabaseSeeder : IDataSeeder
             team.SetStadium(stadium);
             participants.Add(CompetitionParticipant.Create(competitionSeason.Id, team.Id));
 
-            var squad = CreateSquad(team, season.Id, startDate, random);
+            var squad = CreateSquad(team, season.Id, startDate, random, faces);
 
             players.AddRange(squad.Players);
             seasonStates.AddRange(squad.SeasonStates);
@@ -154,7 +156,8 @@ public class DatabaseSeeder : IDataSeeder
         Team team,
         Guid seasonId,
         DateOnly startDate,
-        Random random)
+        Random random,
+        Queue<string> faces)
     {
         var players = new List<Player>();
         var seasonStates = new List<PlayerSeasonState>();
@@ -162,7 +165,7 @@ public class DatabaseSeeder : IDataSeeder
 
         foreach (var position in BuildPositions(_options.PlayersPerTeam, _options.GoalkeepersPerTeam))
         {
-            var player = CreatePlayer(position, random);
+            var player = CreatePlayer(position, random, faces.Dequeue());
             var state = PlayerSeasonState.Create(
                 player.Id,
                 seasonId,
@@ -177,7 +180,7 @@ public class DatabaseSeeder : IDataSeeder
         return (players, seasonStates, memberships);
     }
 
-    private Player CreatePlayer(Position position, Random random)
+    private Player CreatePlayer(Position position, Random random, string face)
     {
         var firstName = NameCatalog.AllFirstNames[random.Next(NameCatalog.AllFirstNames.Count)];
         var surname = NameCatalog.AllSurnames[random.Next(NameCatalog.AllSurnames.Count)];
@@ -201,7 +204,71 @@ public class DatabaseSeeder : IDataSeeder
             heading: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
             strength: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
             goalkeeperPower: isGoalkeeper ? StrongAttribute(random) : 0,
-            reflexes: isGoalkeeper ? StrongAttribute(random) : 0);
+            reflexes: isGoalkeeper ? StrongAttribute(random) : 0,
+            face: face);
+    }
+
+    /// <summary>
+    /// Shuffles the pool and queues as many faces as there are players to be created. It is
+    /// dealt from the front rather than drawn per player because a club of twenty-three men
+    /// with two men sharing a face reads as a copy-paste, and a shuffled queue cannot repeat
+    /// one until the pool is exhausted.
+    /// </summary>
+    private static Queue<string> DealFaces(int playerCount, Random random)
+    {
+        var pool = FaceCatalog.All.ToList();
+
+        for (var index = pool.Count - 1; index > 0; index--)
+        {
+            var swap = random.Next(index + 1);
+            (pool[index], pool[swap]) = (pool[swap], pool[index]);
+        }
+
+        while (pool.Count < playerCount)
+        {
+            pool.AddRange(FaceCatalog.All);
+        }
+
+        return new Queue<string>(pool.Take(playerCount));
+    }
+
+    /// <summary>
+    /// Gives a face to every player who does not have one yet.
+    ///
+    /// The pool of faces arrived after the world was already seeded, and the seeder skips a
+    /// world that has teams in it, so nobody would have a face. Resuming seeding is also the
+    /// honest answer to a player added later by a future feature: the identity is missing
+    /// something, and this is the place that fills it in.
+    /// </summary>
+    private async Task GiveFacesToTheWorldAlreadySeededAsync(
+        Random random,
+        CancellationToken cancellationToken)
+    {
+        // Only null counts. The column is jsonb, and `''` is not a JSON document, so there is
+        // no second way for a face to be missing — and asking Postgres whether a jsonb
+        // equals an empty string is an error, not a question it will answer.
+        var faceless = await _dbContext.Players
+            .Where(player => player.Face == null)
+            .ToListAsync(cancellationToken);
+
+        if (faceless.Count == 0)
+        {
+            return;
+        }
+
+        // Dealt and not drawn, for the same reason a new world is dealt: a squad in which
+        // two men share a face reads as a copy-paste, and a backfill has the same problem a
+        // fresh seeding has.
+        var faces = DealFaces(faceless.Count, random);
+
+        foreach (var player in faceless)
+        {
+            player.SetFace(faces.Dequeue());
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Gave a face to {Count} players that had none.", faceless.Count);
     }
 
     /// <summary>

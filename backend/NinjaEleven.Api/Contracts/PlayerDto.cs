@@ -102,6 +102,15 @@ public class PlayerProfileDto
     public bool IsAvailable { get; init; }
     public string Injury { get; init; } = string.Empty;
     public int InjuryMatchesRemaining { get; init; }
+
+    /// <summary>
+    /// The player's face as the raw JSON of a faces.js <c>FaceConfig</c>, null when he has
+    /// none. It travels as a string rather than as a typed object so the contract is the
+    /// library's own: the client draws it with faces.js, and neither side holds a copy of the
+    /// face shape to drift.
+    /// </summary>
+    public string? Face { get; init; }
+
     public PlayerCareerLineDto Season { get; init; } = new();
     public PlayerCareerLineDto Total { get; init; } = new();
     public List<PlayerMatchLineDto> History { get; init; } = new();

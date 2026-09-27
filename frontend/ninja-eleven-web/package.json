@@ -7,14 +7,16 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext .ts,.tsx --report"
+    "lint": "eslint . --ext .ts,.tsx --report",
+    "faces:generate": "node scripts/generate-face-pool.mjs"
   },
   "dependencies": {
+    "@microsoft/signalr": "^8.0.0",
+    "axios": "^1.7.0",
+    "facesjs": "^5.0.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.0.0",
-    "@microsoft/signalr": "^8.0.0",
-    "axios": "^1.7.0",
     "zustand": "^4.5.0"
   },
   "devDependencies": {

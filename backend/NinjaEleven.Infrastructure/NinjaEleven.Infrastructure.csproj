@@ -22,6 +22,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources\first-names.txt" />
     <EmbeddedResource Include="Resources\surnames.txt" />
+    <EmbeddedResource Include="Resources\faces.json" />
   </ItemGroup>
 
   <PropertyGroup>

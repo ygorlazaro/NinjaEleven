@@ -28,6 +28,13 @@ public class PlayerConfiguration : IEntityTypeConfiguration<Player>
         builder.Property(p => p.GoalkeeperPower).IsRequired();
         builder.Property(p => p.Reflexes).IsRequired();
 
+        // A faces.js `FaceConfig` as raw JSON, and deliberately untyped on this side: the
+        // shape is the library's, and a C# class mirroring it would be a second copy of it to
+        // keep in step. The column holds a string, so the value travels to the client as the
+        // JSON it already is and the client draws it with the library that drew it. It is
+        // nullable because `''` is not a JSON document: a player with no face is null.
+        builder.Property(p => p.Face).HasColumnType("jsonb");
+
         builder.HasIndex(p => p.Name);
     }
 }
