@@ -24,6 +24,17 @@ public class MatchContext
     /// </summary>
     public Guid? ManagerTeamId { get; }
 
+    /// <summary>
+    /// The cup tie this match is a leg of, or null for anything that is not one — a
+    /// championship match, a first leg, a Supercup.
+    ///
+    /// It is what tells the engine that ninety minutes might not be the end of this match.
+    /// A second leg that finishes level has not decided the tie, and the only thing that can
+    /// decide it is the shootout; without these two numbers here, the engine would finish a
+    /// tie on a draw and the tie would be resolved afterwards by a number out of a loop.
+    /// </summary>
+    public CupTieFacts? CupTie { get; }
+
     public MatchContext(
         Guid matchId,
         TeamInfo homeTeam,
@@ -33,7 +44,8 @@ public class MatchContext
         List<MatchPlayerSnapshot> homeBench,
         List<MatchPlayerSnapshot> awayBench,
         IRandomSource random,
-        Guid? managerTeamId = null)
+        Guid? managerTeamId = null,
+        CupTieFacts? cupTie = null)
     {
         MatchId = matchId;
         HomeTeam = homeTeam ?? throw new ArgumentNullException(nameof(homeTeam));
@@ -44,5 +56,6 @@ public class MatchContext
         AwayBench = awayBench ?? new List<MatchPlayerSnapshot>();
         Random = random ?? throw new ArgumentNullException(nameof(random));
         ManagerTeamId = managerTeamId;
+        CupTie = cupTie;
     }
 }

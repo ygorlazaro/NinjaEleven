@@ -97,8 +97,11 @@ public class CupTie
     /// Records the aggregate and sends the tie to penalties if it is level, or straight to a
     /// winner if it is not. The caller passes the shootout in only when it was needed, so a
     /// tie that is decided on the aggregate is never given a shootout it did not have.
+    ///
+    /// The shootout is the one the match itself played, keyed by club rather than by side so
+    /// that the legs swapping ends cannot swap the penalties along with them.
     /// </summary>
-    public void Resolve(int aggregateHomeGoals, int aggregateAwayGoals, PenaltyShootout? shootout = null)
+    public void Resolve(int aggregateHomeGoals, int aggregateAwayGoals, ShootoutOutcome? shootout = null)
     {
         if (AggregateHomeGoals is not null)
         {
@@ -136,9 +139,10 @@ public class CupTie
                 "The aggregate is level, so this tie has to be decided by a shootout.");
         }
 
-        if (shootout.IsDraw)
+        if (shootout.WinnerTeamId == Guid.Empty
+            || (shootout.WinnerTeamId != HomeTeamId && shootout.WinnerTeamId != AwayTeamId))
         {
-            throw new InvalidOperationException("A shootout always has a winner.");
+            throw new InvalidOperationException("A shootout always has one of the two clubs as its winner.");
         }
 
         HomePenaltyGoals = shootout.HomeGoals;

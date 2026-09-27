@@ -143,6 +143,21 @@ public class MatchEngine
             return events;
         }
 
+        // The match is over and the tie is not. Everything after this point is a kick and
+        // not a minute, and the clock does not move again: the match is not over until the
+        // last of them has been taken, and a screen that shows a running clock under a
+        // shootout is showing a match that is still being played.
+        if (state.IsInShootout)
+        {
+            // The kicks are the feed: a shootout that opens and then ends without a word
+            // about who took them is a tie decided off the screen. They go into the pending
+            // feed here for the same reason the ninety minutes do further down — the caller
+            // publishes what is in it, and a kick nobody is told about is a kick nobody saw.
+            TakeShootoutKick(state, events);
+            state.PendingFeed.AddRange(events);
+            return events;
+        }
+
         // A penalty has to be taken before the clock moves on: whoever is waiting to pick
         // the taker is deciding the outcome of a goal, not of the next minute.
         if (state.PenaltyAwaitingSelection)
@@ -225,18 +240,25 @@ public class MatchEngine
         }
         else if (state.GameSeconds >= state.MatchSeconds)
         {
-            state.MatchFinished = true;
+            if (NeedsAShootout(state))
+            {
+                OpenShootout(state, events);
+            }
+            else
+            {
+                state.MatchFinished = true;
 
-            events.Add(Emit(
-                state,
-                MatchEventType.MatchFinished,
-                null,
-                null,
-                MatchNarration.Say(
-                    _random,
-                    MatchNarration.FullTime,
-                    $"{state.HomeScore} x {state.AwayScore}"),
-                "whistle"));
+                events.Add(Emit(
+                    state,
+                    MatchEventType.MatchFinished,
+                    null,
+                    null,
+                    MatchNarration.Say(
+                        _random,
+                        MatchNarration.FullTime,
+                        $"{state.HomeScore} x {state.AwayScore}"),
+                    "whistle"));
+            }
         }
 
         state.PendingFeed.AddRange(events);
@@ -249,6 +271,276 @@ public class MatchEngine
     /// manager is watching: the engine picks its best penalty taker and the shot is
     /// resolved.
     /// </summary>
+    /// <summary>
+    /// Whether a match that has just reached ninety minutes still has a tie to settle.
+    ///
+    /// It asks about the tie and not about the score, because a level score is not a level
+    /// tie: the first leg is in there, and the two legs swapped ends, so the aggregate is
+    /// added by club. A championship match has no tie, a first leg has nothing to settle
+    /// yet, and a second leg that ends level on the aggregate is the only thing in the
+    /// pyramid that goes to the spot.
+    /// </summary>
+    private static bool NeedsAShootout(MatchState state)
+    {
+        if (state.CupTie is not { IsSecondLeg: true } tie)
+        {
+            return false;
+        }
+
+        var (home, away) = tie.Aggregate(state.HomeScore, state.AwayScore);
+
+        return home == away;
+    }
+
+    /// <summary>
+    /// Sends a match that has just finished level to the spot.
+    ///
+    /// The toss is drawn here, from the match's own seed, so a replayed tie takes its kicks
+    /// in the same order. The men who may take are worked out from the eleven that finished
+    /// the match, and the side with more of them loses the surplus — the Laws do not let a
+    /// club that is a man down send eleven men to the spot.
+    ///
+    /// One order is drawn and one is asked for. The engine draws the club nobody is
+    /// watching; the manager's is his decision, and the match waits at ninety minutes until
+    /// he makes it, which is the same way it waits for the taker of a penalty and for the
+    /// replacement of a man who cannot continue.
+    /// </summary>
+    private void OpenShootout(MatchState state, List<MatchEngineEvent> events)
+    {
+        var homeEligible = ShootoutRules.EligibleTakers(state.HomeLineup);
+        var awayEligible = ShootoutRules.EligibleTakers(state.AwayLineup);
+
+        // A side that can send more men than the other has to send fewer. The men who are
+        // left out are the weakest of the surplus, because a club a man down does not choose
+        // to give up its best taker.
+        var allowed = Math.Min(homeEligible.Count, awayEligible.Count);
+        var homeCanTake = allowed;
+        var awayCanTake = allowed;
+
+        if (homeEligible.Count > 0 && awayEligible.Count == 0)
+        {
+            // One side has nobody who may take at all, which cannot happen in a match with
+            // eleven men on the pitch and is refused rather than half-played.
+            throw new InvalidOperationException(
+                "A shootout needs both sides to have somebody who may take a penalty.");
+        }
+
+        // The pool each side chooses from, and the order the engine sends the club nobody is
+        // watching. The pool is the eligible men after the reduction; the order is the five
+        // best of them, because a side takes five kicks and the men behind the fifth are
+        // never going to the spot.
+        state.HomeShootoutTakers = ShootoutRules.DrawOrder(homeEligible, homeCanTake);
+        state.AwayShootoutTakers = ShootoutRules.DrawOrder(awayEligible, awayCanTake);
+
+        var homeOrder = state.HomeShootoutTakers.Take(Shootout.KicksPerSide).ToList();
+        var awayOrder = state.AwayShootoutTakers.Take(Shootout.KicksPerSide).ToList();
+
+        // The coin: whoever it sends first kicks first, and nothing else about the order of
+        // the two is decided by it.
+        var homeTakesFirst = _random.Next(0, 2) == 0;
+
+        state.Shootout = Shootout.Begin(
+            state.HomeTeam.Id, state.AwayTeam.Id, homeTakesFirst);
+
+        // The match is in its own part now. The half is what a screen reads to know where
+        // a match has got to, and a tie that is level after ninety minutes has got to the
+        // spot rather than to the end of the second half.
+        state.Half = (int)MatchHalf.PenaltyShootout;
+
+        var managerHome = state.ManagerTeamId == state.HomeTeam.Id;
+        var managerIsHome = state.ManagerTeamId is not null && managerHome;
+        var managerIsAway = state.ManagerTeamId is not null && !managerHome;
+
+        if (managerIsHome)
+        {
+            state.ShootoutAwaitingOrder = true;
+        }
+        else
+        {
+            state.Shootout.SetOrder(home: true, homeOrder);
+        }
+
+        if (managerIsAway)
+        {
+            state.ShootoutAwaitingOrder = true;
+        }
+        else
+        {
+            state.Shootout.SetOrder(home: false, awayOrder);
+        }
+
+        events.Add(Emit(
+            state,
+            MatchEventType.FullTimeReached,
+            null,
+            null,
+            MatchNarration.Say(
+                _random,
+                MatchNarration.FullTime,
+                $"{state.HomeScore} x {state.AwayScore}"),
+            "whistle"));
+
+        events.Add(Emit(
+            state,
+            MatchEventType.PenaltyShootoutStarted,
+            null,
+            null,
+            MatchNarration.Say(
+                _random,
+                MatchNarration.ShootoutStarts,
+                $"{state.HomeScore} x {state.AwayScore}"),
+            "whistle"));
+    }
+
+    /// <summary>
+    /// Takes the next kick of a shootout, and finishes the match when the last one has been.
+    ///
+    /// One kick per tick, and no clock: the shootout is watched, not played out at the
+    /// engine's pace of a match. A manager who orders five men and then sees them all go in
+    /// one frame has not watched a shootout, and the one thing this game is about is that he
+    /// was there for it.
+    /// </summary>
+    /// <summary>
+    /// Names the order a manager's club will take in, and lets the shootout start.
+    /// </summary>
+    /// <param name="state">The match, waiting at ninety minutes with the shootout open.</param>
+    /// <param name="teamId">The club whose manager is naming the order.</param>
+    /// <param name="takers">The men, in the order they will walk to the spot.</param>
+    /// <remarks>
+    /// The men are not chosen from the whole squad but from the pool the engine worked out
+    /// at the final whistle, which is the eleven that finished the match minus the men the
+    /// Laws exclude. A manager may order them as he likes, and as many of them as the pool
+    /// holds — five for a full eleven, fewer for a club that was a man down — and he may
+    /// send the substitute who came on in the eightieth minute ahead of the striker who has
+    /// been on the pitch all afternoon. That choice is the reason a shootout is watched kick
+    /// by kick rather than drawn in one go.
+    /// </remarks>
+    public void NameShootoutOrder(MatchState state, Guid teamId, IReadOnlyList<Guid> takers)
+    {
+        ArgumentNullException.ThrowIfNull(takers);
+
+        if (state.Shootout is not { } shootout || shootout.IsComplete)
+        {
+            throw new InvalidOperationException("This match is not going to a penalty shootout.");
+        }
+
+        if (state.ManagerTeamId != teamId)
+        {
+            throw new InvalidOperationException("Only the manager's own club names its own order.");
+        }
+
+        var isHome = state.HomeTeam.Id == teamId;
+        if (!isHome && state.AwayTeam.Id != teamId)
+        {
+            throw new InvalidOperationException("The club is not in this shootout.");
+        }
+
+        var pool = isHome ? state.HomeShootoutTakers : state.AwayShootoutTakers;
+        var allowed = isHome ? shootout.HomeTakers.Count : shootout.AwayTakers.Count;
+
+        // More names than men in the pool is a manager asking for a man who may not take,
+        // and a name from outside the pool is the same request in different words.
+        var allowedCount = allowed > 0
+            ? Math.Min(allowed, pool.Count)
+            : pool.Count;
+
+        if (takers.Count == 0 || takers.Count > allowedCount)
+        {
+            throw new ArgumentException(
+                $"A shootout order names between one and {allowedCount} men, because that is how many may take.",
+                nameof(takers));
+        }
+
+        if (takers.Any(id => !pool.Contains(id)))
+        {
+            throw new ArgumentException(
+                "A man who is not in the pool cannot be named: he either did not play, or he is no longer an outfield player.",
+                nameof(takers));
+        }
+
+        shootout.SetOrder(isHome, takers);
+        state.ShootoutAwaitingOrder = !shootout.BothOrdersNamed;
+    }
+
+    private IEnumerable<MatchEngineEvent> TakeShootoutKick(MatchState state, List<MatchEngineEvent> events)
+    {
+        var shootout = state.Shootout!;
+
+        // A manager who has not named his five yet is holding the clock, exactly as he
+        // holds it for a taker and for a replacement.
+        if (state.ShootoutAwaitingOrder || !shootout.BothOrdersNamed)
+        {
+            return events;
+        }
+
+        if (shootout.NextTeamIsHome is not { } home)
+        {
+            return events;
+        }
+
+        var takerId = shootout.NextTaker(home);
+        if (takerId is null)
+        {
+            return events;
+        }
+
+        var squad = home ? state.HomeLineup : state.AwayLineup;
+        var keeper = home
+            ? state.AwayLineup.FirstOrDefault(player => player.Position == Position.GK)
+            : state.HomeLineup.FirstOrDefault(player => player.Position == Position.GK);
+
+        var taker = squad.FirstOrDefault(player => player.PlayerId == takerId.Value);
+        if (taker is null)
+        {
+            return events;
+        }
+
+        var scored = _random.NextDouble() < MatchEngine.PenaltyConversion(taker, keeper);
+        var kick = shootout.Take(taker.PlayerId, scored);
+        var teamId = kick.TeamId;
+        var teamName = teamId == state.HomeTeam.Id ? state.HomeTeam.Name : state.AwayTeam.Name;
+
+        events.Add(Emit(
+            state,
+            MatchEventType.PenaltyShootoutKick,
+            teamId,
+            taker.PlayerId,
+            MatchNarration.Say(
+                _random,
+                scored ? MatchNarration.ShootoutScored : MatchNarration.ShootoutMissed,
+                taker.Name,
+                teamName),
+            scored ? "goal" : "miss"));
+
+        if (!shootout.IsComplete)
+        {
+            return events;
+        }
+
+        // The last kick has been taken, and now the match is over: the score on the
+        // scoreboard is the ninety minutes, and the shootout is the answer to the tie.
+        state.MatchFinished = true;
+        state.ShootoutAwaitingOrder = false;
+
+        var winnerName = shootout.WinnerTeamId == state.HomeTeam.Id
+            ? state.HomeTeam.Name
+            : state.AwayTeam.Name;
+
+        events.Add(Emit(
+            state,
+            MatchEventType.MatchFinished,
+            null,
+            null,
+            MatchNarration.Say(
+                _random,
+                MatchNarration.ShootoutEnds,
+                winnerName,
+                $"{shootout.HomeGoals} x {shootout.AwayGoals}"),
+            "whistle"));
+
+        return events;
+    }
+
     private void TakeAutomaticPenalty(MatchState state, List<MatchEngineEvent> events)
     {
         var home = state.PenaltyTeam is 1;
@@ -322,7 +614,20 @@ public class MatchEngine
         var shooting = SkillFactor((taker.Accuracy + taker.Dribbling) / 2.0);
         var saving = keeper is null ? 0.0 : SkillFactor((keeper.Reflexes + keeper.GoalkeeperPower) / 2.0);
 
-        var conversion = BasePenaltyConversion + ShootingWeight * shooting - SavingWeight * saving;
+        // **And the two men are tired.** The attribute sheet describes a player on a good
+        // day; the last penalty of a match is taken and saved by two men at the end of
+        // ninety minutes of it, and both of them are worse than the sheet says. It enters as
+        // its own term on each side rather than as part of the skill, because the two
+        // directions are opposite: a spent taker converts less and a spent keeper saves
+        // worse, which is the same fact said twice. A penalty in the eighth minute is taken
+        // against a fresh keeper and a fresh taker and is a different penalty from the one in
+        // the ninety-fifth, and a manager who reads the number before choosing who takes it
+        // is reading the number that will be rolled.
+        var conversion = BasePenaltyConversion
+            + ShootingWeight * shooting
+            - SavingWeight * saving
+            - MatchRules.TirednessWeight * PlayerMetric.Fatigue(taker)
+            + MatchRules.TirednessWeight * (keeper is null ? 0.0 : PlayerMetric.Fatigue(keeper));
 
         return Math.Clamp(conversion, MinPenaltyConversion, MaxPenaltyConversion);
     }
@@ -1174,7 +1479,7 @@ public class MatchEngine
         // but leave the pitch.
         if (player.MatchYellowCards > 0)
         {
-            player.SendOff();
+            player.SendOff(state.Minute);
             player.MatchYellowCards++;
 
             events.Add(Emit(
@@ -1223,7 +1528,7 @@ public class MatchEngine
 
         SetPossession(state, home, player);
         CountCard(state, home);
-        player.SendOff();
+        player.SendOff(state.Minute);
 
         events.Add(Emit(
             state,
@@ -1308,7 +1613,7 @@ public class MatchEngine
 
         if (!severe)
         {
-            player.Injure(Injury.Light);
+            player.Injure(Injury.Light, minute: state.Minute);
 
             events.Add(Emit(
                 state,
@@ -1353,7 +1658,7 @@ public class MatchEngine
             return;
         }
 
-        player.Injure(Injury.Grave, matchesOut);
+        player.Injure(Injury.Grave, matchesOut, state.Minute);
 
         Hold(state);
         ForceInjurySubstitution(state, events, home, player);

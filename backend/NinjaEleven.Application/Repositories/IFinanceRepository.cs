@@ -45,6 +45,23 @@ public interface IFinanceRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Whether a club's book already carries this exact payment: the season, what kind of
+    /// money it is, and what it was the payment for.
+    ///
+    /// The reference is the third half of the question and it is not optional. A club is paid
+    /// a championship purse and a cup consolation in the same season, and both are prize
+    /// money, so a guard that asked only about the kind would refuse the second one — while a
+    /// guard that asked nothing would pay the first again the moment a season was closed
+    /// twice.
+    /// </summary>
+    Task<bool> ExistsWithReferenceAsync(
+        Guid teamId,
+        Guid seasonId,
+        FinanceMovementKind kind,
+        string reference,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// A page of a club's book, newest line first, optionally narrowed to one season.
     /// </summary>
     Task<IReadOnlyList<FinanceMovement>> ListAsync(

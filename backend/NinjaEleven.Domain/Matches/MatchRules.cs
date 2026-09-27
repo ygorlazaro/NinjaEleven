@@ -187,6 +187,47 @@ public static class MatchRules
     public const int EnergyFloorDuringMatch = 35;
 
     /// <summary>
+    /// The minutes a full match lasts, which is what a recovery is measured against: a man
+    /// who was on the pitch for all of them has played a match, and a man who was on it for
+    /// five has not.
+    /// </summary>
+    public const int MinutesInAMatch = 90;
+
+    /// <summary>
+    /// The energy a man is expected to have when nothing has gone wrong, and the point the
+    /// tiredness scale is measured from.
+    /// </summary>
+    /// <remarks>
+    /// A reference and not zero, because tiredness is not a cost charged to everybody: a
+    /// player who comes to the penalty at the start of a match is not tired, and a scale
+    /// that started at zero would make a squad sitting on eighty look like a squad sitting
+    /// on a night shift. Eighty is what a healthy man has in the tank, and it is where the
+    /// scale reads nothing either way.
+    /// </remarks>
+    public const int ReferenceEnergy = 80;
+
+    /// <summary>
+    /// How far from the reference the tiredness is measured, in energy points. Sixty means a
+    /// man sixty points below the reference is as tired as the scale goes, and a man sixty
+    /// points above it is as fresh.
+    /// </summary>
+    public const int FatigueSpan = 60;
+
+    /// <summary>
+    /// How much a penalty moves for a tired man, on the same scale as the skill of the man
+    /// taking it. Enough that the last penalty of a match is a different penalty from the
+    /// first one, and not so much that a tired taker stops being a taker.
+    /// </summary>
+    public const double TirednessWeight = 0.10;
+
+    /// <summary>
+    /// The least a man who set foot on the pitch gets back, however briefly he was on it. A
+    /// cameo is not a match and it is not nothing: he ran out, he warmed up, and he is a
+    /// man who has played football today.
+    /// </summary>
+    public const int MinRecoveryForACameo = 1;
+
+    /// <summary>
     /// The floor after a knock. It is below the match floor because an injury is the one
     /// thing that takes a player past what the rest of the match asks of him.
     /// </summary>

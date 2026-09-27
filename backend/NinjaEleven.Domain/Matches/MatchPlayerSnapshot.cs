@@ -60,6 +60,49 @@ public class MatchPlayerSnapshot
     public bool SubbedOff { get; set; }
 
     /// <summary>
+    /// The minute he came on. Zero for the eleven that started the match, which is what a
+    /// starter's <see cref="MinutesPlayed"/> is measured from.
+    /// </summary>
+    public int EnteredAtMinute { get; set; }
+
+    /// <summary>
+    /// The minute he left the pitch, or minus one while he is still on it.
+    /// </summary>
+    /// <remarks>
+    /// It is stamped once, whatever ended it: a substitution, a red card, a serious knock.
+    /// A man who is sent off at thirty has played thirty minutes, and a card that did not
+    /// stamp the minute would leave him being paid for the ninety he did not play.
+    /// </remarks>
+    public int LeftAtMinute { get; set; } = -1;
+
+    /// <summary>
+    /// How long he was actually on the pitch, which is the only thing a recovery can honestly
+    /// be measured against.
+    /// </summary>
+    /// <remarks>
+    /// A man who never went on has no minutes, whatever the stamps say. He started on the
+    /// bench with <see cref="EnteredAtMinute"/> at zero and left it with
+    /// <see cref="LeftAtMinute"/> unstamped, and taking the difference of the two would hand
+    /// him a full match he never played — which is the difference between a day off and a
+    /// match, and the whole reason a squad is rotated.
+    /// </remarks>
+    /// <param name="finalMinute">
+    /// The last minute of the match. A man who never left is treated as having left at the
+    /// whistle, because he did.
+    /// </param>
+    public int MinutesPlayed(int finalMinute)
+    {
+        if (!PlayedInMatch)
+        {
+            return 0;
+        }
+
+        var left = LeftAtMinute >= 0 ? LeftAtMinute : finalMinute;
+
+        return Math.Max(0, left - EnteredAtMinute);
+    }
+
+    /// <summary>
     /// The season goals the player had at kick-off, plus everything he scored in this
     /// match. <see cref="MatchGoals"/> is the part of this match alone, and it is what
     /// the season state receives when the match ends.
@@ -109,6 +152,18 @@ public class MatchPlayerSnapshot
     public bool IsOnPitch => !RedCard && !InjuredOff;
 
     /// <summary>
+    /// Stamps the minute he left the pitch, the first time only. A man who is taken off and
+    /// then sent off from the bench is not a man who played until the whistle.
+    /// </summary>
+    public void LeaveThePitchAt(int minute)
+    {
+        if (LeftAtMinute < 0)
+        {
+            LeftAtMinute = minute;
+        }
+    }
+
+    /// <summary>
     /// The goalkeeper a club currently has on the pitch: a real one, or whoever was
     /// promoted after the last one was sent off or injured.
     /// </summary>
@@ -118,14 +173,18 @@ public class MatchPlayerSnapshot
     /// Leaves the pitch. An outfield player who was keeping goal does not give the gloves
     /// back: the club has no one else.
     /// </summary>
-    public void SendOff() => RedCard = true;
+    public void SendOff(int minute)
+    {
+        RedCard = true;
+        LeaveThePitchAt(minute);
+    }
 
     /// <summary>
     /// A knock. Whether it costs him the rest of the match is a separate question from
     /// how bad it is, and the engine answers it on its own: a light knock is a player who
     /// stays down, a serious one is a player who leaves.
     /// </summary>
-    public void Injure(Injury injury, int matchesOut = 0)
+    public void Injure(Injury injury, int matchesOut = 0, int minute = 0)
     {
         Injury = injury;
 
@@ -133,6 +192,7 @@ public class MatchPlayerSnapshot
         {
             InjuredOff = true;
             InjuryMatchesOut = matchesOut;
+            LeaveThePitchAt(minute);
         }
     }
 

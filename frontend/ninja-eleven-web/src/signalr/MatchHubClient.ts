@@ -338,6 +338,15 @@ class MatchHubClient {
   }
 
   /**
+   * Names the order a club takes a shootout in. It is a list for the same reason the
+   * substitution is a pair: a shootout is not one decision, it is five of them, and the
+   * order they are taken in is the manager's.
+   */
+  async nameShootoutOrder(matchId: string, teamId: string, takerIds: string[]) {
+    return this.invoke<MatchCommandResult>('NameShootoutOrder', { matchId, teamId, takerIds });
+  }
+
+  /**
    * A hub command returns what the service decided. A refusal is an answer with a
    * reason, not a broken call, so it is handed back to the caller instead of being lost
    * or thrown at it.

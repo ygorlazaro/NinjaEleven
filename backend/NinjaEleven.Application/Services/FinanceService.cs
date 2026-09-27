@@ -350,6 +350,49 @@ public class FinanceService
     }
 
     /// <summary>
+    /// Pays a club a prize, once and only once.
+    ///
+    /// The guard is the club, the season and what the money is for, so a prize that is paid
+    /// twice — because a season was closed twice, or because a cup tie was settled twice — is
+    /// refused rather than doubled. A club paid a championship purse for finishing third
+    /// twice has been paid for a season it played once, and a ledger that says otherwise is a
+    /// ledger no manager can use to decide anything.
+    /// </summary>
+    /// <returns>The line, or null when the club has already been paid this prize.</returns>
+    public async Task<FinanceMovement?> RecordPrizeAsync(
+        Guid teamId,
+        Guid seasonId,
+        FinanceMovementKind kind,
+        string description,
+        decimal amount,
+        string? reference = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            throw new ArgumentException(
+                "A prize says what it is the prize for, or it cannot be told from the next one.",
+                nameof(reference));
+        }
+
+        if (await _finance.ExistsWithReferenceAsync(teamId, seasonId, kind, reference, cancellationToken))
+        {
+            return null;
+        }
+
+        return await AppendAsync(
+            teamId,
+            seasonId,
+            matchDayNumber: null,
+            kind,
+            description,
+            amount,
+            matchId: null,
+            cancellationToken,
+            reference);
+    }
+
+    /// <summary>
     /// Writes a line on top of what the club already has.
     ///
     /// The balance and the sequence both come from the club's own last line, so every line is
@@ -365,7 +408,8 @@ public class FinanceService
         string description,
         decimal amount,
         Guid? matchId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? reference = null)
     {
         var last = await _finance.GetLastAsync(teamId, cancellationToken);
 
@@ -378,7 +422,8 @@ public class FinanceService
             description,
             amount,
             balanceBefore: last?.BalanceAfter ?? 0m,
-            matchId);
+            matchId,
+            reference);
 
         await _finance.AddAsync(line, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);

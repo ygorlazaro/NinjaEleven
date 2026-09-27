@@ -23,6 +23,15 @@ public sealed class MatchLoopService : BackgroundService
 
     private const int IdlePollIntervalMs = 250;
 
+    /// <summary>
+    /// Real milliseconds between two kicks of a shootout when there is nothing faster to
+    /// watch. A tick of a match is half a minute of football and a kick at the spot is a
+    /// walk from the circle, a run-up and a shot: the same second of wall clock is not the
+    /// same thing in the two, and a shootout that went by at the pace of a match would be a
+    /// row of numbers appearing rather than a manager watching five men take a penalty.
+    /// </summary>
+    private const int ShootoutTickIntervalMs = BaseTickIntervalMs * 3;
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IMatchSessionRegistry _sessions;
     private readonly IMatchBroadcaster _broadcaster;
@@ -51,6 +60,8 @@ public sealed class MatchLoopService : BackgroundService
             var activeMatches = _sessions.ActiveMatchIds;
             var shortestWait = BaseTickIntervalMs;
 
+            var atTheSpot = 0;
+
             foreach (var matchId in activeMatches)
             {
                 if (stoppingToken.IsCancellationRequested)
@@ -58,16 +69,26 @@ public sealed class MatchLoopService : BackgroundService
                     return;
                 }
 
-                var speed = await AdvanceAsync(matchId, stoppingToken);
-                if (speed > 1)
+                var advance = await AdvanceAsync(matchId, stoppingToken);
+                if (advance.InShootout)
                 {
-                    shortestWait = Math.Min(shortestWait, BaseTickIntervalMs / speed);
+                    atTheSpot++;
+                }
+                else if (advance.Speed > 1)
+                {
+                    shortestWait = Math.Min(shortestWait, BaseTickIntervalMs / advance.Speed);
                 }
             }
 
             if (activeMatches.Count == 0)
             {
                 shortestWait = IdlePollIntervalMs;
+            }
+            else if (atTheSpot == activeMatches.Count)
+            {
+                // Everything on the pitch is at the spot, so the only thing there is to watch
+                // is a kick, and a kick is not a minute of football.
+                shortestWait = ShootoutTickIntervalMs;
             }
 
             try
@@ -113,7 +134,9 @@ public sealed class MatchLoopService : BackgroundService
     /// loop can shorten its own wait: the speed is a playback preference, never a rule
     /// of the simulation.
     /// </summary>
-    private async Task<int> AdvanceAsync(Guid matchId, CancellationToken cancellationToken)
+    private async Task<(int Speed, bool InShootout)> AdvanceAsync(
+        Guid matchId,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -124,7 +147,16 @@ public sealed class MatchLoopService : BackgroundService
 
             if (state.IsFinished || state.IsPaused)
             {
-                return Math.Max(1, state.Speed);
+                return (Math.Max(1, state.Speed), false);
+            }
+
+            // A match at the spot is not a match being played: it is a kick a tick, and the
+            // loop paces it differently because a walk from the circle is not a minute of
+            // football.
+            if (state.Shootout is not null)
+            {
+                return (Math.Max(1, state.Speed),
+                    await AdvanceShootoutAsync(matchId, matchService, state, cancellationToken));
             }
 
             // A penalty of the manager's own club is waiting for him to name the taker.
@@ -132,7 +164,7 @@ public sealed class MatchLoopService : BackgroundService
             // the loop leaves the match alone instead of ticking it for nothing.
             if (state.Penalty.AwaitingSelection)
             {
-                return Math.Max(1, state.Speed);
+                return (Math.Max(1, state.Speed), false);
             }
 
             // A man who cannot carry on is waiting for the manager to name who comes on.
@@ -140,7 +172,7 @@ public sealed class MatchLoopService : BackgroundService
             // here would move the clock over a decision nobody has made yet.
             if (state.Injury.AwaitingSubstitution)
             {
-                return Math.Max(1, state.Speed);
+                return (Math.Max(1, state.Speed), false);
             }
 
             if (state.IsHalfTime)
@@ -150,26 +182,27 @@ public sealed class MatchLoopService : BackgroundService
                 // for it: that is what keeps the whole matchday moving together.
                 if (!_sessions.TryGet(matchId, out var headless) || !headless.AutoContinue)
                 {
-                    return Math.Max(1, state.Speed);
+                    return (Math.Max(1, state.Speed), false);
                 }
 
                 // And it only leaves the interval once the match the manager is watching
                 // has left it too. Without this the other three would run to full time
                 // while the manager's match waited for a button, and the round would stop
                 // looking like a matchday at all.
-                if (RoundIsWaitingOnTheManager(headless.RoundId, matchId))
+                if (TheManagerIsStillAtHalfTime(matchId))
                 {
-                    return Math.Max(1, state.Speed);
+                    return (Math.Max(1, state.Speed), false);
                 }
 
                 var resumed = await matchService.ContinueSecondHalfAsync(matchId, cancellationToken);
                 if (!resumed.Accepted)
                 {
-                    return Math.Max(1, state.Speed);
+                    return (Math.Max(1, state.Speed), false);
                 }
 
                 await PublishAsync(matchId, resumed.Events.Select(engineEvent => engineEvent.ToDto()).ToList(), cancellationToken);
-                return await PublishStateAndScoreAsync(matchId, matchService, cancellationToken);
+                await PublishStateAndScoreAsync(matchId, matchService, cancellationToken);
+                return (Math.Max(1, state.Speed), false);
             }
 
             var result = await matchService.TickAsync(matchId, cancellationToken);
@@ -181,11 +214,12 @@ public sealed class MatchLoopService : BackgroundService
                 await PublishToTheMatchdayAsync(matchId, events, cancellationToken);
             }
 
-            return await PublishStateAndScoreAsync(matchId, matchService, cancellationToken);
+            await PublishStateAndScoreAsync(matchId, matchService, cancellationToken);
+            return (Math.Max(1, state.Speed), false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return 1;
+            return (1, false);
         }
         catch (EntityNotFoundException exception)
         {
@@ -202,13 +236,51 @@ public sealed class MatchLoopService : BackgroundService
                 "Dropped a live session for match {MatchId}: the match is no longer in the database",
                 matchId);
 
-            return 1;
+            return (1, false);
         }
         catch (Exception exception)
         {
             _logger.LogError(exception, "Failed to advance match {MatchId}", matchId);
-            return 1;
+            return (1, false);
         }
+    }
+
+    /// <summary>
+    /// Advances a match that is at the spot, and says whether it is still there afterwards.
+    ///
+    /// A shootout is a kick a tick, and a manager who has not named his order is holding it:
+    /// the loop ticks nothing until he does, exactly as it holds the clock at the interval
+    /// and for the taker of a penalty. What it does not do is decide who takes — that is the
+    /// engine's for the club nobody is watching and the manager's for his own.
+    /// </summary>
+    private async Task<bool> AdvanceShootoutAsync(
+        Guid matchId,
+        MatchService matchService,
+        Application.Models.MatchStateView state,
+        CancellationToken cancellationToken)
+    {
+        if (state.Shootout!.AwaitingOrder)
+        {
+            // The manager is standing at the spot deciding who goes first. The match waits.
+            return true;
+        }
+
+        var result = await matchService.TickAsync(matchId, cancellationToken);
+
+        if (result.Accepted && result.Events.Count > 0)
+        {
+            var events = result.Events.Select(engineEvent => engineEvent.ToDto()).ToList();
+            await _broadcaster.PublishEventsAsync(matchId, events, cancellationToken);
+            await PublishToTheMatchdayAsync(matchId, events, cancellationToken);
+        }
+
+        await PublishStateAndScoreAsync(matchId, matchService, cancellationToken);
+
+        // Still at the spot, or the last kick has been taken and the tie is decided. The
+        // caller paces the loop by the answer, and a match that has just been decided has no
+        // session left to pace.
+        return result.Events.All(engineEvent =>
+            engineEvent.Type != Domain.Matches.MatchEventType.MatchFinished);
     }
 
     /// <summary>
@@ -218,7 +290,18 @@ public sealed class MatchLoopService : BackgroundService
     /// others are free to finish on their own. Only the watched match is asked, never a
     /// peer, so two headless matches can never wait for each other.
     /// </summary>
-    private bool RoundIsWaitingOnTheManager(Guid roundId, Guid matchId)
+    /// <summary>
+    /// True while the match the manager is watching has not left the first half yet.
+    /// </summary>
+    ///
+    /// The question is asked of the whole matchday and not of one round, because a matchday is
+    /// the thing that plays together: the first division and the third are in different rounds
+    /// and on the same afternoon, and a barrier that only looked inside a round would let the
+    /// third division run to full time while the manager was still at his own interval. There
+    /// is one watched match and it is found by that — a session nobody auto-continues is the
+    /// manager's — so a headless match never waits on a peer and two headless matches can
+    /// never wait on each other.
+    private bool TheManagerIsStillAtHalfTime(Guid matchId)
     {
         foreach (var otherId in _sessions.ActiveMatchIds)
         {
@@ -228,7 +311,6 @@ public sealed class MatchLoopService : BackgroundService
             }
 
             if (!_sessions.TryGet(otherId, out var other)
-                || other.RoundId != roundId
                 || other.AutoContinue)
             {
                 continue;

@@ -7,6 +7,7 @@ import { positionLabel } from '@/services/formatters';
 import ClubSquadTable from '@/components/Club/ClubSquadTable';
 import { useClubWindow } from '@/services/clubColors';
 import NextMatchPanel from '@/components/Club/NextMatchPanel';
+import RoundContextPanel from '@/components/Club/RoundContextPanel';
 
 const STARTERS = 11;
 const BENCH_SIZE = 7;
@@ -345,6 +346,15 @@ const LineupScreen: React.FC = () => {
             competitionName={selectedCompetition?.name ?? ''}
             /* The round knows which edition it belongs to, and that is the edition the
                table is addressed by — one less thing that has to be remembered correctly. */
+            competitionSeasonId={thisRound.competitionSeasonId}
+          />
+        )}
+
+        {thisRound && selectedTeam && fixture && opponent && (
+          <RoundContextPanel
+            fixture={fixture}
+            round={thisRound}
+            managerTeam={selectedTeam}
             competitionSeasonId={thisRound.competitionSeasonId}
           />
         )}

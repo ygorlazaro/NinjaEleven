@@ -47,6 +47,30 @@ public class TeamService
         return await _matchRepository.GetTeamHistoryAsync(teamId, TeamHistoryRules.Clamp(limit), cancellationToken);
     }
 
+    /// <summary>
+    /// Head-to-head matches between two clubs, newest first. A club's history against a
+    /// specific rival is a different question from its general run, and the screen that asks
+    /// for it has a different purpose: it is the story of this particular rivalry.
+    /// </summary>
+    public async Task<IReadOnlyList<TeamMatchRecord>> GetHeadToHeadAsync(
+        Guid teamId,
+        Guid opponentId,
+        int limit = TeamHistoryRules.DefaultHistoryLength,
+        CancellationToken cancellationToken = default)
+    {
+        if (await _teamRepository.GetAsync(teamId, cancellationToken) is null)
+        {
+            throw new EntityNotFoundException(nameof(Team), teamId);
+        }
+
+        if (await _teamRepository.GetAsync(opponentId, cancellationToken) is null)
+        {
+            throw new EntityNotFoundException(nameof(Team), opponentId);
+        }
+
+        return await _matchRepository.GetHeadToHeadAsync(teamId, opponentId, TeamHistoryRules.Clamp(limit), cancellationToken);
+    }
+
     public async Task<IReadOnlyList<Team>> GetAllAsync(CancellationToken cancellationToken = default) =>
         await _teamRepository.ListAsync(cancellationToken);
 

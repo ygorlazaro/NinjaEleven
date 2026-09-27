@@ -120,6 +120,49 @@ public class MatchState
     public int? PenaltyTeam { get; set; }
 
     /// <summary>
+    /// The penalty shootout, when the ninety minutes ended level in a tie that a shootout
+    /// can still decide.
+    ///
+    /// It is null for every other match, and it is not the same thing as a finished match:
+    /// the clock has stopped for good, but the match has not ended, and a screen that reads
+    /// "isFinished" to decide whether to show a result is reading a fact that is not true
+    /// until the last kick has been taken.
+    /// </summary>
+    public Shootout? Shootout { get; set; }
+
+    /// <summary>
+    /// The tie this match is a leg of, carried from the context. It is what the engine asks
+    /// at the final whistle to know whether it has to send the match to the spot.
+    /// </summary>
+    public CupTieFacts? CupTie { get; }
+
+    /// <summary>
+    /// Whether the manager is being asked to name the order of his club's five takers.
+    ///
+    /// The clock is held while it is, in exactly the way it is held for a penalty waiting
+    /// for its taker: a shootout does not start because nobody has decided who is walking to
+    /// the spot, and a tie that is decided by a coin instead of by a manager is not a shootout.
+    /// The other club's order is drawn by the engine, because nobody is watching that one.
+    /// </summary>
+    public bool ShootoutAwaitingOrder { get; set; }
+
+    /// <summary>
+    /// The men each side may send to the spot, in the order they are eligible: the eleven
+    /// that finished the match, without the men who cannot play any more. It is worked out
+    /// once, when the shootout opens, because the number of men a side can send is a fact
+    /// about the ninety minutes and not about the shootout.
+    /// </summary>
+    public IReadOnlyList<Guid> HomeShootoutTakers { get; set; } = Array.Empty<Guid>();
+
+    public IReadOnlyList<Guid> AwayShootoutTakers { get; set; } = Array.Empty<Guid>();
+
+    /// <summary>
+    /// Whether a shootout is running at all, which is what a tick asks before it moves the
+    /// clock: during one, the next thing that happens is a kick and not a minute.
+    /// </summary>
+    public bool IsInShootout => Shootout is { IsComplete: false };
+
+    /// <summary>
     /// The club the manager is watching, when the match was started by a manager. It is
     /// what tells the engine whose penalty taker he gets to choose.
     /// </summary>
@@ -176,7 +219,7 @@ public class MatchState
             return;
         }
 
-        outgoing.Injure(Common.Injury.Grave, PendingInjuryMatchesOut);
+        outgoing.Injure(Common.Injury.Grave, PendingInjuryMatchesOut, Minute);
 
         InjuryAwaitingSubstitution = false;
         InjuryPlayerId = null;
@@ -196,6 +239,7 @@ public class MatchState
         HomeBench = context.HomeBench;
         AwayBench = context.AwayBench;
         ManagerTeamId = context.ManagerTeamId;
+        CupTie = context.CupTie;
 
         // Everybody who started the match has played it. From here on the flag is kept by
         // the substitutions, because the difference between a man who played and a man who

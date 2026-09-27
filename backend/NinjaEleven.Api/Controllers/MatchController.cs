@@ -18,15 +18,18 @@ namespace NinjaEleven.Api.Controllers;
 public class MatchController : ControllerBase
 {
     private readonly MatchService _matchService;
+    private readonly MatchContextService _contextService;
     private readonly MatchSimulator _simulator;
     private readonly MatchCommandPublisher _publisher;
 
     public MatchController(
         MatchService matchService,
+        MatchContextService contextService,
         MatchSimulator simulator,
         MatchCommandPublisher publisher)
     {
         _matchService = matchService;
+        _contextService = contextService;
         _simulator = simulator;
         _publisher = publisher;
     }
@@ -177,6 +180,33 @@ public class MatchController : ControllerBase
     }
 
     /// <summary>
+    /// Where this match is being played and what kind of match it is: the season and the
+    /// day, the competition and its phase, the ground, and the result of the other leg of a
+    /// cup tie.
+    /// </summary>
+    /// <remarks>
+    /// It is its own call rather than a few more fields on the lineup because none of it is
+    /// about the match being played: it is the same answer for a match that has not kicked
+    /// off and for one that finished an hour ago, and a client that had to assemble it from
+    /// a fixture list and a calendar would be assembling a fact about a match out of four
+    /// other calls that can each be a different answer.
+    /// </remarks>
+    [HttpGet("context/{matchId:guid}")]
+    public async Task<ActionResult<MatchContextDto>> GetContext(
+        Guid matchId,
+        CancellationToken cancellationToken)
+    {
+        var context = await _contextService.GetAsync(matchId, cancellationToken);
+
+        if (context is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(context.ToDto());
+    }
+
+    /// <summary>
     /// Live state of a match. Served from the engine's working memory while it runs
     /// and from the persisted row once it is over.
     /// </summary>
@@ -243,6 +273,25 @@ public class MatchController : ControllerBase
         Ok(await _publisher.PublishAsync(
             matchId,
             (await _matchService.SelectPenaltyTakerAsync(matchId, teamId, request.PlayerId, cancellationToken))
+            .ToDto(),
+            cancellationToken));
+
+    /// <summary>
+    /// Names the order the manager's club takes the penalties in.
+    ///
+    /// It is published for the same reason the penalty taker above is: the shootout is
+    /// everybody's to watch, and the order the manager named is part of it.
+    /// </summary>
+    [HttpPost("shootout-order/{matchId:guid}/team/{teamId:guid}")]
+    public async Task<ActionResult<MatchCommandResultDto>> NameShootoutOrder(
+        Guid matchId,
+        Guid teamId,
+        [FromBody] ShootoutOrderRequestDto request,
+        CancellationToken cancellationToken) =>
+        Ok(await _publisher.PublishAsync(
+            matchId,
+            (await _matchService.NameShootoutOrderAsync(
+                matchId, teamId, request.TakerIds, cancellationToken))
             .ToDto(),
             cancellationToken));
 

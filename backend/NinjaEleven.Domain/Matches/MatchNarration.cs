@@ -290,6 +290,57 @@ public static class MatchNarration
         "Pênalti perdido! {0} bateu no goleiro, e a torcida suspira.",
     };
 
+    /// <summary>
+    /// The ninety minutes are over and the tie is level, so it is going to penalties.
+    ///
+    /// It is a different sentence from the final whistle, and it has to be: the whistle that
+    /// ends a match has already decided the result, and this one has decided nothing at all.
+    /// A feed that said "Fim de jogo! 1 x 1" in a tie that was 3 x 1 across would be
+    /// telling a manager the opposite of what happened.
+    /// </summary>
+    public static readonly string[] ShootoutStarts =
+    {
+        "Fim do tempo normal: {0}. O empate leva a partida para os pênaltis.",
+        "Os noventa minutos acabaram em {0} e oaggregate ficou levelado: pênaltis.",
+        "Teve,{0}, e a vaga depende de quem converter mais. Pênaltis!",
+        "Ninguém resolveu nos noventa: {0}. Agora é na disputa de pênaltis.",
+    };
+
+    /// <summary>
+    /// A kick of a shootout that went in, and one that did not.
+    ///
+    /// Two banks and not one, and the reason is the same one the penalty has: a line that
+    /// has to be true whether the kick went in or not is a line that says nothing, and a
+    /// feed that reads "não desperdiçou" over a missed penalty is a feed lying about a man's
+    /// afternoon. Every line takes the same two arguments — the man and his club — so the
+    /// screen never has to know which of the two it is looking at.
+    /// </summary>
+    public static readonly string[] ShootoutScored =
+    {
+        "GOL! {0} não vacilou e {1} vai para a frente.",
+        "Convertida! {0} bateu em {1} e a torcida já grita o nome dele.",
+        "Firme na marca: {0} bateu em {1} e soma mais uma.",
+        "{1} marca o ponto com {0}, e a bola foi para o fundo da rede.",
+    };
+
+    public static readonly string[] ShootoutMissed =
+    {
+        "PERDEU! {0} bateu mal e {1} fica olhando para a bola parada.",
+        "Que defesa! {0} não conseguiu converter para {1}.",
+        "Isolou! {0} pegou a bola torta e mandou por cima do gol.",
+        "Perdeu a cobrança! {0} e {1} torcem para o próximo.",
+    };
+
+    /// <summary>
+    /// The last kick, and the club it sent out of the cup.
+    /// </summary>
+    public static readonly string[] ShootoutEnds =
+    {
+        "Fim da disputa: {0} avança, {1} nos pênaltis.",
+        "{0} é eliminado nos pênaltis por {1}.",
+        "Classificado! {0} venceu a disputa de pênaltis, {1}.",
+    };
+
     // --- Acréscimos --------------------------------------------------------------
 
     public static readonly string[] StoppageFirst =

@@ -86,7 +86,6 @@ const NextMatchPanel: React.FC<NextMatchPanelProps> = ({
 
       <div className="next-match__clubs">
         <div className="next-match__club">
-          <span className="next-match__side">{isHome ? 'Mandante' : 'Visitante'}</span>
           <span className="next-match__name">
             <ClubName teamId={managerTeam.id}>{managerTeam.name}</ClubName>
           </span>
@@ -98,7 +97,6 @@ const NextMatchPanel: React.FC<NextMatchPanelProps> = ({
         <span className="next-match__versus">x</span>
 
         <div className="next-match__club">
-          <span className="next-match__side">{isHome ? 'Visitante' : 'Mandante'}</span>
           <span className="next-match__name">
             {opponent ? (
               <ClubName teamId={opponent.id}>{opponent.name}</ClubName>

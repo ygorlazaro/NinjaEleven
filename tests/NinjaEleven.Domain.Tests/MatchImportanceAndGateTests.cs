@@ -1,4 +1,6 @@
 using NinjaEleven.Domain.Competitions;
+using NinjaEleven.Domain.Enums;
+using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Teams;
 using Xunit;
 
@@ -257,10 +259,14 @@ public class AttendanceCalculatorTests
 
 public class GateReceiptTests
 {
+    private static GateSplit Championship => GateSplit.For(CompetitionType.League);
+
+    private static GateSplit Knockout => GateSplit.For(CompetitionType.Cup);
+
     [Fact]
-    public void The_gate_is_two_thirds_to_the_host_and_one_third_to_the_traveller()
+    public void A_championship_gate_is_two_thirds_to_the_host_and_one_third_to_the_traveller()
     {
-        var gate = GateReceipt.For(6_000, 10m);
+        var gate = GateReceipt.For(6_000, 10m, Championship);
 
         Assert.Equal(60_000m, gate.GrossRevenue);
         Assert.Equal(40_000m, gate.HomeRevenue);
@@ -268,10 +274,30 @@ public class GateReceiptTests
     }
 
     [Fact]
-    public void A_third_that_does_not_divide_is_still_added_up_to_the_whole()
+    public void A_cup_gate_is_halved_between_the_two_clubs()
     {
-        // 1 limo, 3,333 seats: a third of 33,333.33 limos is not a number of limos.
-        var gate = GateReceipt.For(3_333, 10m);
+        // A knockout is two clubs meeting once, and the club that happens to be drawn at home
+        // has not earned two thirds of a cup night it was only lent the ground for.
+        var gate = GateReceipt.For(6_000, 10m, Knockout);
+
+        Assert.Equal(60_000m, gate.GrossRevenue);
+        Assert.Equal(30_000m, gate.HomeRevenue);
+        Assert.Equal(30_000m, gate.AwayRevenue);
+    }
+
+    [Fact]
+    public void The_supercup_is_a_knockout_and_pays_the_same_as_a_cup_tie()
+    {
+        Assert.Equal(
+            GateSplit.For(CompetitionType.Cup),
+            GateSplit.For(CompetitionType.SuperCup));
+    }
+
+    [Fact]
+    public void A_share_that_does_not_divide_is_still_added_up_to_the_whole()
+    {
+        // 1 limo, 3,333 seats: a third of 33,330 limos is not a number of limos.
+        var gate = GateReceipt.For(3_333, 10m, Championship);
 
         Assert.Equal(gate.GrossRevenue, gate.HomeRevenue + gate.AwayRevenue);
         Assert.Equal(33_330m, gate.GrossRevenue);
@@ -280,7 +306,7 @@ public class GateReceiptTests
     [Fact]
     public void An_empty_ground_earns_nobody_anything()
     {
-        var gate = GateReceipt.For(0, 10m);
+        var gate = GateReceipt.For(0, 10m, Championship);
 
         Assert.Equal(0m, gate.GrossRevenue);
         Assert.Equal(0m, gate.HomeRevenue);
@@ -290,6 +316,6 @@ public class GateReceiptTests
     [Fact]
     public void A_negative_crowd_is_refused_rather_than_earning_money()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => GateReceipt.For(-1, 10m));
+        Assert.Throws<ArgumentOutOfRangeException>(() => GateReceipt.For(-1, 10m, Championship));
     }
 }

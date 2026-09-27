@@ -309,11 +309,63 @@ export interface MatchStateDto {
   attendance: number;
   /** Gate revenue in limos. */
   gateRevenue: number;
+  /**
+   * The shootout, when the match has gone to penalties, and null on every match that has
+   * not. It is null rather than an empty object for the same reason the penalty below is a
+   * flag: a match at ninety minutes level is not a match in a shootout, and a screen that
+   * cannot tell the two apart would show a penalty that is not being taken.
+   */
+  shootout: ShootoutDto | null;
 }
 
 export interface PenaltyTakerOptionsDto {
   awaitingSelection: boolean;
   candidates: MatchPlayerDto[];
+}
+
+/**
+ * A shootout as a manager reads it from the stand: the coin, the two orders, the kicks
+ * taken and whose turn it is.
+ *
+ * The numbers are the engine's and the order of the other club is the engine's too. The only
+ * decision in here is `awaitingOrder`, and it is a decision the match is holding the clock
+ * for — exactly as it holds it for the taker of a penalty.
+ */
+export interface ShootoutDto {
+  homeTeamId: Guid;
+  awayTeamId: Guid;
+  /** Which club the coin sent to the spot first. */
+  homeTakesFirst: boolean;
+  /** Whose kick it is, or null once the shootout is over. */
+  nextTeamId: Guid | null;
+  /** Who walks to the spot next, out of the order that side named. */
+  nextTakerId: Guid | null;
+  homeGoals: number;
+  awayGoals: number;
+  homeKicksTaken: number;
+  awayKicksTaken: number;
+  /** Whether the five kicks each side is given have both been taken. */
+  isSuddenDeath: boolean;
+  isComplete: boolean;
+  winnerTeamId: Guid | null;
+  /** While this is set the match is standing at ninety minutes waiting for the manager. */
+  awaitingOrder: boolean;
+  /**
+   * The men the manager's club may still name, with the chance each of them has against the
+   * keeper in the other goal. The engine reads it; the screen does not work it out.
+   */
+  candidates: MatchPlayerDto[];
+  /** The order each side named. The one that is not the manager's is the engine's. */
+  homeTakers: Guid[];
+  awayTakers: Guid[];
+  kicks: ShootoutKickDto[];
+}
+
+/** One kick of a shootout: who took it, for whom, and whether it went in. */
+export interface ShootoutKickDto {
+  teamId: Guid;
+  takerId: Guid;
+  scored: boolean;
 }
 
 /**
@@ -490,6 +542,37 @@ export interface MatchLineupDto {
   awayLineup: MatchPlayerDto[];
   homeBench: MatchPlayerDto[];
   awayBench: MatchPlayerDto[];
+}
+
+/** One leg of a cup tie, as the scoreboard shows it under the score of the other one. */
+export interface CupLegResultDto {
+  homeTeamId: Guid;
+  homeTeamName: string;
+  homeGoals: number;
+  awayTeamId: Guid;
+  awayTeamName: string;
+  awayGoals: number;
+}
+
+/**
+ * Where a match is being played and what kind of match it is: the season and the day, the
+ * competition and the phase of it, the ground, and the leg before this one.
+ *
+ * Every word of it comes from the backend because a client that assembled the phase itself
+ * would have to know that a cup window's number is not a round number — and a screen that
+ * guesses wrong about a cup guesses wrong about whether there is a return leg.
+ */
+export interface MatchContextDto {
+  seasonName: string;
+  matchDayNumber: number;
+  competitionName: string;
+  competitionType: 'League' | 'Cup' | 'SuperCup';
+  editionName: string;
+  phaseName: string;
+  legLabel: string | null;
+  stadiumName: string;
+  stadiumCapacity: number;
+  firstLeg: CupLegResultDto | null;
 }
 
 export interface MatchPlayerDto {
@@ -766,6 +849,16 @@ export interface TeamMatchRecordDto {
   goalsAgainst: number;
   roundNumber: number;
   playedAt: string;
+  /**
+   * The three words a head-to-head is read by, and they are optional because a match played
+   * before a competition was named cannot be described by one: the same match is a league
+   * game in one season and a cup tie in another, and a screen that printed a guess would be
+   * printing a fiction.
+   */
+  seasonName?: string | null;
+  competitionName?: string | null;
+  phaseName?: string | null;
+  attendance?: number | null;
 }
 
 /**

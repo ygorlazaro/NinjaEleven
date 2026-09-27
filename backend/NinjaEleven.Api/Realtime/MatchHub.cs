@@ -113,6 +113,16 @@ public class MatchHub : Hub
                 request.PlayerId,
                 Context.ConnectionAborted));
 
+    public Task<MatchCommandResultDto> NameShootoutOrder(NameShootoutOrderDto request) =>
+        ExecuteAsync(
+            request.MatchId,
+            "shootout-order",
+            matchId => _matchService.NameShootoutOrderAsync(
+                matchId,
+                request.TeamId,
+                request.TakerIds,
+                Context.ConnectionAborted));
+
     public Task<MatchCommandResultDto> PauseMatch(MatchCommandDto request) =>
         ExecuteAsync(
             request.MatchId,

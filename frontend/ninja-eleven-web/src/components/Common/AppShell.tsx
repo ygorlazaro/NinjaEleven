@@ -3,7 +3,6 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { SeasonApi } from '@/api';
 import { useGameState } from '@/state';
 import { useNextFixture } from '@/hooks/useNextFixture';
-import ClubCrest from '@/components/Club/ClubCrest';
 import NextMatchBox from '@/components/Common/NextMatchBox';
 
 /**
@@ -138,27 +137,6 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </NavLink>
           )}
         </nav>
-
-        {/* The club's own page, on the block that was already showing which club is being
-            managed: a manager who clicks his own name is asking about his own club, and the
-            answer is a page — the shield, the manager, the bill, the shelf and the history —
-            rather than a squad he can already reach from the table. */}
-        {selectedTeam && (
-          <NavLink
-            to="/club"
-            className={({ isActive }) => `sidebar-club${isActive ? ' active' : ''}`}
-          >
-            {/* The shield, not a pair of stripes: the block in the column is the club, and a
-                club is recognised by its badge before it is read by its name. It is a
-                placeholder drawn in the club's own colours, like the one on the club's page. */}
-            <ClubCrest
-              primary={selectedTeam.primaryColor}
-              secondary={selectedTeam.secondaryColor}
-              name={selectedTeam.name}
-            />
-            <span className="sidebar-club__name">{selectedTeam.name}</span>
-          </NavLink>
-        )}
 
         {/* The match he is about to play, said before he goes and play it, and pinned to the
             foot of the column so it is on every screen: the eleven he picks is chosen for

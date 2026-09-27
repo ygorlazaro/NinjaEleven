@@ -1,4 +1,5 @@
 using NinjaEleven.Application.Abstractions;
+using NinjaEleven.Application.Mappings;
 using NinjaEleven.Application.Matches;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
@@ -53,6 +54,12 @@ public class MatchService
     private readonly CupProgressionService _cupProgression;
 
     /// <summary>
+    /// Which window of the matchday is playing. It is here because the rule it enforces is
+    /// about starting a match, and a match is started from this service.
+    /// </summary>
+    private readonly MatchdayService _matchday;
+
+    /// <summary>
     /// A club's money. It is here rather than inside the season progress because the gate is
     /// not a season's business: it belongs to both clubs, the one the manager follows and
     /// the one the engine played without him.
@@ -70,6 +77,7 @@ public class MatchService
         AttendanceContextFactory attendanceContextFactory,
         IUnitOfWork unitOfWork,
         CupProgressionService cupProgression,
+        MatchdayService matchday,
         FinanceService financeService)
     {
         _matchRepository = matchRepository;
@@ -82,6 +90,7 @@ public class MatchService
         _attendanceContextFactory = attendanceContextFactory;
         _unitOfWork = unitOfWork;
         _cupProgression = cupProgression;
+        _matchday = matchday;
         _financeService = financeService;
     }
 
@@ -146,6 +155,15 @@ public class MatchService
     {
         var fixture = await _fixtureRepository.GetAsync(fixtureId, cancellationToken)
             ?? throw new EntityNotFoundException("Fixture", fixtureId);
+
+        // A manager may only start a match whose window of the matchday is the one playing.
+        // The engine's own starts are exempt: they come from the matchday service, which only
+        // ever starts the open window, so asking it again would be asking it to open the day
+        // twice.
+        if (!headless)
+        {
+            await _matchday.EnsureTheWaveIsOpenAsync(fixtureId, cancellationToken);
+        }
 
         var existing = await _matchRepository.GetByFixtureAsync(fixtureId, cancellationToken);
         if (existing is not null)
@@ -279,7 +297,8 @@ public class MatchService
             homeSquad.Bench,
             awaySquad.Bench,
             new DeterministicRandomSource(matchSeed),
-            userTeamId);
+            userTeamId,
+            await ResolveCupTieAsync(fixtureId, cancellationToken));
 
         var state = new MatchState(context);
         var engine = new MatchEngine(context.Random);
@@ -335,6 +354,11 @@ public class MatchService
     /// Abandons every match that is still open when the process starts. The live
     /// sessions live in memory, so after a restart their matches can never be resumed;
     /// closing them here is what keeps a fixture from being stranded in progress.
+    ///
+    /// It also asks the matchday to close the windows that were played and never closed.
+    /// A match that finished while the process was down was finished by nobody's call, and
+    /// the window it belonged to is the last thing that would have closed it — so a season
+    /// left running comes back with its calendar a day behind its own results.
     /// </summary>
     public async Task<int> RecoverInterruptedMatchesAsync(CancellationToken cancellationToken = default)
     {
@@ -355,6 +379,9 @@ public class MatchService
             await AbandonAsync(match, fixture, cancellationToken);
             recovered++;
         }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _matchday.CloseTheWindowsThatWereLeftOpenAsync(cancellationToken);
 
         return recovered;
     }
@@ -394,7 +421,7 @@ public class MatchService
                 HomeGoals = session.State.HomeScore,
                 AwayGoals = session.State.AwayScore,
                 Minute = session.State.Minute,
-                Half = session.State.Half == 0 ? nameof(MatchHalf.First) : nameof(MatchHalf.Second),
+                Half = HalfOf(session.State).ToString(),
                 Status = session.State.MatchFinished ? nameof(MatchStatus.Finished) : nameof(MatchStatus.InProgress),
                 IsFinished = session.State.MatchFinished,
                 HomeOwnGoals = OwnGoalsOf(session.State.HomeLineup.Concat(session.State.HomeBench)),
@@ -659,8 +686,14 @@ public class MatchService
             // is told about every finish and works out for itself which of the two this was:
             // a championship match is not a cup match, and a first leg is not a decision.
             await _cupProgression.AdvanceAsync(
-                BuildCupLegOutcome(match, session.State),
+                CupLegOutcomeFactory.From(match, session.State),
                 cancellationToken);
+
+            // The day moves on when a match finishes and not before, because a matchday is a
+            // sequence: the cup window opens when the last championship game of the day is
+            // over, and the day is over when the last window of it is. Nobody has to ask
+            // whether the day is finished; it is worked out here, from the matches.
+            await _matchday.AdvanceAsync(match.FixtureId, cancellationToken);
         }
 
         if (dueForSnapshot)
@@ -913,6 +946,66 @@ public class MatchService
     }
 
     /// <summary>
+    /// Names the order the manager's club will take the penalties in, and lets the shootout
+    /// start.
+    ///
+    /// It is a command like the taker of a penalty and the replacement of a man who cannot
+    /// continue: the engine decides that the moment has come and the manager decides who
+    /// walks to the spot. The men are validated by the engine, which is also the only thing
+    /// that knows who may take — so a client cannot put a reserve goalkeeper on the spot or
+    /// name the same man twice, whichever it would like to do.
+    /// </summary>
+    /// <param name="matchId">The match standing at ninety minutes with the shootout open.</param>
+    /// <param name="teamId">The club whose manager is naming the order.</param>
+    /// <param name="takers">The men, in the order they will walk to the spot.</param>
+    public async Task<MatchCommandResult> NameShootoutOrderAsync(
+        Guid matchId,
+        Guid teamId,
+        IReadOnlyList<Guid> takers,
+        CancellationToken cancellationToken = default)
+    {
+        var match = await GetMatchAsync(matchId, cancellationToken);
+
+        if (!_sessions.TryGet(matchId, out var session))
+        {
+            return Refused(matchId, "Esta partida não está em andamento.");
+        }
+
+        List<MatchEngineEvent> produced;
+
+        lock (session.Gate)
+        {
+            if (session.State.Shootout is null)
+            {
+                return Refused(matchId, "Esta partida não está indo para disputa de pênaltis.");
+            }
+
+            if (teamId != match.HomeTeamId && teamId != match.AwayTeamId)
+            {
+                throw new DomainValidationException("TeamNotInMatch", "O time não está disputando esta partida.");
+            }
+
+            session.Engine.NameShootoutOrder(session.State, teamId, takers);
+
+            // The order is not an event anybody is told about — it is a decision, and the
+            // shootout itself is what the feed carries. The feed is drained anyway, because a
+            // manager who has been standing at the spot has a state that is now a tick behind
+            // the one the other managers are watching.
+            produced = DrainFeed(session.State);
+        }
+
+        await PersistEventsAsync(match, produced, cancellationToken);
+        await CommitAsync(match, cancellationToken);
+
+        return new MatchCommandResult
+        {
+            Accepted = true,
+            MatchId = matchId,
+            Events = produced
+        };
+    }
+
+    /// <summary>
     /// Leaves the half-time pause and starts the second half.
     /// </summary>
     public async Task<MatchCommandResult> ContinueSecondHalfAsync(
@@ -1155,49 +1248,6 @@ public class MatchService
     /// suspensions of a season would stay empty no matter how many matches were played.
     /// </summary>
     /// <summary>
-    /// What the cup needs to know about a match that has just finished: the score, and the men
-    /// who would take the penalties if the tie comes to them.
-    ///
-    /// The takers are the engine's own choice, taken from the elevens that played this leg. A
-    /// shootout decided by a different eleven than the one that played the tie would be a
-    /// shootout nobody watched, and the clubs whose forwards cannot finish should not win one on
-    /// a coin. Keyed by club, because the two legs swap ends and "the home side" is not the same
-    /// pair of clubs twice.
-    /// </summary>
-    private static CupLegOutcome BuildCupLegOutcome(Match match, MatchState state)
-    {
-        var takers = new Dictionary<Guid, PenaltyTaker>();
-
-        foreach (var (teamId, isHome) in new[]
-                 {
-                     (state.HomeTeam.Id, true),
-                     (state.AwayTeam.Id, false)
-                 })
-        {
-            var taker = MatchEngine.PenaltyTakerCandidates(state, isHome).FirstOrDefault();
-            if (taker is null)
-            {
-                continue;
-            }
-
-            // The keeper this man would face: the one in the other goal, not his own.
-            var keeper = MatchEngine.PenaltyTakerCandidates(state, !isHome)
-                .FirstOrDefault(player => player.KeepsGoal);
-
-            takers[teamId] = new PenaltyTaker(taker, keeper);
-        }
-
-        return new CupLegOutcome
-        {
-            FixtureId = match.FixtureId,
-            HomeScore = state.HomeScore,
-            AwayScore = state.AwayScore,
-            Seed = match.Seed,
-            Takers = takers
-        };
-    }
-
-    /// <summary>
     /// What the match was worth to the two clubs that played it, written into their books.
     ///
     /// It happens here, in the one place a match is ever finished, and the same place for a
@@ -1277,6 +1327,48 @@ public class MatchService
         // as reproducible as everything else it does.
         var recovery = new DeterministicRandomSource(seed);
 
+        // The men who were not in the day's squad are recovered as well, and they are the
+        // ones who recover most. A player who was not even on the bench had a day off, and a
+        // day off is worth more than a cold evening in a suit — so a squad is not punished for
+        // resting its third-choice centre back, which is the whole point of having a squad.
+        var played = new HashSet<Guid>(players.Select(player => player.PlayerId));
+        var rested = new List<Guid>();
+
+        var fixture = await _fixtureRepository.GetAsync(fixtureId, cancellationToken);
+
+        if (fixture is not null)
+        {
+            foreach (var teamId in new[] { fixture.HomeTeamId, fixture.AwayTeamId })
+            {
+                var squad = await _teamRepository.GetSquadAsync(teamId, seasonId, cancellationToken);
+
+                foreach (var membership in squad)
+                {
+                    if (played.Add(membership.PlayerId))
+                    {
+                        rested.Add(membership.PlayerId);
+                    }
+                }
+            }
+        }
+
+        foreach (var playerId in rested)
+        {
+            var seasonState = await _playerRepository.GetSeasonStateForUpdateAsync(
+                playerId, seasonId, cancellationToken);
+
+            if (seasonState is null)
+            {
+                continue;
+            }
+
+            // A man who did not travel has no minutes to be paid for and no snapshot to read
+            // an age from, so his window is the band on its own.
+            seasonState.RecoverEnergy(EnergyRecoveryRules.Recovery(
+                WindowEffort.NoMatch, minutesPlayed: 0, age: null, recovery));
+            _playerRepository.UpdateSeasonState(seasonState);
+        }
+
         foreach (var player in players)
         {
             var seasonState = await _playerRepository.GetSeasonStateForUpdateAsync(player.PlayerId, seasonId, cancellationToken);
@@ -1317,11 +1409,20 @@ public class MatchService
             // what resting until it is worth playing again. Playing a match is worth far
             // less than sitting one out, and the two bands do not overlap: that gap is the
             // whole reason a squad is rotated at all.
-            var gained = player.PlayedInMatch
-                ? recovery.Next(MatchRules.MinRecoveryAfterPlaying, MatchRules.MaxRecoveryAfterPlaying)
-                : recovery.Next(MatchRules.MinRecoveryAfterResting, MatchRules.MaxRecoveryAfterResting);
+            // Three answers and not two. He played, he was in the squad and did not play, or
+            // he was not in the squad at all — and the last is worth more than the second,
+            // because a day off is not a bench. The bands do not overlap, which is the whole
+            // reason a squad is rotated at all.
+            var effort = player.PlayedInMatch
+                ? WindowEffort.Played(clubPlayed: true)
+                : WindowEffort.SatOut(clubPlayed: true);
 
-            seasonState.SetEnergy(player.Energy + gained);
+            // The minutes he was actually out there, and his age: a recovery band is what a
+            // full match earns, and he did not play a full match.
+            var minutes = player.MinutesPlayed(state.Minute);
+
+            seasonState.SetEnergy(player.Energy + EnergyRecoveryRules.Recovery(
+                effort, minutes, player.Age, recovery));
 
             _playerRepository.UpdateSeasonState(seasonState);
         }
@@ -1366,6 +1467,49 @@ public class MatchService
 
     private static MatchCommandResult Refused(Guid matchId, string reason) =>
         new() { Accepted = false, MatchId = matchId, ErrorMessage = reason };
+
+    /// <summary>
+    /// The tie this fixture is a leg of, when it is the second leg of one and the first leg
+    /// has been played.
+    ///
+    /// The engine needs the first leg's goals because a second leg is decided by the
+    /// aggregate, and the Laws of a knockout tie say the aggregate is level and nothing else:
+    /// no extra time, and penalties. A match that is not told what it is trying to settle
+    /// cannot settle it, so this is read here — once, at kick-off, from the first leg's own
+    /// row — and handed to the engine as a fact rather than looked up again by the rules.
+    ///
+    /// Null for everything else: a championship match is not a cup match, and a first leg is
+    /// half an answer that decides nothing.
+    /// </summary>
+    private async Task<CupTieFacts?> ResolveCupTieAsync(
+        Guid fixtureId,
+        CancellationToken cancellationToken)
+    {
+        var tie = await _cupProgression.GetTieForLegAsync(fixtureId, cancellationToken);
+
+        if (tie is null
+            || tie.SecondLegFixtureId != fixtureId
+            || tie.FirstLegFixtureId is not { } firstLegFixtureId)
+        {
+            return null;
+        }
+
+        var firstLeg = await _matchRepository.GetByFixtureAsync(firstLegFixtureId, cancellationToken);
+
+        if (firstLeg is null || !firstLeg.IsFinished)
+        {
+            // A second leg played before its first one is not a tie being decided, and the
+            // engine must not be handed half of a question.
+            return null;
+        }
+
+        return CupTieFacts.ForSecondLeg(
+            tie.Id,
+            tie.HomeTeamId,
+            tie.AwayTeamId,
+            firstLeg.HomeScore,
+            firstLeg.AwayScore);
+    }
 
     private async Task<Guid> ResolveSeasonIdAsync(Fixture fixture, CancellationToken cancellationToken)
     {
@@ -1811,8 +1955,28 @@ public class MatchService
     /// </summary>
     private static void ApplyToMatch(Match match, MatchState state, IReadOnlyList<MatchEngineEvent> events)
     {
-        match.ApplyEngineState(state.Minute, state.HomeScore, state.AwayScore, state.Sequence);
+        match.ApplyEngineState(
+            state.Minute,
+            state.HomeScore,
+            state.AwayScore,
+            state.Sequence,
+            HalfOf(state));
     }
+
+    /// <summary>
+    /// Which half the row is in, read off the engine rather than off the clock.
+    ///
+    /// A tie that goes to the spot is in neither half: the state says so, and the row has
+    /// to say it too, because a cup leg decided on penalties is a fact about the match and
+    /// a results screen that calls it a second-half finish has thrown the penalties away.
+    /// </summary>
+    private static MatchHalf HalfOf(MatchState state) => state.Half switch
+    {
+        1 => MatchHalf.Second,
+        2 => MatchHalf.ExtraTime,
+        3 => MatchHalf.PenaltyShootout,
+        _ => MatchHalf.First
+    };
 
     /// <summary>
     /// Writes the events produced by a tick into the match log, so a client that
@@ -1875,6 +2039,7 @@ public class MatchService
         Attendance = match.Attendance,
         GateRevenue = match.Gate.GrossRevenue,
         Penalty = PenaltyOptionsFor(state),
+        Shootout = ShootoutViewFor(state),
         UserTeamId = state.ManagerTeamId
     };
 
@@ -1901,6 +2066,80 @@ public class MatchService
             Team = state.InjuryTeam,
             Severity = Injury.Grave
         };
+    }
+
+    /// <summary>
+    /// The shootout as the match stands in it, and null when it is not in one.
+    ///
+    /// The pool of men the manager may name is the eleven that finished the match, which is
+    /// what the engine worked out at the final whistle; a screen that offered the whole squad
+    /// would be offering him a striker who played the first leg of a tie he is not playing.
+    /// </summary>
+    private static ShootoutView? ShootoutViewFor(MatchState state)
+    {
+        if (state.Shootout is not { } shootout)
+        {
+            return null;
+        }
+
+        var managerIsHome = state.ManagerTeamId is { } managerTeamId
+            && state.HomeTeam.Id == managerTeamId;
+
+        var nextIsHome = shootout.NextTeamIsHome;
+        var nextTaker = nextIsHome is null ? null : shootout.NextTaker(nextIsHome.Value);
+
+        return new ShootoutView
+        {
+            HomeTeamId = shootout.HomeTeamId,
+            AwayTeamId = shootout.AwayTeamId,
+            HomeTakesFirst = shootout.HomeTakesFirst,
+            NextTeamId = nextIsHome is null
+                ? null
+                : nextIsHome.Value ? shootout.HomeTeamId : shootout.AwayTeamId,
+            NextTakerId = nextTaker,
+            HomeGoals = shootout.HomeGoals,
+            AwayGoals = shootout.AwayGoals,
+            HomeKicksTaken = shootout.HomeKicksTaken,
+            AwayKicksTaken = shootout.AwayKicksTaken,
+            IsSuddenDeath = shootout.IsSuddenDeath,
+            IsComplete = shootout.IsComplete,
+            WinnerTeamId = shootout.IsComplete ? shootout.WinnerTeamId : null,
+            AwaitingOrder = state.ShootoutAwaitingOrder,
+            Candidates = CandidatesFor(state, managerIsHome),
+            DefendingGoalkeeper = (managerIsHome ? state.AwayLineup : state.HomeLineup)
+                .FirstOrDefault(player => player.KeepsGoal),
+            HomeTakers = shootout.HomeTakers,
+            AwayTakers = shootout.AwayTakers,
+            Kicks = shootout.Kicks
+                .Select(kick => new ShootoutKickView
+                {
+                    TeamId = kick.TeamId,
+                    TakerId = kick.TakerId,
+                    Scored = kick.Scored
+                })
+                .ToList()
+        };
+    }
+
+    /// <summary>
+    /// The men the manager may name, as the match knows them, in the order the engine read
+    /// them: the best taker first.
+    ///
+    /// They are looked up in the eleven that finished the match rather than taken from the
+    /// pool of ids, because the id list is the order and the eleven is who those men are.
+    /// </summary>
+    private static IReadOnlyList<MatchPlayerSnapshot> CandidatesFor(
+        MatchState state,
+        bool managerIsHome)
+    {
+        var pool = managerIsHome ? state.HomeShootoutTakers : state.AwayShootoutTakers;
+        var lineup = managerIsHome ? state.HomeLineup : state.AwayLineup;
+
+        return pool
+            .Select(id => lineup.FirstOrDefault(player => player.PlayerId == id))
+            .Where(player => player is not null)
+            .Select(player => player!)
+            .ToList();
     }
 
     /// <summary>

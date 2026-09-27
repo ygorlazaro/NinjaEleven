@@ -3,6 +3,7 @@ import type { SquadPlayerDto } from '@/types';
 import { positionLabel } from '@/services/formatters';
 import { formatLimo } from '@/services/limo';
 import { PlayerName } from '@/components/Common/Names';
+import { starsToString } from '@/services/formatters';
 
 /**
  * The columns a manager sorts a squad by. Each one is a number the engine decided, so
@@ -10,9 +11,9 @@ import { PlayerName } from '@/components/Common/Names';
  * that already arrived.
  */
 type SortKey =
-  | 'position' | 'name' | 'age' | 'speed' | 'accuracy' | 'dribbling' | 'heading'
+  | 'position' | 'name' | 'age' | 'energy' | 'speed' | 'accuracy' | 'dribbling' | 'heading'
   | 'strength' | 'goalkeeperPower' | 'reflexes' | 'goals' | 'saves'
-  | 'yellowCards' | 'redCards' | 'energy'
+  | 'yellowCards' | 'redCards' | 'stars'
   | 'marketValue' | 'askingPrice' | 'salary' | 'seasonsLeft';
 
 const POSITION_RANK: Record<string, number> = { GK: 0, DEF: 1, MID: 2, ATT: 3 };
@@ -21,6 +22,26 @@ interface Column {
   key: SortKey;
   label: string;
   className?: string;
+}
+
+/**
+ * Returns CSS class for attribute color coding:
+ * < 8: red (attr-red), < 14: yellow (attr-yellow), >= 14: green (attr-green)
+ */
+function attrClass(value: number): string {
+  if (value < 8) return 'attr-red';
+  if (value < 14) return 'attr-yellow';
+  return 'attr-green';
+}
+
+/**
+ * Returns CSS class for energy text color coding:
+ * < 35: red (energy-red-text), < 70: yellow (energy-yellow-text), >= 70: green (energy-green-text)
+ */
+function energyTextClass(energy: number): string {
+  if (energy < 35) return 'energy-red-text';
+  if (energy < 70) return 'energy-yellow-text';
+  return 'energy-green-text';
 }
 
 /**
@@ -35,6 +56,8 @@ const commonColumns: Column[] = [
   { key: 'position', label: 'Pos' },
   { key: 'name', label: 'Jogador', className: 'squad-name' },
   { key: 'age', label: 'Idade', className: 'num' },
+  { key: 'energy', label: 'Energia', className: 'num' },
+  { key: 'stars', label: '★', className: 'num stars-col' },
   { key: 'speed', label: 'Vel', className: 'num' },
   { key: 'accuracy', label: 'Fin', className: 'num' },
   { key: 'dribbling', label: 'Dri', className: 'num' },
@@ -73,8 +96,7 @@ const tallyColumns: Column[] = [
   { key: 'goals', label: 'Gols', className: 'num accent-col' },
   { key: 'saves', label: 'Defs', className: 'num accent-col' },
   { key: 'yellowCards', label: 'Ama', className: 'num' },
-  { key: 'redCards', label: 'Verm', className: 'num' },
-  { key: 'energy', label: 'Energia', className: 'num' }
+  { key: 'redCards', label: 'Verm', className: 'num' }
 ];
 
 interface ClubSquadTableProps {
@@ -194,86 +216,82 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
             ))}
           </tr>
         </thead>
-        <tbody>
-          {sorted.map(player => (
-            <tr
-              key={player.id}
-              className={[
-                'history-row',
-                player.injury !== 'None' ? 'injured' : '',
-                player.isAvailable ? '' : 'unavailable',
-                onToggle ? 'picking' : '',
-                selectedIds?.has(player.id) ? 'picked' : '',
-                elsewhereIds?.has(player.id) ? 'picked-elsewhere' : ''
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              title={describeAbsence?.(player)}
-              onClick={onToggle ? () => onToggle(player) : undefined}
-            >
-              <td>{positionLabel(player.position)}</td>
-              {/* The name is the door, and only the name — unless the whole row is a pick,
-                  in which case the row is the door and the name is part of it. */}
-              <td className="squad-name">
-                {selectedIds?.has(player.id) && (
-                  <span className="pick-mark" title="Selecionado">✓</span>
-                )}
-                {!selectedIds?.has(player.id) && elsewhereIds?.has(player.id) && (
-                  <span className="pick-mark" title="Está no outro grupo">⇤</span>
-                )}
-                <PlayerName playerId={player.id}>{player.name}</PlayerName>
-                {player.injury !== 'None' && (
-                  <span className="injury-mark" title={`Lesionado: ${player.injury}`}>🩹</span>
-                )}
-              </td>
-              <td className="num">{player.age}</td>
-              <td className="num">{player.speed}</td>
-              <td className="num">{player.accuracy}</td>
-              <td className="num">{player.dribbling}</td>
-              <td className="num">{player.heading}</td>
-              <td className="num">{player.strength}</td>
-              {hasKeeper && (
-                <td className="num">{player.position === 'GK' ? player.goalkeeperPower : '—'}</td>
-              )}
-              {hasKeeper && (
-                <td className="num">{player.position === 'GK' ? player.reflexes : '—'}</td>
-              )}
-              {/* The money a manager negotiates with. The price carries the fine as a mark
-                  rather than as a second number, so the two are read as one figure with a
-                  reason attached and not as two prices to choose between. */}
-              <td className="num money">{formatLimo(player.marketValue)}</td>
-              <td
-                className={`num money ${player.isInLastSeason ? '' : 'under-contract'}`}
-                title={
-                  player.isInLastSeason
-                    ? 'Última temporada de contrato: sem multa'
-                    : `${player.contractSeasons - player.seasonsLeft} de ${player.contractSeasons} temporadas de contrato ainda a correr: multa de 20%`
-                }
+<tbody>
+            {sorted.map(player => (
+              <tr
+                key={player.id}
+                className={[
+                  'history-row',
+                  player.injury !== 'None' ? 'injured' : '',
+                  player.isAvailable ? '' : 'unavailable',
+                  onToggle ? 'picking' : '',
+                  selectedIds?.has(player.id) ? 'picked' : '',
+                  elsewhereIds?.has(player.id) ? 'picked-elsewhere' : ''
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                title={describeAbsence?.(player)}
+                onClick={onToggle ? () => onToggle(player) : undefined}
               >
-                {formatLimo(player.askingPrice)}
-                {!player.isInLastSeason && <span className="contract-fine">+20%</span>}
-              </td>
-              <td className="num money">{formatLimo(player.salary)}</td>
-              <td className="num contract-cell">
-                {player.contractSeasons > 0
-                  ? `${player.seasonsLeft}/${player.contractSeasons}`
-                  : '—'}
-              </td>
-              {/* The season's own tallies, read from the same place the player profile
-                  reads them, so a card and a profile cannot disagree. */}
-              <td className="num accent">{player.goals}</td>
-              <td className="num accent">{player.saves}</td>
-              <td className="num">{player.yellowCards}</td>
-              <td className="num">{player.redCards}</td>
-              <td className="num">
-                {player.energy}
-                {player.suspensionMatches > 0 && (
-                  <span className="history-note" title="Suspenso"> ⛔{player.suspensionMatches}</span>
+                <td>{positionLabel(player.position)}</td>
+                {/* The name is the door, and only the name — unless the whole row is a pick,
+                    in which case the row is the door and the name is part of it. */}
+                <td className="squad-name">
+                  {selectedIds?.has(player.id) && (
+                    <span className="pick-mark" title="Selecionado">✓</span>
+                  )}
+                  {!selectedIds?.has(player.id) && elsewhereIds?.has(player.id) && (
+                    <span className="pick-mark" title="Está no outro grupo">⇤</span>
+                  )}
+                  <PlayerName playerId={player.id}>{player.name}</PlayerName>
+                  {player.injury !== 'None' && (
+                    <span className="injury-mark" title={`Lesionado: ${player.injury}`}>🩹</span>
+                  )}
+                </td>
+                <td className="num">{player.age}</td>
+                <td className={`num ${energyTextClass(player.energy)}`}>{player.energy}</td>
+                <td className="num stars-col">{starsToString(player.stars)}</td>
+                <td className={`num ${attrClass(player.speed)}`}>{player.speed}</td>
+                <td className={`num ${attrClass(player.accuracy)}`}>{player.accuracy}</td>
+                <td className={`num ${attrClass(player.dribbling)}`}>{player.dribbling}</td>
+                <td className={`num ${attrClass(player.heading)}`}>{player.heading}</td>
+                <td className={`num ${attrClass(player.strength)}`}>{player.strength}</td>
+                {hasKeeper && (
+                  <td className={`num ${player.position === 'GK' ? attrClass(player.goalkeeperPower) : ''}`}>{player.position === 'GK' ? player.goalkeeperPower : '—'}</td>
                 )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
+                {hasKeeper && (
+                  <td className={`num ${player.position === 'GK' ? attrClass(player.reflexes) : ''}`}>{player.position === 'GK' ? player.reflexes : '—'}</td>
+                )}
+                {/* The money a manager negotiates with. The price carries the fine as a mark
+                    rather than as a second number, so the two are read as one figure with a
+                    reason attached and not as two prices to choose between. */}
+                <td className="num money">{formatLimo(player.marketValue)}</td>
+                <td
+                  className={`num money ${player.isInLastSeason ? '' : 'under-contract'}`}
+                  title={
+                    player.isInLastSeason
+                      ? 'Última temporada de contrato: sem multa'
+                      : `${player.contractSeasons - player.seasonsLeft} de ${player.contractSeasons} temporadas de contrato ainda a correr: multa de 20%`
+                  }
+                >
+                  {formatLimo(player.askingPrice)}
+                  {!player.isInLastSeason && <span className="contract-fine">+20%</span>}
+                </td>
+                <td className="num money">{formatLimo(player.salary)}</td>
+                <td className="num contract-cell">
+                  {player.contractSeasons > 0
+                    ? `${player.seasonsLeft}/${player.contractSeasons}`
+                    : '—'}
+                </td>
+                {/* The season's own tallies, read from the same place the player profile
+                    reads them, so a card and a profile cannot disagree. */}
+                <td className="num accent">{player.goals}</td>
+                <td className="num accent">{player.saves}</td>
+                <td className="num">{player.yellowCards}</td>
+                <td className="num">{player.redCards}</td>
+              </tr>
+            ))}
+          </tbody>
       </table>
     </div>
   );

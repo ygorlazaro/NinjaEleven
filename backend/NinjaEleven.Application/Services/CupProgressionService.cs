@@ -3,6 +3,7 @@ using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
+using NinjaEleven.Domain.Finance;
 using NinjaEleven.Domain.Matches;
 
 namespace NinjaEleven.Application.Services;
@@ -35,6 +36,7 @@ public class CupProgressionService
     private readonly IMatchDayRepository _matchDayRepository;
     private readonly ICompetitionRepository _competitionRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly FinanceService _finance;
 
     public CupProgressionService(
         ICupTieRepository cupTieRepository,
@@ -44,7 +46,8 @@ public class CupProgressionService
         IFixtureRepository fixtureRepository,
         IMatchDayRepository matchDayRepository,
         ICompetitionRepository competitionRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        FinanceService finance)
     {
         _cupTieRepository = cupTieRepository;
         _trophyRepository = trophyRepository;
@@ -54,7 +57,21 @@ public class CupProgressionService
         _matchDayRepository = matchDayRepository;
         _competitionRepository = competitionRepository;
         _unitOfWork = unitOfWork;
+        _finance = finance;
     }
+
+    /// <summary>
+    /// The tie a fixture is a leg of, or null when it is not one.
+    ///
+    /// It is asked twice in a tie and by two callers: the cup asks for it to settle the tie
+    /// when a leg finishes, and the match asks for it at kick-off so the engine knows what
+    /// it is trying to settle. Both answers come from here, so a second leg that arrives
+    /// without its first leg played is refused in the same place either way.
+    /// </summary>
+    public async Task<CupTie?> GetTieForLegAsync(
+        Guid fixtureId,
+        CancellationToken cancellationToken = default) =>
+        await _cupTieRepository.GetByLegAsync(fixtureId, cancellationToken);
 
     /// <summary>
     /// Settles the tie this match was a leg of, and draws whatever comes next.
@@ -87,6 +104,17 @@ public class CupProgressionService
         }
 
         ResolveTie(tie, firstLeg, outcome);
+
+        // The club that goes out is paid for having gone out, in the round it went out in.
+        // It is written here, on the tie, because the tie is the thing that knows which round
+        // this was and which club lost it — and the final is not paid here: it is paid by
+        // AwardChampionAsync, which is where the winner's money is, and a final in which the
+        // two sides are paid from two different places is a final where one of them is not.
+        if (tie.LoserTeamId is { } loserId
+            && CupQualification.SurvivorsAfter(tie.RoundNumber) > 1)
+        {
+            await PayTheConsolationAsync(tie, loserId, cancellationToken);
+        }
 
         // Its own writes are committed before the round is read back, because the round is
         // read untracked and a tie that has only been decided in memory still reads as
@@ -132,43 +160,31 @@ public class CupProgressionService
         var aggregateHome = firstLeg.HomeScore + secondLeg.AwayScore;
         var aggregateAway = firstLeg.AwayScore + secondLeg.HomeScore;
 
-        PenaltyShootout? shootout = null;
+        ShootoutOutcome? shootout = null;
 
         if (aggregateHome == aggregateAway)
         {
-            // Level. There is no extra time in a cup tie, so the tie goes to penalties, taken
-            // by the eleven that played the second leg — the same men who would have taken them
-            // in the stadium.
-            var home = tie.HomeTeamId;
-            var away = tie.AwayTeamId;
+            // Level. There is no extra time in a cup tie, so the tie goes to penalties — and
+            // the penalties are the ones the match itself played, with the eleven that
+            // finished it and the order the two managers named. The cup does not take them
+            // again: it reads the result it was given.
+            var taken = secondLeg.Shootout ?? throw new InvalidOperationException(
+                "The aggregate is level, so this leg has to have gone to a shootout for the tie to be settled.");
 
-            shootout = PenaltyShootout.Simulate(
-                home,
-                away,
-                ConversionFor(secondLeg, home),
-                ConversionFor(secondLeg, away),
-                new DeterministicRandomSource(secondLeg.Seed));
+            // The shootout counts the leg's sides and the tie counts the clubs. The two legs
+            // swap ends, so the leg's home is the tie's away: read the penalties by club or
+            // the tie keeps the other club's kicks and sends the winner out of its own cup.
+            var legHomeIsTieHome = secondLeg.HomeTeamId == tie.HomeTeamId;
+
+            shootout = new ShootoutOutcome(
+                HomeGoals: legHomeIsTieHome ? taken.HomeGoals : taken.AwayGoals,
+                AwayGoals: legHomeIsTieHome ? taken.AwayGoals : taken.HomeGoals,
+                WinnerTeamId: taken.WinnerTeamId,
+                IsSuddenDeath: taken.IsSuddenDeath);
         }
 
         tie.Resolve(aggregateHome, aggregateAway, shootout);
         _cupTieRepository.Update(tie);
-    }
-
-    /// <summary>
-    /// How likely a club's man is to score from twelve yards, as the engine already measures
-    /// it: the taker's accuracy and control against the keeper's reflexes and power.
-    /// </summary>
-    private static double ConversionFor(CupLegOutcome outcome, Guid teamId)
-    {
-        if (!outcome.Takers.TryGetValue(teamId, out var penalty) || penalty.Taker is null)
-        {
-            // A club that sent nobody out cannot win a shootout by luck, and a tie between two
-            // sides with no taker is a tie the shootout itself has to resolve, so the floor of
-            // the engine's own conversion is the honest answer.
-            return 0.75;
-        }
-
-        return MatchEngine.PenaltyConversion(penalty.Taker, penalty.Keeper);
     }
 
     /// <summary>
@@ -304,7 +320,73 @@ public class CupProgressionService
 
         await _trophyRepository.AddRangeAsync(awards, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // The two cheques a final pays: the cup to the club that won it, and three million to
+        // the club that lost it. A runner-up is paid at a rate no other round pays, because a
+        // final is the one round a club loses having been the last one standing.
+        await PayAPrizeAsync(
+            championId,
+            seasonId,
+            PrizeRules.CupChampionPrize,
+            $"Campeão da copa",
+            $"cup:{final.RoundNumber}:champion",
+            cancellationToken);
+
+        if (final.LoserTeamId is { } runnerUpId)
+        {
+            await PayAPrizeAsync(
+                runnerUpId,
+                seasonId,
+                PrizeRules.CupFinalLoser,
+                $"Vice da copa",
+                $"cup:{final.RoundNumber}:runner-up",
+                cancellationToken);
+        }
     }
+
+    /// <summary>
+    /// Pays a club what it is owed for the round it went out in.
+    /// </summary>
+    private async Task PayTheConsolationAsync(
+        CupTie tie,
+        Guid teamId,
+        CancellationToken cancellationToken)
+    {
+        var seasonId = await ResolveSeasonIdAsync(tie.CompetitionSeasonId, cancellationToken);
+        var amount = PrizeRules.CupConsolation(tie.RoundNumber);
+        var round = CompetitionRules.TieRoundName(tie.RoundNumber);
+
+        await PayAPrizeAsync(
+            teamId,
+            seasonId,
+            amount,
+            $"Eliminado na fase de {round} da copa",
+            $"cup:{tie.RoundNumber}:loser",
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// One prize, written to a club's book if it has not already been written.
+    ///
+    /// The reference is what makes it once: a tie that is settled twice — a replayed second
+    /// leg, a season closed again — pays the same consolation once, because the second
+    /// settlement is asking about the same round of the same cup and not about a new payment.
+    /// </summary>
+    private async Task PayAPrizeAsync(
+        Guid teamId,
+        Guid seasonId,
+        decimal amount,
+        string description,
+        string reference,
+        CancellationToken cancellationToken) =>
+        await _finance.RecordPrizeAsync(
+            teamId,
+            seasonId,
+            FinanceMovementKind.PrizeMoney,
+            description,
+            amount,
+            reference,
+            cancellationToken);
 
     private async Task<Guid> ResolveSeasonIdAsync(Guid competitionSeasonId, CancellationToken cancellationToken)
     {

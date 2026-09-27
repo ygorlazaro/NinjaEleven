@@ -92,21 +92,48 @@ public class CompetitionRulesTests
     }
 
     [Fact]
-    public void The_championship_is_the_first_window_and_the_cup_the_second()
+    public void A_window_is_numbered_in_the_order_it_is_played()
     {
+        // The Supercup takes window zero so that a championship window is window one whether
+        // or not anything played before it on the same day.
+        Assert.Equal(0, CompetitionRules.SuperCupWindow);
+        Assert.True(CompetitionRules.SuperCupWindow < CompetitionRules.ChampionshipWindow);
         Assert.True(CompetitionRules.ChampionshipWindow < CompetitionRules.CupWindow);
-        Assert.Equal(2, CompetitionRules.WindowsPerMatchDay);
+        Assert.Equal(3, CompetitionRules.WindowsPerMatchDay);
     }
 
     [Fact]
-    public void The_supercup_is_on_the_first_matchday_where_nothing_else_is_playing()
+    public void A_matchday_plays_the_supercup_then_the_championship_then_the_cup()
     {
-        // The cup's first tie-round is not until the fifth matchday at the earliest, so the
-        // second window of matchday one is free.
+        // The order is the rule: every division's round plays in the same wave, and the cup
+        // follows the day. A cup leg played before the championship of the same day would be
+        // a leg taken by a side that had not yet run its legs that week.
+        Assert.Equal(
+            new[] { CompetitionType.SuperCup, CompetitionType.League, CompetitionType.Cup },
+            CompetitionRules.MatchdayWaves);
+
+        Assert.Equal(0, CompetitionRules.WaveOf(CompetitionType.SuperCup));
+        Assert.Equal(1, CompetitionRules.WaveOf(CompetitionType.League));
+        Assert.Equal(2, CompetitionRules.WaveOf(CompetitionType.Cup));
+
+        // The window a competition is played in and the wave it is played in are the same
+        // fact told twice, and a screen that read one of them may read the other.
+        foreach (var type in CompetitionRules.MatchdayWaves)
+        {
+            Assert.Equal(CompetitionRules.WaveOf(type), CompetitionRules.WindowOf(type));
+        }
+    }
+
+    [Fact]
+    public void The_supercup_is_the_first_match_of_the_new_season()
+    {
+        // The cup's first tie-round is not until the fifth matchday at the earliest, so
+        // matchday one is free, and the Supercup takes window zero: it is played before the
+        // championship of the same day, because it is the first football of the season.
         var (firstCupLeg, _) = CompetitionRules.CupLegMatchDays(1);
 
         Assert.Equal(1, CompetitionRules.SuperCupMatchDay);
-        Assert.Equal(CompetitionRules.CupWindow, CompetitionRules.SuperCupWindow);
+        Assert.Equal(0, CompetitionRules.SuperCupWindow);
         Assert.True(CompetitionRules.SuperCupMatchDay < firstCupLeg);
     }
 

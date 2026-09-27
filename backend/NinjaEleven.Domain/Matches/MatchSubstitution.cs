@@ -102,6 +102,12 @@ public static class MatchSubstitution
         outgoing.PlayedInMatch = true;
         outgoing.SubbedOff = true;
 
+        // The minutes each of them played, because the recovery at the end of the match is
+        // measured against them. A man who came on at eighty-five has not played a match,
+        // and a snapshot that could not say so would pay him as if he had.
+        incoming.EnteredAtMinute = state.Minute;
+        outgoing.LeaveThePitchAt(state.Minute);
+
         if (home)
         {
             state.SubstitutionsHome++;

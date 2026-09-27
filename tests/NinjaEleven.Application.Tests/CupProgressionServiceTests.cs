@@ -6,6 +6,8 @@ using NinjaEleven.Application.Services;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
+using NinjaEleven.Domain.Finance;
+using Microsoft.Extensions.Logging.Abstractions;
 using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Seasons;
 using Xunit;
@@ -29,6 +31,37 @@ public class CupProgressionServiceTests
     private readonly Mock<IMatchDayRepository> _matchDays = new(MockBehavior.Loose);
     private readonly Mock<ICompetitionRepository> _competitions = new(MockBehavior.Loose);
     private readonly Mock<IUnitOfWork> _unitOfWork = new(MockBehavior.Loose);
+    private readonly Mock<IFinanceRepository> _finance = new(MockBehavior.Loose);
+    private readonly Mock<ITeamRepository> _teams = new(MockBehavior.Loose);
+    private readonly Mock<IPlayerRepository> _players = new(MockBehavior.Loose);
+    private readonly Mock<ISeasonRepository> _seasons = new(MockBehavior.Loose);
+
+    /// <summary>
+    /// The books a consolation prize is written to. The guard is answered "no prize yet", so
+    /// every payment in these tests is written, which is what a test about a payment wants.
+    /// </summary>
+    private FinanceService Finance()
+    {
+        _finance.Setup(repo => repo.ExistsWithReferenceAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<FinanceMovementKind>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _finance.Setup(repo => repo.GetLastAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((FinanceMovement?)null);
+        _finance.Setup(repo => repo.AddAsync(It.IsAny<FinanceMovement>(), It.IsAny<CancellationToken>()))
+            .Callback((FinanceMovement line, CancellationToken _) => _written.Add(line))
+            .Returns(Task.CompletedTask);
+
+        return new FinanceService(
+            _finance.Object,
+            _teams.Object,
+            _players.Object,
+            _fixtures.Object,
+            _rounds.Object,
+            _matchDays.Object,
+            _seasons.Object,
+            _unitOfWork.Object,
+            NullLogger<FinanceService>.Instance);
+    }
 
     private static readonly Guid _seasonId = Guid.NewGuid();
     private readonly CompetitionSeason _cup = CompetitionSeason.Create(Guid.NewGuid(), _seasonId);
@@ -38,6 +71,9 @@ public class CupProgressionServiceTests
     private readonly List<Fixture> _addedFixtures = new();
     private readonly List<CupTie> _addedTies = new();
     private readonly List<TrophyAward> _addedTrophies = new();
+
+    /// <summary>Every line the books were told to write, in the order they were written.</summary>
+    private readonly List<FinanceMovement> _written = new();
 
     /// <summary>The order the service did things in, for the tests that care about order.</summary>
     private readonly List<string> _calls = new();
@@ -50,7 +86,8 @@ public class CupProgressionServiceTests
         _fixtures.Object,
         _matchDays.Object,
         _competitions.Object,
-        _unitOfWork.Object);
+        _unitOfWork.Object,
+        Finance());
 
     public CupProgressionServiceTests()
     {
@@ -155,12 +192,11 @@ public class CupProgressionServiceTests
                 tie.AggregateHomeGoals!.Value,
                 tie.AggregateAwayGoals!.Value,
                 tie.WentToPenalties
-                    ? PenaltyShootout.Simulate(
-                        tie.HomeTeamId,
-                        tie.AwayTeamId,
-                        1.0,
-                        0.0,
-                        new DeterministicRandomSource(1))
+                    ? new ShootoutOutcome(
+                        tie.HomePenaltyGoals!.Value,
+                        tie.AwayPenaltyGoals!.Value,
+                        tie.WinnerTeamId!.Value,
+                        IsSuddenDeath: false)
                     : null);
         }
 
@@ -168,6 +204,12 @@ public class CupProgressionServiceTests
     }
 
     private static readonly Guid[] _clubs = Enumerable.Range(0, 32).Select(_ => Guid.NewGuid()).ToArray();
+
+    /// <summary>
+    /// The seed a leg reports. Nothing in the cup reads it any more — the penalties come from
+    /// the match that took them — but it is part of what a leg says about itself.
+    /// </summary>
+    private const int TestSeed = 7;
 
     /// <summary>A finished leg, recorded so the service can read its score back.</summary>
     private Match PlayedLeg(Guid fixtureId, Guid home, Guid away, int homeScore, int awayScore)
@@ -201,15 +243,36 @@ public class CupProgressionServiceTests
         return tie;
     }
 
-    private static CupLegOutcome SecondLegOf(CupTie tie, Guid fixtureId, int homeScore, int awayScore, int seed = 7) =>
+    /// <summary>
+    /// The second leg of a tie, as the match reports it: the score, and the shootout when it
+    /// went to one.
+    ///
+    /// The shootout is counted by this leg's sides, which is what a leg's own numbers are —
+    /// the tie is the thing that reads them back by club, because the legs swap ends.
+    /// </summary>
+    private static CupLegOutcome SecondLegOf(
+        CupTie tie,
+        Guid fixtureId,
+        int homeScore,
+        int awayScore,
+        ShootoutOutcome? shootout = null) =>
         new()
         {
             FixtureId = fixtureId,
+            HomeTeamId = tie.AwayTeamId,
+            AwayTeamId = tie.HomeTeamId,
             HomeScore = homeScore,
             AwayScore = awayScore,
-            Seed = seed,
-            Takers = new Dictionary<Guid, PenaltyTaker>()
+            Seed = TestSeed,
+            Shootout = shootout
         };
+
+    /// <summary>
+    /// The penalties a level tie was settled by, as the leg that took them reports them: four
+    /// goals to three, won by the club that was at home in that leg.
+    /// </summary>
+    private static ShootoutOutcome TakenByTheLegsHomeClub(CupTie tie) =>
+        new(4, 3, tie.AwayTeamId, IsSuddenDeath: false);
 
     [Fact]
     public async Task A_tie_is_committed_before_the_round_is_read_back()
@@ -220,7 +283,7 @@ public class CupProgressionServiceTests
         // never draw the next one — a cup that stops after its first two matchdays, with no
         // error anywhere to explain why. So the commit has to come first.
         var last = CompleteRoundOfSixteenWithTheLastTieDecided();
-        await CreateService().AdvanceAsync(SecondLegOf(last, last.SecondLegFixtureId!.Value, 1, 1));
+        await CreateService().AdvanceAsync(SecondLegOf(last, last.SecondLegFixtureId!.Value, 1, 1, TakenByTheLegsHomeClub(last)));
 
         var commit = _calls.IndexOf("commit");
         var read = _calls.IndexOf("read-round");
@@ -239,10 +302,11 @@ public class CupProgressionServiceTests
         await CreateService().AdvanceAsync(new CupLegOutcome
         {
             FixtureId = Guid.NewGuid(),
+            HomeTeamId = _clubs[0],
+            AwayTeamId = _clubs[1],
             HomeScore = 2,
             AwayScore = 0,
-            Seed = 1,
-            Takers = new Dictionary<Guid, PenaltyTaker>()
+            Seed = 1
         });
 
         Assert.Empty(_addedTies);
@@ -269,7 +333,7 @@ public class CupProgressionServiceTests
         // The aggregate is 2-1 to the club that was home in the first leg.
         var tie = DecidedPairing(1, _clubs[0], _clubs[1], 2, 0, 1, 1);
 
-        await CreateService().AdvanceAsync(SecondLegOf(tie, tie.SecondLegFixtureId!.Value, 1, 1));
+        await CreateService().AdvanceAsync(SecondLegOf(tie, tie.SecondLegFixtureId!.Value, 1, 1, TakenByTheLegsHomeClub(tie)));
 
         Assert.True(tie.IsResolved);
         Assert.Equal(3, tie.AggregateHomeGoals);
@@ -302,7 +366,7 @@ public class CupProgressionServiceTests
     {
         var tie = DecidedPairing(1, _clubs[0], _clubs[1], 1, 1, 1, 1);
 
-        await CreateService().AdvanceAsync(SecondLegOf(tie, tie.SecondLegFixtureId!.Value, 1, 1));
+        await CreateService().AdvanceAsync(SecondLegOf(tie, tie.SecondLegFixtureId!.Value, 1, 1, TakenByTheLegsHomeClub(tie)));
 
         Assert.True(tie.WentToPenalties);
         Assert.True(tie.IsResolved);
@@ -315,12 +379,14 @@ public class CupProgressionServiceTests
     {
         var tie = DecidedPairing(1, _clubs[0], _clubs[1], 1, 1, 1, 1);
 
-        await CreateService().AdvanceAsync(SecondLegOf(tie, tie.SecondLegFixtureId!.Value, 1, 1, seed: 99));
+        await CreateService().AdvanceAsync(SecondLegOf(
+            tie, tie.SecondLegFixtureId!.Value, 1, 1, TakenByTheLegsHomeClub(tie)));
         var first = (tie.HomePenaltyGoals, tie.AwayPenaltyGoals, tie.WinnerTeamId);
 
         // A tie that is resolved cannot be resolved again, so the replay lands on the answer
-        // already on the tie rather than re-rolling the penalties.
-        await CreateService().AdvanceAsync(SecondLegOf(tie, tie.SecondLegFixtureId!.Value, 1, 1, seed: 1234));
+        // already on the tie rather than taking the penalties a second time.
+        await CreateService().AdvanceAsync(SecondLegOf(
+            tie, tie.SecondLegFixtureId!.Value, 1, 1, TakenByTheLegsHomeClub(tie)));
 
         Assert.Equal(first.Item1, tie.HomePenaltyGoals);
         Assert.Equal(first.Item3, tie.WinnerTeamId);
@@ -333,7 +399,7 @@ public class CupProgressionServiceTests
         var finished = DecidedPairing(1, _clubs[0], _clubs[1], 2, 0, 1, 1);
         DecidedPairing(1, _clubs[2], _clubs[3], 0, 0, 0, 0);
 
-        await CreateService().AdvanceAsync(SecondLegOf(finished, finished.SecondLegFixtureId!.Value, 1, 1));
+        await CreateService().AdvanceAsync(SecondLegOf(finished, finished.SecondLegFixtureId!.Value, 1, 1, TakenByTheLegsHomeClub(finished)));
 
         Assert.Empty(_addedRounds);
         Assert.Empty(_addedFixtures);
@@ -344,7 +410,7 @@ public class CupProgressionServiceTests
     {
         var last = CompleteRoundOfSixteenWithTheLastTieDecided();
 
-        await CreateService().AdvanceAsync(SecondLegOf(last, last.SecondLegFixtureId!.Value, 0, 0));
+        await CreateService().AdvanceAsync(SecondLegOf(last, last.SecondLegFixtureId!.Value, 0, 0, TakenByTheLegsHomeClub(last)));
 
         // Sixteen clubs become eight quarter-final ties, over two windows, one leg each.
         Assert.Equal(8, _addedTies.Count);
@@ -361,7 +427,7 @@ public class CupProgressionServiceTests
         var complete = CompleteRoundOfSixteenWithTheLastTieDecided();
 
         await CreateService().AdvanceAsync(
-            SecondLegOf(complete, complete.SecondLegFixtureId!.Value, 1, 1));
+            SecondLegOf(complete, complete.SecondLegFixtureId!.Value, 1, 1, TakenByTheLegsHomeClub(complete)));
 
         var (expectedFirstLeg, expectedSecondLeg) = CompetitionRules.CupLegMatchDays(2);
 
@@ -406,7 +472,7 @@ public class CupProgressionServiceTests
         // inside the tick of a match that has already finished.
         var only = DecidedPairing(1, _clubs[0], _clubs[1], 2, 0, 1, 1);
 
-        await CreateService().AdvanceAsync(SecondLegOf(only, only.SecondLegFixtureId!.Value, 1, 1));
+        await CreateService().AdvanceAsync(SecondLegOf(only, only.SecondLegFixtureId!.Value, 1, 1, TakenByTheLegsHomeClub(only)));
 
         Assert.True(only.IsResolved);
         Assert.Equal(_clubs[0], only.WinnerTeamId);
@@ -420,7 +486,7 @@ public class CupProgressionServiceTests
     {
         var final = DecidedPairing(CompetitionRules.CupRounds, _clubs[0], _clubs[1], 2, 1, 0, 0);
 
-        await CreateService().AdvanceAsync(SecondLegOf(final, final.SecondLegFixtureId!.Value, 0, 0));
+        await CreateService().AdvanceAsync(SecondLegOf(final, final.SecondLegFixtureId!.Value, 0, 0, TakenByTheLegsHomeClub(final)));
 
         // Two clubs left means the final, and a final is won and lost — not drawn again.
         Assert.Empty(_addedRounds);
@@ -436,15 +502,73 @@ public class CupProgressionServiceTests
     }
 
     [Fact]
+    public async Task A_club_knocked_out_in_the_first_round_is_paid_for_having_been_there()
+    {
+        // The first club wins the tie 2-0 on aggregate, so the second is the one going out.
+        var tie = DecidedPairing(1, _clubs[0], _clubs[1], 1, 0, 0, 1);
+
+        await CreateService().AdvanceAsync(SecondLegOf(tie, tie.SecondLegFixtureId!.Value, 0, 1));
+
+        var consolation = Assert.Single(_written);
+
+        Assert.Equal(_clubs[1], consolation.TeamId);
+        Assert.Equal(FinanceMovementKind.PrizeMoney, consolation.Kind);
+        Assert.Equal(PrizeRules.CupLastThirtyTwoLoser, consolation.Amount);
+        Assert.Equal(_seasonId, consolation.SeasonId);
+
+        // The club that won the tie is not paid for winning it: it is paid when it wins the
+        // cup, and a first-round winner who is paid as a champion would be paid twice for one
+        // evening by two different rules.
+        Assert.DoesNotContain(_written, line => line.TeamId == _clubs[0]);
+    }
+
+    [Fact]
+    public async Task The_final_pays_the_champion_the_cup_and_the_runner_up_three_million()
+    {
+        var final = DecidedPairing(CompetitionRules.CupRounds, _clubs[0], _clubs[1], 2, 1, 0, 0);
+
+        await CreateService().AdvanceAsync(SecondLegOf(final, final.SecondLegFixtureId!.Value, 0, 0, TakenByTheLegsHomeClub(final)));
+
+        Assert.Equal(2, _written.Count);
+
+        var champion = _written.Single(line => line.TeamId == _clubs[0]);
+        var runnerUp = _written.Single(line => line.TeamId == _clubs[1]);
+
+        Assert.Equal(PrizeRules.CupChampionPrize, champion.Amount);
+        Assert.Equal(PrizeRules.CupFinalLoser, runnerUp.Amount);
+        Assert.All(_written, line => Assert.Equal(FinanceMovementKind.PrizeMoney, line.Kind));
+
+        // The runner-up is paid once, not twice: the final's consolation and the final's
+        // runner-up's cheque are the same three million, and a club that is paid for losing
+        // a final twice has 2.400.000 in his book for one evening.
+        Assert.Equal(1, _written.Count(line => line.TeamId == _clubs[1]));
+    }
+
+    [Fact]
+    public async Task A_replayed_leg_does_not_pay_the_consolation_twice()
+    {
+        var tie = DecidedPairing(1, _clubs[0], _clubs[1], 1, 0, 0, 1);
+
+        await CreateService().AdvanceAsync(SecondLegOf(tie, tie.SecondLegFixtureId!.Value, 0, 1));
+        await CreateService().AdvanceAsync(SecondLegOf(tie, tie.SecondLegFixtureId!.Value, 0, 1));
+
+        // One line, not two. The books' guard is the reference — the same round of the same
+        // cup asked about twice is one payment — and this stub answers "not paid yet" to
+        // everything, so what stops the second payment here is the tie already being decided:
+        // a leg that arrives for a tie that is over is not settled again at all.
+        Assert.Single(_written);
+    }
+
+    [Fact]
     public async Task A_cup_is_never_awarded_twice()
     {
         var final = DecidedPairing(CompetitionRules.CupRounds, _clubs[0], _clubs[1], 2, 1, 0, 0);
 
-        await CreateService().AdvanceAsync(SecondLegOf(final, final.SecondLegFixtureId!.Value, 0, 0));
+        await CreateService().AdvanceAsync(SecondLegOf(final, final.SecondLegFixtureId!.Value, 0, 0, TakenByTheLegsHomeClub(final)));
         Assert.Equal(2, _addedTrophies.Count);
 
         // The same final, settled again from a replayed leg.
-        await CreateService().AdvanceAsync(SecondLegOf(final, final.SecondLegFixtureId!.Value, 0, 0));
+        await CreateService().AdvanceAsync(SecondLegOf(final, final.SecondLegFixtureId!.Value, 0, 0, TakenByTheLegsHomeClub(final)));
 
         Assert.Equal(2, _addedTrophies.Count);
     }
@@ -459,7 +583,7 @@ public class CupProgressionServiceTests
 
         var only = DecidedPairing(1, _clubs[0], _clubs[1], 2, 0, 1, 1);
 
-        await CreateService().AdvanceAsync(SecondLegOf(only, only.SecondLegFixtureId!.Value, 1, 1));
+        await CreateService().AdvanceAsync(SecondLegOf(only, only.SecondLegFixtureId!.Value, 1, 1, TakenByTheLegsHomeClub(only)));
 
         Assert.True(only.IsResolved);
         Assert.Empty(_addedRounds);

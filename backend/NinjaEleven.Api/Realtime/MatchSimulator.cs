@@ -30,10 +30,20 @@ public sealed class MatchSimulator
     }
 
     /// <summary>
-    /// Starts the match of the manager and, at the same time, the matches of the other
-    /// clubs in the round. Everything is then driven by the one simulation loop, so the
-    /// four matches of a matchday run together and each client sees its own in full and
-    /// the others on a scoreboard.
+    /// Starts the match of the manager and, at the same time, every other match of the
+    /// matchday — the whole wave, which is every division of the championship at once and
+    /// not the other five clubs of one division.
+    ///
+    /// This is the difference between a matchday and a round, and it is the difference between
+    /// a pyramid whose divisions are comparable and a set of three leagues that share a
+    /// calendar. Before, a match of the first division played the other five of that
+    /// division and left the second and the third divisions where they were, so a manager
+    /// reading the table beside his own was reading a table built from a different number of
+    /// games.
+    ///
+    /// Everything is then driven by the one simulation loop, so the matches of a wave run
+    /// together and each client sees its own in full and the others on a scoreboard. The next
+    /// wave — the cup, on a day that has one — starts on its own when this one is over.
     /// </summary>
     public async Task<Guid?> KickOffMatchdayAsync(
         Guid fixtureId,
@@ -44,7 +54,6 @@ public sealed class MatchSimulator
         string? tacticCode = null,
         CancellationToken cancellationToken = default)
     {
-        Guid roundId;
         Guid matchId;
 
         using (var scope = _scopeFactory.CreateScope())
@@ -59,17 +68,27 @@ public sealed class MatchSimulator
             }
 
             matchId = started.MatchId;
-            roundId = await matchService.GetRoundIdAsync(fixtureId, cancellationToken);
         }
 
-        await StartTheRestOfTheRoundAsync(roundId, fixtureId, cancellationToken);
+        await StartTheDayAsync(fixtureId, cancellationToken);
         return matchId;
     }
 
     /// <summary>
-    /// Starts every fixture of a round that is still scheduled, except the one the
-    /// manager is playing. Those matches are headless: nobody subscribes to their feed,
-    /// so the loop leaves their half-time for them.
+    /// Starts every other fixture of the matchday that is playing now, except the one the
+    /// caller has already started.
+    /// </summary>
+    private async Task StartTheDayAsync(Guid fixtureId, CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var matchday = scope.ServiceProvider.GetRequiredService<MatchdayService>();
+        await matchday.StartTheDayAsync(fixtureId, fixtureId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Starts every fixture of a round that is still scheduled, except one. Kept for the
+    /// round-level calls (finishing a round by hand from the calendar); starting a match from
+    /// the app goes through <see cref="KickOffMatchdayAsync"/>, which plays the whole day.
     /// </summary>
     public async Task<IReadOnlyList<Guid>> StartTheRestOfTheRoundAsync(
         Guid roundId,

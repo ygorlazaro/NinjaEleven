@@ -48,5 +48,26 @@ public enum MatchEventType
     PenaltySaved,
     HalfTimeReached,
     SecondHalfStarted,
+
+    /// <summary>
+    /// The ninety minutes are over and the tie is not decided, so the match is going to the
+    /// spot. It is said before the first kick rather than after the last one, so a manager
+    /// arriving at a tied match finds out why the clock has stopped.
+    /// </summary>
+    FullTimeReached,
+
+    /// <summary>
+    /// A penalty shootout has begun. The screen draws the two rows of five from here.
+    /// </summary>
+    PenaltyShootoutStarted,
+
+    /// <summary>
+    /// One kick of a shootout, taken by the player the event carries. Whether it went in is
+    /// in the narration, because the feed says "GOL" or "perdeu" the way it says everything
+    /// else, and a screen that has to read a word to know the result is a screen that has to
+    /// be told the words.
+    /// </summary>
+    PenaltyShootoutKick,
+
     MatchFinished
 }

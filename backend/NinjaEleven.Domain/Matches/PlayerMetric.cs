@@ -164,6 +164,55 @@ public static class PlayerMetric
     };
 
     /// <summary>
+    /// How tired this player is, on a scale from minus one to one where zero is
+    /// <see cref="MatchRules.ReferenceEnergy"/>.
+    /// </summary>
+    /// <remarks>
+    /// It is its own number and not a reading of the energy, because a tired man is worse at
+    /// what he does and not merely less energetic: the same eighty points means something
+    /// different at the twelfth penalty of a match than it did at the first, and the engine
+    /// needs to be able to say so without inventing a second scale for every place it reads
+    /// energy. Positive is tired, negative is fresh, and the two ends are the ends of the
+    /// scale rather than numbers that grow.
+    /// </remarks>
+    public static double Fatigue(MatchPlayerSnapshot player)
+    {
+        if (player is null) throw new ArgumentNullException(nameof(player));
+
+        return Math.Clamp(
+            (MatchRules.ReferenceEnergy - player.Energy) / (double)MatchRules.FatigueSpan,
+            -1.0,
+            1.0);
+    }
+
+    /// <summary>
+    /// How much of what a window of rest is worth this player actually gets back, by age.
+    /// </summary>
+    /// <remarks>
+    /// It is the other half of <see cref="AgeCost"/> and it says the opposite thing on
+    /// purpose: a young man is cheap to run and quick to put back together, an old one is
+    /// dearer to run and slower to mend, and a model that only had one of the two would say
+    /// that old players are cheap in every way or expensive in every way. Neither is true,
+    /// and the difference between them is the whole reason a club rotates its striker and
+    /// keeps its goalkeeper.
+    /// </remarks>
+    public static double AgeRecovery(int age) => age switch
+    {
+        >= 34 => 0.80,
+        <= 21 => 1.15,
+        <= 28 => 1.05,
+        _ => 0.95
+    };
+
+    /// <summary>How much of a window of rest this player gets back, by his age.</summary>
+    public static double AgeRecovery(MatchPlayerSnapshot player)
+    {
+        if (player is null) throw new ArgumentNullException(nameof(player));
+
+        return AgeRecovery(player.Age);
+    }
+
+    /// <summary>
     /// How likely this player is to pick up a knock during an action. Age and tiredness
     /// are the two things that decide it, and a player who has already been kicked this
     /// match is markedly more likely to be kicked again.

@@ -87,6 +87,26 @@ public class SeasonDto
     public SeasonStatus Status { get; init; }
 }
 
+/// <summary>
+/// What closing a season did. It is said back rather than shown as a message because a
+/// manager who closes a season wants to know which season is now the current one, and the
+/// season that follows is the answer.
+/// </summary>
+public class SeasonCloseDto
+{
+    /// <summary>The season that was closed.</summary>
+    public Guid SeasonId { get; init; }
+
+    /// <summary>The season that was opened after it, or null when none was.</summary>
+    public Guid? NextSeasonId { get; init; }
+
+    /// <summary>How many clubs were paid a championship purse.</summary>
+    public int PrizesPaid { get; init; }
+
+    /// <summary>The champion of each division, top tier first.</summary>
+    public IReadOnlyList<Guid> Champions { get; init; } = Array.Empty<Guid>();
+}
+
 public class RoundDto
 {
     public Guid Id { get; init; }
@@ -317,4 +337,10 @@ public class TeamMatchRecordDto
     public int GoalsAgainst { get; init; }
     public int RoundNumber { get; init; }
     public DateTimeOffset PlayedAt { get; init; }
+
+    // Head-to-head specific fields
+    public string? SeasonName { get; init; }
+    public string? CompetitionName { get; init; }
+    public string? PhaseName { get; init; }
+    public int? Attendance { get; init; }
 }

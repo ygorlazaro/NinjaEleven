@@ -45,6 +45,20 @@ public class FinanceMovement
     /// <summary>The match that moved the money, when a match did.</summary>
     public Guid? MatchId { get; private set; }
 
+    /// <summary>
+    /// What this line is the payment for, when it is a payment for a thing rather than for a
+    /// match: the round a club went out of the cup in, the position it finished the division
+    /// in, the tie it won.
+    /// </summary>
+    /// <remarks>
+    /// It exists because a club is paid more than one prize in a season and each of them has
+    /// to happen once. A guard that only asked "has this club been paid a prize this season"
+    /// would refuse the second one, and a guard that asked nothing would pay the first twice
+    /// the moment a season was closed a second time. What the prize was *for* is the thing
+    /// that makes it the same prize.
+    /// </remarks>
+    public string? Reference { get; private set; }
+
     private FinanceMovement() { }
 
     /// <summary>
@@ -63,7 +77,8 @@ public class FinanceMovement
         string description,
         decimal amount,
         decimal balanceBefore,
-        Guid? matchId = null)
+        Guid? matchId = null,
+        string? reference = null)
     {
         if (teamId == Guid.Empty)
         {
@@ -111,7 +126,8 @@ public class FinanceMovement
             Description = description.Trim(),
             Amount = StatesABalance(kind) ? balanceBefore : amount,
             BalanceAfter = StatesABalance(kind) ? balanceBefore : balanceBefore + amount,
-            MatchId = matchId
+            MatchId = matchId,
+            Reference = reference
         };
     }
 

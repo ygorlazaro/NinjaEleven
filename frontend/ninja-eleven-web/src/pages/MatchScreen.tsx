@@ -6,6 +6,7 @@ import MatchHubClient from '@/signalr/MatchHubClient';
 import type {
   MatchEngineEventDto,
   MatchStateDto,
+  MatchContextDto,
   MatchLineupDto,
   MatchPlayerDto,
   MatchResult,
@@ -22,6 +23,8 @@ import HalfTimeModal from '@/components/Modals/HalfTimeModal';
 import PenaltyModal from '@/components/Modals/PenaltyModal';
 import SubstitutionModal from '@/components/Modals/SubstitutionModal';
 import MatchdayScoreboard, { type MatchScore } from '@/components/Match/MatchdayScoreboard';
+import { MatchContextBar, FirstLegStrip } from '@/components/Match/MatchContextBar';
+import ShootoutPanel from '@/components/Match/ShootoutPanel';
 import { FixtureApi } from '@/api';
 import { useMatchAudio } from '@/hooks/useMatchAudio';
 import { formatLimo } from '@/services/limo';
@@ -57,6 +60,9 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   const feed = useGameState((s) => feedOf(s, matchId));
 
   const [lineup, setLineup] = useState<MatchLineupDto | null>(null);
+  // Where this match is: season, day, competition, phase, ground, and the other leg of
+  // a cup tie. It is read once per match and never worked out here.
+  const [context, setContext] = useState<MatchContextDto | null>(null);
   const [state, setState] = useState<MatchStateDto | null>(null);
   const [showEndModal, setShowEndModal] = useState(false);
   const [showHalfTimeModal, setShowHalfTimeModal] = useState(false);
@@ -68,6 +74,9 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   const [substituting, setSubstituting] = useState(false);
   const [substitutionError, setSubstitutionError] = useState<string | null>(null);
   const [penaltyError, setPenaltyError] = useState<string | null>(null);
+  /** Why the last order of takers was refused, said where the manager is looking. */
+  const [shootoutError, setShootoutError] = useState<string | null>(null);
+  const [namingShootout, setNamingShootout] = useState(false);
   const [matchdayScores, setMatchdayScores] = useState<MatchScore[]>([]);
   const [roundId, setRoundId] = useState<string>('');
   const [matchdayEvents, setMatchdayEvents] = useState<Record<string, FeedEvent[]>>({});
@@ -97,6 +106,20 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
     setLineup(lineupData);
   }, [matchId, userTeam?.id]);
 
+  /**
+   * The header's own facts about the match. Fetched on its own and allowed to fail: a
+   * screen that shows no ground because one call did not come back is a worse screen than
+   * one that shows the score, so the rest of the header does not wait for it.
+   */
+  const loadContext = useCallback(async () => {
+    if (!matchId) return;
+    try {
+      setContext(await MatchApi.getContext(matchId));
+    } catch {
+      setContext(null);
+    }
+  }, [matchId]);
+
   const loadState = useCallback(async () => {
     if (!matchId) return;
     const stateData = await MatchApi.getState(matchId);
@@ -119,6 +142,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
 
     loadLineup();
     loadState();
+    loadContext();
 
     // The round of this fixture is what the matchday scoreboard follows. It comes from
     // the fixture list, because the match itself does not carry the round.
@@ -576,8 +600,9 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   return (
     <div>
       <div className="card match-header">
-        <div className="competition">
-          <span>DIVISÃO 3 • JOGO-TREINO</span>
+        <MatchContextBar context={context} />
+
+        <div className="competition" style={{ marginTop: 6 }}>
           <span style={{ float: 'right' }}>
             90 MIN + <span id="stoppageLabel">{state?.stoppageTimeMinutes ?? 3}</span>
             {` • ~${estimatedMinutes} min no ritmo do servidor`}
@@ -638,6 +663,10 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
           </div>
         </div>
 
+        {/* The leg before this one, under the score: a return leg is a different match from
+            a first one, and the aggregate is the reason. */}
+        <FirstLegStrip context={context} />
+
         {/*
           The shape each side is playing, read off the eleven that is on the pitch. It is
           shown rather than chosen: the engine measures the team it has been given, so a
@@ -697,6 +726,47 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
               </div>
             );
           })()}
+
+          {/* A shootout is not a tab either: the match is standing at the spot with the
+              clock held, and the panel is where the kicks are read and the order is named. */}
+          {state?.shootout && lineup && (
+            <ShootoutPanel
+              shootout={state.shootout}
+              userTeamId={userTeamId ?? null}
+              homeName={homeTeam.shortName || homeTeam.name}
+              awayName={awayTeam.shortName || awayTeam.name}
+              homePlayers={lineup.homeLineup}
+              awayPlayers={lineup.awayLineup}
+              busy={namingShootout}
+              error={shootoutError}
+              onConfirmOrder={async takerIds => {
+                if (!userTeamId) return;
+
+                setShootoutError(null);
+                setNamingShootout(true);
+
+                try {
+                  // The order goes out over the hub for the same reason the taker of a
+                  // penalty does: a shootout is everybody's to watch, and the order the
+                  // manager named is part of what they are watching.
+                  const result = await MatchHubClient.nameShootoutOrder(
+                    matchId,
+                    userTeamId,
+                    takerIds
+                  );
+
+                  if (result && result.accepted === false) {
+                    setShootoutError(result.errorMessage || 'A ordem não pode ser enviada agora.');
+                  }
+                } catch (error) {
+                  console.error('Failed to name the order of takers:', error);
+                  setShootoutError('Não foi possível enviar a ordem dos cobradores.');
+                } finally {
+                  setNamingShootout(false);
+                }
+              }}
+            />
+          )}
 
           {/*
             The feed is the narration of this match, and it is not a tab: it is what the

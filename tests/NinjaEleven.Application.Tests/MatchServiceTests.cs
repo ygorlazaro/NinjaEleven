@@ -160,6 +160,13 @@ public class MatchServiceTests
             .Returns(() => Task.FromResult<IReadOnlyList<Fixture>>([_fixture]));
         _rounds.Setup(repo => repo.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns(() => Task.FromResult<Round?>(_round));
+        // The matchday is the unit of football: the windows of the day and their fixtures are
+        // what a match start asks about, so a stub that answers "there is one round and one
+        // fixture in it" is the world these tests are played in.
+        _rounds.Setup(repo => repo.ListByMatchDayAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(() => Task.FromResult<IReadOnlyList<Round>>([_round]));
+        _fixtures.Setup(repo => repo.ListByRoundIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .Returns(() => Task.FromResult<IReadOnlyList<Fixture>>([_fixture]));
         _competitions.Setup(repo => repo.GetSeasonByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns(() => Task.FromResult<CompetitionSeason?>(_competitionSeason));
         _players.Setup(repo => repo.GetSeasonStateForUpdateAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -221,6 +228,23 @@ public class MatchServiceTests
             _fixtures.Object,
             _matchDays.Object,
             _competitions.Object,
+            _unitOfWork.Object,
+            new FinanceService(
+                _finance.Object,
+                _teams.Object,
+                _players.Object,
+                _fixtures.Object,
+                _rounds.Object,
+                _matchDays.Object,
+                _seasons.Object,
+                _unitOfWork.Object,
+                NullLogger<FinanceService>.Instance)),
+        new MatchdayService(
+            _matchDays.Object,
+            _rounds.Object,
+            _fixtures.Object,
+            _competitions.Object,
+            _matches.Object,
             _unitOfWork.Object),
         new FinanceService(
             _finance.Object,
@@ -426,6 +450,58 @@ public class MatchServiceTests
     }
 
     [Fact]
+    public async Task A_substitution_tells_the_recovery_how_long_each_of_its_two_played()
+    {
+        // The minutes are what the recovery is measured against, and they are stamped by the
+        // substitution itself. A man swapped on at the twelfth minute has played twelve
+        // minutes, not a match, and the end of the match reads these two numbers.
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        var state = serviceState(matchId);
+        var outgoing = state.HomeLineup.First(player => player.Position != Position.GK);
+        var incoming = Available(state);
+
+        // The match is run on a little before the change, so the two men are not swapped at
+        // the whistle — where every man would be credited with the same ninety minutes and
+        // the two bands would be indistinguishable.
+        for (var tick = 0; tick < 2; tick++)
+        {
+            await service.TickAsync(matchId);
+        }
+
+        var result = await service.SubstituteAsync(matchId, _home.Id, outgoing.PlayerId, incoming.PlayerId);
+
+        Assert.True(result.Accepted);
+
+        var after = serviceState(matchId);
+        var minute = after.Minute;
+        var manOn = after.HomeLineup.Single(player => player.PlayerId == incoming.PlayerId);
+        var manOff = after.HomeBench.Single(player => player.PlayerId == outgoing.PlayerId);
+
+        Assert.Equal(minute, manOn.EnteredAtMinute);
+        Assert.Equal(minute, manOff.LeftAtMinute);
+
+        // The man who came off is finished at that minute, and the man who came on is still
+        // out there, so he is owed the rest of the game. The two are not the same number and
+        // the recovery needs them apart: a full match and no match at all.
+        Assert.Equal(minute, manOff.MinutesPlayed(MatchRules.MinutesInAMatch));
+        Assert.Equal(MatchRules.MinutesInAMatch - minute, manOn.MinutesPlayed(MatchRules.MinutesInAMatch));
+    }
+
+    [Fact]
+    public async Task A_man_who_never_left_the_pitch_is_credited_with_the_whole_match()
+    {
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        var starter = serviceState(matchId).HomeLineup.First(player => player.Position != Position.GK);
+
+        Assert.Equal(0, starter.EnteredAtMinute);
+        Assert.Equal(90, starter.MinutesPlayed(90));
+    }
+
+    [Fact]
     public async Task Substitute_swaps_the_rosterand_counts_the_change()
     {
         var service = CreateService();
@@ -469,7 +545,7 @@ public class MatchServiceTests
         var matchId = await StartAsync(service);
 
         var state = serviceState(matchId);
-        state.HomeLineup.First(player => player.Position == Position.GK).SendOff();
+        state.HomeLineup.First(player => player.Position == Position.GK).SendOff(0);
 
         // The engine promotes an outfielder to the goal, so the club is never short of one.
         await service.TickAsync(matchId);
@@ -819,7 +895,56 @@ public class MatchServiceTests
             Assert.InRange(seasonState.Energy, 1, 100);
         }
 
-        _players.Verify(repo => repo.UpdateSeasonState(It.IsAny<PlayerSeasonState>()), Times.Exactly(tookPart.Count));
+        // Everyone in the day is written back, and so is every man of the two clubs who was
+        // not even on the bench: he is given a full rest, which is the point of having a
+        // squad. The count is therefore the whole of the two squads rather than the eighteen
+        // on the day.
+        var squads = await Task.WhenAll(
+            _teams.Object.GetSquadAsync(_home.Id, _seasonId),
+            _teams.Object.GetSquadAsync(_away.Id, _seasonId));
+
+        var squad = new HashSet<Guid>(
+            squads.SelectMany(members => members).Select(membership => membership.PlayerId));
+
+        _players.Verify(repo => repo.UpdateSeasonState(It.IsAny<PlayerSeasonState>()), Times.Exactly(squad.Count));
+    }
+
+    [Fact]
+    public async Task A_player_who_was_not_even_on_the_bench_recovers_a_whole_day_off()
+    {
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        // A man of the club who was not in the eighteen of the day. The eleven and the seven
+        // are the day; a club of twenty-three has five men who were not even invited, and they
+        // are the ones who had the day off.
+        var inTheDay = new HashSet<Guid>(HomeSquadIds().Take(SquadSize + BenchSize));
+        var rested = _states.Where(state => !inTheDay.Contains(state.PlayerId)).ToList();
+
+        Assert.NotEmpty(rested);
+
+        foreach (var before in rested)
+        {
+            before.DrainEnergy(20);
+        }
+
+        for (var minute = 0; minute < 300 && runningState(matchId) is { } state && !state.MatchFinished; minute++)
+        {
+            await TakePenaltyIfItIsTheManagersTurnAsync(service, matchId);
+            await ReplaceAPlayerWhoCannotContinueAsync(service, matchId);
+            var tick = await service.TickAsync(matchId);
+            if (!tick.Accepted)
+            {
+                await service.ContinueSecondHalfAsync(matchId);
+            }
+        }
+
+        foreach (var after in rested)
+        {
+            // The full-rest band starts where the on-the-bench band ends, so a man who did not
+            // travel can never be given the same recovery as a man who sat on the bench.
+            Assert.InRange(after.Energy, 1 + EnergyRecoveryRules.MinFullRest, 100);
+        }
     }
 
     private async Task<Guid> StartAsync(MatchService service)
@@ -1229,6 +1354,25 @@ public class MatchServiceTests
     [Fact]
     public async Task A_rest_worth_more_than_a_match_is_what_makes_rotation_work()
     {
+        // The two men are put on the same energy before the whistle, short of full.
+        //
+        // Two things have to be true for this to measure the rule rather than the fixture.
+        // They have to start level, because a squad's men arrive at a match with whatever
+        // they had left and comparing two men who began fifteen apart measures nothing but
+        // that. And they have to be short of full, because a recovery is added to both and a
+        // full man cannot show a difference: the ceiling swallows it.
+        //
+        // The energy is set before the kick-off because that is when the match takes its
+        // snapshot. A squad state changed afterwards is a squad state the match has never
+        // heard of, and the man would enter the evening at whatever he had on Tuesday.
+        //
+        // The whole squad is levelled rather than the two men, because which eleven the staff
+        // pick and who is left on the bench is the service's business and not this test's.
+        foreach (var teamId in HomeSquadIds())
+        {
+            _states.Single(state => state.PlayerId == teamId).SetEnergy(70);
+        }
+
         var service = CreateService();
         var matchId = await StartAsync(service);
 
@@ -1252,9 +1396,12 @@ public class MatchServiceTests
         var restedState = _states.Single(candidate => candidate.PlayerId == neverUsed.PlayerId);
 
         // The two bands do not overlap, and that gap is the whole reason a squad is
-        // rotated: the man who sat on the bench has to come out ahead.
+        // rotated: the man who sat on the bench has to come out ahead, and he comes out
+        // further ahead than the bands alone because the match took the other one more
+        // besides.
         Assert.True(
-            restedState.Energy - starterState.Energy >= MatchRules.MinRecoveryAfterResting - MatchRules.MaxRecoveryAfterPlaying);
+            restedState.Energy - starterState.Energy >= MatchRules.MinRecoveryAfterResting - MatchRules.MaxRecoveryAfterPlaying,
+            $"rested {restedState.Energy}, started-and-played {starterState.Energy}.");
     }
 
     [Fact]

@@ -6,7 +6,7 @@ import type {
   PlayerSeasonStateDto,
   PlayerDto, CompetitionDto, CompetitionEditionDto, SeasonDto, TeamDto,
   FixtureDto, RoundDto, StandingDto, CompetitionStandingsDto, ScorerDto, LeagueSetupResult,
-  MatchDto, MatchEventDto, MatchLineupDto, MatchStateDto,
+  MatchDto, MatchEventDto, MatchLineupDto, MatchStateDto, MatchContextDto,
   MatchCommandResult, MatchEngineEventDto, MatchResult, RoundSimulationResult, TacticDto, Guid, MatchdayReportDto,
   PlayerProfileDto,
   SquadSuggestionDto,
@@ -33,6 +33,10 @@ export const TeamApi = {
   /** The club's last finished matches, newest first, for the form guide on its card. */
   getMatches: (teamId: string, limit = 10) =>
     api.get<TeamMatchRecordDto[]>(`/team/${teamId}/matches?limit=${limit}`).then(r => r.data),
+
+  /** Head-to-head matches between two clubs, newest first. */
+  getHeadToHead: (teamId: string, opponentId: string, limit = 5) =>
+    api.get<TeamMatchRecordDto[]>(`/team/${teamId}/head-to-head/${opponentId}?limit=${limit}`).then(r => r.data),
   /**
    * The club's scorers of a season, optionally for one kind of competition.
    *
@@ -187,6 +191,10 @@ export const MatchApi = {
           (tacticCode ? `&tacticCode=${encodeURIComponent(tacticCode)}` : '')
       )
       .then(r => r.data),
+  getHeadToHead: (teamId: string, opponentId: string, limit = 5) =>
+    api
+      .get<TeamMatchRecordDto[]>(`/match/head-to-head?teamId=${teamId}&opponentId=${opponentId}&limit=${limit}`)
+      .then(r => r.data),
   // Plays a fixture to full time with nobody watching, for the matches of the league
   // the manager is not in.
   simulate: (fixtureId: string) =>
@@ -197,6 +205,10 @@ export const MatchApi = {
     ).then(r => r.data),
   getState: (matchId: string) =>
     api.get<MatchStateDto>(`/match/state/${matchId}`).then(r => r.data),
+  // Where the match is and what it is: season, day, competition, phase, ground, and the
+  // other leg of a cup tie. The header reads from this and never works it out.
+  getContext: (matchId: string) =>
+    api.get<MatchContextDto>(`/match/context/${matchId}`).then(r => r.data),
   tick: (matchId: string) =>
     api.post<MatchEngineEventDto[]>(`/match/tick/${matchId}`).then(r => r.data),
   pause: (matchId: string) =>
@@ -212,6 +224,14 @@ export const MatchApi = {
       .then(r => r.data),
   selectPenaltyTaker: (matchId: string, teamId: string, playerId: string) =>
     api.post<MatchCommandResult>(`/match/penalty-taker/${matchId}/team/${teamId}`, { playerId })
+      .then(r => r.data),
+  /**
+   * Names the order the club will take a shootout in. It is a list because a shootout is
+   * five kicks and the order is the manager's; the backend refuses a man who may not take
+   * and a man named twice, so a client cannot offer either.
+   */
+  nameShootoutOrder: (matchId: string, teamId: string, takerIds: string[]) =>
+    api.post<MatchCommandResult>(`/match/shootout-order/${matchId}/team/${teamId}`, { takerIds })
       .then(r => r.data),
   getResult: (matchId: string) =>
     api.get<MatchResult>(`/match/result/${matchId}`).then(r => r.data),

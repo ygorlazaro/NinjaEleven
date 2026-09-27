@@ -106,4 +106,15 @@ public interface IMatchRepository
         Guid teamId,
         int limit,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Head-to-head matches between two clubs, newest first. A club's history against a
+    /// specific rival is a different question from its general run, and the screen that asks
+    /// for it has a different purpose: it is the story of this particular rivalry.
+    /// </summary>
+    Task<IReadOnlyList<Application.Models.TeamMatchRecord>> GetHeadToHeadAsync(
+        Guid teamId,
+        Guid opponentId,
+        int limit,
+        CancellationToken cancellationToken = default);
 }

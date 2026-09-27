@@ -64,6 +64,21 @@ public class TeamController : ControllerBase
     }
 
     /// <summary>
+    /// Head-to-head matches between two clubs, newest first. A club's history against a
+    /// specific rival is a different question from its general run.
+    /// </summary>
+    [HttpGet("{teamId:guid}/head-to-head/{opponentId:guid}")]
+    public async Task<ActionResult<IReadOnlyList<TeamMatchRecordDto>>> GetHeadToHead(
+        Guid teamId,
+        Guid opponentId,
+        [FromQuery] int limit = TeamHistoryRules.DefaultHistoryLength,
+        CancellationToken cancellationToken = default)
+    {
+        var matches = await _teamService.GetHeadToHeadAsync(teamId, opponentId, limit, cancellationToken);
+        return Ok(matches.Select(match => match.ToDto()).ToList());
+    }
+
+    /// <summary>
     /// The club's book: a page of its movements, newest first, and the totals of whatever the
     /// page was narrowed to. No season filter means the whole career, which is the only
     /// reading in which the lines of two seasons sit in one list in the order they happened.

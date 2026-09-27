@@ -83,6 +83,15 @@ export interface FeedEvent {
   awayScore?: number | null;
   onTarget?: boolean;
   isGoal?: boolean;
+  /**
+   * Whether a kick of a shootout went in, and null on every other event.
+   *
+   * It is its own field rather than a reading of the icon because the icon on screen is an
+   * emoji chosen for looks and the sound is a fact: a penalty that goes in is a goal and a
+   * penalty that does not is not, and the crowd is the only one in the stadium who can tell
+   * the difference.
+   */
+  scored?: boolean | null;
 }
 
 /**

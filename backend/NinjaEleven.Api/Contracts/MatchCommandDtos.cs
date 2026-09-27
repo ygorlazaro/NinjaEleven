@@ -119,6 +119,40 @@ public double Stars { get; init; }
 }
 
 /// <summary>
+/// Where a match is being played and what it is: the season and the day, the competition and
+/// the phase of it, the ground, and the leg before this one when there was one.
+///
+/// It is what a manager reads above a scoreboard, and every word of it is a fact about the
+/// match rather than a label on the screen: a cup return leg carries the aggregate's other
+/// half with it, because "1 x 0" means something completely different in a tie that is
+/// already 2 x 1 across.
+/// </summary>
+public class MatchContextDto
+{
+    public string SeasonName { get; init; } = string.Empty;
+    public int MatchDayNumber { get; init; }
+    public string CompetitionName { get; init; } = string.Empty;
+    public CompetitionType CompetitionType { get; init; }
+    public string EditionName { get; init; } = string.Empty;
+    public string PhaseName { get; init; } = string.Empty;
+    public string? LegLabel { get; init; }
+    public string StadiumName { get; init; } = string.Empty;
+    public int StadiumCapacity { get; init; }
+    public CupLegResultDto? FirstLeg { get; init; }
+}
+
+/// <summary>One leg of a cup tie, as a screen shows it under a score.</summary>
+public class CupLegResultDto
+{
+    public Guid HomeTeamId { get; init; }
+    public string HomeTeamName { get; init; } = string.Empty;
+    public int HomeGoals { get; init; }
+    public Guid AwayTeamId { get; init; }
+    public string AwayTeamName { get; init; } = string.Empty;
+    public int AwayGoals { get; init; }
+}
+
+/// <summary>
 /// Live state of a match, served from the engine's working memory while it runs and
 /// from the persisted row once it is over.
 /// </summary>
@@ -191,6 +225,63 @@ public class MatchStateDto
     /// Gate revenue in limos.
     /// </summary>
     public decimal GateRevenue { get; init; }
+
+    /// <summary>
+    /// The shootout, when the match is at the spot, and nothing at all when it is not.
+    /// </summary>
+    public ShootoutDto? Shootout { get; init; }
+}
+
+/// <summary>
+/// A shootout as a manager reads it: the coin, the two orders, the kicks and whose turn it
+/// is. Null on every match that did not go to penalties.
+/// </summary>
+public class ShootoutDto
+{
+    public Guid HomeTeamId { get; init; }
+    public Guid AwayTeamId { get; init; }
+    public bool HomeTakesFirst { get; init; }
+
+    /// <summary>Whose kick it is, or null when the shootout is over.</summary>
+    public Guid? NextTeamId { get; init; }
+
+    /// <summary>Who walks to the spot next, or null when it is not the manager's turn to send one.</summary>
+    public Guid? NextTakerId { get; init; }
+
+    public int HomeGoals { get; init; }
+    public int AwayGoals { get; init; }
+    public int HomeKicksTaken { get; init; }
+    public int AwayKicksTaken { get; init; }
+    public bool IsSuddenDeath { get; init; }
+    public bool IsComplete { get; init; }
+    public Guid? WinnerTeamId { get; init; }
+
+    /// <summary>Whether the match is standing at ninety minutes waiting for the manager.</summary>
+    public bool AwaitingOrder { get; init; }
+
+    /// <summary>
+    /// The men the manager's club may still name, as the players the match knows them by, so
+    /// a screen can show a name on a face without a second call for it.
+    /// </summary>
+    public IReadOnlyList<MatchPlayerDto> Candidates { get; init; } = Array.Empty<MatchPlayerDto>();
+
+    /// <summary>
+    /// The order each side named. Both travel, because a manager watching a shootout sees
+    /// the other club's five as well as his own.
+    /// </summary>
+    public IReadOnlyList<Guid> HomeTakers { get; init; } = Array.Empty<Guid>();
+
+    public IReadOnlyList<Guid> AwayTakers { get; init; } = Array.Empty<Guid>();
+
+    public IReadOnlyList<ShootoutKickDto> Kicks { get; init; } = Array.Empty<ShootoutKickDto>();
+}
+
+/// <summary>One kick of a shootout.</summary>
+public class ShootoutKickDto
+{
+    public Guid TeamId { get; init; }
+    public Guid TakerId { get; init; }
+    public bool Scored { get; init; }
 }
 
 /// <summary>

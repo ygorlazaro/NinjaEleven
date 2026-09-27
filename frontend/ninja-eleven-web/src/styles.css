@@ -302,6 +302,45 @@ button { cursor: pointer; }
 .team-view-summary h2 { margin: 0 0 4px; }
 .team-color-sample { width: 150px; height: 28px; border-radius: 999px; border: 1px solid var(--line); background: linear-gradient(90deg, var(--team-primary), var(--team-secondary)); box-shadow: 0 0 0 2px rgba(255, 255, 255, .03) inset; }
 .match-header { padding: 16px 20px 18px; }
+
+/* The ground the match is being played in, said where a manager looks for it: under the
+   line that says which competition this is, before the teams and the score. */
+.match-ground {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.match-ground__icon { opacity: .55; }
+.match-ground__name { color: var(--text); font-weight: 750; }
+.match-ground__capacity { font-size: 11px; opacity: .8; }
+
+/* The other leg of a cup tie, under the score. Deliberately the quietest thing in the
+   header: it is context rather than result, and a manager who cannot tell it from the
+   score at a glance will read the score first. */
+.first-leg {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.first-leg__label {
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  font-size: 9px;
+  font-weight: 800;
+  opacity: .7;
+}
+.first-leg b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .04em;
+}
 .match-attendance { margin-top: 10px; font-size: 12px; color: var(--muted); }
 .match-attendance b { color: var(--text); }
 .competition { font-size: 11px; color: var(--muted); letter-spacing: .13em; text-transform: uppercase; }
@@ -792,7 +831,7 @@ button { cursor: pointer; }
   padding: 20px; overflow-y: auto; background: rgba(0, 0, 0, .72);
 }
 .profile-modal {
-  width: min(720px, 100%); margin: 20px 0; padding: 24px;
+  width: min(95vw, 1200px); margin: 20px 0; padding: 24px;
   background: linear-gradient(180deg, rgba(17, 31, 45, .99), rgba(9, 19, 29, .99));
   border: 1px solid var(--line); border-top: 3px solid var(--team-primary);
   border-radius: 14px; box-shadow: 0 25px 80px rgba(0, 0, 0, .5);
@@ -899,6 +938,11 @@ button { cursor: pointer; }
   background:
     linear-gradient(180deg, var(--club-wash, #0a1520) 0%, rgba(9, 19, 29, .99) 320px);
   color: var(--club-ink, var(--text));
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+.club-modal__content {
+  padding-right: 8px;
 }
 .club-modal .profile-name { color: var(--club-ink, var(--text)); }
 .club-modal .profile-position,
@@ -964,9 +1008,12 @@ button { cursor: pointer; }
 .form-list { background: transparent; }
 .form-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .form-item {
-  display: grid; grid-template-columns: 26px 74px 1fr auto; align-items: center; gap: 10px;
+  display: grid; grid-template-columns: 26px 60px auto 1fr; align-items: center; gap: 10px;
   padding: 6px 9px; border-radius: 7px; border-left: 3px solid var(--line);
   background: rgba(9, 19, 29, .45); font-size: 12px;
+}
+.form-item > *:nth-child(4) {
+  min-width: 0;
 }
 .form-item.form-win { border-left-color: var(--green); }
 .form-item.form-draw { border-left-color: var(--orange); }
@@ -983,6 +1030,39 @@ button { cursor: pointer; }
 .form-sep { color: var(--muted); }
 .form-opponent { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .form-round { color: var(--muted); font-size: 10px; }
+
+/* Table for last matches with more columns */
+.form-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.form-table thead th {
+  text-align: left;
+  padding: 6px 8px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+.form-table tbody td {
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(34, 56, 75, .3);
+}
+.form-table tbody tr:hover {
+  background: rgba(9, 19, 29, .3);
+}
+.form-table .form-win td { border-left: 3px solid var(--green); }
+.form-table .form-draw td { border-left: 3px solid var(--orange); }
+.form-table .form-loss td { border-left: 3px solid var(--red); }
+.form-season { color: var(--muted); white-space: nowrap; font-size: 10px; }
+.form-comp { color: var(--text); white-space: nowrap; font-size: 10px; }
+.form-phase { color: var(--muted); white-space: nowrap; font-size: 10px; }
+.form-venue { text-align: center; white-space: nowrap; }
+.form-opponent { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.form-score { font-weight: 900; font-variant-numeric: tabular-nums; color: var(--accent); white-space: nowrap; }
+.form-attendance { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 10px; }
 
 .profile-footer { display: flex; justify-content: flex-end; margin-top: 16px; }
 
@@ -1017,6 +1097,218 @@ button { cursor: pointer; }
 /* The run sits under the club it belongs to, so the form is never mistaken for the
    opponent's. */
 .next-match__club .form-run { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* Round Context Panel - shows all matches in the round, form, and H2H */
+.round-context {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(9, 19, 29, .55);
+}
+.round-context__section {
+  margin-bottom: 20px;
+}
+.round-context__section:last-child {
+  margin-bottom: 0;
+}
+.round-context__title {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--accent);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Round matches */
+.round-context__matches {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.round-context__match {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0a1520;
+  transition: .15s;
+}
+.round-context__match:hover {
+  background: #0e1c29;
+  border-color: #46657d;
+}
+.round-context__match.manager-match {
+  border-color: var(--accent);
+  background: rgba(242, 211, 79, .08);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.round-context__match.manager-match:hover {
+  background: rgba(242, 211, 79, .12);
+}
+.round-context__match.finished {
+  opacity: .78;
+}
+.round-context__match.live {
+  border-color: var(--orange);
+  background: rgba(255, 180, 91, .08);
+}
+.round-context__match-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.round-context__match-time {
+  font-variant-numeric: tabular-nums;
+}
+.round-context__badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #12170f;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.round-context__teams {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.round-context__team {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-weight: 700;
+}
+.round-context__team:last-child {
+  justify-content: flex-end;
+}
+.round-context__team.manager-team {
+  color: var(--accent);
+}
+.round-context__score {
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  min-width: 50px;
+  text-align: center;
+}
+.round-context__match.finished .round-context__score {
+  color: var(--text);
+}
+
+/* Forms */
+.round-context__forms {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.round-context__form {
+  background: #0a1520;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.round-context__form-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.round-context__form-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.round-context__form-row {
+  display: grid;
+  grid-template-columns: 85px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 11px;
+  border-bottom: 1px dashed rgba(34, 56, 75, .4);
+}
+.round-context__form-row > *:nth-child(2) {
+  min-width: 0;
+}
+.round-context__form-row:last-child {
+  border-bottom: 0;
+}
+.round-context__form-opponent {
+  color: var(--text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.round-context__form-score {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.round-context__form-round {
+  color: var(--muted);
+  font-size: 10px;
+}
+.round-context__empty {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+}
+
+/* H2H */
+.round-context__h2h {
+  overflow-x: auto;
+}
+.round-context__h2h-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.round-context__h2h-table th {
+  text-align: left;
+  padding: 8px 6px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+.round-context__h2h-table td {
+  padding: 7px 6px;
+  border-bottom: 1px solid rgba(34, 56, 75, .4);
+}
+.round-context__h2h-table tbody tr:hover {
+  background: #0e1c29;
+}
+.round-context__h2h-season { color: var(--muted); white-space: nowrap; }
+.round-context__h2h-comp { color: var(--text); white-space: nowrap; }
+.round-context__h2h-phase { color: var(--muted); white-space: nowrap; }
+.round-context__h2h-score {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.round-context__h2h-score.h2h-win { color: var(--green); }
+.round-context__h2h-score.h2h-draw { color: var(--orange); }
+.round-context__h2h-score.h2h-loss { color: var(--red); }
+.round-context__h2h-attendance { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* The calendar. A season is four hundred and some games, so the header sticks and the list
    is the thing that scrolls: a manager reading a season is reading a list, and a list he
@@ -1638,3 +1930,62 @@ button { cursor: pointer; }
 .scorer-table__rate {
   color: var(--muted);
 }
+
+/* A shootout. It is not a modal and not a tab: the match is standing at the spot with the
+   clock held, so the panel sits in the column with the feed and reads as part of the
+   match. The colours are the game's own — a goal in the accent, a miss in the danger. */
+.shootout { margin: 14px 0; padding: 12px; background: #0a1520; border: 1px solid var(--line); border-radius: 10px; }
+.shootout__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.shootout__head h3 { margin: 0; font-size: 14px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.shootout__sudden { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--danger); border: 1px solid var(--danger); border-radius: 999px; padding: 2px 8px; }
+
+.shootout__score { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 10px 0 6px; }
+.shootout__score b { font-size: 26px; letter-spacing: .04em; }
+.shootout__score b i { color: var(--muted); font-style: normal; margin: 0 2px; }
+.shootout__side { font-size: 12px; color: var(--muted); max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shootout__side--away { text-align: right; }
+
+/* The kicks, in rounds. A round is one kick from each side and the side the coin sent to
+   the spot first is on the left every time, so the two columns are the same two clubs all
+   the way down. */
+.shootout__taken { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+.shootout__round { display: grid; grid-template-columns: 34px 1fr 1fr; align-items: center; gap: 6px; }
+.shootout__round-number { font-size: 10px; color: var(--muted); text-align: right; }
+.shootout-cell { display: flex; align-items: center; gap: 5px; padding: 5px 7px; border-radius: 7px; border: 1px solid var(--line); background: #09141e; font-size: 11px; min-width: 0; }
+.shootout-cell .name-link { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shootout-cell--goal { border-color: var(--accent); }
+.shootout-cell--miss { border-color: var(--danger); opacity: .78; }
+.shootout-cell--empty { border-style: dashed; opacity: .4; }
+.shootout-next { width: 6px; height: 6px; border-radius: 999px; background: var(--accent); margin-left: auto; }
+
+.shootout__hint { margin: 8px 0 0; font-size: 11px; color: var(--muted); }
+.shootout__error { margin: 8px 0 0; font-size: 12px; color: var(--danger); }
+.shootout__empty { color: var(--muted); }
+
+.shootout__orders { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-top: 12px; }
+.shootout__order { padding: 10px; background: #09141e; border: 1px solid var(--line); border-radius: 9px; }
+.shootout__order h4 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 6px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.shootout__order ol { margin: 0; padding-left: 18px; font-size: 12px; }
+.shootout__order li { margin-bottom: 2px; }
+
+.shootout__candidates { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin: 8px 0; }
+.shootout__candidate { display: grid; grid-template-columns: 22px 1fr; grid-template-rows: auto auto; gap: 0 7px; align-items: center; padding: 7px 9px; text-align: left; background: #0a1520; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.shootout__candidate:disabled { opacity: .55; cursor: default; }
+.shootout__candidate.selected { border-color: var(--accent); }
+.shootout__place { grid-row: span 2; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 999px; background: #09141e; border: 1px solid var(--line); font-size: 11px; font-weight: 800; }
+.shootout__candidate.selected .shootout__place { border-color: var(--accent); color: var(--accent); }
+.shootout__candidate-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shootout__candidate-meta { font-size: 10px; color: var(--muted); }
+
+/* Attribute color coding for squad tables: < 8 red, < 14 yellow, >= 14 green */
+.attr-red { color: var(--red); font-weight: 700; }
+.attr-yellow { color: var(--orange); font-weight: 700; }
+.attr-green { color: var(--green); font-weight: 700; }
+
+/* Energy text colors (following the same pattern as energy bar fills) */
+.energy-green-text { color: var(--green); font-weight: 700; }
+.energy-yellow-text { color: var(--orange); font-weight: 700; }
+.energy-red-text { color: var(--red); font-weight: 700; }
+
+/* Stars column styling */
+.stars-col { color: var(--accent); font-weight: 700; }

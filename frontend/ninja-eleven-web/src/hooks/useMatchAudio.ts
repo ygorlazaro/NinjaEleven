@@ -64,7 +64,7 @@ export const useMatchAudio = ({ feed, live, matchId }: UseMatchAudioArgs) => {
     // exception.
     fresh.forEach(event => {
       try {
-        matchAudio.reactToEvent(event.type);
+        matchAudio.reactToEvent(event);
       } catch (error) {
         console.error('Failed to play the match sound for', event.type, error);
       }

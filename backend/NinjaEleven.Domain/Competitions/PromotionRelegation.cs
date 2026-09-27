@@ -98,6 +98,12 @@ public sealed class DivisionMovement
         var relegated = standings.Count - CompetitionRules.RelegationSlots;
         var movements = new List<ClubMovement>(standings.Count);
 
+        // The bottom of the pyramid is a wall. Three divisions is the whole of the country,
+        // and a club that finishes last in the third division is not relegated to a fourth
+        // tier that does not exist — it is the last club of the last division, and the rules
+        // say so rather than inventing somewhere for it to go.
+        var lowestTier = CompetitionRules.Tiers().Count;
+
         foreach (var standing in standings)
         {
             var position = positions[standing.TeamId];
@@ -107,7 +113,7 @@ public sealed class DivisionMovement
             // the title worthless. The first position is inside the promotion places anyway,
             // so this only has a say when the tiers are not the size the rules assume.
             var promoted = tier > 1 && position <= CompetitionRules.PromotionSlots;
-            var dropped = !promoted && position > relegated;
+            var dropped = !promoted && position > relegated && tier < lowestTier;
 
             movements.Add(new ClubMovement(
                 standing.TeamId,

@@ -1,17 +1,26 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { SeasonApi, TeamApi } from '@/api';
 import { useGameState } from '@/state';
-import type { SquadPlayerDto, TeamDto } from '@/types';
+import type { SquadPlayerDto, TeamDto, TeamMatchRecordDto } from '@/types';
 import { starsToString } from '@/services/formatters';
 import ClubSquadTable from '@/components/Club/ClubSquadTable';
+import FormRun, { formOf } from '@/components/Club/FormRun';
+import { ClubName } from '@/components/Common/Names';
 import { useClubWindow } from '@/services/clubColors';
+import { formatLimo } from '@/services/limo';
 
 const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) => {
   const teams = useGameState((s) => s.leagueTeams);
+  const selectedTeam = useGameState((s) => s.selectedTeam);
   const [team, setTeam] = useState<TeamDto | null>(null);
   const [players, setPlayers] = useState<SquadPlayerDto[]>([]);
+  const [matches, setMatches] = useState<TeamMatchRecordDto[]>([]);
+  const [h2hMatches, setH2hMatches] = useState<TeamMatchRecordDto[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  const FORM_GUIDE_LENGTH = 10;
+  const H2H_LENGTH = 5;
 
   const navigate = useNavigate();
   const { teamId: routeTeamId = '' } = useParams();
@@ -24,9 +33,6 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
     if (teamObj) setTeam(teamObj);
   }, [teams, urlTeamId]);
 
-  // The club list is remembered in this browser, but the root of the game is now this
-  // screen, so a manager can arrive here by typing the address with nothing remembered. The
-  // club is then asked for by name rather than drawn as a blank page.
   useEffect(() => {
     if (!urlTeamId || teams.some(t => t.id === urlTeamId)) return undefined;
 
@@ -49,30 +55,42 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
   useEffect(() => {
     if (!urlTeamId) return undefined;
 
-    // The squad belongs to a season. The screen can be opened without the query, so
-    // the current season is what it falls back to.
     let cancelled = false;
 
     const load = async () => {
-      const season = seasonId || (await SeasonApi.current()).id;
+      const [season, form, h2h] = await Promise.all([
+        seasonId || (await SeasonApi.current()).id,
+        TeamApi.getMatches(urlTeamId, FORM_GUIDE_LENGTH),
+        selectedTeam && selectedTeam.id !== urlTeamId
+          ? TeamApi.getHeadToHead(urlTeamId, selectedTeam.id, H2H_LENGTH).catch(() => [] as TeamMatchRecordDto[])
+          : Promise.resolve([] as TeamMatchRecordDto[]),
+      ]);
+
       if (cancelled) return;
       setPlayers(await TeamApi.getSquad(urlTeamId, season));
+      setMatches(form);
+      setH2hMatches(h2h);
     };
 
     load().catch(error => {
-      if (!cancelled) console.error('Failed to load the squad:', error);
+      if (!cancelled) console.error('Failed to load the club data:', error);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [urlTeamId, seasonId]);
+  }, [urlTeamId, seasonId, selectedTeam?.id]);
 
-  // Every hook is above every early return. A hook called after one is a hook that
-  // sometimes is not called, and React counts: the render where the error clears would
-  // reach a hook the failed render never did, and the screen would fall over on the very
-  // recovery it was written to allow.
   const clubWindow = useClubWindow(team);
+
+  const getH2HResultFromHumanPerspective = useMemo(() => (match: TeamMatchRecordDto): 'win' | 'draw' | 'loss' => {
+    const humanGoals = match.isHome ? match.goalsAgainst : match.goalsFor;
+    const viewedTeamGoals = match.isHome ? match.goalsFor : match.goalsAgainst;
+
+    if (humanGoals > viewedTeamGoals) return 'win';
+    if (humanGoals < viewedTeamGoals) return 'loss';
+    return 'draw';
+  }, []);
 
   if (error) {
     return (
@@ -85,11 +103,10 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
 
   if (!team) return null;
 
+  const isOwnTeam = selectedTeam && selectedTeam.id === urlTeamId;
+
   return (
     <div className="team-view-overlay">
-      {/* The club's own screen and the modal somebody else opened are the same question, so
-          they are the same table in the same colours: one component, not two layouts that
-          happen to agree today. */}
       <div className="card team-view-card club-modal" style={clubWindow}>
         <div className="squad-head team-view-summary">
           <div>
@@ -107,6 +124,94 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
         </div>
 
         <ClubSquadTable squad={players} />
+
+        <section className="club-form">
+          <div className="club-form__head">
+            <h4 className="club-form__title">Forma recente</h4>
+            <div className="form-run" title="Os resultados mais recentes, do mais antigo ao mais novo">
+              <FormRun matches={matches} length={FORM_GUIDE_LENGTH} />
+            </div>
+          </div>
+
+          <h4 className="club-form__title">Últimas {FORM_GUIDE_LENGTH} partidas</h4>
+
+          {matches.length === 0 ? (
+            <p className="league-empty">Este clube ainda não jogou.</p>
+          ) : (
+            <table className="form-table">
+              <thead>
+                <tr>
+                  <th>Temp.</th>
+                  <th>Camp.</th>
+                  <th>Rodada/Fase</th>
+                  <th>Local</th>
+                  <th>Adversário</th>
+                  <th>Placar</th>
+                  <th>Público</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matches.map(record => {
+                  const form = formOf(record);
+                  return (
+                    <tr key={record.matchId} className={`form-${form}`}>
+                      <td className="form-season">{record.seasonName || '—'}</td>
+                      <td className="form-comp">{record.competitionName || '—'}</td>
+                      <td className="form-phase">{record.phaseName || `Rodada ${record.roundNumber}`}</td>
+                      <td className="form-venue">{record.isHome ? '🏠' : '✈️'}</td>
+                      <td className="form-opponent">
+                        {record.opponentTeamId ? (
+                          <ClubName teamId={record.opponentTeamId}>{record.opponentName}</ClubName>
+                        ) : (
+                          record.opponentName
+                        )}
+                      </td>
+                      <td className="form-score">{record.goalsFor} x {record.goalsAgainst}</td>
+                      <td className="form-attendance">{record.attendance ? formatLimo(record.attendance) : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </section>
+
+        {selectedTeam && selectedTeam.id !== urlTeamId && (
+          <section className="club-form">
+            <h4 className="club-form__title">Confrontos diretos vs <ClubName teamId={selectedTeam.id}>{selectedTeam.name}</ClubName></h4>
+            {h2hMatches.length === 0 ? (
+              <p className="league-empty">Nenhum confronto anterior entre os times</p>
+            ) : (
+              <table className="round-context__h2h-table">
+                <thead>
+                  <tr>
+                    <th>Temporada</th>
+                    <th>Campeonato</th>
+                    <th>Fase/Rodada</th>
+                    <th>Placar</th>
+                    <th>Público</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {h2hMatches.map((m) => {
+                    const result = getH2HResultFromHumanPerspective(m);
+                    return (
+                      <tr key={m.matchId}>
+                        <td className="round-context__h2h-season">{m.seasonName || '—'}</td>
+                        <td className="round-context__h2h-comp">{m.competitionName || '—'}</td>
+                        <td className="round-context__h2h-phase">{m.phaseName || `Rodada ${m.roundNumber}`}</td>
+                        <td className={`round-context__h2h-score h2h-${result}`}>
+                          {m.isHome ? m.goalsFor : m.goalsAgainst} x {m.isHome ? m.goalsAgainst : m.goalsFor}
+                        </td>
+                        <td className="round-context__h2h-attendance">{m.attendance ? formatLimo(m.attendance) : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </section>
+        )}
       </div>
     </div>
   );

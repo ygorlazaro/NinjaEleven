@@ -385,26 +385,64 @@ public class SeasonCalendarService
         var trophies = await _trophyRepository.ListBySeasonAsync(previous.Id, cancellationToken);
         var views = await _competitionRepository.ListSeasonViewsAsync(previous.Id, cancellationToken);
 
-        var champion = trophies.FirstOrDefault(trophy => views.Any(other =>
-            other.Id == trophy.CompetitionSeasonId && other.Type == CompetitionType.League));
-        var cupWinner = trophies.FirstOrDefault(trophy => views.Any(other =>
-            other.Id == trophy.CompetitionSeasonId && other.Type == CompetitionType.Cup));
+        // The two titles that decide it, read off the shelf and not worked out again: the
+        // champion of the first division and the winner of the cup. A second-division champion
+        // is not a candidate, which is why the view's tier is part of the test.
+        var topDivision = views.FirstOrDefault(other =>
+            other.Type == CompetitionType.League && other.Tier == 1);
+        var cupEdition = views.FirstOrDefault(other => other.Type == CompetitionType.Cup);
+
+        var champion = ChampionOf(trophies, topDivision?.Id);
+        var cupWinner = ChampionOf(trophies, cupEdition?.Id);
 
         if (champion is null || cupWinner is null)
         {
+            // A season that had no first division and no cup — a world that has not been played
+            // yet — has no Supercup to draw, and inventing two clubs for it would be a match
+            // between nobody.
             return Array.Empty<Guid>();
+        }
+
+        var home = champion.TeamId;
+        var away = cupWinner.TeamId;
+
+        if (home == away)
+        {
+            // A club that won both cannot play itself, so the Supercup falls to the second
+            // place of the first division. A Supercup is two clubs meeting, and the double
+            // winner is one club, not two.
+            var second = trophies.FirstOrDefault(trophy =>
+                trophy.Kind == TrophyKind.RunnerUp
+                && trophy.CompetitionSeasonId == topDivision!.Id
+                && trophy.TeamId != home);
+
+            if (second is null)
+            {
+                return Array.Empty<Guid>();
+            }
+
+            away = second.TeamId;
         }
 
         await _competitionRepository.AddParticipantsAsync(
             new List<CompetitionParticipant>
             {
-                CompetitionParticipant.Create(view.Id, champion.TeamId),
-                CompetitionParticipant.Create(view.Id, cupWinner.TeamId)
+                CompetitionParticipant.Create(view.Id, home),
+                CompetitionParticipant.Create(view.Id, away)
             },
             cancellationToken);
 
-        return new[] { champion.TeamId, cupWinner.TeamId };
+        return new[] { home, away };
     }
+
+    private static TrophyAward? ChampionOf(
+        IReadOnlyList<TrophyAward> trophies,
+        Guid? competitionSeasonId) =>
+        competitionSeasonId is null
+            ? null
+            : trophies.FirstOrDefault(trophy =>
+                trophy.Kind == TrophyKind.Champion
+                && trophy.CompetitionSeasonId == competitionSeasonId.Value);
 
     /// <summary>
     /// The cup's first tie-round: sixteen ties, two legs each, in the second window of two

@@ -10,9 +10,9 @@ import { starsToString } from '@/services/formatters';
  * is the one that decides whether he is a prospect or a finished article, so it cannot be a
  * figure that means something else.
  *
- * The half star is written "½" beside the whole ones rather than as a fifth of a glyph: there
- * is no half-star glyph that every machine draws, and a rating that shows a black box on one
- * screen and a clean mark on another is worse than one that shows a fraction everywhere.
+ * The half star is written as a half-star glyph (⯨) beside the whole ones: there
+ * is no half-star glyph that every machine draws perfectly, but modern systems
+ * support the LEFT HALF BLACK STAR character.
  */
 interface StarRatingProps {
   /** The rating, on the engine's scale. It arrives as a number and is not recomputed here. */

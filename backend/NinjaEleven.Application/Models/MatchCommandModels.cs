@@ -132,6 +132,11 @@ public class MatchStateView
     public PenaltyTakerOptions Penalty { get; init; } = new();
 
     /// <summary>
+    /// The shootout, when the match has gone to one, and nothing at all when it has not.
+    /// </summary>
+    public ShootoutView? Shootout { get; init; }
+
+    /// <summary>
     /// The club a manager is watching, when the match was started by one. A client sends
     /// it back with the commands it issues, so it never has to guess which side of the
     /// scoreboard is his.
@@ -175,6 +180,90 @@ public class MatchScoreRow
     public int AwayRedCards { get; init; }
     public int HomeInjuries { get; init; }
     public int AwayInjuries { get; init; }
+}
+
+/// <summary>
+/// A shootout as a manager reads it from the stand: the coin, the two orders, the kicks
+/// taken so far and whose turn it is.
+///
+/// It is present in a state only while the match is at the spot, and it carries the men the
+/// manager may still name — which is the only way a screen can offer him a choice rather than
+/// read one back to him. The takers are ids because a name is a profile and a profile is a
+/// screen's business, not the match's.
+/// </summary>
+public class ShootoutView
+{
+    public required Guid HomeTeamId { get; init; }
+    public required Guid AwayTeamId { get; init; }
+
+    /// <summary>Which club the coin sent to the spot first.</summary>
+    public required bool HomeTakesFirst { get; init; }
+
+    /// <summary>Whose kick it is, as the club, and null when the shootout is over.</summary>
+    public Guid? NextTeamId { get; init; }
+
+    /// <summary>
+    /// The man who walks to the spot next, and null when it is the other side's turn or the
+    /// shootout is over.
+    /// </summary>
+    public Guid? NextTakerId { get; init; }
+
+    public required int HomeGoals { get; init; }
+    public required int AwayGoals { get; init; }
+    public required int HomeKicksTaken { get; init; }
+    public required int AwayKicksTaken { get; init; }
+
+    /// <summary>Whether the five kicks each side is given have both been taken.</summary>
+    public required bool IsSuddenDeath { get; init; }
+
+    /// <summary>Whether the shootout has produced a winner.</summary>
+    public required bool IsComplete { get; init; }
+
+    public Guid? WinnerTeamId { get; init; }
+
+    /// <summary>
+    /// True while the match is standing at ninety minutes waiting for the manager to name
+    /// his order. The clock is held for exactly as long as it takes him to decide, the same
+    /// way it is held for the taker of a penalty.
+    /// </summary>
+    public required bool AwaitingOrder { get; init; }
+
+    /// <summary>
+    /// The men the manager's club may still name, in the order the engine would read them:
+    /// the best taker first. It is empty once he has named his five.
+    ///
+    /// They are the snapshots the match already holds rather than bare ids, because a screen
+    /// that has to open a profile for a man to show his name should not have to ask for him
+    /// twice — and because the chance each of them has from twelve yards is the engine's
+    /// number, so the screen reads it instead of working it out.
+    /// </summary>
+    public required IReadOnlyList<Domain.Matches.MatchPlayerSnapshot> Candidates { get; init; }
+
+    /// <summary>
+    /// The keeper the candidates would be shooting at, so each of them is presented with
+    /// the chance he would really have against him rather than a general one.
+    /// </summary>
+    public Domain.Matches.MatchPlayerSnapshot? DefendingGoalkeeper { get; init; }
+
+    /// <summary>
+    /// The order each side named, in the order it will take in. Both are sent, because a
+    /// manager watching a shootout gets to see the other club's five and not only his own —
+    /// and the one that is not his is the one the engine filled in.
+    /// </summary>
+    public required IReadOnlyList<Guid> HomeTakers { get; init; }
+
+    public required IReadOnlyList<Guid> AwayTakers { get; init; }
+
+    /// <summary>Every kick taken, in the order they were taken.</summary>
+    public required IReadOnlyList<ShootoutKickView> Kicks { get; init; }
+}
+
+/// <summary>One kick of a shootout, as the feed and the shootout panel both show it.</summary>
+public class ShootoutKickView
+{
+    public required Guid TeamId { get; init; }
+    public required Guid TakerId { get; init; }
+    public required bool Scored { get; init; }
 }
 
 /// <summary>

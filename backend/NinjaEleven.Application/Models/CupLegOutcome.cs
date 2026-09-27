@@ -1,4 +1,4 @@
-using NinjaEleven.Domain.Matches;
+using NinjaEleven.Domain.Competitions;
 
 namespace NinjaEleven.Application.Models;
 
@@ -7,13 +7,19 @@ namespace NinjaEleven.Application.Models;
 ///
 /// This is what the cup needs to hear about a match and nothing else. The service is not handed
 /// a <see cref="MatchState"/> and a fixture id because the cup is not a match: it is two
-/// matches, and what it has to know is the score of each and who was out there to take the
-/// penalties. Handing it the whole engine state would be handing it the means to re-decide the
+/// matches, and what it has to know is the score of each and how the shootout that settled it
+/// ended. Handing it the whole engine state would be handing it the means to re-decide the
 /// match, and the cup must never be able to contradict the result of a game somebody watched.
 /// </summary>
 public sealed record CupLegOutcome
 {
     public required Guid FixtureId { get; init; }
+
+    /// <summary>Who was at home in this leg.</summary>
+    public required Guid HomeTeamId { get; init; }
+
+    /// <summary>Who was away in this leg — the other club.</summary>
+    public required Guid AwayTeamId { get; init; }
 
     /// <summary>Goals by the club that was at home in this leg.</summary>
     public required int HomeScore { get; init; }
@@ -29,17 +35,15 @@ public sealed record CupLegOutcome
     public required int Seed { get; init; }
 
     /// <summary>
-    /// The men who would take the penalties, and the keeper each of them would face, keyed by
-    /// club. Keyed by club rather than by side on purpose: the two legs swap ends, so "home"
-    /// means one club in the first leg and the other in the second, and a shootout taken at the
-    /// end of a tie is taken by the same two clubs whoever was at home.
+    /// The shootout this leg went to, counted by this leg's sides, or null when it did not
+    /// go to one.
+    ///
+    /// It is the shootout the match played in front of the crowd, with the two managers'
+    /// own orders of takers, rather than anything the cup works out for itself afterwards, and
+    /// it counts this leg's sides rather than the tie's clubs, because the two legs swap ends
+    /// and the service that reads this back is the one that knows the swap. A cup that decided
+    /// a level tie by a rule of its own would be a cup whose penalties nobody in the stadium
+    /// had watched, and the eleven that played the tie would not be the eleven that won it.
     /// </summary>
-    public required IReadOnlyDictionary<Guid, PenaltyTaker> Takers { get; init; }
+    public ShootoutOutcome? Shootout { get; init; }
 }
-
-/// <summary>
-/// A side's penalty taker and the keeper he is up against.
-/// </summary>
-/// <param name="Taker">The man in front of the ball.</param>
-/// <param name="Keeper">The man in goal, or null when the other side has nobody in it.</param>
-public sealed record PenaltyTaker(MatchPlayerSnapshot Taker, MatchPlayerSnapshot? Keeper);

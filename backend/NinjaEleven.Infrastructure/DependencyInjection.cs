@@ -55,13 +55,37 @@ public static class DependencyInjection
         services.AddScoped<PlayerService>();
         services.AddScoped<SeasonService>();
         services.AddScoped<SeasonCalendarService>();
+        services.AddScoped<SeasonCloseService>();
         services.AddScoped<CompetitionService>();
         services.AddScoped<RoundService>();
         services.AddScoped<FixtureService>();
         // The cup advances on the finish of a match rather than on a timer, so it is a scoped
         // service the match service calls, not a hosted one that sweeps the ties on a schedule.
         services.AddScoped<CupProgressionService>();
+        // The matchday service starts the matches of a day, and the starting of a match is the
+        // match service's job, so the two need each other. The seam is closed here, with a
+        // scope of its own per match: a headless match of another club is started through
+        // exactly the same path a watched one is, and a whole wave of thirty-four matches
+        // must not be started inside one unit of work.
+        services.AddScoped(provider =>
+        {
+            var matchday = ActivatorUtilities.CreateInstance<MatchdayService>(provider);
+            var scopes = provider.GetRequiredService<IServiceScopeFactory>();
+
+            matchday.UseStarter(async (fixtureId, cancellationToken) =>
+            {
+                using var scope = scopes.CreateScope();
+                var matchService = scope.ServiceProvider.GetRequiredService<MatchService>();
+                var started = await matchService.StartAsync(
+                    fixtureId, headless: true, cancellationToken: cancellationToken);
+
+                return started.Accepted ? started.MatchId : null;
+            });
+
+            return matchday;
+        });
         services.AddScoped<MatchService>();
+        services.AddScoped<MatchContextService>();
         services.AddScoped<LeagueService>();
         services.AddScoped<StandingsService>();
         services.AddScoped<AttendanceContextFactory>();

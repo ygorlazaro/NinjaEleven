@@ -58,21 +58,83 @@ public static class EnergyRecoveryRules
     public const int MaxFullRest = 26;
 
     /// <summary>How much energy a window gives a player back.</summary>
-    public static int Recovery(WindowEffort effort, Common.IRandomSource random)
+    /// <remarks>
+    /// Three answers, as before, and then two multipliers over the top of whichever one it is:
+    ///
+    ///   **the minutes.** A recovery band is what a full match earns, so a man who was on the
+    ///   pitch for a fifth of it earns a fifth of it. Without this a substitute who came on
+    ///   at the eighty-fifth is paid the same as a man who played ninety, and he is paid it
+    ///   from a higher number, because the bench cost him nothing — so the player who did
+    ///   the least work ends the day in the best shape, which is the exact opposite of what a
+    ///   rotation is for. The band is the ceiling of the recovery, not the recovery itself.
+    ///
+    ///   **the age.** A window of rest is worth more to a young body than to an old one, and
+    ///   the same is true of the match that cost it, which is <see cref="NinjaEleven.Domain.Matches.PlayerMetric.AgeCost"/>
+    ///   said from the other side. It scales the bench band as well as the played one: a man
+    ///   who sat out a match at thirty-four is not as rested as a man who sat it out at
+    ///   twenty-one.
+    ///
+    /// A man who was never on the pitch is not scaled by the minutes — he has no minutes —
+    /// and is scaled by the age only when the caller knows it. A whole window off is the one
+    /// recovery in here that is not a consequence of the match, and it is left alone on
+    /// purpose: reading an age for a man the engine holds no snapshot of would cost a query
+    /// per player at the end of each of the thirty-four matches of a matchday, to move a
+    /// number nobody is reading.
+    /// </remarks>
+    /// <param name="effort">What he did in the window.</param>
+    /// <param name="minutesPlayed">How many minutes of the match he was on the pitch for.</param>
+    /// <param name="age">His age, when the caller has it.</param>
+    /// <param name="random">The window's own source, so a replayed match recovers the same way.</param>
+    public static int Recovery(
+        WindowEffort effort,
+        int minutesPlayed,
+        int? age,
+        Common.IRandomSource random)
     {
         ArgumentNullException.ThrowIfNull(random);
 
-        return effort switch
+        var (min, max) = BandOf(effort);
+        var recovery = random.Next(min, max + 1);
+
+        if (effort.PlayedInMatch)
         {
-            // A man who played has already been billed for the match inside it, and the bill
-            // is the drain the engine took off him tick by tick. He is given the small band
-            // here and the big one is never also given, or a squad would recover a season's
-            // worth of rest in a fortnight.
-            { PlayedInMatch: true } => random.Next(MinAfterPlaying, MaxAfterPlaying + 1),
+            var share = Math.Clamp(
+                (double)minutesPlayed / NinjaEleven.Domain.Matches.MatchRules.MinutesInAMatch,
+                0.0,
+                1.0);
 
-            { ClubPlayedInWindow: true } => random.Next(MinOnTheBench, MaxOnTheBench + 1),
+            recovery = (int)Math.Round(
+                recovery * share * (age is null ? 1.0 : NinjaEleven.Domain.Matches.PlayerMetric.AgeRecovery(age.Value)),
+                MidpointRounding.AwayFromZero);
 
-            _ => random.Next(MinFullRest, MaxFullRest + 1)
-        };
+            // A cameo is not nothing. He ran out onto a cold pitch, he warmed up in front of
+            // thirty thousand people, and he is a man who played football today.
+            return Math.Max(NinjaEleven.Domain.Matches.MatchRules.MinRecoveryForACameo, recovery);
+        }
+
+        if (age is null)
+        {
+            return recovery;
+        }
+
+        return Math.Max(
+            0,
+            (int)Math.Round(
+                recovery * NinjaEleven.Domain.Matches.PlayerMetric.AgeRecovery(age.Value),
+                MidpointRounding.AwayFromZero));
     }
+
+    /// <summary>The two ends of the band a window pays out of.</summary>
+    private static (int Min, int Max) BandOf(WindowEffort effort) => effort switch
+    {
+        // A man who played has already been billed for the match inside it, and the bill is
+        // the drain the engine took off him tick by tick. He is given the small band here and
+        // the big one is never also given, or a squad would recover a season's worth of rest
+        // in a fortnight.
+        { PlayedInMatch: true } => (MinAfterPlaying, MaxAfterPlaying),
+
+        { ClubPlayedInWindow: true } => (MinOnTheBench, MaxOnTheBench),
+
+        _ => (MinFullRest, MaxFullRest)
+    };
 }

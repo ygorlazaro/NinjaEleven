@@ -61,14 +61,18 @@ namespace NinjaEleven.Domain.Matches;
         /// <summary>Everything the gate took, in limos.</summary>
         public decimal GrossRevenue { get; private set; }
 
-        /// <summary>The two thirds the club that hosted the match took.</summary>
+        /// <summary>
+        /// The share the club that hosted the match took: two thirds of a division game, half
+        /// of a cup tie. It was stamped on the row rather than recomputed, so a ledger written
+        /// in one season still adds up after the rule that produced it has been read again.
+        /// </summary>
         public decimal HomeRevenue { get; private set; }
 
-        /// <summary>The one third the club that travelled took.</summary>
+        /// <summary>What the club that travelled took, which is the rest of the gate.</summary>
         public decimal AwayRevenue { get; private set; }
 
         /// <summary>The gate as one value, for a caller that wants all of it at once.</summary>
-        public GateReceipt Gate => GateReceipt.For(Attendance, TicketPrice);
+        public GateReceipt Gate => GateReceipt.For(Attendance, TicketPrice, GateSplit.For(CompetitionType));
 
         private Match() { }
 
@@ -131,7 +135,7 @@ namespace NinjaEleven.Domain.Matches;
 
         Attendance = AttendanceCalculator.Calculate(homeStadium, attendance, noise);
 
-        var gate = GateReceipt.For(Attendance, homeStadium.TicketPrice);
+        var gate = GateReceipt.For(Attendance, homeStadium.TicketPrice, GateSplit.For(CompetitionType));
         TicketPrice = gate.TicketPrice;
         GrossRevenue = gate.GrossRevenue;
         HomeRevenue = gate.HomeRevenue;
@@ -152,8 +156,18 @@ namespace NinjaEleven.Domain.Matches;
     /// Mirrors the engine's working memory onto the persisted row. This is how the
     /// clock, the score and the event sequence reach the database; the engine itself
     /// never writes.
+    ///
+    /// The half comes with it, because a leg that ends on penalties is not a match that
+    /// ended in the second half: a results screen that says otherwise is telling the
+    /// manager the ninety minutes were the whole of it. It is optional so a caller that is
+    /// only moving the clock on does not have to answer a question it was not asked.
     /// </summary>
-    public void ApplyEngineState(int minute, int homeScore, int awayScore, int sequence)
+    public void ApplyEngineState(
+        int minute,
+        int homeScore,
+        int awayScore,
+        int sequence,
+        MatchHalf? half = null)
     {
         if (minute < CurrentMinute)
         {
@@ -164,6 +178,11 @@ namespace NinjaEleven.Domain.Matches;
         HomeScore = homeScore;
         AwayScore = awayScore;
         Sequence = sequence;
+
+        if (half is { } value)
+        {
+            Half = value;
+        }
     }
 
     public void StartFirstHalf() => Status = MatchStatus.InProgress;

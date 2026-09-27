@@ -450,6 +450,64 @@ public static PenaltyTakerOptionsDto ToDto(this Application.Models.PenaltyTakerO
         .ToArray()
 };
 
+public static ShootoutDto? ToDto(this Application.Models.ShootoutView? shootout) => shootout is null
+    ? null
+    : new ShootoutDto
+    {
+        HomeTeamId = shootout.HomeTeamId,
+        AwayTeamId = shootout.AwayTeamId,
+        HomeTakesFirst = shootout.HomeTakesFirst,
+        NextTeamId = shootout.NextTeamId,
+        NextTakerId = shootout.NextTakerId,
+        HomeGoals = shootout.HomeGoals,
+        AwayGoals = shootout.AwayGoals,
+        HomeKicksTaken = shootout.HomeKicksTaken,
+        AwayKicksTaken = shootout.AwayKicksTaken,
+        IsSuddenDeath = shootout.IsSuddenDeath,
+        IsComplete = shootout.IsComplete,
+        WinnerTeamId = shootout.WinnerTeamId,
+        AwaitingOrder = shootout.AwaitingOrder,
+        Candidates = shootout.Candidates
+            .Select(player => player.ToDto(Domain.Matches.MatchEngine.PenaltyConversion(
+                player,
+                shootout.DefendingGoalkeeper)))
+            .ToArray(),
+        HomeTakers = shootout.HomeTakers,
+        AwayTakers = shootout.AwayTakers,
+        Kicks = shootout.Kicks
+            .Select(kick => new ShootoutKickDto
+            {
+                TeamId = kick.TeamId,
+                TakerId = kick.TakerId,
+                Scored = kick.Scored
+            })
+            .ToArray()
+    };
+
+public static MatchContextDto ToDto(this Application.Models.MatchContextView context) => new()
+{
+    SeasonName = context.SeasonName,
+    MatchDayNumber = context.MatchDayNumber,
+    CompetitionName = context.CompetitionName,
+    CompetitionType = context.CompetitionType,
+    EditionName = context.EditionName,
+    PhaseName = context.PhaseName,
+    LegLabel = context.LegLabel,
+    StadiumName = context.StadiumName,
+    StadiumCapacity = context.StadiumCapacity,
+    FirstLeg = context.FirstLeg is null
+        ? null
+        : new CupLegResultDto
+        {
+            HomeTeamId = context.FirstLeg.HomeTeamId,
+            HomeTeamName = context.FirstLeg.HomeTeamName,
+            HomeGoals = context.FirstLeg.HomeGoals,
+            AwayTeamId = context.FirstLeg.AwayTeamId,
+            AwayTeamName = context.FirstLeg.AwayTeamName,
+            AwayGoals = context.FirstLeg.AwayGoals
+        }
+};
+
     public static MatchStateDto ToDto(this Application.Models.MatchStateView state) => new()
     {
         MatchId = state.MatchId,
@@ -511,7 +569,8 @@ public static PenaltyTakerOptionsDto ToDto(this Application.Models.PenaltyTakerO
         FormationHome = state.FormationHome,
         FormationAway = state.FormationAway,
         Attendance = state.Attendance,
-        GateRevenue = state.GateRevenue
+        GateRevenue = state.GateRevenue,
+        Shootout = state.Shootout.ToDto()
     };
 
     public static MatchResultDto ToDto(this Application.Models.MatchResultView result) => new()
@@ -721,6 +780,10 @@ public static class TeamMatchRecordMapping
         GoalsFor = record.GoalsFor,
         GoalsAgainst = record.GoalsAgainst,
         RoundNumber = record.RoundNumber,
-        PlayedAt = record.PlayedAt
+        PlayedAt = record.PlayedAt,
+        SeasonName = record.SeasonName,
+        CompetitionName = record.CompetitionName,
+        PhaseName = record.PhaseName,
+        Attendance = record.Attendance
     };
 }

@@ -50,6 +50,21 @@ public class FinanceRepository : IFinanceRepository
                             && movement.Kind == kind,
                 cancellationToken);
 
+    public async Task<bool> ExistsWithReferenceAsync(
+        Guid teamId,
+        Guid seasonId,
+        FinanceMovementKind kind,
+        string reference,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.FinanceMovements
+            .AsNoTracking()
+            .AnyAsync(
+                movement => movement.TeamId == teamId
+                            && movement.SeasonId == seasonId
+                            && movement.Kind == kind
+                            && movement.Reference == reference,
+                cancellationToken);
+
     public async Task<IReadOnlyList<FinanceMovement>> ListAsync(
         Guid teamId,
         Guid? seasonId,

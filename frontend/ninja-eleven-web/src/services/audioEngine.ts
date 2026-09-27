@@ -33,9 +33,27 @@ const WHISTLE_EVENTS = new Set([
   'SecondHalfStarted', // the whistle that starts the second half
   'MatchFinished',     // the end of the match
   'Foul',              // the referee stops the game
+  // The shootout is a part of the match that ends in a whistle of its own, and the ninety
+  // minutes end in one as well: a tie that is level on the aggregate is not a match that
+  // stopped, it is a match that carried on at the spot.
+  'FullTimeReached',        // the end of the ninety minutes, when the tie is level
+  'PenaltyShootoutStarted', // the referee sends the sides to the spot
 ]);
 
+/**
+ * A goal is a goal, and a penalty converted at the spot is one. The shootout's kicks are
+ * their own event so the feed can say who took them, and a kick that goes in is a goal the
+ * crowd has just heard — the same sound, because that is what happened in the stadium.
+ */
 const GOAL_EVENTS = new Set(['GoalScored', 'OwnGoalScored']);
+
+/**
+ * A kick at the spot, which is a goal when it goes in and nothing at all when it does not.
+ * It is not in the goal set for that reason: the crowd does not cheer a penalty that was
+ * missed, and a shootout of five men and a stadium that booed every one of them would be a
+ * shootout nobody could watch.
+ */
+const SHOOTOUT_KICK = 'PenaltyShootoutKick';
 
 /**
  * How many refused sounds are remembered. Short on purpose: the sounds held back are the
@@ -207,13 +225,21 @@ class MatchAudioEngine {
    * for the moments the referee speaks and a goal for a goal, and silence for everything
    * else, because a corner is not worth a sound.
    */
-  reactToEvent(type: string): void {
-    if (WHISTLE_EVENTS.has(type)) {
+  reactToEvent(event: { type: string; scored?: boolean | null }): void {
+    if (WHISTLE_EVENTS.has(event.type)) {
       this.whistleBlow();
       return;
     }
 
-    if (GOAL_EVENTS.has(type)) {
+    if (event.type === SHOOTOUT_KICK) {
+      if (event.scored) {
+        this.goal();
+      }
+
+      return;
+    }
+
+    if (GOAL_EVENTS.has(event.type)) {
       this.goal();
     }
   }

@@ -400,6 +400,11 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("match_id");
 
+                    b.Property<string>("Reference")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("reference");
+
                     b.Property<Guid>("SeasonId")
                         .HasColumnType("uuid")
                         .HasColumnName("season_id");

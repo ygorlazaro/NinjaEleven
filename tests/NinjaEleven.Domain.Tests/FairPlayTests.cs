@@ -274,7 +274,7 @@ public class FairPlayTests
         engine.Initialize(state, 0);
 
         var keeper = state.HomeLineup.First(player => player.Position == Position.GK);
-        keeper.SendOff();
+        keeper.SendOff(0);
 
         Assert.False(state.HomeLineup.Any(player => player.KeepsGoal));
 

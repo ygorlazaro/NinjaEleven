@@ -27,4 +27,10 @@ public class TeamMatchRecord
     public int GoalsAgainst { get; init; }
     public int RoundNumber { get; init; }
     public DateTimeOffset PlayedAt { get; init; }
+
+    // Head-to-head specific fields
+    public string? SeasonName { get; init; }
+    public string? CompetitionName { get; init; }
+    public string? PhaseName { get; init; }
+    public int? Attendance { get; init; }
 }

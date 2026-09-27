@@ -161,6 +161,12 @@ public class MatchRepository : IMatchRepository
                     on fixture.HomeTeamId equals home.Id
                 join away in _dbContext.Teams.AsNoTracking()
                     on fixture.AwayTeamId equals away.Id
+                join compSeason in _dbContext.CompetitionSeasons.AsNoTracking()
+                    on round.CompetitionSeasonId equals compSeason.Id
+                join season in _dbContext.Seasons.AsNoTracking()
+                    on compSeason.SeasonId equals season.Id
+                join competition in _dbContext.Competitions.AsNoTracking()
+                    on compSeason.CompetitionId equals competition.Id
                 where (fixture.HomeTeamId == teamId || fixture.AwayTeamId == teamId)
                     && match.Status == MatchStatus.Finished
                 orderby match.CreatedAt descending, match.Id descending
@@ -173,7 +179,56 @@ public class MatchRepository : IMatchRepository
                     GoalsFor = fixture.HomeTeamId == teamId ? match.HomeScore : match.AwayScore,
                     GoalsAgainst = fixture.HomeTeamId == teamId ? match.AwayScore : match.HomeScore,
                     RoundNumber = round.Number,
-                    PlayedAt = match.CreatedAt
+                    PlayedAt = match.CreatedAt,
+                    SeasonName = season.Name,
+                    CompetitionName = competition.Name,
+                    PhaseName = compSeason.IsDivision ? $"Rodada {round.Number}" : (round.Window == 1 ? "Campeonato" : "Copa"),
+                    Attendance = match.Attendance
+                })
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<Application.Models.TeamMatchRecord>> GetHeadToHeadAsync(
+        Guid teamId,
+        Guid opponentId,
+        int limit,
+        CancellationToken cancellationToken = default) =>
+        await (
+                from match in _dbContext.Matches.AsNoTracking()
+                join fixture in _dbContext.Fixtures.AsNoTracking()
+                    on match.FixtureId equals fixture.Id
+                join round in _dbContext.Rounds.AsNoTracking()
+                    on fixture.RoundId equals round.Id
+                join home in _dbContext.Teams.AsNoTracking()
+                    on fixture.HomeTeamId equals home.Id
+                join away in _dbContext.Teams.AsNoTracking()
+                    on fixture.AwayTeamId equals away.Id
+                join compSeason in _dbContext.CompetitionSeasons.AsNoTracking()
+                    on round.CompetitionSeasonId equals compSeason.Id
+                join season in _dbContext.Seasons.AsNoTracking()
+                    on compSeason.SeasonId equals season.Id
+                join competition in _dbContext.Competitions.AsNoTracking()
+                    on compSeason.CompetitionId equals competition.Id
+                where match.Status == MatchStatus.Finished
+                    && (
+                        (fixture.HomeTeamId == teamId && fixture.AwayTeamId == opponentId) ||
+                        (fixture.HomeTeamId == opponentId && fixture.AwayTeamId == teamId)
+                    )
+                orderby match.CreatedAt descending, match.Id descending
+                select new Application.Models.TeamMatchRecord
+                {
+                    MatchId = match.Id,
+                    OpponentName = fixture.HomeTeamId == teamId ? away.Name : home.Name,
+                    OpponentTeamId = fixture.HomeTeamId == teamId ? away.Id : home.Id,
+                    IsHome = fixture.HomeTeamId == teamId,
+                    GoalsFor = fixture.HomeTeamId == teamId ? match.HomeScore : match.AwayScore,
+                    GoalsAgainst = fixture.HomeTeamId == teamId ? match.AwayScore : match.HomeScore,
+                    RoundNumber = round.Number,
+                    PlayedAt = match.CreatedAt,
+                    SeasonName = season.Name,
+                    CompetitionName = competition.Name,
+                    PhaseName = compSeason.IsDivision ? $"Rodada {round.Number}" : (round.Window == 1 ? "Campeonato" : "Copa"),
+                    Attendance = match.Attendance
                 })
             .Take(limit)
             .ToListAsync(cancellationToken);

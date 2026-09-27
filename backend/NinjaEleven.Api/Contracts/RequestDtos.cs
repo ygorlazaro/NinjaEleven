@@ -84,6 +84,30 @@ public class PenaltyTakerRequestDto
 }
 
 /// <summary>
+/// Names the order a club will take a shootout in, over the hub.
+///
+/// The order is a list rather than a single player because a shootout is not one kick: it is
+/// five of them, in an order the manager picks, and the men are the ones the engine says may
+/// take. The ids are the men themselves, in the order they will walk to the spot.
+/// </summary>
+public class NameShootoutOrderDto
+{
+    public Guid MatchId { get; init; }
+
+    public Guid TeamId { get; init; }
+
+    public List<Guid> TakerIds { get; init; } = new();
+}
+
+/// <summary>
+/// Chooses the order a club takes a shootout in, over REST.
+/// </summary>
+public class ShootoutOrderRequestDto
+{
+    public List<Guid> TakerIds { get; init; } = new();
+}
+
+/// <summary>
 /// Identifies the match a hub command applies to. Used by the commands that take
 /// nothing else: pause, resume and the second half.
 /// </summary>

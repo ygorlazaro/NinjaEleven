@@ -132,13 +132,13 @@ export function energyPercent(energy: number): string {
 
 /**
  * Converts a numeric star rating (0-5, in 0.5 increments) to a string of Unicode stars.
- * e.g., 3.5 -> "★★★½", 4.0 -> "★★★★"
+ * e.g., 3.5 -> "★★★⯨", 4.0 -> "★★★★"
  */
 export function starsToString(stars: number): string {
   const full = Math.floor(stars);
   const hasHalf = stars - full >= 0.5;
   let result = '★'.repeat(full);
-  if (hasHalf) result += '½';
+  if (hasHalf) result += '⯨';
   return result;
 }
 
@@ -170,6 +170,11 @@ const EVENT_ICONS: Record<string, string> = {
   StoppageTimeAdded: '⏱',
   HalfTimeReached: '⏸',
   SecondHalfStarted: '▶',
+  // A tie level after ninety minutes is not the end of the match: the clock stops, the
+  // whistle goes, and the two sides go to the spot.
+  FullTimeReached: '⏱',
+  PenaltyShootoutStarted: '⚽',
+  PenaltyShootoutKick: '🎯',
   MatchFinished: '⏹'
 };
 
@@ -190,6 +195,7 @@ export function convertToFeedEvent(event: any): FeedEvent {
     awayScore: event.awayScore,
     onTarget: event.type === 'Shot' || event.type === 'Save',
     isGoal: event.type === 'GoalScored' || event.type === 'OwnGoalScored',
+    scored: event.type === 'PenaltyShootoutKick' ? event.icon === 'goal' : null,
   };
 }
 
