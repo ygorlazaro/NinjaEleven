@@ -111,6 +111,7 @@ public class MatchRepository : IMatchRepository
                     Started = statistics.Started,
                     CameOn = statistics.CameOn,
                     SubbedOff = statistics.SubbedOff,
+                    WasOnBenchUnused = statistics.WasOnBenchUnused,
                     Goals = statistics.Goals,
                     OwnGoals = statistics.OwnGoals,
                     Saves = statistics.Saves,

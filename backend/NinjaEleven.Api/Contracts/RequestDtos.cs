@@ -36,7 +36,7 @@ public class SetupLeagueRequestDto
 }
 
 /// <summary>
-/// Optional seed for a new match, plus the eleven chosen by the manager. Omitting the
+/// Optional seed for a new match, plus the eleven and bench chosen by the manager. Omitting the
 /// eleven lets the backend pick the strongest available players, which is what the
 /// opponent always does.
 /// </summary>
@@ -47,6 +47,8 @@ public class StartMatchRequestDto
     public Guid? UserTeamId { get; init; }
 
     public IReadOnlyList<Guid> StarterIds { get; init; } = Array.Empty<Guid>();
+
+    public IReadOnlyList<Guid> BenchIds { get; init; } = Array.Empty<Guid>();
 
     /// <summary>
     /// The shape the manager ordered his club to be built in, by code ("4231"). Omitted

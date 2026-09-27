@@ -112,6 +112,16 @@ public class MatchStateView
 
     public required string FormationAway { get; init; }
 
+    /// <summary>
+    /// Attendance at kick-off.
+    /// </summary>
+    public int Attendance { get; init; }
+
+    /// <summary>
+    /// Gate revenue in limos.
+    /// </summary>
+    public decimal GateRevenue { get; init; }
+
     public PenaltyTakerOptions Penalty { get; init; } = new();
 
     /// <summary>

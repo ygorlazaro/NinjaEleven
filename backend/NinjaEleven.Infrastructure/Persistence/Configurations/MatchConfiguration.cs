@@ -45,6 +45,8 @@ public class MatchConfiguration : IEntityTypeConfiguration<Match>
         builder.Property(m => m.AwayScore).IsRequired();
         builder.Property(m => m.Sequence).IsRequired();
         builder.Property(m => m.Seed).IsRequired();
+        builder.Property(m => m.Attendance).IsRequired().HasDefaultValue(0);
+        builder.Property(m => m.GateRevenue).HasPrecision(12, 2).IsRequired().HasDefaultValue(0m);
 
         // A fixture can hold more than one match: a match interrupted by a restart is
         // abandoned and the fixture is played again, so the old row stays as history.

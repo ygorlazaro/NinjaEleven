@@ -21,6 +21,7 @@ public class NinjaElevenDbContext : DbContext
     public DbSet<PlayerSeasonState> PlayerSeasonStates => Set<PlayerSeasonState>();
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<TeamMembership> TeamMemberships => Set<TeamMembership>();
+    public DbSet<Stadium> Stadiums => Set<Stadium>();
 
     public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Competition> Competitions => Set<Competition>();

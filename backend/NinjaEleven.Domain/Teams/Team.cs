@@ -12,6 +12,8 @@ public class Team
     public string PrimaryColor { get; private set; } = string.Empty;
     public string SecondaryColor { get; private set; } = string.Empty;
     public int Rating { get; private set; }
+    public Guid? StadiumId { get; private set; }
+    public Stadium? Stadium { get; private set; }
 
     private Team() { }
 
@@ -31,5 +33,11 @@ public class Team
             SecondaryColor = string.IsNullOrEmpty(secondaryColor) ? "#1f3c56" : secondaryColor,
             Rating = Math.Max(1, Math.Min(100, rating)),
         };
+    }
+
+    public void SetStadium(Stadium stadium)
+    {
+        Stadium = stadium;
+        StadiumId = stadium?.Id;
     }
 }

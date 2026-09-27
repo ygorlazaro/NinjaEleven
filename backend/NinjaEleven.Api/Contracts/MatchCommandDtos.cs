@@ -99,12 +99,14 @@ public class MatchPlayerDto
     /// </summary>
     public int MatchSaves { get; init; }
 
-    /// <summary>
-    /// The chance this player would convert a penalty right now, between 0 and 1. It is
-    /// filled only on the candidates of a penalty waiting for a taker, and it is the same
-    /// number the engine rolls, so the manager compares takers instead of guessing.
-    /// </summary>
-    public double? PenaltyChance { get; init; }
+/// <summary>
+/// The chance this player would convert a penalty right now, between 0 and 1. It is
+/// filled only on the candidates of a penalty waiting for a taker, and it is the same
+/// number the engine rolls, so the manager compares takers instead of guessing.
+/// </summary>
+public double? PenaltyChance { get; init; }
+
+public double Stars { get; init; }
 }
 
 /// <summary>
@@ -163,6 +165,16 @@ public class MatchStateDto
     public string FormationHome { get; init; } = string.Empty;
 
     public string FormationAway { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Attendance at kick-off.
+    /// </summary>
+    public int Attendance { get; init; }
+
+    /// <summary>
+    /// Gate revenue in limos.
+    /// </summary>
+    public decimal GateRevenue { get; init; }
 }
 
 /// <summary>
@@ -326,4 +338,13 @@ public class MatchdayReportEntryDto
     public int HomeGoals { get; init; }
     public int AwayGoals { get; init; }
     public string Summary { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// The eleven plus bench the staff would pick for a club and shape.
+/// </summary>
+public class SquadSuggestionDto
+{
+    public IReadOnlyList<Guid> StarterIds { get; init; } = Array.Empty<Guid>();
+    public IReadOnlyList<Guid> BenchIds { get; init; } = Array.Empty<Guid>();
 }

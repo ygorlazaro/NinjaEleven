@@ -99,12 +99,11 @@ export const MatchApi = {
 
   // The commands drive the match engine on the backend. The engine returns the
   // matchId that every later call is keyed by; the feed itself arrives over SignalR.
-  // starterIds is the eleven chosen on the lineup screen; the backend validates it
-  // again and refuses an illegal one. tacticCode is the shape the manager ordered —
-  // it decides which men the staff fill each line with, and the engine still measures
-  // the eleven that actually turns out.
-  start: (fixtureId: string, userTeamId?: string, starterIds?: string[], tacticCode?: string) =>
-    api.post<MatchCommandResult>(`/match/start/${fixtureId}`, { userTeamId, starterIds, tacticCode })
+  // starterIds is the eleven chosen on the lineup screen; benchIds is the bench;
+  // the backend validates both and refuses an illegal one. tacticCode is the shape
+  // the manager ordered — it decides which men the staff fill each line with.
+  start: (fixtureId: string, userTeamId?: string, starterIds?: string[], benchIds?: string[], tacticCode?: string) =>
+    api.post<MatchCommandResult>(`/match/start/${fixtureId}`, { userTeamId, starterIds, benchIds, tacticCode })
       .then(r => r.data),
   // The tactics the catalogue offers, and the eleven the staff would pick for one of
   // them. Both come from the backend so the screen is not the place the shape is
@@ -116,7 +115,7 @@ export const MatchApi = {
     api.get<MatchdayReportDto>(`/match/round-report/${roundId}`).then(r => r.data),
   getSuggestedEleven: (teamId: string, seasonId: string, tacticCode?: string) =>
     api
-      .get<Guid[]>(
+      .get<SquadSuggestionDto>(
         `/match/squad-suggestion?teamId=${teamId}&seasonId=${seasonId}` +
           (tacticCode ? `&tacticCode=${encodeURIComponent(tacticCode)}` : '')
       )

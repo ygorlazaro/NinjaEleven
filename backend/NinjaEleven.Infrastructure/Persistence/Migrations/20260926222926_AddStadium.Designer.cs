@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NinjaEleven.Infrastructure.Persistence;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NinjaEleven.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NinjaElevenDbContext))]
-    partial class NinjaElevenDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260926222926_AddStadium")]
+    partial class AddStadium
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -215,12 +218,6 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<int>("Attendance")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("attendance");
-
                     b.Property<int>("AwayScore")
                         .HasColumnType("integer")
                         .HasColumnName("away_score");
@@ -240,13 +237,6 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("FixtureId")
                         .HasColumnType("uuid")
                         .HasColumnName("fixture_id");
-
-                    b.Property<decimal>("GateRevenue")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(12, 2)
-                        .HasColumnType("numeric(12,2)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("gate_revenue");
 
                     b.Property<string>("Half")
                         .IsRequired()
@@ -418,10 +408,6 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                     b.Property<bool>("WasInjured")
                         .HasColumnType("boolean")
                         .HasColumnName("was_injured");
-
-                    b.Property<bool>("WasOnBenchUnused")
-                        .HasColumnType("boolean")
-                        .HasColumnName("was_on_bench_unused");
 
                     b.Property<int>("YellowCards")
                         .HasColumnType("integer")

@@ -315,7 +315,7 @@ public class MatchServiceTests
         var service = CreateService();
         var chosen = HomeSquadIds().Take(SquadSize).ToList();
         var orphan = Match.Create(_fixture.Id, _home.Id, _away.Id);
-        orphan.KickOff(11);
+        orphan.KickOff(11, null, 0, 0);
         orphan.StartFirstHalf();
         orphan.ApplyEngineState(20, 1, 0, 6);
         _fixture.MarkInProgress();

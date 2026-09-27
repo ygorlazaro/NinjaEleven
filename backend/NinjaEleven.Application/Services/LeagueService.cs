@@ -7,6 +7,7 @@ using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Teams;
+using NinjaEleven.Domain.Players;
 
 namespace NinjaEleven.Application.Services;
 
@@ -206,51 +207,73 @@ public class LeagueService
         CancellationToken cancellationToken = default) =>
         await _roundRepository.ListByCompetitionSeasonAsync(competitionSeasonId, cancellationToken);
 
-    /// <summary>
-    /// Classification table of one competition edition. Tiebreakers, in order: points,
-    /// goal difference, goals scored, head-to-head, red cards, yellow cards.
-    /// </summary>
-    public async Task<IReadOnlyList<StandingRow>> GetStandingsAsync(
-        Guid competitionSeasonId,
-        CancellationToken cancellationToken = default)
+/// <summary>
+/// Classification table of one competition edition. Tiebreakers, in order: points,
+/// goal difference, goals scored, head-to-head, red cards, yellow cards.
+/// </summary>
+public async Task<IReadOnlyList<StandingRow>> GetStandingsAsync(
+    Guid competitionSeasonId,
+    CancellationToken cancellationToken = default)
+{
+    var rounds = await _roundRepository.ListByCompetitionSeasonAsync(competitionSeasonId, cancellationToken);
+    if (rounds.Count == 0)
     {
-        var rounds = await _roundRepository.ListByCompetitionSeasonAsync(competitionSeasonId, cancellationToken);
-        if (rounds.Count == 0)
-        {
-            throw new EntityNotFoundException("CompetitionSeason", competitionSeasonId);
-        }
-
-        var roundIds = rounds.Select(round => round.Id).ToHashSet();
-        var fixtures = (await _fixtureRepository.ListAsync(cancellationToken))
-            .Where(fixture => roundIds.Contains(fixture.RoundId))
-            .ToList();
-
-        var results = await GetFinishedResultsAsync(fixtures, cancellationToken);
-        var participants = await _competitionRepository.ListParticipantsAsync(competitionSeasonId, cancellationToken);
-
-        var teamIds = participants
-            .Select(participant => participant.TeamId)
-            .Concat(fixtures.Select(fixture => fixture.HomeTeamId))
-            .Concat(fixtures.Select(fixture => fixture.AwayTeamId))
-            .Distinct()
-            .ToList();
-
-        var rows = teamIds
-            .Select(teamId => BuildRow(teamId, results))
-            .ToList();
-
-        var teams = await _teamRepository.ListAsync(cancellationToken);
-        var teamsById = teams.ToDictionary(team => team.Id);
-
-        var standings = SortStandings(rows, results);
-
-        foreach (var row in standings)
-        {
-            row.Team = teamsById.GetValueOrDefault(row.TeamId);
-        }
-
-        return standings;
+        throw new EntityNotFoundException("CompetitionSeason", competitionSeasonId);
     }
+
+    var roundIds = rounds.Select(round => round.Id).ToHashSet();
+    var fixtures = (await _fixtureRepository.ListAsync(cancellationToken))
+        .Where(fixture => roundIds.Contains(fixture.RoundId))
+        .ToList();
+
+    var results = await GetFinishedResultsAsync(fixtures, cancellationToken);
+    var participants = await _competitionRepository.ListParticipantsAsync(competitionSeasonId, cancellationToken);
+
+    var teamIds = participants
+        .Select(participant => participant.TeamId)
+        .Concat(fixtures.Select(fixture => fixture.HomeTeamId))
+        .Concat(fixtures.Select(fixture => fixture.AwayTeamId))
+        .Distinct()
+        .ToList();
+
+    // Calculate team stars for each club in the competition
+    var competitionSeason = await _competitionRepository.GetSeasonByIdAsync(
+        rounds.First().CompetitionSeasonId, cancellationToken);
+    var actualSeasonId = competitionSeason?.SeasonId ?? Guid.Empty;
+
+    var teamStars = new Dictionary<Guid, double>();
+    foreach (var teamId in teamIds)
+    {
+        var squad = await _teamRepository.GetSquadAsync(teamId, actualSeasonId, cancellationToken);
+        var playerIds = squad.Select(m => m.PlayerId).ToList();
+        var players = new List<Domain.Players.Player>();
+        foreach (var playerId in playerIds)
+        {
+            var player = await _playerRepository.GetAsync(playerId, cancellationToken);
+            if (player is not null)
+            {
+                players.Add(player);
+            }
+        }
+        teamStars[teamId] = Domain.Players.PlayerRating.CalculateTeamStars(players);
+    }
+
+    var rows = teamIds
+        .Select(teamId => BuildRow(teamId, results, teamStars.GetValueOrDefault(teamId, 0)))
+        .ToList();
+
+    var teams = await _teamRepository.ListAsync(cancellationToken);
+    var teamsById = teams.ToDictionary(team => team.Id);
+
+    var standings = SortStandings(rows, results);
+
+    foreach (var row in standings)
+    {
+        row.Team = teamsById.GetValueOrDefault(row.TeamId);
+    }
+
+    return standings;
+}
 
     public async Task<StandingRow> GetStandingAsync(
         Guid competitionSeasonId,
@@ -338,52 +361,53 @@ public class LeagueService
         return rows;
     }
 
-    private static StandingRow BuildRow(Guid teamId, IReadOnlyCollection<MatchResultRow> results)
+private static StandingRow BuildRow(Guid teamId, IReadOnlyCollection<MatchResultRow> results, double stars)
+{
+    var played = 0;
+    var wins = 0;
+    var draws = 0;
+    var losses = 0;
+    var goalsFor = 0;
+    var goalsAgainst = 0;
+    var yellowCards = 0;
+    var redCards = 0;
+
+    foreach (var result in results)
     {
-        var played = 0;
-        var wins = 0;
-        var draws = 0;
-        var losses = 0;
-        var goalsFor = 0;
-        var goalsAgainst = 0;
-        var yellowCards = 0;
-        var redCards = 0;
-
-        foreach (var result in results)
+        var isHome = result.HomeTeamId == teamId;
+        if (!isHome && result.AwayTeamId != teamId)
         {
-            var isHome = result.HomeTeamId == teamId;
-            if (!isHome && result.AwayTeamId != teamId)
-            {
-                continue;
-            }
-
-            var scored = isHome ? result.HomeGoals : result.AwayGoals;
-            var conceded = isHome ? result.AwayGoals : result.HomeGoals;
-
-            played++;
-            goalsFor += scored;
-            goalsAgainst += conceded;
-            yellowCards += isHome ? result.HomeYellowCards : result.AwayYellowCards;
-            redCards += isHome ? result.HomeRedCards : result.AwayRedCards;
-
-            if (scored > conceded) wins++;
-            else if (scored == conceded) draws++;
-            else losses++;
+            continue;
         }
 
-        return new StandingRow
-        {
-            TeamId = teamId,
-            Played = played,
-            Wins = wins,
-            Draws = draws,
-            Losses = losses,
-            GoalsFor = goalsFor,
-            GoalsAgainst = goalsAgainst,
-            YellowCards = yellowCards,
-            RedCards = redCards
-        };
+        var scored = isHome ? result.HomeGoals : result.AwayGoals;
+        var conceded = isHome ? result.AwayGoals : result.HomeGoals;
+
+        played++;
+        goalsFor += scored;
+        goalsAgainst += conceded;
+        yellowCards += isHome ? result.HomeYellowCards : result.AwayYellowCards;
+        redCards += isHome ? result.HomeRedCards : result.AwayRedCards;
+
+        if (scored > conceded) wins++;
+        else if (scored == conceded) draws++;
+        else losses++;
     }
+
+    return new StandingRow
+    {
+        TeamId = teamId,
+        Played = played,
+        Wins = wins,
+        Draws = draws,
+        Losses = losses,
+        GoalsFor = goalsFor,
+        GoalsAgainst = goalsAgainst,
+        YellowCards = yellowCards,
+        RedCards = redCards,
+        Stars = stars
+    };
+}
 
     /// <summary>
     /// Applies the tiebreakers of the competition. Teams tied on points, goal difference

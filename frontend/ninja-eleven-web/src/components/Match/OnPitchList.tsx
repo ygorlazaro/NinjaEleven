@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import type { Guid, MatchPlayerDto } from '@/types';
-import { positionLabel, sortByPosition } from '@/services/formatters';
+import { positionLabel, sortByPosition, starsToString } from '@/services/formatters';
 import EnergyBar from '@/components/Match/EnergyBar';
 import { PlayerName } from '@/components/Common/Names';
 
@@ -58,6 +58,7 @@ const OnPitchList: React.FC<OnPitchListProps> = ({ players, onSelect, ballCarrie
             <span className="pc-pos">{positionLabel(p.position)}</span>
             <span className="pc-name">
               <PlayerName playerId={p.playerId}>{p.name}</PlayerName>
+              <span className="pc-stars" style={{ color: 'var(--accent)', marginLeft: '6px' }}>{starsToString(p.stars)}</span>
             </span>
             <span className="on-pitch-icons">
               {/* The card under the scoreboard counts this match, not the season: a striker

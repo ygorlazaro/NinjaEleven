@@ -79,6 +79,19 @@ button { cursor: pointer; }
 .standings td { padding: 8px 5px; border-top: 1px solid rgba(34, 56, 75, .65); text-align: center; }
 .standings td:nth-child(2) { text-align: left; }
 .standings tr.user-row { background: color-mix(in srgb, var(--team-primary) 10%, transparent); box-shadow: inset 3px 0 var(--team-primary); }
+.standings tr.projected { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.standings tr.current-match { background: color-mix(in srgb, var(--team-primary) 10%, transparent); }
+.standings tr.current-match.projected { background: color-mix(in srgb, var(--accent) 8%, var(--team-primary) 10%); }
+.standings td b { color: var(--text); }
+.standings .position-cell { display: inline-flex; align-items: center; gap: 4px; }
+.standings .pos-change { font-size: 9px; font-weight: bold; }
+.standings .pos-change.up { color: var(--success); }
+.standings .pos-change.down { color: var(--danger); }
+.standings .points-delta { font-weight: normal; }
+.standings .match-indicator { font-size: 10px; margin-left: 4px; }
+.live-badge { animation: pulse 1s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.standings-legend { border-top: 1px solid var(--line); padding-top: 8px; }
 .team-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 
 /* A played round, told back. The scoreline is the shape; the summary underneath is the
@@ -155,6 +168,8 @@ button { cursor: pointer; }
 .team-view-table tr:hover { background: #0a1520; }
 
 .match-header { padding: 16px 20px 18px; }
+.match-attendance { margin-top: 10px; font-size: 12px; color: var(--muted); }
+.match-attendance b { color: var(--text); }
 .competition { font-size: 11px; color: var(--muted); letter-spacing: .13em; text-transform: uppercase; }
 .scoreline { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 18px; margin-top: 10px; }
 .team-name { font-size: 25px; font-weight: 850; }
@@ -221,7 +236,7 @@ button { cursor: pointer; }
    is read. One card per player, with what happened to him and his energy, and clickable
    while the match is being played to open a substitution. */
 .on-pitch-list {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 5px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 5px;
   margin-top: 12px;
 }
 .on-pitch-list-wrap { margin-top: 12px; }
@@ -350,6 +365,8 @@ button { cursor: pointer; }
 .matchday-row.live { border-left-color: var(--accent); }
 .matchday-row.played { opacity: .82; }
 .matchday-row.user-fixture { border-color: var(--accent); }
+.matchday-row.clickable { cursor: pointer; transition: .15s; }
+.matchday-row.clickable:hover { background: #0e1c29; border-color: #46657d; }
 
 /* The last thing the other match said. A scoreline with no words under it is a table of
    results; this is the one line that says the game is being played, in the words that
@@ -402,7 +419,7 @@ button { cursor: pointer; }
 .bar.right div { background: var(--red); margin-left: auto; }
 
 .lineup { font-size: 12px; }
-.player-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 8px; }
+.player-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-top: 8px; }
 .player-card {
   padding: 10px; background: #0a1520; border: 1px solid var(--line); border-radius: 9px;
   cursor: pointer; transition: .15s; min-width: 0;
@@ -552,6 +569,7 @@ button { cursor: pointer; }
 .squad-row:hover { background: #11212d; }
 .squad-row.selected { background: #14293a; box-shadow: inset 3px 0 0 var(--accent); }
 .squad-row.reserve { opacity: .8; }
+.squad-row.bench { background: #0d1a25; box-shadow: inset 3px 0 0 var(--muted); }
 .squad-row.unavailable { opacity: .5; cursor: not-allowed; }
 .squad-row .col-pos { width: 42px; padding: 7px 6px; }
 .squad-row .col-name { padding: 7px 10px; }
@@ -561,16 +579,33 @@ button { cursor: pointer; }
 .squad-row.unavailable .col-status { color: var(--red); }
 .pos-badge { display: inline-block; min-width: 34px; text-align: center; font-size: 10px; font-weight: 950; color: var(--accent); border: 1px solid var(--line); border-radius: 6px; padding: 3px 0; }
 
+/* Squad sections for starters and bench */
+.squad-section {
+  margin-top: 16px;
+}
+.squad-section:first-child {
+  margin-top: 8px;
+}
+.squad-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--accent);
+  margin: 0 0 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+
 /* A player takes two lines: the first one is who he is and what his season looks like, the
    second is the attributes behind it. The attributes row carries no border of its own and
    no zebra of its own, so both lines read as one card. */
 .squad-attrs-row td { border-top: 0; padding: 0 10px 8px; }
 .squad-attrs-row { cursor: pointer; }
 .squad-attrs-row.selected { box-shadow: none; }
-.squad-attrs { display: flex; flex-wrap: wrap; gap: 4px; }
+.squad-attrs { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .attr-chip {
-  padding: 2px 6px; border: 1px solid var(--line); border-radius: 5px; background: #0d1a25;
-  font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums;
+  padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: #0d1a25;
+  font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .attr-chip b { color: var(--text); font-weight: 800; }
 
@@ -677,8 +712,10 @@ button { cursor: pointer; }
 .history-table td { padding: 7px 8px; border-top: 1px solid var(--line); }
 .history-row { cursor: pointer; }
 .history-row:hover { background: #122334; }
+.history-row.bench-unused { background: #0d1a25; opacity: 0.8; }
 .history-score { font-variant-numeric: tabular-nums; font-weight: 800; white-space: nowrap; }
 .history-note { color: var(--muted); font-size: 10px; }
+.history-note.bench-unused-badge { color: var(--orange); font-weight: 700; }
 .history-row.result-v .history-score { color: var(--green); }
 .history-row.result-d .history-score { color: var(--red); }
 .history-row.result-e .history-score { color: var(--muted); }

@@ -19,6 +19,7 @@ public class StandingRow
     public int GoalsAgainst { get; init; }
     public int YellowCards { get; init; }
     public int RedCards { get; init; }
+    public double Stars { get; init; }
 
     public int GoalDifference => GoalsFor - GoalsAgainst;
 

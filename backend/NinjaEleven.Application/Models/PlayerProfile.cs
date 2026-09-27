@@ -47,13 +47,14 @@ public class PlayerProfile
 /// <summary>
 /// What a player has done, summed over a set of matches. Appearances keep the two things a
 /// single number loses apart: games started and games entered off the bench, which is what
-/// "14 (3)" is made of.
+/// "14 (3) [2]" is made of.
 /// </summary>
 public class PlayerCareerLine
 {
     public int Appearances { get; set; }
     public int Started { get; set; }
     public int CameOn { get; set; }
+    public int BenchUnused { get; set; }
     public int Goals { get; set; }
     public int OwnGoals { get; set; }
     public int Saves { get; set; }
@@ -77,6 +78,7 @@ public class PlayerMatchLine
     public bool Started { get; set; }
     public bool CameOn { get; set; }
     public bool SubbedOff { get; set; }
+    public bool WasOnBenchUnused { get; set; }
     public int Goals { get; set; }
     public int OwnGoals { get; set; }
     public int Saves { get; set; }
@@ -93,29 +95,30 @@ public class PlayerMatchLine
 }
 
 /// <summary>
-/// A player's line in a match, with the match itself already resolved.
-///
-/// The history is read in one query rather than a query per row: a striker with a hundred
-/// appearances would otherwise cost a hundred round trips to draw a table, and a screen
-/// that took that long to open would be a screen nobody opens.
-/// </summary>
-public class PlayerMatchRecord
-{
-    public Guid MatchId { get; set; }
-    public Guid? SeasonId { get; set; }
-    public bool Started { get; set; }
-    public bool CameOn { get; set; }
-    public bool SubbedOff { get; set; }
-    public int Goals { get; set; }
-    public int OwnGoals { get; set; }
-    public int Saves { get; set; }
-    public int YellowCards { get; set; }
-    public int RedCards { get; set; }
-    public bool WasInjured { get; set; }
-    public bool InjuredOff { get; set; }
-    public bool IsHome { get; set; }
-    public string OpponentName { get; set; } = string.Empty;
-    public int HomeGoals { get; set; }
-    public int AwayGoals { get; set; }
-    public int RoundNumber { get; set; }
-}
+    /// A player's line in a match, with the match itself already resolved.
+    ///
+    /// The history is read in one query rather than a query per row: a striker with a hundred
+    /// appearances would otherwise cost a hundred round trips to draw a table, and a screen
+    /// that took that long to open would be a screen nobody opens.
+    /// </summary>
+    public class PlayerMatchRecord
+    {
+        public Guid MatchId { get; set; }
+        public Guid? SeasonId { get; set; }
+        public bool Started { get; set; }
+        public bool CameOn { get; set; }
+        public bool SubbedOff { get; set; }
+        public bool WasOnBenchUnused { get; set; }
+        public int Goals { get; set; }
+        public int OwnGoals { get; set; }
+        public int Saves { get; set; }
+        public int YellowCards { get; set; }
+        public int RedCards { get; set; }
+        public bool WasInjured { get; set; }
+        public bool InjuredOff { get; set; }
+        public bool IsHome { get; set; }
+        public string OpponentName { get; set; } = string.Empty;
+        public int HomeGoals { get; set; }
+        public int AwayGoals { get; set; }
+        public int RoundNumber { get; set; }
+    }

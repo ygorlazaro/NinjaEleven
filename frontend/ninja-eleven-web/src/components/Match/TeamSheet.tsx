@@ -1,6 +1,6 @@
 import React from 'react';
 import type { MatchLineupDto, MatchPlayerDto } from '@/types';
-import { positionLabel, sortByPosition } from '@/services/formatters';
+import { positionLabel, sortByPosition, starsToString } from '@/services/formatters';
 import EnergyBar from '@/components/Match/EnergyBar';
 import SubstitutionPanel from '@/components/Match/SubstitutionPanel';
 import { ClubName, PlayerName } from '@/components/Common/Names';
@@ -48,21 +48,51 @@ const TeamSheet: React.FC<TeamSheetProps> = ({
       )}
 
       <div className="half-sub-area" style={{ marginTop: '14px' }}>
-        <div className="half-sub-help">Em campo — {isUserHome ? <ClubName teamId={lineup.homeTeam.id}>{lineup.homeTeam.name}</ClubName> : <ClubName teamId={lineup.awayTeam.id}>{lineup.awayTeam.name}</ClubName>}</div>
+        <div className="half-sub-help">Em campo — {isUserHome ? (
+          <>
+            <ClubName teamId={lineup.homeTeam.id}>{lineup.homeTeam.name}</ClubName>
+            <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(lineup.homeTeam.stars)}</span>
+          </>
+        ) : (
+          <>
+            <ClubName teamId={lineup.awayTeam.id}>{lineup.awayTeam.name}</ClubName>
+            <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(lineup.awayTeam.stars)}</span>
+          </>
+        )}</div>
         <div className="player-grid">
           {sortByPosition(onPitch).map(p => <SheetCard key={p.playerId} player={p} />)}
         </div>
       </div>
 
       <div className="half-sub-area" style={{ marginTop: '14px' }}>
-        <div className="half-sub-help">Banco — {isUserHome ? <ClubName teamId={lineup.homeTeam.id}>{lineup.homeTeam.name}</ClubName> : <ClubName teamId={lineup.awayTeam.id}>{lineup.awayTeam.name}</ClubName>}</div>
+        <div className="half-sub-help">Banco — {isUserHome ? (
+          <>
+            <ClubName teamId={lineup.homeTeam.id}>{lineup.homeTeam.name}</ClubName>
+            <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(lineup.homeTeam.stars)}</span>
+          </>
+        ) : (
+          <>
+            <ClubName teamId={lineup.awayTeam.id}>{lineup.awayTeam.name}</ClubName>
+            <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(lineup.awayTeam.stars)}</span>
+          </>
+        )}</div>
         <div className="bench-grid">
           {sortByPosition(bench).map(p => <SheetCard key={p.playerId} player={p} isBench />)}
         </div>
       </div>
 
       <div className="half-sub-area" style={{ marginTop: '14px' }}>
-        <div className="half-sub-help">Em campo — {isUserHome ? <ClubName teamId={lineup.awayTeam.id}>{lineup.awayTeam.name}</ClubName> : <ClubName teamId={lineup.homeTeam.id}>{lineup.homeTeam.name}</ClubName>}</div>
+        <div className="half-sub-help">Em campo — {isUserHome ? (
+          <>
+            <ClubName teamId={lineup.awayTeam.id}>{lineup.awayTeam.name}</ClubName>
+            <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(lineup.awayTeam.stars)}</span>
+          </>
+        ) : (
+          <>
+            <ClubName teamId={lineup.homeTeam.id}>{lineup.homeTeam.name}</ClubName>
+            <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(lineup.homeTeam.stars)}</span>
+          </>
+        )}</div>
         <div className="player-grid">
           {sortByPosition(opponentOnPitch).map(p => <SheetCard key={p.playerId} player={p} opponent />)}
         </div>
@@ -93,6 +123,7 @@ const SheetCard: React.FC<SheetCardProps> = ({ player, isBench = false, opponent
       </span>
       <span className="player-card__name">
         <PlayerName playerId={player.playerId}>{player.name}</PlayerName>
+        <span className="player-stars" style={{ color: 'var(--accent)', marginLeft: '6px' }}>{starsToString(player.stars)}</span>
       </span>
       <span className="player-energy">{Math.round(player.energy)}%</span>
     </div>

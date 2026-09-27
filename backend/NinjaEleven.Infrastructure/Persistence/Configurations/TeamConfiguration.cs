@@ -19,6 +19,11 @@ public class TeamConfiguration : IEntityTypeConfiguration<Team>
         builder.Property(t => t.SecondaryColor).HasMaxLength(9).IsRequired();
         builder.Property(t => t.Rating).IsRequired();
 
+        builder.HasOne(t => t.Stadium)
+            .WithOne()
+            .HasForeignKey<Team>(t => t.StadiumId)
+            .IsRequired(false);
+
         builder.HasIndex(t => t.Name);
     }
 }

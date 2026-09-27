@@ -39,6 +39,7 @@ public sealed class MatchSimulator
         Guid fixtureId,
         Guid? userTeamId,
         IReadOnlyCollection<Guid>? starterIds,
+        IReadOnlyCollection<Guid>? benchIds,
         int? seed = null,
         string? tacticCode = null,
         CancellationToken cancellationToken = default)
@@ -50,7 +51,7 @@ public sealed class MatchSimulator
         {
             var matchService = scope.ServiceProvider.GetRequiredService<MatchService>();
             var started = await matchService.StartAsync(
-                fixtureId, seed, userTeamId, starterIds, tacticCode: tacticCode, cancellationToken: cancellationToken);
+                fixtureId, seed, userTeamId, starterIds, benchIds, tacticCode: tacticCode, cancellationToken: cancellationToken);
 
             if (!started.Accepted)
             {

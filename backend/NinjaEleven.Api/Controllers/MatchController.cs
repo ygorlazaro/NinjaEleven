@@ -71,12 +71,12 @@ public class MatchController : ControllerBase
         Ok((await _matchService.GetMatchdayReportAsync(roundId, cancellationToken)).ToDto());
 
     [HttpGet("squad-suggestion")]
-    public async Task<ActionResult<IReadOnlyList<Guid>>> SuggestEleven(
+    public async Task<ActionResult<SquadSuggestionDto>> SuggestEleven(
         [FromQuery] Guid teamId,
         [FromQuery] Guid seasonId,
         [FromQuery] string? tacticCode,
         CancellationToken cancellationToken) =>
-        Ok(await _matchService.GetSuggestedElevenAsync(teamId, seasonId, tacticCode, cancellationToken));
+        Ok((await _matchService.GetSuggestedElevenAsync(teamId, seasonId, tacticCode, cancellationToken)).ToDto());
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<MatchDto>> GetById(Guid id, CancellationToken cancellationToken)
@@ -115,6 +115,7 @@ public class MatchController : ControllerBase
             fixtureId,
             request?.UserTeamId,
             request?.StarterIds,
+            request?.BenchIds,
             request?.Seed,
             request?.TacticCode,
             cancellationToken);

@@ -50,13 +50,16 @@ const AttributeBox: React.FC<{ label: string; value: number }> = ({ label, value
 );
 
 /**
- * "14 (3)": fourteen matches, three of them off the bench.
+ * "14 (3) [2]": fourteen matches, three of them off the bench, two on the bench unused.
  *
- * The two are kept apart because a single number throws away the only thing a manager
- * really wants from an appearance count — whether the staff trusted this man to start.
+ * The three are kept apart because a single number throws away the only thing a manager
+ * really wants from an appearance count — whether the staff trusted this man to start,
+ * and how often they left him on the bench without playing.
  */
-const appearances = (line: { appearances: number; cameOn: number }) =>
-  line.cameOn > 0 ? `${line.appearances} (${line.cameOn})` : `${line.appearances}`;
+const appearances = (line: { appearances: number; started: number; cameOn: number; benchUnused: number }) =>
+  line.cameOn > 0 || line.benchUnused > 0
+    ? `${line.appearances} (${line.cameOn})${line.benchUnused > 0 ? ` [${line.benchUnused}]` : ''}`
+    : `${line.appearances}`;
 
 const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({ playerId, onClose, onOpenTeam }) => {
   const navigate = useNavigate();
@@ -239,18 +242,20 @@ const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({ playerId, onClo
                   return (
                     <tr
                       key={line.matchId}
-                      className={`history-row result-${result}`}
+                      className={`history-row result-${result} ${line.wasOnBenchUnused ? 'bench-unused' : ''}`}
                       onClick={() => navigate(`/match/${line.matchId}`)}
                     >
                       <td>{line.roundNumber}</td>
                       <td>
                         {line.isHome ? 'x ' : 'x '}
                         {line.opponentName}
+                        {line.started ? <span className="history-note"> (titular)</span> : ''}
                         {line.cameOn && <span className="history-note"> (entrou)</span>}
                         {line.subbedOff && <span className="history-note"> (saiu)</span>}
+                        {line.wasOnBenchUnused && <span className="history-note bench-unused-badge"> (banco)</span>}
                       </td>
                       <td className="history-score">{goalsFor} x {goalsAgainst}</td>
-                      <td>{line.started ? 'T' : 'J'}</td>
+                      <td>{line.started ? 'T' : line.cameOn ? 'E' : line.wasOnBenchUnused ? 'B' : 'J'}</td>
                       <td>{line.goals > 0 ? line.goals : ''}</td>
                       {isKeeper && <td>{line.saves > 0 ? line.saves : ''}</td>}
                       <td>{line.wasInjured ? (line.injuredOff ? 'saiu' : 'leve') : ''}</td>

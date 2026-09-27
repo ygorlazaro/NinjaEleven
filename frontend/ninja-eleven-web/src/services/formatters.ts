@@ -131,6 +131,18 @@ export function energyPercent(energy: number): string {
 }
 
 /**
+ * Converts a numeric star rating (0-5, in 0.5 increments) to a string of Unicode stars.
+ * e.g., 3.5 -> "★★★½", 4.0 -> "★★★★"
+ */
+export function starsToString(stars: number): string {
+  const full = Math.floor(stars);
+  const hasHalf = stars - full >= 0.5;
+  let result = '★'.repeat(full);
+  if (hasHalf) result += '½';
+  return result;
+}
+
+/**
  * What each event looks like in the feed. The engine sends a stable key and the client
  * decides how to draw it, so a new event type never arrives as a blank row.
  */

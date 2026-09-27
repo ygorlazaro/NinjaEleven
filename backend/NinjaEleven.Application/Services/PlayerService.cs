@@ -88,6 +88,7 @@ public class PlayerService
             Started = line.Started,
             CameOn = line.CameOn,
             SubbedOff = line.SubbedOff,
+            WasOnBenchUnused = line.WasOnBenchUnused,
             Goals = line.Goals,
             OwnGoals = line.OwnGoals,
             Saves = line.Saves,
@@ -125,6 +126,7 @@ public class PlayerService
         {
             if (line.Started) total.Started++;
             if (line.CameOn) total.CameOn++;
+            if (line.WasOnBenchUnused) total.BenchUnused++;
             total.Goals += line.Goals;
             total.OwnGoals += line.OwnGoals;
             total.Saves += line.Saves;

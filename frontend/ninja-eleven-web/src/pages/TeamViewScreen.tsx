@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { SeasonApi, TeamApi } from '@/api';
 import { useGameState } from '@/state';
 import type { Position, SquadPlayerDto, TeamDto } from '@/types';
-import { positionLabel } from '@/services/formatters';
+import { positionLabel, starsToString } from '@/services/formatters';
 import EnergyBar from '@/components/Match/EnergyBar';
 import { PlayerName } from '@/components/Common/Names';
 
@@ -128,7 +128,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
         <div className="squad-head team-view-summary">
           <div>
             <h2>{team.name}</h2>
-            <p>Força {team.rating} • {players.length} jogadores</p>
+            <p>Força {team.rating} • {players.length} jogadores • Força do elenco: {starsToString(team.stars)}</p>
           </div>
           <button className="ctrl" onClick={() => navigate('/league')}>Tabela e jogos</button>
         </div>
@@ -155,6 +155,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
                 <th>Jogador</th>
                 <th>Idade</th>
                 <th>Energia</th>
+                <th>Estrelas</th>
                 <th>Atributos</th>
                 <th>Temporada</th>
               </tr>
@@ -162,7 +163,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
             {rowsByPosition.map(group => (
               <tbody key={group.position}>
                 <tr className="squad-group">
-                  <th colSpan={6} scope="colgroup">
+                  <th colSpan={7} scope="colgroup">
                     {group.label}
                   </th>
                 </tr>
@@ -181,6 +182,9 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
                     <td className="col-num">
                       <EnergyBar value={p.energy} compact />
                       <span style={{ fontSize: '10px' }}>{Math.round(p.energy)}%</span>
+                    </td>
+                    <td className="col-num">
+                      <span style={{ color: 'var(--accent)' }}>{starsToString(p.stars)}</span>
                     </td>
                     <td style={{ fontSize: '10px', color: 'var(--muted)' }}>
                       {p.position === 'GK'

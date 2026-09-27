@@ -58,12 +58,15 @@ public static class PlayerMetric
     {
         if (player is null) throw new ArgumentNullException(nameof(player));
 
+        // Energy factor: 1.0 at 100 energy, down to 0.85 at 0 energy
+        var energyFactor = 0.85 + (player.Energy / 100.0) * 0.15;
+
         if (player.KeepsGoal)
         {
-            return KeeperAbility(player) * 0.62
-                + player.Energy * 0.08
+            var baseKeeper = KeeperAbility(player) * 0.62
                 + player.Strength * 0.08
                 + player.Accuracy * 0.06;
+            return (baseKeeper + player.Energy * 0.08) * energyFactor;
         }
 
         var tactical = player.Position switch
@@ -73,7 +76,7 @@ public static class PlayerMetric
             _ => player.Speed + player.Strength * 1.2 + player.Heading * 1.1 + player.Accuracy
         };
 
-        return tactical + player.Energy * 0.10;
+        return (tactical + player.Energy * 0.10) * energyFactor;
     }
 
     /// <summary>
@@ -112,6 +115,7 @@ public static class PlayerMetric
             ? CreatingRating(player)
             : HoldingRating(player);
 
+        // Energy is already factored into baseMetric, so just blend with job rating
         return baseMetric * (1.0 - MatchRules.LineJobWeight) + jobRating * MatchRules.LineJobWeight;
     }
 

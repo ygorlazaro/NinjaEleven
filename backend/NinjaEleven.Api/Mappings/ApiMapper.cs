@@ -1,25 +1,27 @@
 using NinjaEleven.Api.Contracts;
 using NinjaEleven.Application.Models;
+using NinjaEleven.Domain.Players;
 
 namespace NinjaEleven.Api.Mappings;
 
 public static class ApiMapper
 {
-    public static PlayerDto ToDto(this Domain.Players.Player player) => new()
-    {
-        Id = player.Id,
-        Name = player.Name,
-        BirthDate = player.BirthDate,
-        Age = player.CalculateAge(),
-        Position = player.Position,
-        Speed = player.Speed,
-        Accuracy = player.Accuracy,
-        Dribbling = player.Dribbling,
-        Heading = player.Heading,
-        Strength = player.Strength,
-        GoalkeeperPower = player.GoalkeeperPower,
-        Reflexes = player.Reflexes
-    };
+public static PlayerDto ToDto(this Domain.Players.Player player) => new()
+{
+    Id = player.Id,
+    Name = player.Name,
+    BirthDate = player.BirthDate,
+    Age = player.CalculateAge(),
+    Position = player.Position,
+    Speed = player.Speed,
+    Accuracy = player.Accuracy,
+    Dribbling = player.Dribbling,
+    Heading = player.Heading,
+    Strength = player.Strength,
+    GoalkeeperPower = player.GoalkeeperPower,
+    Reflexes = player.Reflexes,
+    Stars = Domain.Players.PlayerRating.CalculateStars(player)
+};
 
     public static IReadOnlyList<PlayerDto> ToDtos(this IEnumerable<Domain.Players.Player> players) =>
         players.Select(player => player.ToDto()).ToList();
@@ -39,40 +41,48 @@ public static class ApiMapper
         IsAvailable = state.IsAvailable
     };
 
-    public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlayer) => new()
-    {
-        Id = squadPlayer.Player.Id,
-        Name = squadPlayer.Player.Name,
-        Age = squadPlayer.Player.CalculateAge(),
-        Position = squadPlayer.Player.Position,
-        Speed = squadPlayer.Player.Speed,
-        Accuracy = squadPlayer.Player.Accuracy,
-        Dribbling = squadPlayer.Player.Dribbling,
-        Heading = squadPlayer.Player.Heading,
-        Strength = squadPlayer.Player.Strength,
-        GoalkeeperPower = squadPlayer.Player.GoalkeeperPower,
-        Reflexes = squadPlayer.Player.Reflexes,
-        Energy = squadPlayer.SeasonState.Energy,
-        Goals = squadPlayer.SeasonState.Goals,
-        YellowCards = squadPlayer.SeasonState.YellowCards,
-        RedCards = squadPlayer.SeasonState.RedCards,
-        SuspensionMatches = squadPlayer.SeasonState.SuspensionMatches,
-        Injury = squadPlayer.SeasonState.Injury,
-        InjuryMatchesRemaining = squadPlayer.SeasonState.InjuryMatchesRemaining,
-        IsAvailable = squadPlayer.IsAvailable,
-        TeamId = squadPlayer.SeasonState.TeamId,
-        SeasonId = squadPlayer.SeasonState.SeasonId
-    };
+public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlayer) => new()
+{
+    Id = squadPlayer.Player.Id,
+    Name = squadPlayer.Player.Name,
+    Age = squadPlayer.Player.CalculateAge(),
+    Position = squadPlayer.Player.Position,
+    Speed = squadPlayer.Player.Speed,
+    Accuracy = squadPlayer.Player.Accuracy,
+    Dribbling = squadPlayer.Player.Dribbling,
+    Heading = squadPlayer.Player.Heading,
+    Strength = squadPlayer.Player.Strength,
+    GoalkeeperPower = squadPlayer.Player.GoalkeeperPower,
+    Reflexes = squadPlayer.Player.Reflexes,
+    Stars = Domain.Players.PlayerRating.CalculateStars(squadPlayer.Player),
+    Energy = squadPlayer.SeasonState.Energy,
+    Goals = squadPlayer.SeasonState.Goals,
+    YellowCards = squadPlayer.SeasonState.YellowCards,
+    RedCards = squadPlayer.SeasonState.RedCards,
+    SuspensionMatches = squadPlayer.SeasonState.SuspensionMatches,
+    Injury = squadPlayer.SeasonState.Injury,
+    InjuryMatchesRemaining = squadPlayer.SeasonState.InjuryMatchesRemaining,
+    IsAvailable = squadPlayer.IsAvailable,
+    TeamId = squadPlayer.SeasonState.TeamId,
+    SeasonId = squadPlayer.SeasonState.SeasonId
+};
 
-    public static TeamDto ToDto(this Domain.Teams.Team team) => new()
+public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => new()
+{
+    Id = team.Id,
+    Name = team.Name,
+    ShortName = team.ShortName,
+    PrimaryColor = team.PrimaryColor,
+    SecondaryColor = team.SecondaryColor,
+    Rating = team.Rating,
+    Stars = stars,
+    Stadium = team.Stadium != null ? new StadiumDto
     {
-        Id = team.Id,
-        Name = team.Name,
-        ShortName = team.ShortName,
-        PrimaryColor = team.PrimaryColor,
-        SecondaryColor = team.SecondaryColor,
-        Rating = team.Rating
-    };
+        Id = team.Stadium.Id,
+        Capacity = team.Stadium.Capacity,
+        TicketPrice = team.Stadium.TicketPrice
+    } : null
+};
 
     public static IReadOnlyList<TeamDto> ToDtos(this IEnumerable<Domain.Teams.Team> teams) =>
         teams.Select(team => team.ToDto()).ToList();
@@ -152,6 +162,8 @@ public static class ApiMapper
         AwayScore = snapshot.Match.AwayScore,
         Sequence = snapshot.Match.Sequence,
         Seed = snapshot.Match.Seed,
+        Attendance = snapshot.Match.Attendance,
+        GateRevenue = snapshot.Match.GateRevenue,
         HomeTeam = snapshot.HomeTeam?.ToDto(),
         AwayTeam = snapshot.AwayTeam?.ToDto(),
         Events = snapshot.Events.Select(matchEvent => matchEvent.ToDto()).ToList()
@@ -170,6 +182,8 @@ public static class ApiMapper
         AwayScore = match.AwayScore,
         Sequence = match.Sequence,
         Seed = match.Seed,
+        Attendance = match.Attendance,
+        GateRevenue = match.GateRevenue,
         Events = Array.Empty<MatchEventDto>()
     };
 
@@ -221,21 +235,22 @@ public static class ApiMapper
     public static IReadOnlyList<MatchEventDto> ToDtos(this IEnumerable<Domain.Matches.MatchEvent> matchEvents) =>
         matchEvents.Select(matchEvent => matchEvent.ToDto()).ToList();
 
-    public static StandingDto ToDto(this Application.Models.StandingRow row) => new()
-    {
-        TeamId = row.TeamId,
-        Team = row.Team?.ToDto(),
-        Points = row.Points,
-        Played = row.Played,
-        Wins = row.Wins,
-        Draws = row.Draws,
-        Losses = row.Losses,
-        GoalsFor = row.GoalsFor,
-        GoalsAgainst = row.GoalsAgainst,
-        GoalDifference = row.GoalDifference,
-        YellowCards = row.YellowCards,
-        RedCards = row.RedCards
-    };
+public static StandingDto ToDto(this Application.Models.StandingRow row) => new()
+{
+    TeamId = row.TeamId,
+    Team = row.Team?.ToDto(),
+    Points = row.Points,
+    Played = row.Played,
+    Wins = row.Wins,
+    Draws = row.Draws,
+    Losses = row.Losses,
+    GoalsFor = row.GoalsFor,
+    GoalsAgainst = row.GoalsAgainst,
+    GoalDifference = row.GoalDifference,
+    YellowCards = row.YellowCards,
+    RedCards = row.RedCards,
+    Stars = row.Stars
+};
 
     public static IReadOnlyList<StandingDto> ToDtos(this IEnumerable<Application.Models.StandingRow> rows) =>
         rows.Select(row => row.ToDto()).ToList();
@@ -278,54 +293,84 @@ public static class ApiMapper
         this IEnumerable<Domain.Matches.MatchEngineEvent> events) =>
         events.Select(engineEvent => engineEvent.ToDto()).ToList();
 
-    public static MatchPlayerDto ToDto(this Domain.Matches.MatchPlayerSnapshot player, double? penaltyChance = null) => new()
-    {
-        PlayerId = player.PlayerId,
-        Name = player.Name,
-        Age = player.Age,
-        Position = player.Position,
-        Speed = player.Speed,
-        Accuracy = player.Accuracy,
-        Dribbling = player.Dribbling,
-        Heading = player.Heading,
-        Strength = player.Strength,
-        GoalkeeperPower = player.GoalkeeperPower,
-        Reflexes = player.Reflexes,
-        Energy = player.Energy,
-        MatchYellowCards = player.MatchYellowCards,
-        RedCard = player.RedCard,
-        EmergencyGK = player.EmergencyGK,
-        InjuredOff = player.InjuredOff,
-        SubbedIn = player.SubbedIn,
-        SubbedOff = player.SubbedOff,
-        Goals = player.Goals,
-        MatchGoals = player.MatchGoals,
-        MatchOwnGoals = player.MatchOwnGoals,
-        MatchSaves = player.MatchSaves,
-        PenaltyChance = penaltyChance
-    };
+public static MatchPlayerDto ToDto(this Domain.Matches.MatchPlayerSnapshot player, double? penaltyChance = null) => new()
+{
+    PlayerId = player.PlayerId,
+    Name = player.Name,
+    Age = player.Age,
+    Position = player.Position,
+    Speed = player.Speed,
+    Accuracy = player.Accuracy,
+    Dribbling = player.Dribbling,
+    Heading = player.Heading,
+    Strength = player.Strength,
+    GoalkeeperPower = player.GoalkeeperPower,
+    Reflexes = player.Reflexes,
+    Energy = player.Energy,
+    MatchYellowCards = player.MatchYellowCards,
+    RedCard = player.RedCard,
+    EmergencyGK = player.EmergencyGK,
+    InjuredOff = player.InjuredOff,
+    SubbedIn = player.SubbedIn,
+    SubbedOff = player.SubbedOff,
+    Goals = player.Goals,
+    MatchGoals = player.MatchGoals,
+    MatchOwnGoals = player.MatchOwnGoals,
+    MatchSaves = player.MatchSaves,
+    PenaltyChance = penaltyChance,
+    Stars = Domain.Players.PlayerRating.CalculateStars(player)
+};
 
-    public static MatchLineupDto ToDto(this Application.Models.MatchLineup lineup) => new()
+public static MatchLineupDto ToDto(this Application.Models.MatchLineup lineup)
+{
+    var allHomePlayers = lineup.HomeLineup.Concat(lineup.HomeBench).ToList();
+    var allAwayPlayers = lineup.AwayLineup.Concat(lineup.AwayBench).ToList();
+    var homeStars = Domain.Players.PlayerRating.CalculateTeamStarsFromSnapshots(allHomePlayers);
+    var awayStars = Domain.Players.PlayerRating.CalculateTeamStarsFromSnapshots(allAwayPlayers);
+
+    var homeTeam = lineup.HomeTeam;
+    var awayTeam = lineup.AwayTeam;
+
+    return new MatchLineupDto
     {
         MatchId = lineup.MatchId,
         UserTeamIndex = lineup.UserTeamIndex,
-        HomeTeam = lineup.HomeTeam.ToDto(),
-        AwayTeam = lineup.AwayTeam.ToDto(),
+        HomeTeam = new TeamDto
+        {
+            Id = homeTeam.Id,
+            Name = homeTeam.Name,
+            ShortName = homeTeam.ShortName,
+            PrimaryColor = homeTeam.PrimaryColor,
+            SecondaryColor = homeTeam.SecondaryColor,
+            Rating = homeTeam.Rating,
+            Stars = homeStars
+        },
+        AwayTeam = new TeamDto
+        {
+            Id = awayTeam.Id,
+            Name = awayTeam.Name,
+            ShortName = awayTeam.ShortName,
+            PrimaryColor = awayTeam.PrimaryColor,
+            SecondaryColor = awayTeam.SecondaryColor,
+            Rating = awayTeam.Rating,
+            Stars = awayStars
+        },
         HomeLineup = lineup.HomeLineup.Select(player => player.ToDto()).ToList(),
         AwayLineup = lineup.AwayLineup.Select(player => player.ToDto()).ToList(),
         HomeBench = lineup.HomeBench.Select(player => player.ToDto()).ToList(),
         AwayBench = lineup.AwayBench.Select(player => player.ToDto()).ToList()
     };
+}
 
-    public static PenaltyTakerOptionsDto ToDto(this Application.Models.PenaltyTakerOptions options) => new()
-    {
-        AwaitingSelection = options.AwaitingSelection,
-        Candidates = options.Candidates
-            .Select(player => player.ToDto(Domain.Matches.MatchEngine.PenaltyConversion(
-                player,
-                options.DefendingGoalkeeper)))
-            .ToArray()
-    };
+public static PenaltyTakerOptionsDto ToDto(this Application.Models.PenaltyTakerOptions options) => new()
+{
+    AwaitingSelection = options.AwaitingSelection,
+    Candidates = options.Candidates
+        .Select(player => player.ToDto(Domain.Matches.MatchEngine.PenaltyConversion(
+            player,
+            options.DefendingGoalkeeper)))
+        .ToArray()
+};
 
     public static MatchStateDto ToDto(this Application.Models.MatchStateView state) => new()
     {
@@ -378,7 +423,9 @@ public static class ApiMapper
         SubstitutionsUsedHome = state.SubstitutionsUsedHome,
         SubstitutionsUsedAway = state.SubstitutionsUsedAway,
         FormationHome = state.FormationHome,
-        FormationAway = state.FormationAway
+        FormationAway = state.FormationAway,
+        Attendance = state.Attendance,
+        GateRevenue = state.GateRevenue
     };
 
     public static MatchResultDto ToDto(this Application.Models.MatchResultView result) => new()
@@ -475,6 +522,7 @@ public static class PlayerProfileMapping
         Appearances = line.Appearances,
         Started = line.Started,
         CameOn = line.CameOn,
+        BenchUnused = line.BenchUnused,
         Goals = line.Goals,
         OwnGoals = line.OwnGoals,
         Saves = line.Saves,
@@ -484,48 +532,61 @@ public static class PlayerProfileMapping
         MatchesMissed = line.MatchesMissed
     };
 
-    public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profile) => new()
+public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profile) => new()
+{
+    PlayerId = profile.PlayerId,
+    Name = profile.Name,
+    Position = profile.Position,
+    Age = profile.Age,
+    BirthDate = profile.BirthDate,
+    Speed = profile.Speed,
+    Accuracy = profile.Accuracy,
+    Dribbling = profile.Dribbling,
+    Heading = profile.Heading,
+    Strength = profile.Strength,
+    GoalkeeperPower = profile.GoalkeeperPower,
+    Reflexes = profile.Reflexes,
+    Stars = profile.Position == "GK"
+        ? Domain.Players.PlayerRating.CalculateGoalkeeperStars(profile.Speed, profile.Accuracy, profile.GoalkeeperPower, profile.Reflexes, profile.Strength)
+        : Domain.Players.PlayerRating.CalculateOutfieldStars(profile.Speed, profile.Accuracy, profile.Dribbling, profile.Heading, profile.Strength),
+    SeasonId = profile.SeasonId,
+    TeamId = profile.TeamId,
+    TeamName = profile.TeamName,
+    Energy = profile.Energy,
+    IsAvailable = profile.IsAvailable,
+    Injury = profile.Injury,
+    InjuryMatchesRemaining = profile.InjuryMatchesRemaining,
+    Season = profile.Season.ToDto(),
+    Total = profile.Total.ToDto(),
+    History = profile.History.Select(line => new PlayerMatchLineDto
     {
-        PlayerId = profile.PlayerId,
-        Name = profile.Name,
-        Position = profile.Position,
-        Age = profile.Age,
-        BirthDate = profile.BirthDate,
-        Speed = profile.Speed,
-        Accuracy = profile.Accuracy,
-        Dribbling = profile.Dribbling,
-        Heading = profile.Heading,
-        Strength = profile.Strength,
-        GoalkeeperPower = profile.GoalkeeperPower,
-        Reflexes = profile.Reflexes,
-        SeasonId = profile.SeasonId,
-        TeamId = profile.TeamId,
-        TeamName = profile.TeamName,
-        Energy = profile.Energy,
-        IsAvailable = profile.IsAvailable,
-        Injury = profile.Injury,
-        InjuryMatchesRemaining = profile.InjuryMatchesRemaining,
-        Season = profile.Season.ToDto(),
-        Total = profile.Total.ToDto(),
-        History = profile.History.Select(line => new PlayerMatchLineDto
-        {
-            MatchId = line.MatchId,
-            SeasonId = line.SeasonId,
-            Started = line.Started,
-            CameOn = line.CameOn,
-            SubbedOff = line.SubbedOff,
-            Goals = line.Goals,
-            OwnGoals = line.OwnGoals,
-            Saves = line.Saves,
-            YellowCards = line.YellowCards,
-            RedCards = line.RedCards,
-            WasInjured = line.WasInjured,
-            InjuredOff = line.InjuredOff,
-            IsHome = line.IsHome,
-            OpponentName = line.OpponentName,
-            HomeGoals = line.HomeGoals,
-            AwayGoals = line.AwayGoals,
-            RoundNumber = line.RoundNumber
-        }).ToList()
+        MatchId = line.MatchId,
+        SeasonId = line.SeasonId,
+        Started = line.Started,
+        CameOn = line.CameOn,
+        SubbedOff = line.SubbedOff,
+        WasOnBenchUnused = line.WasOnBenchUnused,
+        Goals = line.Goals,
+        OwnGoals = line.OwnGoals,
+        Saves = line.Saves,
+        YellowCards = line.YellowCards,
+        RedCards = line.RedCards,
+        WasInjured = line.WasInjured,
+        InjuredOff = line.InjuredOff,
+        IsHome = line.IsHome,
+        OpponentName = line.OpponentName,
+        HomeGoals = line.HomeGoals,
+        AwayGoals = line.AwayGoals,
+        RoundNumber = line.RoundNumber
+    }).ToList()
+};
+}
+
+public static class SquadSuggestionMapping
+{
+    public static Contracts.SquadSuggestionDto ToDto(this Application.Services.MatchService.SquadSuggestion suggestion) => new()
+    {
+        StarterIds = suggestion.StarterIds,
+        BenchIds = suggestion.BenchIds
     };
 }

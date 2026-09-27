@@ -123,6 +123,7 @@ public class MatchService
         int? seed = null,
         Guid? userTeamId = null,
         IReadOnlyCollection<Guid>? starterIds = null,
+        IReadOnlyCollection<Guid>? benchIds = null,
         bool headless = false,
         string? tacticCode = null,
         CancellationToken cancellationToken = default)
@@ -196,13 +197,16 @@ public class MatchService
         // the same rules the engine would use on its own.
         if (userTeamId is { } managerTeamId && starterIds is { Count: > 0 })
         {
+            // Only pass benchIds if explicitly provided; otherwise let SelectStartingEleven use automatic bench
+            var explicitBenchIds = benchIds is { Count: > 0 } ? benchIds : null;
+            
             if (managerTeamId == homeTeam.Id)
             {
-                homeSquad = SelectStartingEleven(homeSquad, starterIds);
+                homeSquad = SelectStartingEleven(homeSquad, starterIds, explicitBenchIds);
             }
             else if (managerTeamId == awayTeam.Id)
             {
-                awaySquad = SelectStartingEleven(awaySquad, starterIds);
+                awaySquad = SelectStartingEleven(awaySquad, starterIds, explicitBenchIds);
             }
             else
             {
@@ -219,7 +223,20 @@ public class MatchService
 
         var matchSeed = seed ?? Random.Shared.Next(int.MinValue, int.MaxValue);
         var match = Match.Create(fixtureId, homeTeam.Id, awayTeam.Id);
-        match.KickOff(matchSeed);
+
+        // Calculate team stars for attendance (using match snapshots - lineup + bench)
+        var allHomePlayers = homeSquad.Lineup.Concat(homeSquad.Bench).ToList();
+        var allAwayPlayers = awaySquad.Lineup.Concat(awaySquad.Bench).ToList();
+        var homeStars = PlayerRating.CalculateTeamStarsFromSnapshots(allHomePlayers);
+        var awayStars = PlayerRating.CalculateTeamStarsFromSnapshots(allAwayPlayers);
+
+        // Get home stadium
+        var homeStadium = homeTeam.Stadium;
+
+        // Determine if it's a derby (for now, check if teams are from same "region" - we'll use a simple heuristic)
+        bool isDerby = false; // Could be enhanced with actual derby logic
+
+        match.KickOff(matchSeed, homeStadium, homeStars, awayStars, isDerby);
         match.StartFirstHalf();
 
         var context = new MatchContext(
@@ -506,13 +523,15 @@ public class MatchService
                 PossessionPlayerId = null,
                 FormationHome = Played(played?.HomeFormation) ?? DefaultFormation,
                 FormationAway = Played(played?.AwayFormation) ?? DefaultFormation,
+                Attendance = match.Attendance,
+                GateRevenue = match.GateRevenue,
                 UserTeamId = null
             };
         }
 
         lock (session.Gate)
         {
-            return ToView(session.State, match.Status);
+            return ToView(session.State, match.Status, match);
         }
     }
 
@@ -1003,6 +1022,7 @@ public class MatchService
                 lines.Add(line);
             }
 
+            // Bench players who came on or were subbed off
             foreach (var player in bench.Where(player => player.SubbedIn || player.SubbedOff))
             {
                 if (names.Contains(player.PlayerId))
@@ -1012,6 +1032,19 @@ public class MatchService
 
                 var line = MatchPlayerStatistics.Create(matchId, player.PlayerId, teamId, seasonId);
                 line.ApplyFrom(player, started: !player.SubbedIn);
+                lines.Add(line);
+            }
+
+            // Bench players who never played (unused substitutes)
+            foreach (var player in bench.Where(player => !player.SubbedIn && !player.SubbedOff))
+            {
+                if (names.Contains(player.PlayerId))
+                {
+                    continue;
+                }
+
+                var line = MatchPlayerStatistics.Create(matchId, player.PlayerId, teamId, seasonId);
+                line.ApplyFrom(player, started: false, wasOnBenchUnused: true);
                 lines.Add(line);
             }
         }
@@ -1205,7 +1238,8 @@ public class MatchService
 
     /// <summary>
     /// Picks the starting eleven and the bench of a club: the strongest available
-    /// players, one goalkeeper in the eleven and the rest as options.
+    /// players, one goalkeeper in the eleven and at least one on the bench if available.
+    /// If no goalkeeper is available, an outfield player is designated as emergency GK.
     /// </summary>
     private async Task<SquadSelection> BuildSquadAsync(
         Team team,
@@ -1246,18 +1280,52 @@ public class MatchService
                 .Take(SquadSize - starters.Count));
         }
 
-        var bench = snapshots
-            .Where(player => !starters.Contains(player))
-            .OrderByDescending(player => PlayerMetric.Metric(player))
-            .Take(BenchSize)
-            .ToList();
+        var bench = SelectAutomaticBench(snapshots, starters);
 
         // Whatever the manager did not pick is what he gets to look at, so both lists are
         // read in the same order: position first, name inside the position.
-        var orderedStarters = starters.Apply(player => player.Position, player => player.Name).ToList();
-        var orderedBench = bench.Apply(player => player.Position, player => player.Name).ToList();
+        var orderedStarters = starters
+            .OrderBy(player => PositionOrder.Of(player.Position))
+            .ThenBy(player => player.EmergencyGK ? 1 : 0)
+            .ThenBy(player => player.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var orderedBench = bench
+            .OrderBy(player => PositionOrder.Of(player.Position))
+            .ThenBy(player => player.EmergencyGK ? 1 : 0)
+            .ThenBy(player => player.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         return new SquadSelection(team, orderedStarters, orderedBench, snapshots);
+    }
+
+    /// <summary>
+    /// Selects the bench of 7 players, ensuring at least one goalkeeper if available.
+    /// </summary>
+    private static List<MatchPlayerSnapshot> SelectAutomaticBench(
+        List<MatchPlayerSnapshot> available,
+        List<MatchPlayerSnapshot> starters)
+    {
+        var remaining = available.Where(player => !starters.Contains(player)).ToList();
+        
+        var bench = new List<MatchPlayerSnapshot>();
+
+        // First, ensure at least one goalkeeper on bench if available
+        var availableGoalkeepers = remaining.Where(p => p.Position == Position.GK).ToList();
+        if (availableGoalkeepers.Count > 0)
+        {
+            var benchKeeper = availableGoalkeepers
+                .OrderByDescending(p => PlayerMetric.KeeperAbility(p))
+                .First();
+            bench.Add(benchKeeper);
+            remaining.Remove(benchKeeper);
+        }
+
+        // Fill the rest of the bench with best available players
+        bench.AddRange(remaining
+            .OrderByDescending(p => PlayerMetric.Metric(p))
+            .Take(BenchSize - bench.Count));
+
+        return bench;
     }
 
     /// <summary>
@@ -1287,6 +1355,20 @@ public class MatchService
         if (keeper is not null)
         {
             starters.Add(keeper);
+        }
+        else
+        {
+            // Emergency goalkeeper: no GK available, pick the best outfield player
+            // with highest reflexes/goalkeeper power as emergency GK
+            var emergencyGk = available
+                .OrderByDescending(p => p.Reflexes + p.GoalkeeperPower)
+                .FirstOrDefault();
+            
+            if (emergencyGk is not null)
+            {
+                emergencyGk.PromoteToGoalkeeper();
+                starters.Add(emergencyGk);
+            }
         }
 
         // The shape the club is made of, scaled to ten, is what it plays when nobody ordered
@@ -1345,14 +1427,16 @@ public class MatchService
     }
 
     /// <summary>
-    /// Applies the manager's chosen eleven. The backend is the authority on the lineup
+    /// Applies the manager's chosen eleven and optionally bench. The backend is the authority on the lineup
     /// rules: exactly eleven players, all of them available for this club, and exactly
-    /// one effective goalkeeper. Any other shape of defence, midfield or attack is
-    /// deliberately allowed.
+    /// one effective goalkeeper. If benchIds is provided and not empty, the bench must have
+    /// at most 7 players, with at least one goalkeeper if available. Any other shape of
+    /// defence, midfield or attack is deliberately allowed.
     /// </summary>
     private static SquadSelection SelectStartingEleven(
         SquadSelection squad,
-        IReadOnlyCollection<Guid> starterIds)
+        IReadOnlyCollection<Guid> starterIds,
+        IReadOnlyCollection<Guid>? benchIds = null)
     {
         var chosen = starterIds.Distinct().ToList();
 
@@ -1388,15 +1472,83 @@ public class MatchService
                     : "O time titular não pode ter mais de um goleiro.");
         }
 
-        // The bench is read the same way as the eleven: by position, and by name inside
-        // the position, so a screen never has to reorder it to make sense.
-        var bench = squad.All
-            .Where(player => !eleven.Contains(player))
-            .Apply(player => player.Position, player => player.Name)
-            .Take(BenchSize)
+        var bench = new List<MatchPlayerSnapshot>();
+
+        // If bench is explicitly provided, validate it
+        if (benchIds is { Count: > 0 })
+        {
+            var chosenBench = benchIds.Distinct().ToList();
+
+            if (chosenBench.Count > BenchSize)
+            {
+                throw new DomainValidationException(
+                    "InvalidBench",
+                    $"O banco de reservas pode ter no máximo {BenchSize} jogadores.");
+            }
+
+            foreach (var playerId in chosenBench)
+            {
+                if (!available.TryGetValue(playerId, out var player))
+                {
+                    throw new DomainValidationException(
+                        "PlayerNotAvailable",
+                        "Um dos reservas selecionados não está disponível neste clube.");
+                }
+
+                if (eleven.Contains(player))
+                {
+                    throw new DomainValidationException(
+                        "PlayerAlreadySelected",
+                        "Um jogador não pode estar no time titular e no banco ao mesmo tempo.");
+                }
+
+                if (bench.Contains(player))
+                {
+                    throw new DomainValidationException(
+                        "DuplicateBenchPlayer",
+                        "O mesmo jogador não pode ser selecionado duas vezes para o banco.");
+                }
+
+                bench.Add(player);
+            }
+
+            // Ensure at least one goalkeeper on bench if possible
+            var benchGoalkeepers = bench.Count(player => player.Position == Position.GK);
+            var availableGoalkeepers = squad.All.Count(player => player.Position == Position.GK && !eleven.Contains(player));
+            
+            if (benchGoalkeepers == 0 && availableGoalkeepers > 0)
+            {
+                throw new DomainValidationException(
+                    "GoalkeeperRequiredOnBench",
+                    "O banco de reservas precisa de pelo menos um goleiro.");
+            }
+        }
+
+        // If bench has fewer than BenchSize players (or wasn't provided), fill with best available
+        if (bench.Count < BenchSize)
+        {
+            var remaining = squad.All
+                .Where(player => !eleven.Contains(player) && !bench.Contains(player))
+                .OrderByDescending(player => PlayerMetric.Metric(player))
+                .Take(BenchSize - bench.Count)
+                .ToList();
+            
+            bench.AddRange(remaining);
+        }
+
+        // Order both lists by position then name, with emergency goalkeepers last in their position group
+        var orderedEleven = eleven
+            .OrderBy(player => PositionOrder.Of(player.Position))
+            .ThenBy(player => player.EmergencyGK ? 1 : 0)
+            .ThenBy(player => player.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var orderedBench = bench
+            .OrderBy(player => PositionOrder.Of(player.Position))
+            .ThenBy(player => player.EmergencyGK ? 1 : 0)
+            .ThenBy(player => player.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        return new SquadSelection(squad.Team, eleven, bench, squad.All);
+        return new SquadSelection(squad.Team, orderedEleven, orderedBench, squad.All);
     }
 
     private static int OverallRating(MatchPlayerSnapshot player) =>
@@ -1482,7 +1634,7 @@ public class MatchService
         await _matchRepository.AddEventsAsync(persisted, cancellationToken);
     }
 
-    private static MatchStateView ToView(MatchState state, MatchStatus status) => new()
+    private static MatchStateView ToView(MatchState state, MatchStatus status, Match match) => new()
     {
         MatchId = state.MatchId,
         HomeScore = state.HomeScore,
@@ -1518,6 +1670,8 @@ public class MatchService
         PossessionPlayerId = state.PossessionPlayerId,
         FormationHome = state.HomeFormation.ToString(),
         FormationAway = state.AwayFormation.ToString(),
+        Attendance = match.Attendance,
+        GateRevenue = match.GateRevenue,
         Penalty = PenaltyOptionsFor(state),
         UserTeamId = state.ManagerTeamId
     };
@@ -1665,7 +1819,7 @@ public class MatchService
     /// screen is where the manager reads the suggestion, not where it is worked out, and the
     /// engine and the screen now read the same <see cref="SelectAutomaticEleven"/>.
     /// </summary>
-    public async Task<IReadOnlyList<Guid>> GetSuggestedElevenAsync(
+    public async Task<SquadSuggestion> GetSuggestedElevenAsync(
         Guid teamId,
         Guid seasonId,
         string? tacticCode = null,
@@ -1682,7 +1836,20 @@ public class MatchService
 
         var squad = await BuildSquadAsync(team, seasonId, tactic, cancellationToken);
 
-        return squad.Lineup.Select(player => player.PlayerId).ToList();
+        return new SquadSuggestion
+        {
+            StarterIds = squad.Lineup.Select(player => player.PlayerId).ToList(),
+            BenchIds = squad.Bench.Select(player => player.PlayerId).ToList()
+        };
+    }
+
+    /// <summary>
+    /// The eleven plus bench the staff would pick for a club and shape.
+    /// </summary>
+    public sealed class SquadSuggestion
+    {
+        public IReadOnlyList<Guid> StarterIds { get; init; } = Array.Empty<Guid>();
+        public IReadOnlyList<Guid> BenchIds { get; init; } = Array.Empty<Guid>();
     }
 
     private sealed record SquadSelection(

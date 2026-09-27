@@ -18,12 +18,14 @@ public class TeamRepository : ITeamRepository
     public async Task<IReadOnlyList<Team>> ListAsync(CancellationToken cancellationToken = default) =>
         await _dbContext.Teams
             .AsNoTracking()
+            .Include(team => team.Stadium)
             .OrderBy(team => team.Name)
             .ToListAsync(cancellationToken);
 
     public async Task<Team?> GetAsync(Guid id, CancellationToken cancellationToken = default) =>
         await _dbContext.Teams
             .AsNoTracking()
+            .Include(team => team.Stadium)
             .FirstOrDefaultAsync(team => team.Id == id, cancellationToken);
 
     public async Task AddAsync(Team team, CancellationToken cancellationToken = default) =>

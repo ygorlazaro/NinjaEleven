@@ -1,46 +1,57 @@
 using NinjaEleven.Domain.Enums;
+using NinjaEleven.Domain.Teams;
 
 namespace NinjaEleven.Domain.Matches;
 
 /// <summary>
-/// The playable session of a fixture: logical clock, score, half and the event
-/// sequence. The server owns this clock; clients only send commands. Because the
-/// whole state is persisted, a disconnected client can be re-synchronised with a
-/// REST snapshot and then resume following the SignalR event stream.
-/// </summary>
-public class Match
-{
-    public Guid Id { get; private set; }
-    public Guid FixtureId { get; private set; }
-    public Guid HomeTeamId { get; private set; }
-    public Guid AwayTeamId { get; private set; }
-
-    public MatchStatus Status { get; private set; }
-    public MatchHalf Half { get; private set; }
-    public int CurrentMinute { get; private set; }
-    public int HomeScore { get; private set; }
-    public int AwayScore { get; private set; }
-
-    /// <summary>
-    /// Monotonic sequence of every event published for this match. Clients detect
-    /// gaps after a reconnect by comparing the last received sequence with the next one.
+    /// The playable session of a fixture: logical clock, score, half and the event
+    /// sequence. The server owns this clock; clients only send commands. Because the
+    /// whole state is persisted, a disconnected client can be re-synchronised with a
+    /// REST snapshot and then resume following the SignalR event stream.
     /// </summary>
-    public int Sequence { get; private set; }
+    public class Match
+    {
+        public Guid Id { get; private set; }
+        public Guid FixtureId { get; private set; }
+        public Guid HomeTeamId { get; private set; }
+        public Guid AwayTeamId { get; private set; }
 
-    /// <summary>
-    /// Seed handed to the match engine. Replaying a match with the same seed and the
-    /// same configuration must produce the same events and the same result.
-    /// </summary>
-    public int Seed { get; private set; }
+        public MatchStatus Status { get; private set; }
+        public MatchHalf Half { get; private set; }
+        public int CurrentMinute { get; private set; }
+        public int HomeScore { get; private set; }
+        public int AwayScore { get; private set; }
 
-    /// <summary>
-    /// When this match row was created. A fixture can be replayed after an abandoned
-    /// match, so several rows can point at the same fixture; the newest one is the
-    /// match of the fixture.
-    /// </summary>
-    public DateTimeOffset CreatedAt { get; private set; }
+        /// <summary>
+        /// Monotonic sequence of every event published for this match. Clients detect
+        /// gaps after a reconnect by comparing the last received sequence with the next one.
+        /// </summary>
+        public int Sequence { get; private set; }
 
-    private Match() { }
+        /// <summary>
+        /// Seed handed to the match engine. Replaying a match with the same seed and the
+        /// same configuration must produce the same events and the same result.
+        /// </summary>
+        public int Seed { get; private set; }
+
+        /// <summary>
+        /// When this match row was created. A fixture can be replayed after an abandoned
+        /// match, so several rows can point at the same fixture; the newest one is the
+        /// match of the fixture.
+        /// </summary>
+        public DateTimeOffset CreatedAt { get; private set; }
+
+        /// <summary>
+        /// Calculated attendance for this match.
+        /// </summary>
+        public int Attendance { get; private set; }
+
+        /// <summary>
+        /// Gate revenue in limos (attendance * ticket price).
+        /// </summary>
+        public decimal GateRevenue { get; private set; }
+
+        private Match() { }
 
     public static Match Create(Guid fixtureId, Guid homeTeamId, Guid awayTeamId)
     {
@@ -65,7 +76,7 @@ public class Match
 
     public bool IsInProgress => Status is MatchStatus.InProgress or MatchStatus.SecondHalf;
 
-    public void KickOff(int seed)
+    public void KickOff(int seed, Stadium homeStadium, double homeStars, double awayStars, bool isDerby = false, double matchImportance = 1.0, double weatherFactor = 1.0, double dayOfWeekFactor = 1.0)
     {
         EnsureNotFinished();
 
@@ -73,6 +84,13 @@ public class Match
         Status = MatchStatus.KickOff;
         Half = MatchHalf.First;
         CurrentMinute = 0;
+
+        // Calculate attendance and revenue at kick-off
+        if (homeStadium != null)
+        {
+            Attendance = AttendanceCalculator.Calculate(homeStadium, homeStars, awayStars, isDerby, matchImportance, weatherFactor, dayOfWeekFactor);
+            GateRevenue = AttendanceCalculator.CalculateRevenue(Attendance);
+        }
     }
 
     public void AdvanceClockTo(int minute)

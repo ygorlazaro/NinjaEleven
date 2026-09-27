@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\NinjaEleven.Application\NinjaEleven.Application.csproj" />
     <ProjectReference Include="..\NinjaEleven.Infrastructure\NinjaEleven.Infrastructure.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4" />
   </ItemGroup>
 
   <PropertyGroup>

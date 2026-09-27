@@ -65,6 +65,7 @@ public class DatabaseSeeder : IDataSeeder
 
         var participants = new List<CompetitionParticipant>();
         var teams = new List<Team>();
+        var stadiums = new List<Stadium>();
         var players = new List<Player>();
         var seasonStates = new List<PlayerSeasonState>();
         var memberships = new List<TeamMembership>();
@@ -80,8 +81,11 @@ public class DatabaseSeeder : IDataSeeder
         {
             var definition = TeamCatalog[index];
             var team = CreateTeam(definition, random);
+            var stadium = Stadium.Create(team.Id);
 
             teams.Add(team);
+            stadiums.Add(stadium);
+            team.SetStadium(stadium);
             participants.Add(CompetitionParticipant.Create(competitionSeason.Id, team.Id));
 
             var squad = CreateSquad(team, season.Id, startDate, random);
@@ -96,6 +100,7 @@ public class DatabaseSeeder : IDataSeeder
         _dbContext.CompetitionSeasons.Add(competitionSeason);
         _dbContext.CompetitionParticipants.AddRange(participants);
         _dbContext.Teams.AddRange(teams);
+        _dbContext.Stadiums.AddRange(stadiums);
         _dbContext.Players.AddRange(players);
         _dbContext.PlayerSeasonStates.AddRange(seasonStates);
         _dbContext.TeamMemberships.AddRange(memberships);

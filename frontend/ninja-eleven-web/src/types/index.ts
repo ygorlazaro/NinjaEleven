@@ -13,6 +13,7 @@ export interface PlayerDto {
   strength: number;
   goalkeeperPower: number;
   reflexes: number;
+  stars: number;
 }
 
 export interface PlayerSeasonStateDto {
@@ -44,6 +45,7 @@ export interface SquadPlayerDto {
   strength: number;
   goalkeeperPower: number;
   reflexes: number;
+  stars: number;
   energy: number;
   goals: number;
   yellowCards: number;
@@ -64,6 +66,14 @@ export interface TeamDto {
   primaryColor: string;
   secondaryColor: string;
   rating: number;
+  stars: number;
+  stadium?: StadiumDto | null;
+}
+
+export interface StadiumDto {
+  id: Guid;
+  capacity: number;
+  ticketPrice: number;
 }
 
 export interface TeamMembershipDto {
@@ -135,6 +145,8 @@ export interface MatchDto {
   awayScore: number;
   sequence: number;
   seed: number;
+  attendance: number;
+  gateRevenue: number;
   homeTeam?: TeamDto | null;
   awayTeam?: TeamDto | null;
   events: MatchEventDto[];
@@ -195,6 +207,10 @@ export interface MatchStateDto {
    */
   formationHome: string;
   formationAway: string;
+  /** Attendance at kick-off. */
+  attendance: number;
+  /** Gate revenue in limos. */
+  gateRevenue: number;
 }
 
 export interface PenaltyTakerOptionsDto {
@@ -233,6 +249,7 @@ export interface StandingDto {
   goalDifference: number;
   yellowCards: number;
   redCards: number;
+  stars: number;
 }
 
 export interface ScorerDto {
@@ -371,6 +388,7 @@ export interface MatchPlayerDto {
   matchStats?: PlayerMatchStatsDto | null;
   /** Chance of converting a penalty right now, only sent for the candidates of a penalty. */
   penaltyChance?: number | null;
+  stars: number;
 }
 
 export interface PlayerMatchStatsDto {
@@ -440,6 +458,7 @@ export interface TeamInfo {
   primaryColor: string;
   secondaryColor: string;
   rating: number;
+  stars: number;
 }
 
 export interface PlayerInfo {
@@ -503,6 +522,7 @@ export type PlayerProfileDto = {
   strength: number;
   goalkeeperPower: number;
   reflexes: number;
+  stars: number;
   seasonId?: Guid | null;
   teamId?: Guid | null;
   teamName: string;
@@ -516,13 +536,14 @@ export type PlayerProfileDto = {
 };
 
 /**
- * Appearances is a pair, not a number: "14 (3)" is fourteen matches and three of them off
- * the bench, and a single figure cannot say which.
+ * Appearances is a pair, not a number: "14 (3) [2]" is fourteen matches, three of them off
+ * the bench, and two on the bench unused. A single figure cannot say which.
  */
 export type PlayerCareerLineDto = {
   appearances: number;
   started: number;
   cameOn: number;
+  benchUnused: number;
   goals: number;
   ownGoals: number;
   saves: number;
@@ -538,6 +559,7 @@ export type PlayerMatchLineDto = {
   started: boolean;
   cameOn: boolean;
   subbedOff: boolean;
+  wasOnBenchUnused: boolean;
   goals: number;
   ownGoals: number;
   saves: number;
@@ -550,4 +572,9 @@ export type PlayerMatchLineDto = {
   homeGoals: number;
   awayGoals: number;
   roundNumber: number;
+};
+
+export type SquadSuggestionDto = {
+  starterIds: Guid[];
+  benchIds: Guid[];
 };

@@ -11,6 +11,15 @@ public class TeamDto
     public string PrimaryColor { get; init; } = string.Empty;
     public string SecondaryColor { get; init; } = string.Empty;
     public int Rating { get; init; }
+    public double Stars { get; init; }
+    public StadiumDto? Stadium { get; init; }
+}
+
+public class StadiumDto
+{
+    public Guid Id { get; init; }
+    public int Capacity { get; init; }
+    public decimal TicketPrice { get; init; }
 }
 
 public class CompetitionDto
@@ -63,6 +72,8 @@ public class MatchDto
     public int AwayScore { get; init; }
     public int Sequence { get; init; }
     public int Seed { get; init; }
+    public int Attendance { get; init; }
+    public decimal GateRevenue { get; init; }
     public TeamDto? HomeTeam { get; init; }
     public TeamDto? AwayTeam { get; init; }
     public IReadOnlyList<MatchEventDto> Events { get; init; } = Array.Empty<MatchEventDto>();
@@ -105,6 +116,7 @@ public class StandingDto
     public int GoalDifference { get; init; }
     public int YellowCards { get; init; }
     public int RedCards { get; init; }
+    public double Stars { get; init; }
 }
 
 public class ScorerDto

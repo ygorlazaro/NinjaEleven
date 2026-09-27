@@ -112,7 +112,8 @@ class MatchHubClient {
           await this.subscribe(this.currentMatchId);
         }
         if (this.currentRoundId) {
-          await this.joinRound(this.currentRoundId);
+          // Use subscribeMatchday logic to ensure connection is ready
+          await this.subscribeMatchday(this.currentRoundId);
         }
       });
     }
@@ -213,8 +214,27 @@ class MatchHubClient {
         return;
       }
 
+      // Wait for connection to be ready, then join the round
       if (this.connection.state === signalR.HubConnectionState.Disconnected) {
         await this.connection.start();
+      }
+
+      // If still connecting, wait for it
+      if (this.connection.state === signalR.HubConnectionState.Connecting) {
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Connection timeout')), 10000);
+          this.connection!.onreconnected(() => {
+            clearTimeout(timeout);
+            resolve();
+          });
+          // Also resolve if already connected
+          if (this.connection!.state === signalR.HubConnectionState.Connected) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        }).catch(() => {
+          // Ignore timeout, will try onreconnected
+        });
       }
 
       if (this.connection.state === signalR.HubConnectionState.Connected) {
@@ -225,14 +245,55 @@ class MatchHubClient {
     });
   }
 
-  private joinRound(roundId: string): Promise<unknown> {
-    return this.connection
-      ? this.connection.invoke('SubscribeMatchday', { roundId })
-      : Promise.resolve(null);
+  private async joinRound(roundId: string): Promise<unknown> {
+    if (!this.connection) {
+      return;
+    }
+
+    // Wait for connection to be ready
+    if (this.connection.state === signalR.HubConnectionState.Disconnected) {
+      await this.connection.start();
+    }
+
+    if (this.connection.state === signalR.HubConnectionState.Connecting) {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Connection timeout')), 10000);
+        const handler = () => {
+          clearTimeout(timeout);
+          this.connection!.offreconnected(handler);
+          resolve();
+        };
+        this.connection!.onreconnected(handler);
+        // Also resolve if already connected
+        if (this.connection!.state === signalR.HubConnectionState.Connected) {
+          clearTimeout(timeout);
+          this.connection!.offreconnected(handler);
+          resolve();
+        }
+      }).catch(() => {
+        // Ignore timeout, will try onreconnected
+      });
+    }
+
+    if (this.connection.state === signalR.HubConnectionState.Connected) {
+      return this.connection.invoke('SubscribeMatchday', { roundId });
+    }
   }
 
   async continueSecondHalf(matchId: string) {
     return this.invoke('ContinueSecondHalf', { matchId });
+  }
+
+  /** Explicitly leave the round group (call when truly navigating away). */
+  async leaveRound(roundId: string): Promise<void> {
+    if (this.connection?.state === signalR.HubConnectionState.Connected) {
+      try {
+        await this.connection.invoke('LeaveMatchday', roundId);
+      } catch {
+        // Ignore
+      }
+    }
+    this.currentRoundId = null;
   }
 
   async makeSubstitution(matchId: string, teamId: string, playerOutId: string, playerInId: string) {
@@ -278,7 +339,8 @@ class MatchHubClient {
       }
 
       this.currentMatchId = null;
-      this.currentRoundId = null;
+      // Don't clear currentRoundId - the round subscription should persist
+      // across match disconnects (e.g., React Strict Mode double-mount)
       const connection = this.connection;
       if (!connection) {
         return;
@@ -287,14 +349,6 @@ class MatchHubClient {
       this.connection = null;
 
       if (connection.state === signalR.HubConnectionState.Connected) {
-        if (roundId) {
-          try {
-            await connection.invoke('LeaveMatchday', roundId);
-          } catch {
-            // The connection may already be gone; leaving is politeness, not correctness.
-          }
-        }
-
         if (matchId) {
           try {
             await connection.invoke('LeaveMatch', matchId);
@@ -302,6 +356,8 @@ class MatchHubClient {
             // The connection may already be gone; stopping is what matters.
           }
         }
+        // Don't leave the round group here - it will be re-used on re-mount
+        // or cleaned up naturally when the connection stops
       }
 
       try {

@@ -17,6 +17,7 @@ public class PlayerDto
     public int Strength { get; init; }
     public int GoalkeeperPower { get; init; }
     public int Reflexes { get; init; }
+    public double Stars { get; init; }
 }
 
 public class PlayerSeasonStateDto
@@ -54,6 +55,7 @@ public class SquadPlayerDto
     public int Strength { get; init; }
     public int GoalkeeperPower { get; init; }
     public int Reflexes { get; init; }
+    public double Stars { get; init; }
 
     public int Energy { get; init; }
     public int Goals { get; init; }
@@ -92,6 +94,7 @@ public class PlayerProfileDto
     public int Strength { get; init; }
     public int GoalkeeperPower { get; init; }
     public int Reflexes { get; init; }
+    public double Stars { get; init; }
     public Guid? SeasonId { get; init; }
     public Guid? TeamId { get; init; }
     public string TeamName { get; init; } = string.Empty;
@@ -105,14 +108,15 @@ public class PlayerProfileDto
 }
 
 /// <summary>
-/// One row of the two totals columns. Appearances is a pair, not a number: "14 (3)" is
-/// fourteen matches and three of them off the bench, and a single figure cannot say which.
+/// One row of the two totals columns. Appearances is a pair, not a number: "14 (3) [2]" is
+/// fourteen matches, three of them off the bench, and two on the bench unused.
 /// </summary>
 public class PlayerCareerLineDto
 {
     public int Appearances { get; init; }
     public int Started { get; init; }
     public int CameOn { get; init; }
+    public int BenchUnused { get; init; }
     public int Goals { get; init; }
     public int OwnGoals { get; init; }
     public int Saves { get; init; }
@@ -129,6 +133,7 @@ public class PlayerMatchLineDto
     public bool Started { get; init; }
     public bool CameOn { get; init; }
     public bool SubbedOff { get; init; }
+    public bool WasOnBenchUnused { get; init; }
     public int Goals { get; init; }
     public int OwnGoals { get; init; }
     public int Saves { get; init; }

@@ -1685,6 +1685,7 @@ public class MatchEngine
         // and a club that has to do this has already lost the argument.
         var promoted = Outfield(lineup)
             .OrderByDescending(player => player.Speed + player.Strength * 1.2 + player.Heading * 1.1 + player.Accuracy)
+            .ThenByDescending(player => player.Name, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
 
         if (promoted is null)

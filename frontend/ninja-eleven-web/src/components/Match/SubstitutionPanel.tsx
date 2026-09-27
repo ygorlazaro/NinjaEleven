@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { MatchPlayerDto } from '@/types';
-import { positionLabel, sortByPosition } from '@/services/formatters';
+import { positionLabel, sortByPosition, starsToString } from '@/services/formatters';
 import EnergyBar from '@/components/Match/EnergyBar';
 
 interface SubstitutionPanelProps {
@@ -90,6 +90,7 @@ const SubstitutionPanel: React.FC<SubstitutionPanelProps> = ({
       <div className="player-top">
         <span className="player-pos">{positionLabel(player.position)}</span>
         <span className="player-card__name">{player.name}</span>
+        <span className="player-stars" style={{ color: 'var(--accent)', marginLeft: '6px' }}>{starsToString(player.stars)}</span>
         <span className="player-energy">{player.energy}%</span>
       </div>
       <div className="player-stats">

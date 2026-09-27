@@ -3,9 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useGameState } from '@/state';
 import { FixtureApi, MatchApi, SeasonApi, TeamApi } from '@/api';
 import type { FixtureDto, Position, SquadPlayerDto, TacticDto } from '@/types';
-import { positionLabel } from '@/services/formatters';
+import { positionLabel, starsToString } from '@/services/formatters';
 
 const STARTERS = 11;
+const BENCH_SIZE = 7;
 
 /**
  * The order a table of players is read in: goalkeepers, defenders, midfielders and
@@ -51,8 +52,8 @@ const ATTRIBUTE_CHIPS: { key: keyof SquadPlayerDto; label: string }[] = [
 type SquadRow = SquadPlayerDto;
 
 /**
- * Lineup screen. The manager picks the eleven here and the match starts with it. The
- * rules are only mirrored for feedback: the backend validates the eleven again and
+ * Lineup screen. The manager picks the eleven and the bench here and the match starts with it.
+ * The rules are only mirrored for feedback: the backend validates the eleven again and
  * refuses anything invalid, so the client can never force an illegal lineup.
  *
  * The whole squad is shown as a table, injuries and suspensions included: a manager
@@ -68,6 +69,7 @@ const LineupScreen: React.FC = () => {
   const [squad, setSquad] = useState<SquadRow[]>([]);
   const [fixture, setFixture] = useState<FixtureDto | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedBench, setSelectedBench] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [positionFilter, setPositionFilter] = useState<Position | 'ALL'>('ALL');
@@ -77,7 +79,7 @@ const LineupScreen: React.FC = () => {
   const seasonId = useGameState((s) => s.selectedSeason?.id);
 
   /**
-   * The eleven the staff would put out, asked of the backend for the shape the manager
+   * The eleven and bench the staff would put out, asked of the backend for the shape the manager
    * has ordered. Asking is the point: the screen used to work the eleven out itself, by
    * its own idea of who is good, and it could propose a reserve goalkeeper and an eleven
    * with no shape in it at all — the same eleven the engine would never have picked.
@@ -86,8 +88,9 @@ const LineupScreen: React.FC = () => {
     async (code?: string) => {
       if (!selectedTeam || !seasonId) return;
       try {
-        const ids = await MatchApi.getSuggestedEleven(selectedTeam.id, seasonId, code);
-        setSelected(new Set(ids));
+        const suggestion = await MatchApi.getSuggestedEleven(selectedTeam.id, seasonId, code);
+        setSelected(new Set(suggestion.starterIds));
+        setSelectedBench(new Set(suggestion.benchIds));
       } catch (err) {
         console.error('Failed to ask for a suggested eleven:', err);
       }
@@ -139,6 +142,11 @@ const LineupScreen: React.FC = () => {
     [squad, selected]
   );
 
+  const goalkeepersOnBench = useMemo(
+    () => squad.filter((p) => selectedBench.has(p.id) && p.position === 'GK').length,
+    [squad, selectedBench]
+  );
+
   const goalkeepersAvailable = useMemo(
     () => squad.filter((p) => p.position === 'GK' && p.isAvailable).length,
     [squad]
@@ -152,7 +160,7 @@ const LineupScreen: React.FC = () => {
   const blockingReason = useMemo(() => {
     if (selected.size !== STARTERS) {
       const missing = STARTERS - selected.size;
-      return `Faltam ${missing} ${missing === 1 ? 'jogador' : 'jogadores'} para completar o time.`;
+      return `Faltam ${missing} ${missing === 1 ? 'jogador' : 'jogadores'} para completar o time titular.`;
     }
 
     if (goalkeepersSelected === 0) {
@@ -163,8 +171,17 @@ const LineupScreen: React.FC = () => {
       return 'Só pode haver um goleiro em campo. Clique no goleiro que deve sair para trocá-lo.';
     }
 
+    if (selectedBench.size > BENCH_SIZE) {
+      return `O banco de reservas pode ter no máximo ${BENCH_SIZE} jogadores.`;
+    }
+
+    // If bench is partially filled, validate it has a GK when possible
+    if (selectedBench.size > 0 && goalkeepersOnBench === 0 && goalkeepersAvailable > (goalkeepersSelected > 0 ? 1 : 0)) {
+      return 'O banco de reservas precisa de pelo menos um goleiro.';
+    }
+
     return null;
-  }, [selected.size, goalkeepersSelected]);
+  }, [selected.size, goalkeepersSelected, selectedBench.size, goalkeepersOnBench, goalkeepersAvailable]);
 
   const opponent = useMemo(() => {
     if (!fixture || !selectedTeam) return null;
@@ -210,6 +227,23 @@ const LineupScreen: React.FC = () => {
     })).filter(group => group.players.length > 0);
   }, [visibleSquad, positionFilter, sortKey]);
 
+  // Bench players = all available players NOT in starters
+  const benchRowsByPosition = useMemo(() => {
+    const availableForBench = squad.filter(
+      player => player.isAvailable && !selected.has(player.id)
+    );
+
+    if (sortKey !== 'position') {
+      return [{ position: positionFilter, label: '', players: availableForBench }];
+    }
+
+    return POSITION_ORDER.map(position => ({
+      position,
+      label: POSITION_LABELS[position],
+      players: availableForBench.filter(player => player.position === position)
+    })).filter(group => group.players.length > 0);
+  }, [squad, selected, positionFilter, sortKey]);
+
   const toggle = (player: SquadRow) => {
     setError(null);
 
@@ -218,32 +252,63 @@ const LineupScreen: React.FC = () => {
       return;
     }
 
-    setSelected(previous => {
-      const next = new Set(previous);
+    const isInStarters = selected.has(player.id);
+    const isInBench = selectedBench.has(player.id);
 
-      if (next.has(player.id)) {
+    // If already selected, remove from wherever they are
+    if (isInStarters) {
+      setSelected(prev => {
+        const next = new Set(prev);
         next.delete(player.id);
         return next;
-      }
+      });
+      return;
+    }
 
-      // Choosing a goalkeeper replaces the one in the eleven instead of adding a second:
-      // the other keepers exist to be swapped in, not to share the pitch.
-      if (player.position === 'GK') {
-        squad
-          .filter(other => other.position === 'GK' && next.has(other.id))
-          .forEach(other => next.delete(other.id));
+    if (isInBench) {
+      setSelectedBench(prev => {
+        const next = new Set(prev);
+        next.delete(player.id);
+        return next;
+      });
+      return;
+    }
+
+    // Not selected yet - add to starters if space, otherwise bench
+    if (selected.size < STARTERS) {
+      setSelected(prev => {
+        const next = new Set(prev);
+
+        // Choosing a goalkeeper replaces the one in the eleven instead of adding a second:
+        if (player.position === 'GK') {
+          squad
+            .filter(other => other.position === 'GK' && next.has(other.id))
+            .forEach(other => next.delete(other.id));
+        }
+
+        if (next.size >= STARTERS) {
+          setError(`Escolha exatamente ${STARTERS} jogadores titulares.`);
+          return next;
+        }
+
         next.add(player.id);
         return next;
-      }
+      });
+      return;
+    }
 
-      if (next.size >= STARTERS) {
-        setError(`Escolha exatamente ${STARTERS} jogadores.`);
+    // Starters full, add to bench
+    if (selectedBench.size < BENCH_SIZE) {
+      setSelectedBench(prev => {
+        const next = new Set(prev);
+        next.add(player.id);
         return next;
-      }
+      });
+      return;
+    }
 
-      next.add(player.id);
-      return next;
-    });
+    // Both full
+    setError(`Elenco completo: ${STARTERS} titulares e ${BENCH_SIZE} reservas.`);
   };
 
   /**
@@ -259,7 +324,7 @@ const LineupScreen: React.FC = () => {
 
   const startMatch = async () => {
     if (selected.size !== STARTERS) {
-      setError(`Escolha exatamente ${STARTERS} jogadores.`);
+      setError(`Escolha exatamente ${STARTERS} jogadores titulares.`);
       return;
     }
 
@@ -268,11 +333,22 @@ const LineupScreen: React.FC = () => {
       return;
     }
 
+    if (selectedBench.size > BENCH_SIZE) {
+      setError(`O banco de reservas pode ter no máximo ${BENCH_SIZE} jogadores.`);
+      return;
+    }
+
+    // Validate bench has GK if possible
+    if (selectedBench.size > 0 && goalkeepersOnBench === 0 && goalkeepersAvailable > 1) {
+      setError('O banco de reservas precisa de pelo menos um goleiro.');
+      return;
+    }
+
     setStarting(true);
     setError(null);
 
     try {
-      const result = await MatchApi.start(fixtureId, selectedTeam?.id, [...selected], tacticCode);
+      const result = await MatchApi.start(fixtureId, selectedTeam?.id, [...selected], [...selectedBench], tacticCode);
       if (result.matchId) {
         // Either the match just started, or this fixture is already being played: both
         // cases are watched on the match screen, keyed by the matchId the backend gave
@@ -298,7 +374,7 @@ const LineupScreen: React.FC = () => {
           {selectedTeam?.name} {opponent ? `x ${opponent.name}` : ''}
         </p>
         <p className="competition">
-          {selected.size}/{STARTERS} escolhidos • {goalkeepersSelected} goleiro(s) •{' '}
+          {selected.size}/{STARTERS} titulares • {selectedBench.size}/{BENCH_SIZE} reservas • {goalkeepersSelected} goleiro(s) em campo •{' '}
           {goalkeepersAvailable} goleiro(s) no elenco
         </p>
 
@@ -359,49 +435,106 @@ const LineupScreen: React.FC = () => {
           </label>
         </div>
 
-        <div className="squad-table-wrap">
-          <table className="squad-table">
-            <thead>
-              <tr>
-                <th className="col-pos">Pos</th>
-                <th className="col-name">Jogador</th>
-                <th className="col-num">Idade</th>
-                <th className="col-num">Energia</th>
-                <th className="col-num">Gols</th>
-                <th className="col-num">Amarelos</th>
-                <th className="col-num">Vermelhos</th>
-                <th className="col-status">Situação</th>
-              </tr>
-            </thead>
+        {/* Starters Section */}
+        <div className="squad-section">
+          <h3 className="squad-section-title">Titulares ({selected.size}/{STARTERS})</h3>
+          <div className="squad-table-wrap">
+            <table className="squad-table">
+              <thead>
+                <tr>
+                  <th className="col-pos">Pos</th>
+                  <th className="col-name">Jogador</th>
+                  <th className="col-num">★</th>
+                  <th className="col-num">Idade</th>
+                  <th className="col-num">Energia</th>
+                  <th className="col-num">Gols</th>
+                  <th className="col-num">Amarelos</th>
+                  <th className="col-num">Vermelhos</th>
+                  <th className="col-status">Situação</th>
+                </tr>
+              </thead>
 
-            {rowsByPosition.map(group => (
-              <tbody key={group.position}>
-                {group.label && (
-                  <tr className="squad-group">
-                    <th colSpan={8} scope="colgroup">
-                      {group.label}
-                    </th>
-                  </tr>
-                )}
+              {rowsByPosition.map(group => (
+                <tbody key={group.position}>
+                  {group.label && (
+                    <tr className="squad-group">
+                      <th colSpan={9} scope="colgroup">
+                        {group.label}
+                      </th>
+                    </tr>
+                  )}
 
-                {group.players.map(player => (
-                  <PlayerRows
-                    key={player.id}
-                    player={player}
-                    isSelected={selected.has(player.id)}
-                    isReserveGoalkeeper={
-                      player.position === 'GK' && goalkeepersSelected > 0 && !selected.has(player.id)
-                    }
-                    onToggle={() => toggle(player)}
-                  />
-                ))}
-              </tbody>
-            ))}
-          </table>
+                  {group.players.map(player => (
+                    <PlayerRows
+                      key={player.id}
+                      player={player}
+                      isSelected={selected.has(player.id)}
+                      isOnBench={selectedBench.has(player.id)}
+                      isReserveGoalkeeper={
+                        player.position === 'GK' && goalkeepersSelected > 0 && !selected.has(player.id)
+                      }
+                      onToggle={() => toggle(player)}
+                    />
+                  ))}
+                </tbody>
+              ))}
+            </table>
 
-          {rowsByPosition.length === 0 && (
-            <div className="league-empty">Nenhum jogador nesta posição.</div>
-          )}
+            {rowsByPosition.length === 0 && (
+              <div className="league-empty">Nenhum jogador nesta posição.</div>
+            )}
+          </div>
+        </div>
+
+        {/* Bench Section */}
+        <div className="squad-section">
+          <h3 className="squad-section-title">Banco de Reservas ({selectedBench.size}/{BENCH_SIZE})</h3>
+          <div className="squad-table-wrap">
+            <table className="squad-table">
+              <thead>
+                <tr>
+                  <th className="col-pos">Pos</th>
+                  <th className="col-name">Jogador</th>
+                  <th className="col-num">★</th>
+                  <th className="col-num">Idade</th>
+                  <th className="col-num">Energia</th>
+                  <th className="col-num">Gols</th>
+                  <th className="col-num">Amarelos</th>
+                  <th className="col-num">Vermelhos</th>
+                  <th className="col-status">Situação</th>
+                </tr>
+              </thead>
+
+              {benchRowsByPosition.map(group => (
+                <tbody key={`bench-${group.position}`}>
+                  {group.label && (
+                    <tr className="squad-group">
+                      <th colSpan={9} scope="colgroup">
+                        {group.label}
+                      </th>
+                    </tr>
+                  )}
+
+                  {group.players.map(player => (
+                    <PlayerRows
+                      key={`bench-${player.id}`}
+                      player={player}
+                      isSelected={selectedBench.has(player.id)}
+                      isOnBench={selected.has(player.id)}
+                      isReserveGoalkeeper={
+                        player.position === 'GK' && goalkeepersOnBench > 0 && !selectedBench.has(player.id)
+                      }
+                      onToggle={() => toggle(player)}
+                    />
+                  ))}
+                </tbody>
+              ))}
+            </table>
+
+            {benchRowsByPosition.length === 0 && (
+              <div className="league-empty">Nenhum jogador disponível para o banco.</div>
+            )}
+          </div>
         </div>
 
         <div className="squad-actions">
@@ -414,7 +547,7 @@ const LineupScreen: React.FC = () => {
           <button
             className="primary"
             onClick={startMatch}
-            disabled={starting || selected.size !== STARTERS || goalkeepersSelected !== 1}
+            disabled={starting || selected.size !== STARTERS || goalkeepersSelected !== 1 || selectedBench.size > BENCH_SIZE}
           >
             {starting ? 'Iniciando...' : 'Iniciar partida'}
           </button>
@@ -427,7 +560,7 @@ const LineupScreen: React.FC = () => {
 interface PlayerRowsProps {
   player: SquadRow;
   isSelected: boolean;
-  isReserveGoalkeeper: boolean;
+  isOnBench: boolean;
   onToggle: () => void;
 }
 
@@ -437,11 +570,11 @@ interface PlayerRowsProps {
  * on the list at all. Both lines belong to the same player, so both are clickable and both
  * light up together.
  */
-const PlayerRows: React.FC<PlayerRowsProps> = ({ player, isSelected, isReserveGoalkeeper, onToggle }) => {
+const PlayerRows: React.FC<PlayerRowsProps> = ({ player, isSelected, isOnBench, onToggle }) => {
   const classes = [
     'squad-row',
     isSelected ? 'selected' : '',
-    isReserveGoalkeeper ? 'reserve' : '',
+    isOnBench ? 'bench' : '',
     player.isAvailable ? '' : 'unavailable'
   ]
     .filter(Boolean)
@@ -456,6 +589,9 @@ const PlayerRows: React.FC<PlayerRowsProps> = ({ player, isSelected, isReserveGo
         <td className="col-name">
           <strong>{player.name}</strong>
         </td>
+        <td className="col-num" style={{ textAlign: 'center', color: 'var(--accent)', fontWeight: 'bold' }}>
+          {starsToString(player.stars)}
+        </td>
         <td className="col-num">{player.age}</td>
         <td className="col-num">{player.energy}%</td>
         <td className="col-num">{player.goals}</td>
@@ -466,6 +602,7 @@ const PlayerRows: React.FC<PlayerRowsProps> = ({ player, isSelected, isReserveGo
 
       <tr className={`squad-attrs-row ${classes}`} title={absenceReason(player)} onClick={onToggle}>
         <td className="col-pos" />
+        <td className="col-num" style={{ textAlign: 'center', color: 'var(--accent)', fontWeight: 'bold' }} />
         <td className="squad-attrs" colSpan={7}>
           {ATTRIBUTE_CHIPS.map(chip => {
             // A goalkeeper's own numbers and an outfielder's are the ones the engine reads

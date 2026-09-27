@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NinjaEleven.Infrastructure.Persistence;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NinjaEleven.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NinjaElevenDbContext))]
-    partial class NinjaElevenDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260926223948_AddAttendanceToMatch")]
+    partial class AddAttendanceToMatch
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -418,10 +421,6 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                     b.Property<bool>("WasInjured")
                         .HasColumnType("boolean")
                         .HasColumnName("was_injured");
-
-                    b.Property<bool>("WasOnBenchUnused")
-                        .HasColumnType("boolean")
-                        .HasColumnName("was_on_bench_unused");
 
                     b.Property<int>("YellowCards")
                         .HasColumnType("integer")

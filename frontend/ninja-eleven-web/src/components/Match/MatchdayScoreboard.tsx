@@ -1,6 +1,7 @@
 import React from 'react';
 import type { FeedEvent } from '@/state';
 import { ClubName } from '@/components/Common/Names';
+import { useNavigate } from 'react-router-dom';
 
 /** Live score of one match of the round, as pushed by the backend. */
 export interface MatchScore {
@@ -61,9 +62,9 @@ const Mark: React.FC<{ icon: string; value: number; title: string }> = ({ icon, 
   ) : null;
 
 /**
- * The other matches of the round, updated over the same connection that carries the match
- * being watched. The four matches of a matchday run together on the backend, so this is
- * the same clock, not a second source of truth.
+ * One match of the round, as a line: the two clubs, the score, and everything the match
+ * did besides scoring. A mark is only drawn when the number behind it is not zero, so a
+ * quiet match looks quiet instead of decorated.
  */
 const MatchdayScoreboard: React.FC<MatchdayScoreboardProps> = ({
   scores,
@@ -71,8 +72,15 @@ const MatchdayScoreboard: React.FC<MatchdayScoreboardProps> = ({
   userTeamId,
   eventsByMatch = {},
 }) => {
+  const navigate = useNavigate();
   const others = scores.filter(score => score.matchId !== currentMatchId);
   if (others.length === 0) return null;
+
+  const handleMatchClick = (matchId: string) => {
+    if (matchId) {
+      navigate(`/match/${matchId}`);
+    }
+  };
 
   return (
     <div className="matchday">
@@ -89,7 +97,9 @@ const MatchdayScoreboard: React.FC<MatchdayScoreboardProps> = ({
         return (
           <div
             key={score.matchId}
-            className={`matchday-row ${score.isFinished ? 'played' : 'live'} ${involvesUser ? 'user-fixture' : ''}`}
+            className={`matchday-row ${score.isFinished ? 'played' : 'live'} ${involvesUser ? 'user-fixture' : ''} ${score.matchId ? 'clickable' : ''}`}
+            onClick={() => handleMatchClick(score.matchId)}
+            style={{ cursor: score.matchId ? 'pointer' : 'default' }}
           >
             <div className="matchday-teams">
               <span className="dot" aria-hidden="true" />
