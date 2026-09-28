@@ -358,3 +358,132 @@ public class TeamMatchRecordDto
     // Stadium info
     public string? StadiumName { get; init; }
 }
+
+/// <summary>
+/// One season's cup, as a bracket.
+///
+/// Only the rounds that have been drawn are in it, and that is not a limitation of the answer:
+/// nobody knows who is in the quarter-finals before the round of 16 has been played, so a bracket
+/// that showed them in advance would be inventing a football match between two clubs that may
+/// not both be there.
+/// </summary>
+public class CupBracketDto
+{
+    public Guid CompetitionSeasonId { get; init; }
+    public Guid SeasonId { get; init; }
+    public string CompetitionName { get; init; } = string.Empty;
+    public IReadOnlyList<CupBracketRoundDto> Rounds { get; init; } = Array.Empty<CupBracketRoundDto>();
+
+    /// <summary>The club that won it, and null while the final is still to be played.</summary>
+    public Guid? ChampionTeamId { get; init; }
+
+    public string? ChampionTeamName { get; init; }
+
+    /// <summary>The losing side of the final: the runner-up, which is a fact of its own.</summary>
+    public string? RunnerUpTeamName { get; init; }
+}
+
+/// <summary>One round of the bracket, named in the game's words rather than as a number.</summary>
+public class CupBracketRoundDto
+{
+    public int RoundNumber { get; init; }
+    public string Name { get; init; } = string.Empty;
+    public IReadOnlyList<CupBracketTieDto> Ties { get; init; } = Array.Empty<CupBracketTieDto>();
+}
+
+/// <summary>
+/// One tie: two clubs, two legs, and how it ended.
+///
+/// <see cref="FirstLegScore"/> and <see cref="SecondLegScore"/> are the goals of the leg's own
+/// home side, which is the tie's home club in the first leg and the tie's away club in the
+/// second — the legs swap ends. Every per-club number is that club's own, so a screen reads a
+/// tie without having to work out which end any of it was on.
+/// </summary>
+public class CupBracketTieDto
+{
+    public Guid TieId { get; init; }
+    public int RoundNumber { get; init; }
+    public IReadOnlyList<CupBracketClubDto> Clubs { get; init; } = Array.Empty<CupBracketClubDto>();
+    public int? FirstLegScore { get; init; }
+    public int? SecondLegScore { get; init; }
+
+    /// <summary>The matches of the two legs, so a manager can watch or re-watch either of them.</summary>
+    public Guid? FirstLegMatchId { get; init; }
+
+    public Guid? SecondLegMatchId { get; init; }
+}
+
+/// <summary>One club's line of a tie: who it is, what it scored, and whether it went through.</summary>
+public class CupBracketClubDto
+{
+    public Guid TeamId { get; init; }
+    public string Name { get; init; } = string.Empty;
+    public string PrimaryColor { get; init; } = string.Empty;
+    public string SecondaryColor { get; init; } = string.Empty;
+    public int? FirstLegGoals { get; init; }
+    public int? FirstLegConceded { get; init; }
+    public int? SecondLegGoals { get; init; }
+    public int? SecondLegConceded { get; init; }
+
+    /// <summary>Goals across the two legs, which is what the tie was decided on.</summary>
+    public int? AggregateGoals { get; init; }
+
+    public int? AggregateConceded { get; init; }
+
+    /// <summary>What it scored in the shootout, and null when the tie was never level.</summary>
+    public int? PenaltyGoals { get; init; }
+
+    public bool IsWinner { get; init; }
+    public bool IsLoser { get; init; }
+}
+
+/// <summary>
+/// One division's purse, and what each position in its table is worth.
+///
+/// The figures are the domain's, down to the last club's rounding remainder, because that is
+/// what a manager checks the other eleven against.
+/// </summary>
+public class DivisionPurseDto
+{
+    /// <summary>Which division, counted from one at the top.</summary>
+    public int Tier { get; init; }
+
+    /// <summary>The division's own name: "1ª Divisão".</summary>
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>What the whole table is paid out of at the end of the season.</summary>
+    public decimal Purse { get; init; }
+
+    /// <summary>How many clubs share it.</summary>
+    public int Clubs { get; init; }
+
+    public IReadOnlyList<PrizeShareDto> Shares { get; init; } = Array.Empty<PrizeShareDto>();
+}
+
+/// <summary>What one finishing position is paid.</summary>
+public class PrizeShareDto
+{
+    public int Position { get; init; }
+    public decimal Amount { get; init; }
+}
+
+/// <summary>
+/// What the cup pays: the winner's cheque and the consolation for the round a club went out in.
+///
+/// It is the whole shape of a knockout's money in one list, and the consolation grows steeply as
+/// the round does — a club knocked out among the last thirty-two is paid three hundredth of what
+/// the finalist is, and that difference is the prize for having been in the competition at all.
+/// </summary>
+public class CupPrizeDto
+{
+    /// <summary>Which tie-round, counted from the round of 16; zero for the champion's cheque.</summary>
+    public int TieRound { get; init; }
+
+    /// <summary>The round's name, in the game's own words: "quartas de final".</summary>
+    public string Name { get; init; } = string.Empty;
+
+    public decimal Amount { get; init; }
+
+    /// <summary>Whether this is the winner's cheque rather than a consolation.</summary>
+    public bool IsChampion { get; init; }
+}

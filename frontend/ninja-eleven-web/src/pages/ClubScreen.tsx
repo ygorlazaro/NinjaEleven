@@ -6,6 +6,7 @@ import { useClubWindow } from '@/services/clubColors';
 import { mockClubProfile } from '@/mock/clubProfile';
 import { mockSponsorBook } from '@/mock/clubBusiness';
 import KitShirt from '@/components/Club/KitShirt';
+import DivisionTrophy from '@/components/League/DivisionTrophy';
 import { useGameState } from '@/state';
 
 /**
@@ -85,11 +86,12 @@ const Figure: React.FC<{ label: string; value: string; icon: string; accent?: bo
 /**
  * The shelf: what the club has won, standing where a club keeps it.
  *
- * Trophies are grouped by competition and drawn as the medal of the place, because "champion
- * of the 1st division" and "champion of the 3rd" are different claims and a row of identical
- * gold discs throws that away. The shelf draws at most a dozen medals of a kind and counts the
- * rest: a club with thirty titles would otherwise push the page sideways, and a manager wants
- * to know there are thirty, not to count them.
+ * Trophies are grouped by competition and drawn as the medal of the place, and the division a
+ * shelf belongs to carries that division's own cup in front of its name — because "champion of
+ * the 1st division" and "champion of the 3rd" are different claims and a row of identical gold
+ * discs throws that away. The shelf draws at most a dozen medals of a kind and counts the rest: a
+ * club with thirty titles would otherwise push the page sideways, and a manager wants to know
+ * there are thirty, not to count them.
  */
 const TrophyShelf: React.FC<{ trophies: ClubTrophyDto[] }> = ({ trophies }) => {
   const shelves = useMemo(() => {
@@ -104,6 +106,9 @@ const TrophyShelf: React.FC<{ trophies: ClubTrophyDto[] }> = ({ trophies }) => {
     return [...byCompetition.entries()].map(([competition, onShelf]) => ({
       competition,
       division: onShelf.find(trophy => trophy.divisionName)?.divisionName ?? null,
+      // The tier comes off the first record that has one, because it is a property of the shelf
+      // rather than of a season: a club's titles in one division were all won in that division.
+      tier: onShelf.find(trophy => trophy.divisionTier != null)?.divisionTier ?? null,
       onShelf
     }));
   }, [trophies]);
@@ -124,7 +129,12 @@ const TrophyShelf: React.FC<{ trophies: ClubTrophyDto[] }> = ({ trophies }) => {
         <div className="club-shelf__row" key={shelf.competition}>
           <div className="club-shelf__name">
             <span className="club-shelf__competition">{shelf.competition}</span>
-            {shelf.division && <span className="club-shelf__division">{shelf.division}</span>}
+            {shelf.division && (
+              <span className="club-shelf__division">
+                {shelf.tier != null && <DivisionTrophy tier={shelf.tier} size={16} />}
+                {shelf.division}
+              </span>
+            )}
           </div>
           <div className="club-shelf__plank">
             {shelf.onShelf.slice(0, 12).map(trophy => (

@@ -60,4 +60,20 @@ public interface IPlayerRepository
         Guid seasonId,
         CompetitionType? competitionType = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A season's goals by player, from the match lines, across every club in it.
+    ///
+    /// It is the same walk as the club's own list without the club: a scorers list restricted to
+    /// one kind of competition has to be a walk rather than a filter, because only the round
+    /// knows whether a tie was a division match, a cup tie or a Supercup — and a cup's chart
+    /// counted from the season total would be a chart of the league's goals wearing the cup's
+    /// name. Null counts every kind at once, which is the whole season.
+    /// </summary>
+    /// <param name="seasonId">The season the goals are of.</param>
+    /// <param name="competitionType">League, Cup or Supercup; null for every kind at once.</param>
+    Task<IReadOnlyList<ClubScorerLine>> ListSeasonScorerLinesAsync(
+        Guid seasonId,
+        CompetitionType? competitionType = null,
+        CancellationToken cancellationToken = default);
 }

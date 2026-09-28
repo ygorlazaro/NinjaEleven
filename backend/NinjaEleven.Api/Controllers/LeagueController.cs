@@ -2,6 +2,7 @@ using NinjaEleven.Api.Contracts;
 using NinjaEleven.Api.Mappings;
 using NinjaEleven.Application.Services;
 using NinjaEleven.Domain.Common;
+using NinjaEleven.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
 
 namespace NinjaEleven.Api.Controllers;
@@ -86,13 +87,28 @@ public class LeagueController : ControllerBase
         return Ok(standing.ToDto());
     }
 
+    /// <summary>
+    /// What each division's table is paid out of, and what a position in it is worth.
+    ///
+    /// The backend owns these numbers because the share is a geometric weight and the last club
+    /// is paid whatever the other eleven leave over: a screen that divided the purse by twelve
+    /// would publish a championship that does not pay out its own money, and the last cheque is
+    /// the one a manager adds the other eleven up to find.
+    /// </summary>
+    [HttpGet("prizes")]
+    public ActionResult<IReadOnlyList<DivisionPurseDto>> GetPrizes() =>
+        Ok(_leagueService.GetChampionshipPurses().ToDtos());
+
     [HttpGet("scorer/{seasonId:guid}")]
     public async Task<ActionResult<IReadOnlyList<ScorerDto>>> GetScorers(
         Guid seasonId,
         [FromQuery] int? topN,
+        [FromQuery] CompetitionType? competition,
         CancellationToken cancellationToken)
     {
-        var scorers = await _leagueService.GetScorersAsync(seasonId, topN ?? DefaultTopScorers, cancellationToken);
+        var scorers = await _leagueService.GetScorersAsync(
+            seasonId, topN ?? DefaultTopScorers, competition, cancellationToken);
+
         return Ok(scorers.ToDtos());
     }
 }

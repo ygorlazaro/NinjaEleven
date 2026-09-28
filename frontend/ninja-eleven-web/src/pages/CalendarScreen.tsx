@@ -11,6 +11,7 @@ import type {
   TeamDto
 } from '@/types';
 import { ClubName } from '@/components/Common/Names';
+import ClubCrest from '@/components/Club/ClubCrest';
 import { useGameState } from '@/state';
 
 /** The word beside a competition, so a cup tie is not read as a league game. */
@@ -267,7 +268,7 @@ const CalendarScreen: React.FC = () => {
 
   return (
     <div className="app">
-      <div className="card match-header club-modal">
+      <div className="card match-header club-modal calendar-screen-card">
         <h2 className="profile-name">Calendário</h2>
 
         <div className="squad-toolbar">
@@ -399,7 +400,17 @@ const CalendarScreen: React.FC = () => {
                         {phaseOf(edition, round, tiesByRound[round.id] ?? 0)}
                       </td>
                       <td className="calendar-team">
-                        {home ? <ClubName teamId={home.id}>{home.name}</ClubName> : '…'}
+                        {home ? (
+                          <span className="calendar-team__side">
+                            <ClubCrest
+                              primary={home.primaryColor}
+                              secondary={home.secondaryColor}
+                              name={home.name}
+                              className="mini-crest"
+                            />
+                            <ClubName teamId={home.id}>{home.name}</ClubName>
+                          </span>
+                        ) : '…'}
                       </td>
                       <td className="calendar-score">
                         {fixture.status === 'Finished' && fixture.homeGoals !== null && fixture.homeGoals !== undefined
@@ -407,7 +418,17 @@ const CalendarScreen: React.FC = () => {
                           : 'x'}
                       </td>
                       <td className="calendar-team">
-                        {away ? <ClubName teamId={away.id}>{away.name}</ClubName> : '…'}
+                        {away ? (
+                          <span className="calendar-team__side">
+                            <ClubCrest
+                              primary={away.primaryColor}
+                              secondary={away.secondaryColor}
+                              name={away.name}
+                              className="mini-crest"
+                            />
+                            <ClubName teamId={away.id}>{away.name}</ClubName>
+                          </span>
+                        ) : '…'}
                       </td>
                     </tr>
                   );

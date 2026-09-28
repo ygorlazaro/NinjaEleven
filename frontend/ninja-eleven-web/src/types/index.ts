@@ -996,6 +996,15 @@ export type ClubTrophyDto = {
   seasonNumber: number;
   seasonName: string;
   divisionName?: string | null;
+  /**
+   * Which division of the pyramid, counted from one at the top, and null for a competition that
+   * is not one of its divisions at all.
+   *
+   * The name is for reading and this is for deciding: a shelf holding the 1ª and the 3ª has to
+   * draw two different cups, and a client that recovered the tier out of the name's leading
+   * number would be parsing a label to learn a fact the record already carries.
+   */
+  divisionTier?: number | null;
 };
 
 /**
@@ -1138,3 +1147,111 @@ export const COMPETITION_LABELS: Record<CompetitionFilter, string> = {
   Cup: 'Copa',
   SuperCup: 'Supercopa'
 };
+
+/**
+ * One season's cup, read as a bracket.
+ *
+ * Only the rounds that have been drawn are in it, and that is the point rather than a
+ * limitation: nobody knows who is in the quarter-finals before the round of 16 has been played,
+ * so a bracket that drew them in advance would be showing two clubs in a tie neither has earned.
+ */
+export interface CupBracketDto {
+  competitionSeasonId: string;
+  seasonId: string;
+  /** The competition's own name, without a tier: a cup has none. */
+  competitionName: string;
+  rounds: CupBracketRoundDto[];
+  /** Who won it, and null while the final is still to be played. */
+  championTeamId?: string | null;
+  championTeamName?: string | null;
+  /** The losing side of the final: the runner-up, which is a fact in its own right. */
+  runnerUpTeamName?: string | null;
+}
+
+/** One round of the bracket, named in the game's words rather than as a number. */
+export interface CupBracketRoundDto {
+  roundNumber: number;
+  name: string;
+  ties: CupBracketTieDto[];
+}
+
+/**
+ * One tie: two clubs, two legs and the aggregate.
+ *
+ * `firstLegScore` and `secondLegScore` are the goals of the leg's own home side, which is the
+ * tie's home club in the first leg and the tie's away club in the second — the legs swap ends.
+ * Every number on a club is that club's own, so a screen reads a tie without working out which
+ * end any of it was on.
+ */
+export interface CupBracketTieDto {
+  tieId: string;
+  roundNumber: number;
+  clubs: CupBracketClubDto[];
+  firstLegScore?: number | null;
+  secondLegScore?: number | null;
+  /** The two matches, so a manager can watch or re-watch either leg. */
+  firstLegMatchId?: string | null;
+  secondLegMatchId?: string | null;
+}
+
+/** One club's line of a tie: who it is, what it scored, and whether it went through. */
+export interface CupBracketClubDto {
+  teamId: string;
+  name: string;
+  primaryColor: string;
+  secondaryColor: string;
+  firstLegGoals?: number | null;
+  firstLegConceded?: number | null;
+  secondLegGoals?: number | null;
+  secondLegConceded?: number | null;
+  /** Goals across the two legs: what the tie was decided on. */
+  aggregateGoals?: number | null;
+  aggregateConceded?: number | null;
+  /** What it scored in the shootout, and null when the tie was never level. */
+  penaltyGoals?: number | null;
+  isWinner: boolean;
+  isLoser: boolean;
+}
+
+/**
+ * What a division's table is paid out of, and what a position in it is worth.
+ *
+ * The figures come from the backend down to the last club's rounding remainder, because that is
+ * the number a manager adds the other eleven up to find. A screen that divided the purse by
+ * twelve would publish a championship that does not pay out its own money.
+ */
+export interface DivisionPurseDto {
+  /** Which division, counted from one at the top. */
+  tier: number;
+  /** The division's own name: "1ª Divisão". */
+  name: string;
+  /** What the whole table is paid out of at the end of the season. */
+  purse: number;
+  /** How many clubs share it. */
+  clubs: number;
+  /** One share per position, the champion's first. */
+  shares: PrizeShareDto[];
+}
+
+/** What one finishing position in a division is paid. */
+export interface PrizeShareDto {
+  position: number;
+  amount: number;
+}
+
+/**
+ * What the cup pays: the winner's cheque and the consolation for the round a club went out in.
+ *
+ * A knockout is paid on the way out, so this is the other half of the money — the championship
+ * pays a table's twelve positions and the cup pays a run's six outcomes, and a club can be in
+ * both.
+ */
+export interface CupPrizeDto {
+  /** Which tie-round, counted from the round of 16; zero for the champion's cheque. */
+  tieRound: number;
+  /** The round's name in the game's own words, or "Campeão" for the winner's cheque. */
+  name: string;
+  amount: number;
+  /** Whether this is the winner's cheque rather than a consolation. */
+  isChampion: boolean;
+}

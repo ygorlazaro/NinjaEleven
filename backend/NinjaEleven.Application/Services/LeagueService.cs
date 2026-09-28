@@ -5,6 +5,7 @@ using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
+using NinjaEleven.Domain.Finance;
 using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Teams;
 using NinjaEleven.Domain.Players;
@@ -207,18 +208,96 @@ public class LeagueService
         CancellationToken cancellationToken = default) =>
         await _roundRepository.ListByCompetitionSeasonAsync(competitionSeasonId, cancellationToken);
 
+    /// <summary>
+    /// What each division's table is paid out of, and how the purse is shared between the
+    /// twelve clubs of it.
+    ///
+    /// It is asked for and not worked out on the screen because the share is a geometric weight
+    /// and the twelfth club is paid the rounding remainder of the other eleven: a client dividing
+    /// the purse by twelve would be a client publishing a championship that does not pay out its
+    /// own purse, and the last club's cheque is the one number a manager adds up the other
+    /// eleven to check.
+    ///
+    /// The whole pyramid, not one division: the money is what makes the table worth playing in
+    /// the first place, and a manager reading his own table wants to know what the table above
+    /// and the table below are playing for.
+    /// </summary>
+    public IReadOnlyList<DivisionPurse> GetChampionshipPurses() =>
+        CompetitionRules.Tiers()
+            .Select(tier =>
+            {
+                var purse = PrizeRules.PurseForTier(tier);
+                var shares = PrizeRules.ChampionshipPrizes(CompetitionRules.ClubsPerDivision, purse);
+
+                return new DivisionPurse(
+                    tier,
+                    CompetitionRules.DivisionName(tier),
+                    purse,
+                    CompetitionRules.ClubsPerDivision,
+                    shares.Select((amount, index) => new PrizeShare(index + 1, amount)).ToList());
+            })
+            .ToList();
+
 /// <summary>
 
     /// Top scorers of a season, derived from the season state of the players.
     /// </summary>
+    /// <param name="seasonId">The season being counted.</param>
+    /// <param name="top">How many to return.</param>
+    /// <param name="competition">
+    /// League, Cup or Supercup; null for the whole season.
+    ///
+    /// A season's own state counts every kind of competition at once, so a cup's chart cannot be
+    /// read off it: it is counted from the match lines instead, which is the same sum restricted
+    /// to the cup's matches. A cup chart built from the season total would be a league's goals
+    /// wearing the cup's name, and a manager would read his striker's cup run off it wrong.
+    /// </param>
     public async Task<IReadOnlyList<ScorerRow>> GetScorersAsync(
         Guid seasonId,
         int top = 15,
+        CompetitionType? competition = null,
         CancellationToken cancellationToken = default)
     {
         if (await _seasonRepository.GetAsync(seasonId, cancellationToken) is null)
         {
             throw new EntityNotFoundException("Season", seasonId);
+        }
+
+        if (competition.HasValue)
+        {
+            var lines = await _playerRepository.ListSeasonScorerLinesAsync(
+                seasonId, competition.Value, cancellationToken);
+
+            // A player who changed clubs inside the season has a line per club, and a scorers
+            // list with the same man on it twice is a list of nobody in particular. He is
+            // counted once, under the club he scored for most.
+            var byPlayer = lines
+                .GroupBy(line => line.PlayerId)
+                .Select(group => group.OrderByDescending(line => line.Goals).First())
+                .ToList();
+
+            var players = (await _playerRepository.ListAsync(cancellationToken))
+                .Where(player => byPlayer.Any(line => line.PlayerId == player.Id))
+                .ToList();
+            var clubs = await _teamRepository.ListByIdsAsync(byPlayer.Select(line => line.TeamId), cancellationToken);
+            var playerById = players.ToDictionary(player => player.Id);
+            var clubById = clubs.ToDictionary(club => club.Id);
+
+            return byPlayer
+                .Where(line => playerById.ContainsKey(line.PlayerId))
+                .Select(line => new ScorerRow
+                {
+                    PlayerId = line.PlayerId,
+                    PlayerName = playerById[line.PlayerId].Name,
+                    Age = playerById[line.PlayerId].CalculateAge(),
+                    TeamId = line.TeamId,
+                    TeamName = clubById.TryGetValue(line.TeamId, out var club) ? club.Name : null,
+                    TeamPrimaryColor = club?.PrimaryColor,
+                    TeamSecondaryColor = club?.SecondaryColor,
+                    Goals = line.Goals
+                })
+                .Take(Math.Max(top, 0))
+                .ToList();
         }
 
         var states = await _playerRepository.ListSeasonStatesAsync(seasonId, null, cancellationToken);

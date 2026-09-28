@@ -7,6 +7,7 @@ import { ProfileProvider } from '@/state/ProfileProvider';
 import AppShell from '@/components/Common/AppShell';
 import StartScreen from '@/pages/StartScreen';
 import LeagueScreen from '@/pages/LeagueScreen';
+import CupScreen from '@/pages/CupScreen';
 import LineupScreen from '@/pages/LineupScreen';
 import TeamViewScreen from '@/pages/TeamViewScreen';
 import MatchScreen from '@/pages/MatchScreen';
@@ -49,6 +50,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Root />} />
         <Route path="/league" element={<LeagueScreen />} />
+        <Route path="/copa" element={<CupScreen />} />
         <Route path="/calendar" element={<CalendarScreen />} />
         <Route path="/financeiro" element={<FinanceiroScreen />} />
         <Route path="/club" element={<ClubScreen />} />

@@ -20,7 +20,12 @@ public class CupTieRepository : ICupTieRepository
         await _dbContext.CupTies
             .AsNoTracking()
             .Where(tie => tie.CompetitionSeasonId == competitionSeasonId)
+            // The identifier is the tie-breaker, and it is there for one reason: a bracket whose
+            // sixteen ties changed places every time it was asked for is a bracket nobody can
+            // point at a club in. The pairing order itself is not stored — a tie does not know
+            // it was the seventh of its round — so this is stability, not seeding.
             .OrderBy(tie => tie.RoundNumber)
+            .ThenBy(tie => tie.Id)
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<CupTie>> ListByRoundAsync(

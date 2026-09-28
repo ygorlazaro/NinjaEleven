@@ -4,6 +4,7 @@ using NinjaEleven.Application.Models;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
+using NinjaEleven.Domain.Finance;
 using NinjaEleven.Domain.Teams;
 
 namespace NinjaEleven.Application.Services;
@@ -25,6 +26,39 @@ public class CompetitionService
         _seasonRepository = seasonRepository;
         _teamRepository = teamRepository;
         _unitOfWork = unitOfWork;
+    }
+
+    /// <summary>
+    /// What a cup run is paid: the consolation for the round a club went out in, and the
+    /// winner's cheque.
+    ///
+    /// It is asked for the same reason the championship purses are: a knockout pays on the way
+    /// out, so a screen that listed the winner and forgot the loser would tell a manager what
+    /// his club is playing for and not what it is playing against — and a first-round loser
+    /// being paid three hundredth of the finalist is the difference between a cup where the run
+    /// mattered and one where it did not.
+    /// </summary>
+    public IReadOnlyList<CupPrize> GetCupPrizes()
+    {
+        var prizes = new List<CupPrize>
+        {
+            // The champion's cheque is the biggest number in the competition and it is not a
+            // consolation, so it carries no round of its own and says so in words: a line
+            // headed "final" beside the line for the club that lost the final is a legend that
+            // has to be decoded before it can be read.
+            new(0, "Campeão", PrizeRules.CupChampionPrize, true)
+        };
+
+        for (var tieRound = 1; tieRound <= CompetitionRules.CupRounds; tieRound++)
+        {
+            prizes.Add(new CupPrize(
+                tieRound,
+                CompetitionRules.TieRoundName(tieRound),
+                PrizeRules.CupConsolation(tieRound),
+                false));
+        }
+
+        return prizes;
     }
 
     public async Task<IReadOnlyList<Competition>> GetAllAsync(CancellationToken cancellationToken = default) =>

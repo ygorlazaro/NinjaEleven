@@ -124,4 +124,58 @@ public class PlayerRepository : IPlayerRepository
             .ThenBy(line => line.PlayerId)
             .ToList();
     }
+
+    /// <summary>
+    /// A season's goals by player, across every club in it, and optionally restricted to one
+    /// kind of competition.
+    ///
+    /// The chain is the club list's, without the club: a line knows its match, a match its
+    /// fixture, a fixture its round, and only the round's edition knows the kind of competition
+    /// the tie was. So a cup chart is a walk and not a column, and the same walk the club's own
+    /// scorers page walks — which is the point of a rule being in one place.
+    /// </summary>
+    public async Task<IReadOnlyList<ClubScorerLine>> ListSeasonScorerLinesAsync(
+        Guid seasonId,
+        CompetitionType? competitionType = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query =
+            from line in _dbContext.MatchPlayerStatistics.AsNoTracking()
+            join match in _dbContext.Matches.AsNoTracking() on line.MatchId equals match.Id
+            join fixture in _dbContext.Fixtures.AsNoTracking() on match.FixtureId equals fixture.Id
+            join round in _dbContext.Rounds.AsNoTracking() on fixture.RoundId equals round.Id
+            join edition in _dbContext.CompetitionSeasons.AsNoTracking()
+                on round.CompetitionSeasonId equals edition.Id
+            join competition in _dbContext.Competitions.AsNoTracking()
+                on edition.CompetitionId equals competition.Id
+            where line.SeasonId == seasonId
+            select new { line, competition.Type };
+
+        if (competitionType.HasValue)
+        {
+            var wanted = competitionType.Value;
+            query = query.Where(row => row.Type == wanted);
+        }
+
+        // Own goals are never added to a player's goals, for the same reason the club's list does
+        // not: a defender's error into his own net is not a goal he scored.
+        var rows = await query
+            .GroupBy(row => new { row.line.PlayerId, row.line.TeamId })
+            .Select(group => new ClubScorerLine
+            {
+                PlayerId = group.Key.PlayerId,
+                TeamId = group.Key.TeamId,
+                Goals = group.Sum(row => row.line.Goals),
+                OwnGoals = group.Sum(row => row.line.OwnGoals),
+                Started = group.Sum(row => row.line.Started ? 1 : 0),
+                CameOn = group.Sum(row => row.line.CameOn ? 1 : 0)
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Where(line => line.Goals > 0)
+            .OrderByDescending(line => line.Goals)
+            .ThenBy(line => line.PlayerId)
+            .ToList();
+    }
 }

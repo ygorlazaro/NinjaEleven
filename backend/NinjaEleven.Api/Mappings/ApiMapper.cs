@@ -349,6 +349,52 @@ public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => ne
     public static IReadOnlyList<ScorerDto> ToDtos(this IEnumerable<Application.Models.ScorerRow> rows) =>
         rows.Select(row => row.ToDto()).ToList();
 
+    public static CupBracketDto ToDto(this Application.Models.CupBracketView bracket) => new()
+    {
+        CompetitionSeasonId = bracket.CompetitionSeasonId,
+        SeasonId = bracket.SeasonId,
+        CompetitionName = bracket.CompetitionName,
+        Rounds = bracket.Rounds.Select(round => round.ToDto()).ToList(),
+        ChampionTeamId = bracket.ChampionTeamId,
+        ChampionTeamName = bracket.ChampionTeamName,
+        RunnerUpTeamName = bracket.RunnerUpTeamName
+    };
+
+    public static CupBracketRoundDto ToDto(this Application.Models.CupBracketRound round) => new()
+    {
+        RoundNumber = round.RoundNumber,
+        Name = round.Name,
+        Ties = round.Ties.Select(tie => tie.ToDto()).ToList()
+    };
+
+    public static CupBracketTieDto ToDto(this Application.Models.CupBracketTie tie) => new()
+    {
+        TieId = tie.TieId,
+        RoundNumber = tie.RoundNumber,
+        Clubs = tie.Clubs.Select(club => club.ToDto()).ToList(),
+        FirstLegScore = tie.FirstLegScore,
+        SecondLegScore = tie.SecondLegScore,
+        FirstLegMatchId = tie.FirstLegMatchId,
+        SecondLegMatchId = tie.SecondLegMatchId
+    };
+
+    public static CupBracketClubDto ToDto(this Application.Models.CupBracketClub club) => new()
+    {
+        TeamId = club.TeamId,
+        Name = club.Name,
+        PrimaryColor = club.PrimaryColor,
+        SecondaryColor = club.SecondaryColor,
+        FirstLegGoals = club.FirstLegGoals,
+        FirstLegConceded = club.FirstLegConceded,
+        SecondLegGoals = club.SecondLegGoals,
+        SecondLegConceded = club.SecondLegConceded,
+        AggregateGoals = club.AggregateGoals,
+        AggregateConceded = club.AggregateConceded,
+        PenaltyGoals = club.PenaltyGoals,
+        IsWinner = club.IsWinner,
+        IsLoser = club.IsLoser
+    };
+
     public static MatchCommandResultDto ToDto(this Application.Models.MatchCommandResult result) => new()
     {
         Accepted = result.Accepted,
@@ -801,4 +847,27 @@ public static class TeamMatchRecordMapping
         Attendance = record.Attendance,
         StadiumName = record.StadiumName
     };
+
+    public static IReadOnlyList<DivisionPurseDto> ToDtos(this IEnumerable<Application.Models.DivisionPurse> purses) =>
+        purses.Select(purse => new DivisionPurseDto
+        {
+            Tier = purse.Tier,
+            Name = purse.Name,
+            Purse = purse.Purse,
+            Clubs = purse.Clubs,
+            Shares = purse.Shares
+                .Select(share => new PrizeShareDto { Position = share.Position, Amount = share.Amount })
+                .ToList()
+        }).ToList();
+
+    public static IReadOnlyList<CupPrizeDto> ToDtos(this IEnumerable<Application.Models.CupPrize> prizes) =>
+        prizes
+            .Select(prize => new CupPrizeDto
+            {
+                TieRound = prize.TieRound,
+                Name = prize.Name,
+                Amount = prize.Amount,
+                IsChampion = prize.IsChampion
+            })
+            .ToList();
 }

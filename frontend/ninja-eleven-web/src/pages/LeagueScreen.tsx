@@ -4,6 +4,7 @@ import { CompetitionApi, FixtureApi, LeagueApi, MatchApi, RoundApi, SeasonApi, T
 import { useGameState } from '@/state';
 import type {
   CompetitionEditionDto,
+  DivisionPurseDto,
   FixtureDto,
   MatchdayReportDto,
   RoundDto,
@@ -12,10 +13,11 @@ import type {
 } from '@/types';
 import { divisionsOf } from '@/types';
 import StandingsTable from '@/components/League/StandingsTable';
-import FixtureList from '@/components/League/FixtureList';
 import Calendar from '@/components/League/Calendar';
 import ScorersList from '@/components/League/ScorersList';
 import MatchdayReportPanel from '@/components/League/MatchdayReportPanel';
+import PrizeLegend from '@/components/League/PrizeLegend';
+import DivisionTrophy from '@/components/League/DivisionTrophy';
 
 const isScheduled = (f: FixtureDto) => f.status === 'Scheduled';
 const involves = (f: FixtureDto, teamId?: string) =>
@@ -47,6 +49,10 @@ const LeagueScreen: React.FC = () => {
   const [seasonsLoading, setSeasonsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<MatchdayReportDto | null>(null);
+  // What each division's table is paid out of. The pyramid's money is a rule of the game rather
+  // than a fact about this season, so it is asked for once and it does not change with the
+  // filters: a manager reading his ninth place wants to know what ninth place is worth.
+  const [purses, setPurses] = useState<DivisionPurseDto[]>([]);
 
   // The round the manager is in is the first one that still has a fixture nobody
   // played. Rounds are not gated by the calendar: they simply follow the results.
@@ -78,6 +84,20 @@ const LeagueScreen: React.FC = () => {
   // The division is the manager's choice, and it is the screen's whole subject: a pyramid of
   // three divisions has three tables, and one of them is chosen. It travels in the query
   // string, which is what makes a table somebody is looking at a link they can send on.
+  // The pyramid's money does not belong to a season or a division, so it is read once when the
+  // screen opens rather than on every filter change.
+  useEffect(() => {
+    let alive = true;
+
+    LeagueApi.getPrizes()
+      .then(list => alive && setPurses(list))
+      .catch(() => alive && setPurses([]));
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -251,15 +271,19 @@ const LeagueScreen: React.FC = () => {
 
   const activeDivision = editions.find(edition => edition.id === compSeasonId);
 
-  // How many games of the round nobody has played yet. The round is over when this is zero,
-  // which is what the note under the fixtures says in the manager's own words.
-  const pendingCount = roundFixtures.filter(isScheduled).length;
-
   return (
     <div className="card league-screen">
       <div className="league-head">
         <div>
-          <h2>{activeDivision?.name ?? 'Campeonato'}</h2>
+          {/* The division's own cup beside its name. Three divisions are three different
+              competitions with three different purses, and the biggest text on the screen is
+              where a manager reads which one he is in — so the mark that says it is the
+              division's, drawn to the shape of its rank rather than a trophy of no particular
+              division. */}
+          <h2 className="league-screen__division">
+            {activeDivision?.tier != null && <DivisionTrophy tier={activeDivision.tier} size={26} />}
+            <span>{activeDivision?.name ?? 'Campeonato'}</span>
+          </h2>
           <div className="badge" style={{ display: 'inline-block', marginTop: '7px' }}>
             {currentRound ? `Rodada ${currentRound.number}/${totalRounds}` : 'Sem rodada'}
           </div>
@@ -338,6 +362,10 @@ const LeagueScreen: React.FC = () => {
         <p className="competition" style={{ color: 'var(--danger)', margin: '0 0 10px' }}>{error}</p>
       )}
 
+      {/* The table is the screen and the calendar is beside it. A division's table is the thing
+          a manager opens the page for, so it takes the wide column and the artilharia sits under
+          it where the eye already is; the calendar is the other way round the world — a season
+          read a matchday at a time, and it is the one panel that is looked at on its own. */}
       <div className="league-grid">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div className="league-panel">
@@ -359,23 +387,14 @@ const LeagueScreen: React.FC = () => {
           </div>
 
           <div className="league-panel">
-            <h3>Jogos da rodada {currentRound?.number ?? ''}</h3>
-            <div id="roundFixtures">
-              <FixtureList
-                fixtures={roundFixtures}
-                userId={selectedTeam?.id}
-                onSelect={openFixture}
-              />
+            <h3>🥅 Artilheiros</h3>
+            <div id="scorersWrap">
+              <ScorersList scorers={scorers} userTeamId={selectedTeam?.id} userTeamName={selectedTeam?.name} />
             </div>
-            {!userFixture && roundFixtures.length > 0 && (
-              <p className="squad-hint" style={{ marginTop: '8px' }}>
-                {pendingCount > 0
-                  ? 'Seu clube já jogou nesta rodada. As outras partidas ainda estão em andamento.'
-                  : 'Nenhum jogo seu pendente nesta rodada.'}
-              </p>
-            )}
           </div>
+        </div>
 
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div className="league-panel">
             <h3>📅 Calendário completo</h3>
             <Calendar
@@ -386,14 +405,9 @@ const LeagueScreen: React.FC = () => {
               onSelect={openFixture}
             />
           </div>
-        </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div className="league-panel">
-            <h3>🥅 Artilheiros</h3>
-            <div id="scorersWrap">
-              <ScorersList scorers={scorers} userTeamId={selectedTeam?.id} userTeamName={selectedTeam?.name} />
-            </div>
+            <PrizeLegend purses={purses} tier={activeDivision?.tier} />
           </div>
         </div>
       </div>

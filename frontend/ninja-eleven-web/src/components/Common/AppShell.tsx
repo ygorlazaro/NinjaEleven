@@ -78,6 +78,18 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <span className="sidebar-link__label">Campeonato</span>
           </NavLink>
 
+          {/* The knockout. It is below the championship because it is the other half of the
+              season and the other kind of football: a table says who is above you and a bracket
+              says who is left in the cup, and a manager reads them at different moments — the
+              table on a matchday, the bracket when two legs are done and one club is through. */}
+          <NavLink
+            to="/copa"
+            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+          >
+            <span className="sidebar-link__icon">🥇</span>
+            <span className="sidebar-link__label">Copa</span>
+          </NavLink>
+
           {/* The season whole: the three divisions and the knockout, in the order they are
               played. It is its own screen rather than another tab of the table because a
               table answers "who is above me" and a calendar answers "when do I play". */}

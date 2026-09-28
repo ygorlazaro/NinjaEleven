@@ -163,21 +163,24 @@ const mockTrophies = (team: TeamDto, seed: number): ClubTrophyDto[] => {
       competition: 'Campeonato Brasileiro',
       kind: 'Champion',
       ...season(5),
-      divisionName: '1ª Divisão'
+      divisionName: '1ª Divisão',
+      divisionTier: 1
     },
     {
       id: id('RunnerUp', 6),
       competition: 'Campeonato Brasileiro',
       kind: 'RunnerUp',
       ...season(6),
-      divisionName: '1ª Divisão'
+      divisionName: '1ª Divisão',
+      divisionTier: 1
     },
     {
       id: id('Champion', 7),
       competition: 'Copa do Brasil',
       kind: 'Champion',
       ...season(7),
-      divisionName: null
+      divisionName: null,
+      divisionTier: null
     }
   ];
 };

@@ -12,7 +12,10 @@ import type {
   SquadSuggestionDto,
   FinanceLedgerDto,
   ClubScorerDto,
-  CompetitionFilter
+  CompetitionFilter,
+  CupBracketDto,
+  CupPrizeDto,
+  DivisionPurseDto
 } from '../types';
 
 /**
@@ -106,6 +109,24 @@ export const CompetitionApi = {
     api.get<TeamDto[]>(`/competition/${competitionSeasonId}/club`).then(r => r.data),
 
   get: (id: string) => api.get<CompetitionDto>(`/competition/${id}`).then(r => r.data),
+
+  /**
+   * The cup's bracket, with the rounds that have been drawn.
+   *
+   * The aggregate arrives per club and the two legs arrive as they were played, because the
+   * legs swap ends: a client that added the two columns as they came would put a club's second
+   * leg on the wrong side of the tie.
+   */
+  getBracket: (competitionSeasonId: string) =>
+    api.get<CupBracketDto>(`/competition/${competitionSeasonId}/bracket`).then(r => r.data),
+
+  /**
+   * What the cup pays: the winner's cheque and the consolation for the round a club went out in.
+   *
+   * A knockout is paid on the way out, so the consolation is most of the list — and it is
+   * backend-owned for the same reason the championship's shares are.
+   */
+  getCupPrizes: () => api.get<CupPrizeDto[]>('/competition/cup-prizes').then(r => r.data),
 };
 
 export const SeasonApi = {
@@ -156,8 +177,26 @@ export const LeagueApi = {
    * manager's own club, and a club's scorers are missing from a global top 15 long before
    * the league's best forward is.
    */
-  getScorers: (seasonId: string, topN = SCORER_POOL) =>
-    api.get<ScorerDto[]>(`/league/scorer/${seasonId}?topN=${topN}`).then(r => r.data),
+  /**
+   * The scoring chart, optionally restricted to one kind of competition.
+   *
+   * The competition is the backend's filter and not a column the client narrows: only the round
+   * knows whether a tie was a division match, a cup tie or a Supercup, so a cup's chart counted
+   * from the season total would be the league's goals wearing the cup's name.
+   */
+  getScorers: (seasonId: string, topN = SCORER_POOL, competition?: CompetitionFilter) =>
+    api.get<ScorerDto[]>(
+      `/league/scorer/${seasonId}?topN=${topN}${competition ? `&competition=${competition}` : ''}`
+    ).then(r => r.data),
+
+  /**
+   * What each division's table is paid out of, and what a position in it is worth.
+   *
+   * The backend owns the split, because the last club is paid the rounding remainder of the
+   * other eleven — a client dividing the purse by twelve publishes a championship that does not
+   * add up.
+   */
+  getPrizes: () => api.get<DivisionPurseDto[]>('/league/prizes').then(r => r.data),
 };
 
 export const MatchApi = {

@@ -8,6 +8,11 @@ interface ScorersListProps {
   /** The club the manager commands: the list is about his own goalscorers by default. */
   userTeamId?: string;
   userTeamName?: string;
+  /**
+   * What an empty list says. The same list is the league's chart and the cup's, and "no goals in
+   * the championship" under a bracket is a sentence about the wrong competition.
+   */
+  emptyMessage?: string;
 }
 
 type Scope = 'mine' | 'all';
@@ -20,7 +25,12 @@ const LIMIT = 15;
  * scoring for him, so his players lead; the whole league is one click away for the rest,
  * and the toggle is remembered for as long as the screen is mounted.
  */
-const ScorersList: React.FC<ScorersListProps> = ({ scorers, userTeamId, userTeamName }) => {
+const ScorersList: React.FC<ScorersListProps> = ({
+  scorers,
+  userTeamId,
+  userTeamName,
+  emptyMessage = 'Ainda não há gols no championship.'
+}) => {
   const [scope, setScope] = useState<Scope>('mine');
 
   const mine = useMemo(
@@ -42,7 +52,7 @@ const ScorersList: React.FC<ScorersListProps> = ({ scorers, userTeamId, userTeam
   const hasClub = !!userTeamId;
 
   if (scorers.length === 0) {
-    return <div className="league-empty">Ainda não há gols no campeonato.</div>;
+    return <div className="league-empty">{emptyMessage}</div>;
   }
 
   return (
