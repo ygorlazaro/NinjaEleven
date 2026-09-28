@@ -398,8 +398,20 @@ export interface MatchPossessionDto {
   playerId?: Guid | null;
 }
 
-/** The band a club sits in across a divisions table, worked out by the backend. */
-export type TableZone = 'None' | 'Safe' | 'Promotion' | 'Relegation';
+/**
+ * The band a club sits in, tagged by the backend.
+ *
+ * The three divisions do not share a pair of bands: the top one has the title and no promotion
+ * race, the middle races in both directions, and the bottom one has no division under it — so
+ * its bottom four are out of the next season's cup rather than relegated anywhere.
+ */
+export type TableZone = 'None' | 'Safe' | 'Promotion' | 'Relegation' | 'Champion' | 'CupExclusion';
+
+/**
+ * How one of a club's finished games went. It is the backend's word, and it is a word rather
+ * than a number: the screen paints the result, it does not work out one.
+ */
+export type MatchOutcome = 'Win' | 'Draw' | 'Loss';
 
 /**
  * One line of a classification table, as the backend worked it out.
@@ -426,6 +438,13 @@ export interface StandingDto {
   stars: number;
   /** Which band of the table this line is in, from the backend's own rules. */
   zone?: TableZone;
+  /**
+   * The club's last finished games, oldest first, and no longer than the club has played.
+   *
+   * A club three matchdays in carries three results, and the table shows the two empty places
+   * beside them: a run padded to five would be two matches the season has not played yet.
+   */
+  form?: MatchOutcome[];
 }
 
 /**
@@ -457,6 +476,9 @@ export interface ScorerDto {
   goals: number;
   teamId: Guid;
   teamName: string;
+  /** The club's colours, so the club beside his name is drawn as its own shield. */
+  teamPrimaryColor?: string | null;
+  teamSecondaryColor?: string | null;
 }
 
 export interface MatchEngineEventDto {
@@ -761,6 +783,8 @@ export type PlayerProfileDto = {
   seasonId?: Guid | null;
   teamId?: Guid | null;
   teamName: string;
+  teamPrimaryColor?: string | null;
+  teamSecondaryColor?: string | null;
   energy: number;
   isAvailable: boolean;
   injury: string;
@@ -825,9 +849,24 @@ export type PlayerMatchLineDto = {
   injuredOff: boolean;
   isHome: boolean;
   opponentName: string;
+  opponentTeamId?: Guid | null;
+  opponentTeamPrimaryColor?: string | null;
+  opponentTeamSecondaryColor?: string | null;
   homeGoals: number;
   awayGoals: number;
   roundNumber: number;
+
+  /**
+   * The club he played for, and the match read as a fixture — the same words the club page's
+   * match table is written in, because a player's history and a club's last matches are the
+   * same matches read by a man and by a club.
+   */
+  teamName?: string | null;
+  seasonName?: string | null;
+  competitionName?: string | null;
+  phaseName?: string | null;
+  stadiumName?: string | null;
+  attendance?: number | null;
 };
 
 export type SquadSuggestionDto = {
@@ -859,6 +898,7 @@ export interface TeamMatchRecordDto {
   competitionName?: string | null;
   phaseName?: string | null;
   attendance?: number | null;
+  stadiumName?: string | null;
 }
 
 /**

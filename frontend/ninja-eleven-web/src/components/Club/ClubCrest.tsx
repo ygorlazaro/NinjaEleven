@@ -12,13 +12,16 @@ import React from 'react';
  * in the column that carries the club's name — and a shield copied into a second place is a
  * shield the two places will stop agreeing about.
  */
-const ClubCrest: React.FC<{ primary: string; secondary: string; name: string }> = ({
-  primary,
-  secondary,
-  name
-}) => (
+const ClubCrest: React.FC<{
+  primary: string;
+  secondary: string;
+  name: string;
+  /** A size or a placement the screen needs; the default shield is 76x88 and not every
+   *  table cell can carry one, so a cell shrinks it here rather than in a second shield. */
+  className?: string;
+}> = ({ primary, secondary, name, className }) => (
   <span
-    className="club-crest"
+    className={`club-crest${className ? ` ${className}` : ''}`}
     style={{ background: primary, borderColor: secondary, color: secondary }}
     role="img"
     aria-label={`Escudo do ${name}`}

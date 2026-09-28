@@ -33,4 +33,7 @@ public class TeamMatchRecord
     public string? CompetitionName { get; init; }
     public string? PhaseName { get; init; }
     public int? Attendance { get; init; }
+
+    // Stadium info
+    public string? StadiumName { get; init; }
 }

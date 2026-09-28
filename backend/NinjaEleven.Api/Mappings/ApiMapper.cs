@@ -82,7 +82,7 @@ public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => ne
     ShortName = team.ShortName,
     PrimaryColor = team.PrimaryColor,
     SecondaryColor = team.SecondaryColor,
-    Rating = team.Rating,
+    Rating = (int)Math.Round(stars * 20), // 0-5 stars -> 0-100 scale
     Stars = stars,
     Stadium = team.Stadium != null ? new StadiumDto
     {
@@ -298,7 +298,8 @@ public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => ne
         YellowCards = row.YellowCards,
         RedCards = row.RedCards,
         Stars = row.Stars,
-        Zone = row.Zone
+        Zone = row.Zone,
+        Form = row.Form
     };
 
     public static IReadOnlyList<StandingDto> ToDtos(this IEnumerable<Application.Models.StandingRow> rows) =>
@@ -323,7 +324,9 @@ public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => ne
         Age = row.Age,
         Goals = row.Goals,
         TeamId = row.TeamId,
-        TeamName = row.TeamName
+        TeamName = row.TeamName,
+        TeamPrimaryColor = row.TeamPrimaryColor,
+        TeamSecondaryColor = row.TeamSecondaryColor
     };
 
     public static ClubScorerDto ToDto(this Application.Models.ClubScorerRow row) => new()
@@ -698,6 +701,8 @@ public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profi
     SeasonId = profile.SeasonId,
     TeamId = profile.TeamId,
     TeamName = profile.TeamName,
+    TeamPrimaryColor = profile.TeamPrimaryColor,
+    TeamSecondaryColor = profile.TeamSecondaryColor,
     Energy = profile.Energy,
     IsAvailable = profile.IsAvailable,
     Injury = profile.Injury,
@@ -727,9 +732,18 @@ public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profi
         InjuredOff = line.InjuredOff,
         IsHome = line.IsHome,
         OpponentName = line.OpponentName,
+        OpponentTeamId = line.OpponentTeamId,
+        OpponentTeamPrimaryColor = line.OpponentTeamPrimaryColor,
+        OpponentTeamSecondaryColor = line.OpponentTeamSecondaryColor,
         HomeGoals = line.HomeGoals,
         AwayGoals = line.AwayGoals,
-        RoundNumber = line.RoundNumber
+        RoundNumber = line.RoundNumber,
+        TeamName = line.TeamName,
+        SeasonName = line.SeasonName,
+        CompetitionName = line.CompetitionName,
+        PhaseName = line.PhaseName,
+        StadiumName = line.StadiumName,
+        Attendance = line.Attendance
     }).ToList()
 };
 }
@@ -784,6 +798,7 @@ public static class TeamMatchRecordMapping
         SeasonName = record.SeasonName,
         CompetitionName = record.CompetitionName,
         PhaseName = record.PhaseName,
-        Attendance = record.Attendance
+        Attendance = record.Attendance,
+        StadiumName = record.StadiumName
     };
 }

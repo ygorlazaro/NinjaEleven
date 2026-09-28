@@ -22,7 +22,7 @@ public class Team
         string shortName,
         string primaryColor,
         string secondaryColor,
-        int rating)
+        int rating = 50)
     {
         return new Team
         {

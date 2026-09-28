@@ -125,6 +125,8 @@ public class PlayerProfileDto
     public Guid? SeasonId { get; init; }
     public Guid? TeamId { get; init; }
     public string TeamName { get; init; } = string.Empty;
+    public string? TeamPrimaryColor { get; init; }
+    public string? TeamSecondaryColor { get; init; }
     public int Energy { get; init; }
     public bool IsAvailable { get; init; }
     public string Injury { get; init; } = string.Empty;
@@ -198,7 +200,23 @@ public class PlayerMatchLineDto
     public bool InjuredOff { get; init; }
     public bool IsHome { get; init; }
     public string OpponentName { get; init; } = string.Empty;
+    public Guid? OpponentTeamId { get; init; }
+    public string? OpponentTeamPrimaryColor { get; init; }
+    public string? OpponentTeamSecondaryColor { get; init; }
     public int HomeGoals { get; init; }
     public int AwayGoals { get; init; }
     public int RoundNumber { get; init; }
+
+    /// <summary>
+    /// The club he played for, and the match read as a fixture: the season, the competition,
+    /// the round or phase, the ground and the crowd. These are the same words the club page's
+    /// match table is written in, because it is the same table — a manager reading a striker's
+    /// history and a manager reading his club's last matches are reading the same matches.
+    /// </summary>
+    public string? TeamName { get; init; }
+    public string? SeasonName { get; init; }
+    public string? CompetitionName { get; init; }
+    public string? PhaseName { get; init; }
+    public string? StadiumName { get; init; }
+    public int? Attendance { get; init; }
 }

@@ -48,10 +48,10 @@ const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
     <div className="modal">
       <div className="modal-card">
         <h2>{forcedFor ? '🩹 Substituição obrigatória' : '🔁 Substituições'}</h2>
-        <p style={{ color: 'var(--muted)', fontSize: '12px' }}>{team.name}</p>
+        <p style={{ color: 'var(--muted)', fontSize: '14px' }}>{team.name}</p>
 
         {forcedFor && (
-          <p style={{ color: 'var(--danger)', fontSize: '13px', margin: '0 0 8px' }}>
+          <p style={{ color: 'var(--danger)', fontSize: '15px', margin: '0 0 8px' }}>
             {forcedFor} não pode continuar. O relógio está parado até alguém entrar no lugar
             dele.
           </p>

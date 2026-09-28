@@ -122,6 +122,20 @@ public class MatchRepository : IMatchRepository
                     on fixture.HomeTeamId equals home.Id
                 join away in _dbContext.Teams.AsNoTracking()
                     on fixture.AwayTeamId equals away.Id
+                // The same joins the club's own history makes, so a player's line is read in the
+                // same words a club's line is read in. A round carries its competition season and
+                // that carries the season and the competition; the ground is the home club's
+                // stadium, which is why a home club with no stadium yet reads as none rather than
+                // as an away draw with a name attached.
+                join homeStadium in _dbContext.Stadiums.AsNoTracking()
+                    on home.StadiumId equals homeStadium.Id into homeStadiumGroup
+                from homeStadium in homeStadiumGroup.DefaultIfEmpty()
+                join compSeason in _dbContext.CompetitionSeasons.AsNoTracking()
+                    on round.CompetitionSeasonId equals compSeason.Id
+                join season in _dbContext.Seasons.AsNoTracking()
+                    on compSeason.SeasonId equals season.Id
+                join competition in _dbContext.Competitions.AsNoTracking()
+                    on compSeason.CompetitionId equals competition.Id
                 where statistics.PlayerId == playerId
                 orderby match.CreatedAt descending, match.Id descending
                 select new Application.Models.PlayerMatchRecord
@@ -141,9 +155,18 @@ public class MatchRepository : IMatchRepository
                     InjuredOff = statistics.InjuredOff,
                     IsHome = statistics.TeamId == fixture.HomeTeamId,
                     OpponentName = statistics.TeamId == fixture.HomeTeamId ? away.Name : home.Name,
+                    OpponentTeamId = statistics.TeamId == fixture.HomeTeamId ? away.Id : home.Id,
+                    OpponentTeamPrimaryColor = statistics.TeamId == fixture.HomeTeamId ? away.PrimaryColor : home.PrimaryColor,
+                    OpponentTeamSecondaryColor = statistics.TeamId == fixture.HomeTeamId ? away.SecondaryColor : home.SecondaryColor,
                     HomeGoals = match.HomeScore,
                     AwayGoals = match.AwayScore,
-                    RoundNumber = round.Number
+                    RoundNumber = round.Number,
+                    TeamName = statistics.TeamId == fixture.HomeTeamId ? home.Name : away.Name,
+                    SeasonName = season.Name,
+                    CompetitionName = competition.Name,
+                    PhaseName = compSeason.IsDivision ? $"Rodada {round.Number}" : (round.Window == 1 ? "Campeonato" : "Copa"),
+                    Attendance = match.Attendance,
+                    StadiumName = homeStadium != null ? homeStadium.Name : null
                 })
             .ToListAsync(cancellationToken);
 
@@ -161,6 +184,9 @@ public class MatchRepository : IMatchRepository
                     on fixture.HomeTeamId equals home.Id
                 join away in _dbContext.Teams.AsNoTracking()
                     on fixture.AwayTeamId equals away.Id
+                join homeStadium in _dbContext.Stadiums.AsNoTracking()
+                    on home.StadiumId equals homeStadium.Id into homeStadiumGroup
+                from homeStadium in homeStadiumGroup.DefaultIfEmpty()
                 join compSeason in _dbContext.CompetitionSeasons.AsNoTracking()
                     on round.CompetitionSeasonId equals compSeason.Id
                 join season in _dbContext.Seasons.AsNoTracking()
@@ -183,7 +209,8 @@ public class MatchRepository : IMatchRepository
                     SeasonName = season.Name,
                     CompetitionName = competition.Name,
                     PhaseName = compSeason.IsDivision ? $"Rodada {round.Number}" : (round.Window == 1 ? "Campeonato" : "Copa"),
-                    Attendance = match.Attendance
+                    Attendance = match.Attendance,
+                    StadiumName = homeStadium != null ? homeStadium.Name : null
                 })
             .Take(limit)
             .ToListAsync(cancellationToken);
@@ -203,6 +230,9 @@ public class MatchRepository : IMatchRepository
                     on fixture.HomeTeamId equals home.Id
                 join away in _dbContext.Teams.AsNoTracking()
                     on fixture.AwayTeamId equals away.Id
+                join homeStadium in _dbContext.Stadiums.AsNoTracking()
+                    on home.StadiumId equals homeStadium.Id into homeStadiumGroup
+                from homeStadium in homeStadiumGroup.DefaultIfEmpty()
                 join compSeason in _dbContext.CompetitionSeasons.AsNoTracking()
                     on round.CompetitionSeasonId equals compSeason.Id
                 join season in _dbContext.Seasons.AsNoTracking()
@@ -228,7 +258,8 @@ public class MatchRepository : IMatchRepository
                     SeasonName = season.Name,
                     CompetitionName = competition.Name,
                     PhaseName = compSeason.IsDivision ? $"Rodada {round.Number}" : (round.Window == 1 ? "Campeonato" : "Copa"),
-                    Attendance = match.Attendance
+                    Attendance = match.Attendance,
+                    StadiumName = homeStadium != null ? homeStadium.Name : null
                 })
             .Take(limit)
             .ToListAsync(cancellationToken);

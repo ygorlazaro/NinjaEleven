@@ -246,14 +246,28 @@ public static class CompetitionRules
     public const int SuperCupWindow = 0;
 
     /// <summary>
-    /// Which band of a divisions table a position falls into: the top four is the promotion
-    /// race, the bottom four the relegation battle, and the rest are safe. The split is read off
-    /// the position alone, because the pyramid keeps every division the same size, so the same
-    /// four-and-four rule holds for all of them — a manager ought to be able to read the bands
-    /// from one place whether his club is going up, fighting to stay up, or already safe.
+    /// Which band of a division's table a position falls into.
     ///
-    /// Cups and the Supercup carry no tier, so they get <see cref="TableZone.None"/>: there is
-    /// no promotion to speak of in a knockout, and a table with no bands should not pretend it has
+    /// The bands are the pyramid's, not a fixed four-and-four, because the three divisions do
+    /// not have the same neighbours:
+    ///
+    /// - **The top division** promotes nobody — there is no division above it — so its first
+    ///   place is the <see cref="TableZone.Champion"/> and its second to fourth are simply
+    ///   safe. Four clubs are still sent down from its bottom.
+    /// - **A middle division** sends its top four up and its bottom four down, and the middle is
+    ///   the only place in the pyramid where a table is a race in both directions.
+    /// - **The last division** has nothing below it, so its bottom four are not relegated into a
+    ///   division that does not exist. They are the four clubs the cup leaves out: the bracket is
+    ///   thirty-two of the pyramid's thirty-six, ranked by tier and then by position, and
+    ///   <see cref="CupQualification"/> draws that line. The band says so, because a club that
+    ///   finishes last in the country should be told what happened to it rather than be left to
+    ///   work out that nothing is painted on its row.
+    ///
+    /// The zones come from the same numbers <see cref="DivisionMovement"/> moves clubs with, so
+    /// the band on a row and the move at the end of the season cannot disagree.
+    ///
+    /// Cups and the Supercup carry no tier, so they get <see cref="TableZone.None"/>: there is no
+    /// promotion to speak of in a knockout, and a table with no bands should not pretend it has
     /// any.
     /// </summary>
     public static TableZone ZoneFor(int? tier, int position, int count)
@@ -261,11 +275,18 @@ public static class CompetitionRules
         if (tier is null || count <= 0)
             return TableZone.None;
 
-        if (position <= PromotionSlots && position <= count)
+        // Tiers are counted from one and one is the top, so the first place of the first
+        // division is the only position in the pyramid that is a title rather than a race.
+        if (position == 1 && tier == Tiers()[0])
+            return TableZone.Champion;
+
+        if (tier > 1 && position <= PromotionSlots && position <= count)
             return TableZone.Promotion;
 
         if (position > count - RelegationSlots)
-            return TableZone.Relegation;
+        {
+            return tier < Tiers().Count ? TableZone.Relegation : TableZone.CupExclusion;
+        }
 
         return TableZone.Safe;
     }

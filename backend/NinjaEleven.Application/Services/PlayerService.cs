@@ -113,6 +113,8 @@ public class PlayerService
         {
             var team = await _teamRepository.GetAsync(teamId, cancellationToken);
             profile.TeamName = team?.Name ?? string.Empty;
+            profile.TeamPrimaryColor = team?.PrimaryColor;
+            profile.TeamSecondaryColor = team?.SecondaryColor;
         }
 
         var history = await _matchRepository.GetPlayerHistoryAsync(playerId, cancellationToken);
@@ -133,9 +135,18 @@ public class PlayerService
             InjuredOff = line.InjuredOff,
             IsHome = line.IsHome,
             OpponentName = line.OpponentName,
+            OpponentTeamId = line.OpponentTeamId,
+            OpponentTeamPrimaryColor = line.OpponentTeamPrimaryColor,
+            OpponentTeamSecondaryColor = line.OpponentTeamSecondaryColor,
             HomeGoals = line.HomeGoals,
             AwayGoals = line.AwayGoals,
-            RoundNumber = line.RoundNumber
+            RoundNumber = line.RoundNumber,
+            TeamName = line.TeamName,
+            SeasonName = line.SeasonName,
+            CompetitionName = line.CompetitionName,
+            PhaseName = line.PhaseName,
+            StadiumName = line.StadiumName,
+            Attendance = line.Attendance
         }).ToList();
 
         // The season's totals come from the same lines as the career's, so the two columns

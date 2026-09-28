@@ -74,10 +74,10 @@ public class StandingsService
             };
         }
 
-        var official = ToRows(StandingTable.Build(collection.Seeds, collection.Finished), collection.Clubs, view.Tier);
+        var official = ToRows(StandingTable.Build(collection.Seeds, collection.Finished), collection.Clubs, view.Tier, collection.RecentForm);
         var projected = ToRows(
             StandingTable.Build(collection.Seeds, collection.Finished.Concat(collection.InProgress).ToList()),
-            collection.Clubs, view.Tier);
+            collection.Clubs, view.Tier, collection.RecentForm);
 
         return new CompetitionStandings
         {
@@ -192,7 +192,54 @@ public class StandingsService
             else inProgress.Add(row);
         }
 
-        return new StandingCollection(view, seeds, finished, inProgress, clubs.ToDictionary(team => team.Id));
+        return new StandingCollection(view, seeds, finished, inProgress, clubs.ToDictionary(team => team.Id))
+        {
+            RecentForm = RecentFormOf(finished)
+        };
+    }
+
+    /// <summary>
+    /// How many results a club's run keeps. Five is what a manager reads at a glance beside a
+    /// position — long enough to show a run, short enough to sit in a table row — and it is a
+    /// number the backend owns, because a client that kept a different number would be showing
+    /// a different table of the same matches.
+    /// </summary>
+    public const int FormRunLength = 5;
+
+    /// <summary>
+    /// The last few finished games of every club, oldest first, read off the same rows the table
+    /// itself is built from — so a result in a club's form is a result that is also in its points.
+    ///
+    /// The run is as long as the club has played and no longer. A division three matchdays in has
+    /// three results per club, and the screen is the one that shows the two empty places: padding
+    /// the run here would mean inventing matches that were never played.
+    /// </summary>
+    private static IReadOnlyDictionary<Guid, IReadOnlyList<MatchOutcome>> RecentFormOf(
+        IReadOnlyList<MatchResultRow> finished)
+    {
+        var form = new Dictionary<Guid, List<MatchOutcome>>();
+
+        // The rows arrive in the order the matches were played, so a run is the tail of a list
+        // and the oldest result is the one that falls off the front.
+        foreach (var row in finished)
+        {
+            foreach (var teamId in new[] { row.HomeTeamId, row.AwayTeamId })
+            {
+                if (!form.TryGetValue(teamId, out var outcomes))
+                {
+                    form[teamId] = outcomes = new List<MatchOutcome>(FormRunLength);
+                }
+
+                outcomes.Add(row.OutcomeFor(teamId));
+
+                if (outcomes.Count > FormRunLength)
+                {
+                    outcomes.RemoveAt(0);
+                }
+            }
+        }
+
+        return form.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<MatchOutcome>)pair.Value);
     }
 
     /// <summary>
@@ -230,7 +277,8 @@ public class StandingsService
     private static IReadOnlyList<StandingRow> ToRows(
         IReadOnlyList<StandingEntry> entries,
         IReadOnlyDictionary<Guid, Team> clubs,
-        int? tier) =>
+        int? tier,
+        IReadOnlyDictionary<Guid, IReadOnlyList<MatchOutcome>>? recentForm = null) =>
         entries
             .Select(entry => new StandingRow
             {
@@ -246,7 +294,8 @@ public class StandingsService
                 GoalsAgainst = entry.GoalsAgainst,
                 YellowCards = entry.YellowCards,
                 RedCards = entry.RedCards,
-                Stars = entry.Stars
+                Stars = entry.Stars,
+                Form = recentForm?.GetValueOrDefault(entry.TeamId) ?? Array.Empty<MatchOutcome>()
             })
             .ToList();
 

@@ -5,7 +5,7 @@ import { API_BASE_URL } from '@/config/env';
 import { useGameState } from '@/state';
 import { divisionsOf } from '@/types';
 import type { CompetitionEditionDto, SeasonDto, TeamDto } from '@/types';
-import { TEAM_COLOR_PALETTES, pick } from '@/services/formatters';
+import { TEAM_COLOR_PALETTES, pick, starsToString } from '@/services/formatters';
 
 const StartScreen: React.FC = () => {
   const navigate = useNavigate();
@@ -171,7 +171,7 @@ const StartScreen: React.FC = () => {
 
       {seasons.length > 1 && (
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '11px', color: 'var(--muted)' }}>Temporada:</label>
+          <label style={{ fontSize: '13px', color: 'var(--muted)' }}>Temporada:</label>
           <select
             value={selectedSeasonId}
             onChange={(e) => setSelectedSeasonId(e.target.value)}
@@ -186,7 +186,7 @@ const StartScreen: React.FC = () => {
 
       {divisions.length > 0 && (
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '11px', color: 'var(--muted)' }}>Divisão:</label>
+          <label style={{ fontSize: '13px', color: 'var(--muted)' }}>Divisão:</label>
           <select
             value={selectedEditionId}
             onChange={(e) => setSelectedEditionId(e.target.value)}
@@ -227,7 +227,7 @@ const StartScreen: React.FC = () => {
               </div>
               <h3>{club.name}</h3>
               <div className="rating" style={{ color: colors.primary }}>
-                FORÇA DO ELENCO {club.rating}
+                ELenco {starsToString(club.stars)}
               </div>
               {club.stadium && (
                 <div className="small">

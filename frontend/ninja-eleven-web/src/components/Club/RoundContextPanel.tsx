@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { FixtureApi, TeamApi } from '@/api';
 import type { FixtureDto, RoundDto, TeamDto, TeamMatchRecordDto } from '@/types';
 import { ClubName } from '@/components/Common/Names';
-import { formatLimo } from '@/services/limo';
 
 const FORM_LENGTH = 5;
 const H2H_LENGTH = 5;
@@ -166,28 +165,32 @@ const RoundContextPanel: React.FC<RoundContextPanelProps> = ({
         <div className="round-context__h2h">
           {h2hMatches.length > 0 ? (
             <table className="round-context__h2h-table">
-              <thead>
-                <tr>
-                  <th>Temporada</th>
-                  <th>Campeonato</th>
-                  <th>Fase/Rodada</th>
-                  <th>Placar</th>
-                  <th>Público</th>
-                </tr>
-              </thead>
-              <tbody>
-                {h2hMatches.map((m) => (
-                  <tr key={m.matchId}>
-                    <td className="round-context__h2h-season">{m.seasonName || '—'}</td>
-                    <td className="round-context__h2h-comp">{m.competitionName || '—'}</td>
-                    <td className="round-context__h2h-phase">{m.phaseName || `Rodada ${m.roundNumber}`}</td>
-                    <td className="round-context__h2h-score">
-                      {m.isHome ? m.goalsFor : m.goalsAgainst} x {m.isHome ? m.goalsAgainst : m.goalsFor}
-                    </td>
-                    <td className="round-context__h2h-attendance">{m.attendance ? formatLimo(m.attendance) : '—'}</td>
+<thead>
+                  <tr>
+                    <th>Temporada</th>
+                    <th>Campeonato</th>
+                    <th>Fase/Rodada</th>
+                    <th>Local</th>
+                    <th>Estádio</th>
+                    <th>Placar</th>
+                    <th>Público</th>
                   </tr>
-                ))}
-              </tbody>
+                </thead>
+                <tbody>
+                  {h2hMatches.map((m) => (
+                    <tr key={m.matchId}>
+                      <td className="round-context__h2h-season">{m.seasonName || '—'}</td>
+                      <td className="round-context__h2h-comp">{m.competitionName || '—'}</td>
+                      <td className="round-context__h2h-phase">{m.phaseName || `Rodada ${m.roundNumber}`}</td>
+                      <td className="round-context__h2h-venue">{m.isHome ? '🏠' : '✈️'}</td>
+                      <td className="round-context__h2h-stadium">{m.stadiumName || '—'}</td>
+                      <td className="round-context__h2h-score">
+                        {m.isHome ? m.goalsFor : m.goalsAgainst} x {m.isHome ? m.goalsAgainst : m.goalsFor}
+                      </td>
+                      <td className="round-context__h2h-attendance">{m.attendance ? m.attendance.toLocaleString('pt-BR') : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
             </table>
           ) : (
             <p className="round-context__empty">Nenhum confronto anterior entre os times</p>

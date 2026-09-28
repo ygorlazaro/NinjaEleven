@@ -29,7 +29,7 @@ const PenaltyModal: React.FC<PenaltyModalProps> = ({ show, candidates, onSelecte
           {best != null && ' A chance é a mesma que o motor vai sortear.'}
         </p>
         {error && (
-          <p style={{ color: 'var(--danger)', fontSize: '12px' }}>{error}</p>
+          <p style={{ color: 'var(--danger)', fontSize: '14px' }}>{error}</p>
         )}
 
         <div id="penaltyOptions" className="penalty-options">
@@ -55,7 +55,7 @@ const PenaltyModal: React.FC<PenaltyModalProps> = ({ show, candidates, onSelecte
               </div>
             ))
           ) : (
-            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Nenhuma opção disponível</span>
+            <span style={{ fontSize: '14px', color: 'var(--muted)' }}>Nenhuma opção disponível</span>
           )}
         </div>
       </div>

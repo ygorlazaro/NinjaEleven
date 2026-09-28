@@ -14,6 +14,13 @@ public class ScorerRow
     public required string PlayerName { get; init; }
     public Guid? TeamId { get; init; }
     public string? TeamName { get; init; }
+
+    /// <summary>
+    /// The club's colours. A scorer is a name in a column and a club is what the column is
+    /// about, so the club is drawn beside the name — and a shield is drawn in two colours.
+    /// </summary>
+    public string? TeamPrimaryColor { get; init; }
+    public string? TeamSecondaryColor { get; init; }
     public int Age { get; init; }
     public int Goals { get; init; }
 

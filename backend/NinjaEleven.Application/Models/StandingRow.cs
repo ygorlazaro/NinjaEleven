@@ -1,4 +1,5 @@
 using NinjaEleven.Domain.Competitions;
+using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Teams;
 
 namespace NinjaEleven.Application.Models;
@@ -41,6 +42,13 @@ public class StandingRow
     /// paints the same ones the season's end will move clubs by.
     /// </summary>
     public TableZone Zone { get; init; }
+
+    /// <summary>
+    /// The club's last finished games, oldest first, and no longer than the club has played.
+    /// A club on its third matchday has three: the run is short because the season is, and the
+    /// screen is the one that says so rather than a backend that invented two results.
+    /// </summary>
+    public IReadOnlyList<MatchOutcome> Form { get; init; } = Array.Empty<MatchOutcome>();
 
     public int GoalDifference => GoalsFor - GoalsAgainst;
 

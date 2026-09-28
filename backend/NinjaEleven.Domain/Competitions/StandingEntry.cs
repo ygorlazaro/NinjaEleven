@@ -1,3 +1,5 @@
+using NinjaEleven.Domain.Enums;
+
 namespace NinjaEleven.Domain.Competitions;
 
 /// <summary>
@@ -34,6 +36,15 @@ public readonly record struct MatchResultRow(
         var conceded = GoalsAgainst(teamId);
 
         return scored > conceded ? 3 : scored == conceded ? 1 : 0;
+    }
+
+    /// <summary>How the match went for this club: a fact about the two scores and the two sides.</summary>
+    public MatchOutcome OutcomeFor(Guid teamId)
+    {
+        var scored = GoalsFor(teamId);
+        var conceded = GoalsAgainst(teamId);
+
+        return scored > conceded ? MatchOutcome.Win : scored == conceded ? MatchOutcome.Draw : MatchOutcome.Loss;
     }
 }
 

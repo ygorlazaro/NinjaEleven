@@ -16,6 +16,7 @@ import ClubScreen from '@/pages/ClubScreen';
 import StadiumScreen from '@/pages/StadiumScreen';
 import SponsorsScreen from '@/pages/SponsorsScreen';
 import ScorersScreen from '@/pages/ScorersScreen';
+import PlayerProfileScreen from '@/pages/PlayerProfileScreen';
 import '@/styles.css';
 
 /**
@@ -56,6 +57,7 @@ function App() {
         <Route path="/artilheiros" element={<ScorersScreen />} />
         <Route path="/match/lineup/:fixtureId" element={<LineupScreen />} />
         <Route path="/team/:teamId" element={<TeamViewScreen />} />
+        <Route path="/player/:playerId" element={<PlayerProfileScreen />} />
         <Route path="/match/:matchId" element={<MatchScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { ScorerDto } from '@/types';
 import { ClubName, PlayerName } from '@/components/Common/Names';
+import ClubCrest from '@/components/Club/ClubCrest';
 
 interface ScorersListProps {
   scorers: ScorerDto[];
@@ -84,7 +85,22 @@ const ScorersList: React.FC<ScorersListProps> = ({ scorers, userTeamId, userTeam
             {rows.map((s, i) => (
               <tr key={s.playerId} className={s.teamId === userTeamId ? 'user-row' : undefined}>
                 <td>{i + 1}</td>
-                <td><PlayerName playerId={s.playerId}><b>{s.playerName}</b></PlayerName></td>
+                <td>
+                  {/* The club beside the man, not only in the last column: on the manager's own
+                      club there is no club column, and a name on its own says who scored
+                      without saying for whom. */}
+                  <span className="scorer-player">
+                    {s.teamPrimaryColor && s.teamSecondaryColor && (
+                      <ClubCrest
+                        primary={s.teamPrimaryColor}
+                        secondary={s.teamSecondaryColor}
+                        name={s.teamName}
+                        className="mini-crest"
+                      />
+                    )}
+                    <PlayerName playerId={s.playerId}><b>{s.playerName}</b></PlayerName>
+                  </span>
+                </td>
                 <td>{s.age}</td>
                 <td><b>{s.goals}</b></td>
                 {scope === 'all' && (

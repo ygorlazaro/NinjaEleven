@@ -1,6 +1,7 @@
 import React from 'react';
 import type { FixtureDto } from '@/types';
 import { ClubName } from '@/components/Common/Names';
+import ClubCrest from '@/components/Club/ClubCrest';
 
 interface FixtureListProps {
   fixtures: FixtureDto[];
@@ -53,11 +54,31 @@ const FixtureList: React.FC<FixtureListProps> = ({ fixtures, userId, onSelect })
           >
             <span>{isPlayed(f) ? '✓' : isLive(f) ? '●' : ''}</span>
             <span className="home" style={{ color: homeColor }}>
-              {home ? <ClubName teamId={f.homeTeamId}>{home.name}</ClubName> : 'Casa'}
+              {home ? (
+                <span className="fixture__side">
+                  <ClubName teamId={f.homeTeamId}>{home.name}</ClubName>
+                  <ClubCrest
+                    primary={home.primaryColor || homeColor}
+                    secondary={home.secondaryColor || homeColor}
+                    name={home.name}
+                    className="mini-crest"
+                  />
+                </span>
+              ) : 'Casa'}
             </span>
             <span className="result">{result(f)}</span>
             <span className="away" style={{ color: awayColor }}>
-              {away ? <ClubName teamId={f.awayTeamId}>{away.name}</ClubName> : 'Fora'}
+              {away ? (
+                <span className="fixture__side">
+                  <ClubCrest
+                    primary={away.primaryColor || awayColor}
+                    secondary={away.secondaryColor || awayColor}
+                    name={away.name}
+                    className="mini-crest"
+                  />
+                  <ClubName teamId={f.awayTeamId}>{away.name}</ClubName>
+                </span>
+              ) : 'Fora'}
             </span>
           </div>
         );

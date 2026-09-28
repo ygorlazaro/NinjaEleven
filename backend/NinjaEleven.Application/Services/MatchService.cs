@@ -290,8 +290,8 @@ public class MatchService
 
         var context = new MatchContext(
             match.Id,
-            ToTeamInfo(homeTeam),
-            ToTeamInfo(awayTeam),
+            ToTeamInfo(homeTeam, homeStars),
+            ToTeamInfo(awayTeam, awayStars),
             homeSquad.Lineup,
             awaySquad.Lineup,
             homeSquad.Bench,
@@ -397,8 +397,8 @@ public class MatchService
         var fixture = await _fixtureRepository.GetAsync(match.FixtureId, cancellationToken)
             ?? throw new EntityNotFoundException("Fixture", match.FixtureId);
 
-        var home = ToTeamInfo(ToTeam(await _teamRepository.GetAsync(match.HomeTeamId, cancellationToken)));
-        var away = ToTeamInfo(ToTeam(await _teamRepository.GetAsync(match.AwayTeamId, cancellationToken)));
+        var homeTeam = ToTeam(await _teamRepository.GetAsync(match.HomeTeamId, cancellationToken));
+        var awayTeam = ToTeam(await _teamRepository.GetAsync(match.AwayTeamId, cancellationToken));
 
         // Read once, for both branches: a finished match is answered from the statistics
         // row rather than from zeros, and asking for it only after the live branch has
@@ -407,17 +407,22 @@ public class MatchService
 
         if (_sessions.TryGet(matchId, out var session))
         {
+            var homeStars = PlayerRating.CalculateTeamStarsFromSnapshots(
+                session.State.HomeLineup.Concat(session.State.HomeBench).ToList());
+            var awayStars = PlayerRating.CalculateTeamStarsFromSnapshots(
+                session.State.AwayLineup.Concat(session.State.AwayBench).ToList());
+
             return new MatchScoreRow
             {
                 RoundId = fixture.RoundId,
                 MatchId = match.Id,
                 FixtureId = match.FixtureId,
-                HomeTeamId = home.Id,
-                HomeTeamName = home.Name,
-                HomeShortName = home.ShortName,
-                AwayTeamId = away.Id,
-                AwayTeamName = away.Name,
-                AwayShortName = away.ShortName,
+                HomeTeamId = homeTeam.Id,
+                HomeTeamName = homeTeam.Name,
+                HomeShortName = homeTeam.ShortName,
+                AwayTeamId = awayTeam.Id,
+                AwayTeamName = awayTeam.Name,
+                AwayShortName = awayTeam.ShortName,
                 HomeGoals = session.State.HomeScore,
                 AwayGoals = session.State.AwayScore,
                 Minute = session.State.Minute,
@@ -435,17 +440,22 @@ public class MatchService
             };
         }
 
+        // Finished match: use default stars for display (2.5 = 3 stars)
+        const double defaultStars = 2.5;
+        var homeInfo = ToTeamInfo(homeTeam, defaultStars);
+        var awayInfo = ToTeamInfo(awayTeam, defaultStars);
+
         return new MatchScoreRow
         {
             RoundId = fixture.RoundId,
             MatchId = match.Id,
             FixtureId = match.FixtureId,
-            HomeTeamId = home.Id,
-            HomeTeamName = home.Name,
-            HomeShortName = home.ShortName,
-            AwayTeamId = away.Id,
-            AwayTeamName = away.Name,
-            AwayShortName = away.ShortName,
+            HomeTeamId = homeInfo.Id,
+            HomeTeamName = homeInfo.Name,
+            HomeShortName = homeInfo.ShortName,
+            AwayTeamId = awayInfo.Id,
+            AwayTeamName = awayInfo.Name,
+            AwayShortName = awayInfo.ShortName,
             HomeGoals = match.HomeScore,
             AwayGoals = match.AwayScore,
             Minute = match.CurrentMinute,
@@ -1900,8 +1910,8 @@ public class MatchService
         player.Speed + player.Accuracy + player.Dribbling + player.Heading + player.Strength
         + player.GoalkeeperPower + player.Reflexes;
 
-    private static TeamInfo ToTeamInfo(Team team) =>
-        new(team.Id, team.Name, team.ShortName, team.PrimaryColor, team.SecondaryColor, team.Rating);
+    private static TeamInfo ToTeamInfo(Team team, double stars) =>
+        new(team.Id, team.Name, team.ShortName, team.PrimaryColor, team.SecondaryColor, (int)Math.Round(stars * 20));
 
     private static Team ToTeam(Team? team) =>
         team ?? throw new EntityNotFoundException("Team", Guid.Empty);

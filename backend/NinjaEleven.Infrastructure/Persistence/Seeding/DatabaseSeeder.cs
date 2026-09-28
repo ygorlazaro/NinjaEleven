@@ -236,14 +236,11 @@ public class DatabaseSeeder : IDataSeeder
         (string Name, string ShortName, string Primary, string Secondary, int Tier) definition,
         Random random)
     {
-        var (low, high) = ReputationBand(definition.Tier);
-
         return Team.Create(
             definition.Name,
             definition.ShortName,
             definition.Primary,
-            definition.Secondary,
-            random.Next(low, high + 1));
+            definition.Secondary);
     }
 
     private static (int Low, int High) ReputationBand(int tier) => tier switch

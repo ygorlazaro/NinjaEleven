@@ -1,5 +1,5 @@
 import React from 'react';
-import type { TeamMatchRecordDto } from '@/types';
+import type { MatchOutcome, TeamMatchRecordDto } from '@/types';
 
 export type Form = 'win' | 'draw' | 'loss';
 
@@ -63,3 +63,59 @@ const FormRun: React.FC<FormRunProps> = ({ matches, length = 5, emptyLabel = 'se
 };
 
 export default FormRun;
+
+/** How many results a run keeps. It is the number the club page's guide and the table agree on. */
+export const FORM_RUN_LENGTH = 5;
+
+const OUTCOME_FORM: Record<MatchOutcome, Form> = {
+  Win: 'win',
+  Draw: 'draw',
+  Loss: 'loss'
+};
+
+interface OutcomeFormRunProps {
+  outcomes?: MatchOutcome[] | null;
+  length?: number;
+}
+
+/**
+ * The same run, told by the backend instead of worked out from scorelines.
+ *
+ * The classification table is handed the result of each of the last games as a word, because the
+ * table that counts the points is the same one that says which of them were won — and a screen
+ * that read the same matches again to reach the same answer would be a second account of them.
+ *
+ * **A run is never padded with a result.** A club three matchdays in has three, and the places
+ * for the other two are drawn as a dash in grey: a coloured letter in an empty place would be a
+ * match the season has not played yet, sitting in a table of what it has.
+ */
+export const OutcomeFormRun: React.FC<OutcomeFormRunProps> = ({
+  outcomes,
+  length = FORM_RUN_LENGTH
+}) => {
+  const played = outcomes ?? [];
+
+  return (
+    <span className="form-run">
+      {Array.from({ length }, (_, index) => {
+        const outcome = played[index];
+
+        if (!outcome) {
+          return (
+            <span key={`empty-${index}`} className="form-run__letter form-empty" title="Ainda não jogado">
+              -
+            </span>
+          );
+        }
+
+        const form = OUTCOME_FORM[outcome];
+
+        return (
+          <span key={`${outcome}-${index}`} className={`form-run__letter form-${form}`} title={FORM_TITLE[form]}>
+            {FORM_LABEL[form]}
+          </span>
+        );
+      })}
+    </span>
+  );
+};

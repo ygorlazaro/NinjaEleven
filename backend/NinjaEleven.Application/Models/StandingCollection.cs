@@ -1,4 +1,5 @@
 using NinjaEleven.Domain.Competitions;
+using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Teams;
 
 namespace NinjaEleven.Application.Models;
@@ -38,4 +39,17 @@ public record StandingCollection(
     public int PositionOf(Guid teamId) =>
         StandingTable.Build(Seeds, Finished.Concat(InProgress).ToList())
             .FirstOrDefault(entry => entry.TeamId == teamId)?.Position ?? 0;
+
+    /// <summary>
+    /// How each club's last few finished games went, oldest first and never longer than the run
+    /// being kept.
+    ///
+    /// It is read off the same finished rows the table itself is built from, in the order the
+    /// matches happened, and it is shorter than the run for a club that has not played that many
+    /// games yet. The table does not pad it: a club on its third matchday has played three
+    /// games, and a row of five that begins with two results that were never played is a form
+    /// that says something about a season that has not happened.
+    /// </summary>
+    public IReadOnlyDictionary<Guid, IReadOnlyList<MatchOutcome>> RecentForm { get; init; }
+        = new Dictionary<Guid, IReadOnlyList<MatchOutcome>>();
 }

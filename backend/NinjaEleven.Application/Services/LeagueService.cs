@@ -246,6 +246,8 @@ public class LeagueService
                 Age = player.CalculateAge(),
                 TeamId = state.TeamId,
                 TeamName = team?.Name,
+                TeamPrimaryColor = team?.PrimaryColor,
+                TeamSecondaryColor = team?.SecondaryColor,
                 Goals = state.Goals
             });
         }

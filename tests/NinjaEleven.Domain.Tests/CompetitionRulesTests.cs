@@ -146,18 +146,74 @@ public class CompetitionRulesTests
     }
 
     [Fact]
-    public void The_top_four_promote_and_the_bottom_four_relegate_in_every_division()
+    public void The_top_division_has_a_champion_and_no_promotion_race()
     {
-        // Four up and four down in each of the twelve-club tiers: the bands are read off the
-        // position alone, so the same four-and-four rule holds whether a club is going up
-        // from the third, fighting to stay up in the second, or clearing the drop in the first.
+        // There is no division above the first, so nobody in it is going up: first place is the
+        // title, second to fourth are simply safe, and the four that go down are the bottom four
+        // as they are in every division. A first division painted as a promotion race would be
+        // promising four clubs a place that does not exist.
         const int count = CompetitionRules.ClubsPerDivision;
 
-        Assert.Equal(TableZone.Promotion, CompetitionRules.ZoneFor(1, 1, count));
-        Assert.Equal(TableZone.Promotion, CompetitionRules.ZoneFor(1, CompetitionRules.PromotionSlots, count));
+        Assert.Equal(TableZone.Champion, CompetitionRules.ZoneFor(1, 1, count));
+        Assert.Equal(TableZone.Safe, CompetitionRules.ZoneFor(1, 2, count));
+        Assert.Equal(TableZone.Safe, CompetitionRules.ZoneFor(1, CompetitionRules.PromotionSlots, count));
+        Assert.Equal(TableZone.Relegation, CompetitionRules.ZoneFor(1, count - CompetitionRules.RelegationSlots + 1, count));
         Assert.Equal(TableZone.Relegation, CompetitionRules.ZoneFor(1, count, count));
+    }
+
+    [Fact]
+    public void A_middle_division_is_a_race_in_both_directions()
+    {
+        // Tier 2 is the only place in the pyramid with a division above and a division below, so
+        // it is the only table where four clubs are going up and four are going down at once.
+        const int count = CompetitionRules.ClubsPerDivision;
+
+        Assert.Equal(TableZone.Promotion, CompetitionRules.ZoneFor(2, 1, count));
+        Assert.Equal(TableZone.Promotion, CompetitionRules.ZoneFor(2, CompetitionRules.PromotionSlots, count));
+        Assert.Equal(TableZone.Safe, CompetitionRules.ZoneFor(2, CompetitionRules.PromotionSlots + 1, count));
         Assert.Equal(TableZone.Relegation, CompetitionRules.ZoneFor(2, count - CompetitionRules.RelegationSlots + 1, count));
-        Assert.Equal(TableZone.Safe, CompetitionRules.ZoneFor(3, count / 2, count));
+        Assert.Equal(TableZone.Relegation, CompetitionRules.ZoneFor(2, count, count));
+    }
+
+    [Fact]
+    public void The_last_division_relegates_nobody_because_there_is_nothing_below_it()
+    {
+        // The cup is thirty-two of the pyramid's thirty-six clubs, ranked by tier and then by
+        // position, so the four that finish last in the last division are the four the bracket
+        // has no room for. That is the band, said in the game's words: a fourth division that
+        // does not exist is not somewhere these clubs can be sent.
+        const int count = CompetitionRules.ClubsPerDivision;
+        var lowest = CompetitionRules.Tiers().Count;
+
+        Assert.Equal(TableZone.Promotion, CompetitionRules.ZoneFor(lowest, 1, count));
+        Assert.Equal(TableZone.Safe, CompetitionRules.ZoneFor(lowest, count - CompetitionRules.RelegationSlots - 1, count));
+        Assert.Equal(TableZone.CupExclusion, CompetitionRules.ZoneFor(lowest, count - CompetitionRules.RelegationSlots + 1, count));
+        Assert.Equal(TableZone.CupExclusion, CompetitionRules.ZoneFor(lowest, count, count));
+    }
+
+    [Fact]
+    public void A_band_is_the_move_the_season_ends_with()
+    {
+        // The band on a row and the movement at the end of the season are read from the same
+        // numbers, so a club painted as going down cannot finish the season staying where it is.
+        const int count = CompetitionRules.ClubsPerDivision;
+
+        foreach (var tier in CompetitionRules.Tiers())
+        {
+            var standings = Enumerable.Range(1, count)
+                .Select(position => new StandingEntry { TeamId = Guid.NewGuid() })
+                .ToList();
+
+            var movement = DivisionMovement.From(tier, standings);
+
+            foreach (var club in movement.Movements)
+            {
+                var zone = CompetitionRules.ZoneFor(tier, club.Position, count);
+
+                Assert.Equal(club.IsPromoted, zone is TableZone.Promotion);
+                Assert.Equal(club.IsRelegated, zone is TableZone.Relegation);
+            }
+        }
     }
 
     [Fact]

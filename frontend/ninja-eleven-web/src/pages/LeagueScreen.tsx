@@ -10,6 +10,7 @@ import type {
   SeasonDto,
   TeamDto
 } from '@/types';
+import { divisionsOf } from '@/types';
 import StandingsTable from '@/components/League/StandingsTable';
 import FixtureList from '@/components/League/FixtureList';
 import Calendar from '@/components/League/Calendar';
@@ -264,7 +265,7 @@ const LeagueScreen: React.FC = () => {
           </div>
           {seasons.length > 1 && (
             <div style={{ marginTop: '8px' }}>
-              <label style={{ fontSize: '11px', color: 'var(--muted)' }}>Temporada:</label>{' '}
+              <label style={{ fontSize: '13px', color: 'var(--muted)' }}>Temporada:</label>{' '}
               <select
                 value={seasonValue}
                 onChange={e => changeSeason(e.target.value)}
@@ -276,7 +277,7 @@ const LeagueScreen: React.FC = () => {
                   color: 'var(--text)',
                   border: '1px solid var(--line)',
                   borderRadius: '6px',
-                  fontSize: '12px'
+                  fontSize: '14px'
                 }}
               >
                 {seasons
@@ -290,7 +291,7 @@ const LeagueScreen: React.FC = () => {
           )}
           {editions.length > 1 && (
             <div style={{ marginTop: '8px' }}>
-              <label style={{ fontSize: '11px', color: 'var(--muted)' }}>Divisão:</label>{' '}
+              <label style={{ fontSize: '13px', color: 'var(--muted)' }}>Divisão:</label>{' '}
               <select
                 value={compSeasonId}
                 onChange={e => changeDivision(e.target.value)}
@@ -301,7 +302,7 @@ const LeagueScreen: React.FC = () => {
                   color: 'var(--text)',
                   border: '1px solid var(--line)',
                   borderRadius: '6px',
-                  fontSize: '12px'
+                  fontSize: '14px'
                 }}
               >
                 {editions.map(edition => (
@@ -346,6 +347,8 @@ const LeagueScreen: React.FC = () => {
                 standings={standings?.official ?? []}
                 userId={selectedTeam?.id}
                 teams={leagueTeams}
+                tier={activeDivision?.tier}
+                lastTier={divisionsOf(editions).length}
               />
             </div>
             <MatchdayReportPanel

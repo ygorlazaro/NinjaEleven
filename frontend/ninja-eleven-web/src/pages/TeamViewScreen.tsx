@@ -1,14 +1,14 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { SeasonApi, TeamApi } from '@/api';
-import { useGameState } from '@/state';
-import type { SquadPlayerDto, TeamDto, TeamMatchRecordDto } from '@/types';
-import { starsToString } from '@/services/formatters';
+import ClubCrest from '@/components/Club/ClubCrest';
 import ClubSquadTable from '@/components/Club/ClubSquadTable';
 import FormRun, { formOf } from '@/components/Club/FormRun';
 import { ClubName } from '@/components/Common/Names';
 import { useClubWindow } from '@/services/clubColors';
-import { formatLimo } from '@/services/limo';
+import { starsToString } from '@/services/formatters';
+import { useGameState } from '@/state';
+import type { SquadPlayerDto, TeamDto, TeamMatchRecordDto } from '@/types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) => {
   const teams = useGameState((s) => s.leagueTeams);
@@ -34,7 +34,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
   }, [teams, urlTeamId]);
 
   useEffect(() => {
-    if (!urlTeamId || teams.some(t => t.id === urlTeamId)) return undefined;
+    if (!urlTeamId) return undefined;
 
     let cancelled = false;
 
@@ -50,7 +50,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
     return () => {
       cancelled = true;
     };
-  }, [urlTeamId, teams]);
+  }, [urlTeamId]);
 
   useEffect(() => {
     if (!urlTeamId) return undefined;
@@ -106,14 +106,26 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
   const isOwnTeam = selectedTeam && selectedTeam.id === urlTeamId;
 
   return (
-    <div className="team-view-overlay">
-      <div className="card team-view-card club-modal" style={clubWindow}>
+    <div className="app">
+      <div className="team-view-overlay">
+        <div className="card team-view-card club-modal" style={clubWindow}>
         <div className="squad-head team-view-summary">
-          <div>
-            <h2 className="profile-name">{team.name}</h2>
-            <p className="squad-hint">
-              Força {team.rating} • {players.length} jogadores • Elenco: {starsToString(team.stars)}
-            </p>
+          <div className="team-header-with-crest">
+            <ClubCrest
+              primary={team.primaryColor || '#f2d34f'}
+              secondary={team.secondaryColor || '#f2d34f'}
+              name={team.name}
+            />
+            <div className="team-header-info">
+              <div className="team-header-main">
+                <h2 className="profile-name">{team.name}</h2>
+                <span className="team-stars">{starsToString(team.stars)}</span>
+              </div>
+              <p className="squad-hint">
+                {players.length} jogadores
+                {team.stadium && ` • ${team.stadium.name} • ${team.stadium.capacity.toLocaleString('pt-BR')} lugares`}
+              </p>
+            </div>
           </div>
           <button className="ctrl" onClick={() => navigate('/league')}>Tabela e jogos</button>
         </div>
@@ -145,6 +157,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
                   <th>Camp.</th>
                   <th>Rodada/Fase</th>
                   <th>Local</th>
+                  <th>Estádio</th>
                   <th>Adversário</th>
                   <th>Placar</th>
                   <th>Público</th>
@@ -159,6 +172,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
                       <td className="form-comp">{record.competitionName || '—'}</td>
                       <td className="form-phase">{record.phaseName || `Rodada ${record.roundNumber}`}</td>
                       <td className="form-venue">{record.isHome ? '🏠' : '✈️'}</td>
+                      <td className="form-stadium">{record.stadiumName || '—'}</td>
                       <td className="form-opponent">
                         {record.opponentTeamId ? (
                           <ClubName teamId={record.opponentTeamId}>{record.opponentName}</ClubName>
@@ -167,7 +181,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
                         )}
                       </td>
                       <td className="form-score">{record.goalsFor} x {record.goalsAgainst}</td>
-                      <td className="form-attendance">{record.attendance ? formatLimo(record.attendance) : '—'}</td>
+                      <td className="form-attendance">{record.attendance ? record.attendance.toLocaleString('pt-BR') : '—'}</td>
                     </tr>
                   );
                 })}
@@ -188,6 +202,8 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
                     <th>Temporada</th>
                     <th>Campeonato</th>
                     <th>Fase/Rodada</th>
+                    <th>Local</th>
+                    <th>Estádio</th>
                     <th>Placar</th>
                     <th>Público</th>
                   </tr>
@@ -200,10 +216,12 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
                         <td className="round-context__h2h-season">{m.seasonName || '—'}</td>
                         <td className="round-context__h2h-comp">{m.competitionName || '—'}</td>
                         <td className="round-context__h2h-phase">{m.phaseName || `Rodada ${m.roundNumber}`}</td>
+                        <td className="round-context__h2h-venue">{m.isHome ? '🏠' : '✈️'}</td>
+                        <td className="round-context__h2h-stadium">{m.stadiumName || '—'}</td>
                         <td className={`round-context__h2h-score h2h-${result}`}>
                           {m.isHome ? m.goalsFor : m.goalsAgainst} x {m.isHome ? m.goalsAgainst : m.goalsFor}
                         </td>
-                        <td className="round-context__h2h-attendance">{m.attendance ? formatLimo(m.attendance) : '—'}</td>
+                        <td className="round-context__h2h-attendance">{m.attendance ? m.attendance.toLocaleString('pt-BR') : '—'}</td>
                       </tr>
                     );
                   })}
@@ -213,6 +231,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
           </section>
         )}
       </div>
+    </div>
     </div>
   );
 };

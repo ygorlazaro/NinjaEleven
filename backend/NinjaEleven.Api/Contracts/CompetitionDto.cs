@@ -237,6 +237,13 @@ public class StandingDto
     /// season's end moves clubs by — never its own arithmetic.
     /// </summary>
     public TableZone Zone { get; init; }
+
+    /// <summary>
+    /// The club's last finished games, oldest first, and never longer than the club has played.
+    /// A club three matchdays in carries three results: the screen is the one that shows that
+    /// the other two places are empty, because a padded run would be a season that did not happen.
+    /// </summary>
+    public IReadOnlyList<MatchOutcome> Form { get; init; } = Array.Empty<MatchOutcome>();
 }
 
 /// <summary>
@@ -277,6 +284,10 @@ public class ScorerDto
     public int Goals { get; init; }
     public Guid? TeamId { get; init; }
     public string? TeamName { get; init; }
+
+    /// <summary>The club's colours, so the club beside his name can be drawn as its own shield.</summary>
+    public string? TeamPrimaryColor { get; init; }
+    public string? TeamSecondaryColor { get; init; }
 }
 
 /// <summary>
@@ -343,4 +354,7 @@ public class TeamMatchRecordDto
     public string? CompetitionName { get; init; }
     public string? PhaseName { get; init; }
     public int? Attendance { get; init; }
+
+    // Stadium info
+    public string? StadiumName { get; init; }
 }

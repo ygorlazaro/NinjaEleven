@@ -32,6 +32,8 @@ public class PlayerProfile
     public Guid? TeamId { get; set; }
 
     public string TeamName { get; set; } = string.Empty;
+    public string? TeamPrimaryColor { get; set; }
+    public string? TeamSecondaryColor { get; set; }
 
     public int Energy { get; set; }
     public bool IsAvailable { get; set; }
@@ -121,13 +123,36 @@ public class PlayerMatchLine
 
     public bool IsHome { get; set; }
     public string OpponentName { get; set; } = string.Empty;
+    public Guid? OpponentTeamId { get; set; }
+    public string? OpponentTeamPrimaryColor { get; set; }
+    public string? OpponentTeamSecondaryColor { get; set; }
     public int HomeGoals { get; set; }
     public int AwayGoals { get; set; }
     public int RoundNumber { get; set; }
+
+    /// <summary>
+    /// The club he was playing for. A career crosses clubs, so a line that named only the
+    /// opponent leaves the other half of the fixture unsaid, and "he scored twice" becomes a
+    /// sentence about nobody in particular.
+    /// </summary>
+    public string? TeamName { get; set; }
+
+    /// <summary>
+    /// The match read the way the club page reads one: which season and competition it belonged
+    /// to, the round or the phase of it, the ground and the crowd. A player's history is the
+    /// same table of fixtures read by a man rather than by a club, and it is the same query
+    /// for the same reason — two tables that answered the same question differently would be
+    /// two accounts of the same afternoon.
+    /// </summary>
+    public string? SeasonName { get; set; }
+    public string? CompetitionName { get; set; }
+    public string? PhaseName { get; set; }
+    public string? StadiumName { get; set; }
+    public int? Attendance { get; set; }
 }
 
 /// <summary>
-    /// A player's line in a match, with the match itself already resolved.
+///     A player's line in a match, with the match itself already resolved.
     ///
     /// The history is read in one query rather than a query per row: a striker with a hundred
     /// appearances would otherwise cost a hundred round trips to draw a table, and a screen
@@ -150,7 +175,16 @@ public class PlayerMatchLine
         public bool InjuredOff { get; set; }
         public bool IsHome { get; set; }
         public string OpponentName { get; set; } = string.Empty;
+        public Guid? OpponentTeamId { get; set; }
+        public string? OpponentTeamPrimaryColor { get; set; }
+        public string? OpponentTeamSecondaryColor { get; set; }
         public int HomeGoals { get; set; }
         public int AwayGoals { get; set; }
         public int RoundNumber { get; set; }
+        public string? TeamName { get; set; }
+        public string? SeasonName { get; set; }
+        public string? CompetitionName { get; set; }
+        public string? PhaseName { get; set; }
+        public string? StadiumName { get; set; }
+        public int? Attendance { get; set; }
     }

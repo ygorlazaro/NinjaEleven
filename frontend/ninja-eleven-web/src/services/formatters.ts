@@ -143,6 +143,65 @@ export function starsToString(stars: number): string {
 }
 
 /**
+ * Converts a single attribute value (1..20) to stars (0.5..5.0).
+ * Matches backend PlayerRating.AttributeToStars.
+ */
+export function attributeToStars(attribute: number): number {
+  if (attribute <= 0) return 0;
+  if (attribute <= 2) return 0.5;
+  const stars = Math.ceil(attribute / 2) * 0.5;
+  return Math.min(stars, 5.0);
+}
+
+/**
+ * Rounds a value to the nearest 0.5 increment, clamped to 0..5.
+ * Matches backend PlayerRating.RoundToHalfStar.
+ */
+function roundToHalfStar(value: number): number {
+  const rounded = Math.round(value * 2) / 2;
+  return Math.max(0, Math.min(5, rounded));
+}
+
+/**
+ * Calculates stars for a single player from their attributes.
+ * Matches backend PlayerRating.CalculateOutfieldStars / CalculateGoalkeeperStars.
+ */
+export function calculatePlayerStars(player: { position: string; speed: number; accuracy: number; dribbling: number; heading: number; strength: number; goalkeeperPower?: number; reflexes?: number }): number {
+  const isGK = player.position === 'GK';
+  
+  if (isGK) {
+    const sum = attributeToStars(player.speed || 0)
+      + attributeToStars(player.accuracy || 0)
+      + attributeToStars(player.goalkeeperPower || 0)
+      + attributeToStars(player.reflexes || 0)
+      + attributeToStars(player.strength || 0);
+    return roundToHalfStar(sum / 5);
+  } else {
+    const sum = attributeToStars(player.speed || 0)
+      + attributeToStars(player.accuracy || 0)
+      + attributeToStars(player.dribbling || 0)
+      + attributeToStars(player.heading || 0)
+      + attributeToStars(player.strength || 0);
+    return roundToHalfStar(sum / 5);
+  }
+}
+
+/**
+ * Calculates team stars as the average of all players' stars.
+ * Matches backend PlayerRating.CalculateTeamStars.
+ */
+export function calculateTeamStars(players: Array<{ position: string; speed: number; accuracy: number; dribbling: number; heading: number; strength: number; goalkeeperPower?: number; reflexes?: number }>): number {
+  if (!players || players.length === 0) return 0;
+  
+  let total = 0;
+  for (const player of players) {
+    total += calculatePlayerStars(player);
+  }
+  
+  return roundToHalfStar(total / players.length);
+}
+
+/**
  * What each event looks like in the feed. The engine sends a stable key and the client
  * decides how to draw it, so a new event type never arrives as a blank row.
  */
