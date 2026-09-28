@@ -1,4 +1,4 @@
-import { SeasonApi, TeamApi } from '@/api';
+import { SeasonApi, TeamApi, ManagerApi } from '@/api';
 import ClubCrest from '@/components/Club/ClubCrest';
 import ClubSquadTable from '@/components/Club/ClubSquadTable';
 import FormRun, { formOf } from '@/components/Club/FormRun';
@@ -17,6 +17,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
   const [players, setPlayers] = useState<SquadPlayerDto[]>([]);
   const [matches, setMatches] = useState<TeamMatchRecordDto[]>([]);
   const [h2hMatches, setH2hMatches] = useState<TeamMatchRecordDto[]>([]);
+  const [coachName, setCoachName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const FORM_GUIDE_LENGTH = 10;
@@ -45,6 +46,16 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
       .catch(err => {
         console.error('Failed to load the club:', err);
         if (!cancelled) setError('Não foi possível carregar o clube.');
+      });
+
+    // Load manager name
+    ManagerApi.getByTeam(urlTeamId)
+      .then(manager => {
+        if (!cancelled) setCoachName(manager.name);
+      })
+      .catch(() => {
+        // Club might not have a manager yet
+        if (!cancelled) setCoachName(null);
       });
 
     return () => {
@@ -125,6 +136,9 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
                 {players.length} jogadores
                 {team.stadium && ` • ${team.stadium.name} • ${team.stadium.capacity.toLocaleString('pt-BR')} lugares`}
               </p>
+              {coachName && (
+                <p className="coach-name">Técnico: {coachName}</p>
+              )}
             </div>
           </div>
           <button className="ctrl" onClick={() => navigate('/league')}>Tabela e jogos</button>

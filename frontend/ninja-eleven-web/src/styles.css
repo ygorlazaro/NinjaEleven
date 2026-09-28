@@ -177,26 +177,38 @@ button { cursor: pointer; }
   color: var(--muted); font-size: 11px; line-height: 1.2;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.coach-name {
+  color: var(--muted); font-size: 12px; line-height: 1.2; margin-top: 4px;
+}
 
 /* The coach figure on the club screen: a name that can be clicked into an inline editor. */
+.coach-inline { display: inline-flex; align-items: center; gap: 4px; }
 .coach-edit {
   display: inline-flex; align-items: center; gap: 6px;
 }
 .coach-edit__input {
-  width: 160px; padding: 2px 6px; font-size: 13px;
+  width: 140px; padding: 2px 6px; font-size: 13px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
   color: var(--text);
 }
 .coach-edit__save {
   font-size: 11px; padding: 2px 8px;
 }
+.coach-edit__cancel {
+  font-size: 11px; padding: 2px 8px;
+  background: transparent; border: 1px solid var(--line); border-radius: 5px;
+  color: var(--muted); cursor: pointer;
+}
+.coach-edit__cancel:hover { color: var(--text); border-color: #46657d; }
+.coach-edit__error {
+  color: var(--red); font-size: 11px; white-space: nowrap; margin-left: 4px;
+}
 .coach-edit__icon {
-  display: inline-block; margin-left: 4px; opacity: .5; font-size: 11px;
+  display: inline-block; margin-left: 4px; opacity: .6; font-size: 11px;
   cursor: pointer;
 }
 .coach-edit__icon:hover { opacity: 1; }
 .club-figure { cursor: default; }
-.club-figure--editable:hover .club-figure__value { background: rgba(255,255,255,.04); }
 
 .card {
   background: linear-gradient(180deg, rgba(17, 31, 45, .96), rgba(9, 19, 29, .96));

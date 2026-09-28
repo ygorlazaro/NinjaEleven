@@ -3,6 +3,7 @@ using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Finance;
+using NinjaEleven.Domain.Managers;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Sponsors;
@@ -80,13 +81,47 @@ public class DatabaseSeeder : IDataSeeder
     };
 
     /// <summary>
-    /// The master sponsor pool: twenty companies whose names go on shirts.
-    ///
-    /// The pool is larger than a season needs so that a shuffled draw of it deals different
-    /// shirts to different clubs, and a club that changes sponsor mid-career can sign one
-    /// the others did not get. Each sponsor carries its industry and a colour so the shirt
-    /// renders the mark in the mark's own hue.
+    /// A pool of coach names: one per club in the catalog so every team gets a distinct
+    /// manager when the world is seeded. The names are Portuguese-sounding and varied.
     /// </summary>
+    private static readonly string[] CoachNames =
+    {
+        "Carlos Alberto Parreira",
+        "Vanderlei Luxemburgo",
+        "Luiz Felipe Scolari",
+        "Tite",
+        "Abel Ferreira",
+        "Jorge Jesus",
+        "Renato Gaúcho",
+        "Cuca",
+        "Dorival Júnior",
+        "Felipe Conceição",
+        "Rogério Ceni",
+        "Fernando Diniz",
+        "Eduardo Coudet",
+        "Paulo Autuori",
+        "Guto Ferreira",
+        "Lisca",
+        "Zé Ricardo",
+        "Enderson Moreira",
+        "Cláudio Tencati",
+        "Hemerson Maria",
+        "Jorginho",
+        "Mozart Santos",
+        "Rodrigo Chagas",
+        "Tché Tché",
+        "Bruno Pivetti",
+        "Alexandre Gallo",
+        "Ricardo Drubscky",
+        "Sérgio Soares",
+        "Argel Fuchs",
+        "Mazola Júnior",
+        "Dado Cavalcanti",
+        "Léo Condé",
+        "Ranielle Ribeiro",
+        "Higo Magalhães",
+        "Allan Aal"
+    };
     private static readonly (string Name, string Industry, string Color)[] SponsorCatalog =
     {
         ("Cia. Energética Paulista", "Energia", "#E0A800"),
@@ -138,6 +173,7 @@ public class DatabaseSeeder : IDataSeeder
         {
             _logger.LogInformation("Seeding skipped: the world already contains teams.");
             await GiveFacesToTheWorldAlreadySeededAsync(random, cancellationToken);
+            await GiveManagersToTheWorldAlreadySeededAsync(random, cancellationToken);
             await OpenTheBooksOfTheWorldAlreadySeededAsync(cancellationToken);
             return;
         }
@@ -171,7 +207,11 @@ public class DatabaseSeeder : IDataSeeder
         var seasonStates = new List<PlayerSeasonState>();
         var memberships = new List<TeamMembership>();
         var movements = new List<FinanceMovement>();
+        var managers = new List<Manager>();
         var faces = DealFaces(TeamCatalog.Length * _options.PlayersPerTeam, random);
+
+        // Shuffle coach names so each world gets a different assignment
+        var coachPool = CoachNames.OrderBy(_ => random.Next()).ToList();
 
         for (var index = 0; index < TeamCatalog.Length; index++)
         {
@@ -195,6 +235,10 @@ public class DatabaseSeeder : IDataSeeder
             // a game where being nobody matters.
             movements.Add(FinanceMovement.Seed(team.Id, season.Id, FinanceRules.StartingBalance));
 
+            // Every club gets a manager from the shuffled pool
+            var coachName = coachPool[index];
+            managers.Add(Manager.Create(team.Id, coachName));
+
             var squad = CreateSquad(team, season.Id, season.Number, startDate, random, faces);
 
             players.AddRange(squad.Players);
@@ -210,6 +254,7 @@ public class DatabaseSeeder : IDataSeeder
         _dbContext.CompetitionParticipants.AddRange(participants);
         _dbContext.Teams.AddRange(teams);
         _dbContext.Stadiums.AddRange(stadiums);
+        _dbContext.Managers.AddRange(managers);
         _dbContext.Players.AddRange(players);
         _dbContext.PlayerSeasonStates.AddRange(seasonStates);
         _dbContext.TeamMemberships.AddRange(memberships);
@@ -422,6 +467,39 @@ public class DatabaseSeeder : IDataSeeder
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Gave a face to {Count} players that had none.", faceless.Count);
+    }
+
+    /// <summary>
+    /// Gives a manager to every team that does not have one yet.
+    ///
+    /// Managers were added after the world was already seeded, so teams created before that
+    /// have no manager. This backfills them with names from the coach pool.
+    /// </summary>
+    private async Task GiveManagersToTheWorldAlreadySeededAsync(
+        Random random,
+        CancellationToken cancellationToken)
+    {
+        var teamsWithoutManager = await _dbContext.Teams
+            .Where(team => !_dbContext.Managers.Any(m => m.TeamId == team.Id))
+            .ToListAsync(cancellationToken);
+
+        if (teamsWithoutManager.Count == 0)
+        {
+            return;
+        }
+
+        var coachPool = CoachNames.OrderBy(_ => random.Next()).ToList();
+
+        for (var index = 0; index < teamsWithoutManager.Count; index++)
+        {
+            var team = teamsWithoutManager[index];
+            var coachName = coachPool[index % coachPool.Count];
+            _dbContext.Managers.Add(Manager.Create(team.Id, coachName));
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Gave a manager to {Count} teams that had none.", teamsWithoutManager.Count);
     }
 
     /// <summary>

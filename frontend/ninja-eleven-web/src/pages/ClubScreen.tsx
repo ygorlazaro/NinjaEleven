@@ -190,6 +190,7 @@ const ClubScreen: React.FC = () => {
   const [coachName, setCoachName] = useState<string | null>(null);
   const [editingCoach, setEditingCoach] = useState(false);
   const [coachInput, setCoachInput] = useState('');
+  const [coachError, setCoachError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -261,10 +262,24 @@ const ClubScreen: React.FC = () => {
       const manager = await ManagerApi.rename(selectedTeam.id, coachInput.trim());
       setCoachName(manager.name);
       setEditingCoach(false);
-    } catch (err) {
-      // If the rename fails the local value is not changed, so the name on the screen
-      // stays honest: a name that did not save is a name the screen should not claim.
+      setCoachInput('');
+      setCoachError(null);
+    } catch (err: any) {
+      const code = err?.response?.data?.code || err?.response?.data?.message || err?.message;
+      setCoachError(code || 'Não foi possível renomear o técnico.');
     }
+  };
+
+  const startCoachEdit = (currentName: string) => {
+    setCoachInput(currentName || '');
+    setEditingCoach(true);
+    setCoachError(null);
+  };
+
+  const cancelCoachEdit = () => {
+    setEditingCoach(false);
+    setCoachInput('');
+    setCoachError(null);
   };
 
   // The stand-in fills the parts of the page the backend has not grown into yet — the titles
@@ -289,7 +304,37 @@ const ClubScreen: React.FC = () => {
           <div className="club-page__identity">
             <h2 className="profile-name">{club.name}</h2>
             <p className="club-page__tag">
-              {club.shortName} • {club.coachName}
+              {club.shortName} •
+              <span className="coach-inline">
+                {editingCoach ? (
+                  <span className="coach-edit">
+                    <input
+                      className="ctrl coach-edit__input"
+                      value={coachInput}
+                      onChange={e => setCoachInput(e.target.value)}
+                      autoFocus
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); handleRenameCoach(); }
+                      if (e.key === 'Escape') { e.preventDefault(); cancelCoachEdit(); }
+                    }}
+                  />
+                  {coachError && <div className="error coach-edit__error">{coachError}</div>}
+                  <button className="ctrl coach-edit__save" onClick={handleRenameCoach}>Salvar</button>
+                    <button className="ctrl coach-edit__cancel" onClick={cancelCoachEdit}>Cancelar</button>
+                  </span>
+                ) : (
+                  <>
+                    {club.coachName}
+                    <button
+                      className="coach-edit__icon"
+                      title="Renomear técnico"
+                      onClick={() => startCoachEdit(club.coachName)}
+                    >
+                      ✏️
+                    </button>
+                  </>
+                )}
+              </span>
             </p>
           </div>
           <div className="club-page__actions">
@@ -314,35 +359,8 @@ const ClubScreen: React.FC = () => {
         <figure className="club-figures">
           <span className="club-figure">
             <span className="club-figure__icon">🧑‍💼</span>
-            <span className="club-figure__value">
-              {editingCoach ? (
-                <span className="coach-edit">
-                  <input
-                    className="ctrl coach-edit__input"
-                    value={coachInput}
-                    onChange={e => setCoachInput(e.target.value)}
-                    placeholder={club.coachName}
-                    autoFocus
-                  />
-                  <button className="ctrl coach-edit__save" onClick={handleRenameCoach}>Salvar</button>
-                  <button className="ctrl" onClick={() => { setEditingCoach(false); setCoachInput(''); }}>Cancelar</button>
-                </span>
-              ) : (
-                club.coachName
-              )}
-            </span>
-            <span className="club-figure__label">
-              Técnico
-              {coachName && !editingCoach && (
-                <button
-                  className="coach-edit__icon"
-                  title="Renomear técnico"
-                  onClick={() => { setEditingCoach(true); setCoachInput(coachName); }}
-                >
-                  ✏️
-                </button>
-              )}
-            </span>
+            <span className="club-figure__value">{club.coachName}</span>
+            <span className="club-figure__label">Técnico</span>
           </span>
           <Figure label="Jogadores" value={String(club.squadSize)} icon="👥" />
           <Figure label="Saldo em caixa" value={formatLimo(club.balance)} icon="💰" accent />
