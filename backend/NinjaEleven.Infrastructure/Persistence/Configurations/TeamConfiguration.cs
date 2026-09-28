@@ -18,6 +18,7 @@ public class TeamConfiguration : IEntityTypeConfiguration<Team>
         builder.Property(t => t.PrimaryColor).HasMaxLength(9).IsRequired();
         builder.Property(t => t.SecondaryColor).HasMaxLength(9).IsRequired();
         builder.Property(t => t.Rating).IsRequired();
+        builder.Property(t => t.IsManagerClub).IsRequired();
 
         builder.HasOne(t => t.Stadium)
             .WithOne()

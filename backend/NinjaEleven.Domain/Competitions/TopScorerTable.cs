@@ -46,12 +46,18 @@ public class ScorerStanding
     public required int CardPoints { get; init; }
 
     /// <summary>
-    /// When he was born, or null when the game does not know. It is the last thing the order
-    /// looks at, and a player with no birth date is not treated as the youngest man in the
-    /// country: he is treated as a man it knows nothing about, which is to say he stays level
-    /// with another such man and is decided by the line below.
+    /// How old he is, or null when the game does not know. It is the last thing the order
+    /// looks at, and the oldest man wins it: where a birth date used to be compared, the
+    /// comparison is between two ages, and a player the game has no age for is not treated as
+    /// the youngest man in the country — he is treated as a man it knows nothing about, which
+    /// is to say he stays level with another such man and is decided by the line below.
+    ///
+    /// Two men of the same age are level, and that is now a tie the chain cannot break. It
+    /// used to be broken by two birth dates that happened to differ; a game that counted
+    /// birthdays as a rule of the order was counting a fact the rest of the world had already
+    /// decided not to keep.
     /// </summary>
-    public DateOnly? BornOn { get; init; }
+    public int? Age { get; init; }
 
     /// <summary>Where the player stands, counted from one and decided by the chain.</summary>
     public int Position { get; internal set; }
@@ -80,13 +86,13 @@ public class ScorerStanding
         int appearances,
         int yellowCards,
         int redCards,
-        DateOnly? bornOn) => new()
+        int? age) => new()
         {
             PlayerId = playerId,
             Goals = goals,
             Appearances = appearances,
             CardPoints = yellowCards * YellowCardPoints + redCards * RedCardPoints,
-            BornOn = bornOn
+            Age = age
         };
 }
 
@@ -131,7 +137,7 @@ public static class TopScorerTable
             .OrderByDescending(line => line.Goals)
             .ThenBy(line => line.Appearances)
             .ThenBy(line => line.CardPoints)
-            .ThenBy(line => line.BornOn ?? DateOnly.MaxValue)
+            .ThenByDescending(line => line.Age ?? int.MinValue)
             .ToList();
 
         var nextSlot = 1;
@@ -169,13 +175,13 @@ public static class TopScorerTable
     }
 
     /// <summary>
-    /// Whether two lines are level on everything the order looks at. A player with no birth
-    /// date is level with another who has none, rather than being ordered as a year younger
+    /// Whether two lines are level on everything the order looks at. A player the game has no
+    /// age for is level with another who has none, rather than being ordered as a year younger
     /// than the rest of the table.
     /// </summary>
     private static bool LevelOnEverything(ScorerStanding left, ScorerStanding right) =>
         left.Goals == right.Goals
         && left.Appearances == right.Appearances
         && left.CardPoints == right.CardPoints
-        && left.BornOn == right.BornOn;
+        && left.Age == right.Age;
 }

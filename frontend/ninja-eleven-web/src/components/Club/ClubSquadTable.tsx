@@ -121,6 +121,18 @@ interface ClubSquadTableProps {
   /** Said in the row's tooltip: why a man is out, in words. */
   describeAbsence?: (player: SquadPlayerDto) => string;
 
+  /**
+   * Ends the man's contract, paying the settlement. Left out, the column is not there: a squad
+   * screen belongs to somebody else's club as often as to the manager's own, and a table that
+   * offered to fire half a league would be offering it to a manager who cannot.
+   */
+  onRelease?: (player: SquadPlayerDto) => void;
+
+  /**
+   * Declares the man will retire at the end of the season, or takes the declaration back. The
+   * news belongs to the club that owns him, so the same rule applies as for a release.
+   */
+
   /** The caption above the table. Nothing when there is no caption to give. */
   caption?: string;
 }
@@ -139,6 +151,7 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
   selectedIds,
   elsewhereIds,
   describeAbsence,
+  onRelease,
   caption
 }) => {
   const [sort, setSort] = useState<{ key: SortKey; ascending: boolean }>({
@@ -214,6 +227,9 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
                 )}
               </th>
             ))}
+            {/* The club's own decisions are not a column a manager sorts by, so the header
+                says what they are and nothing more. */}
+            {onRelease && <th className="actions-col">Ações</th>}
           </tr>
         </thead>
 <tbody>
@@ -292,6 +308,19 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
                 <td className="num accent">{player.saves}</td>
                 <td className="num">{player.yellowCards}</td>
                 <td className="num">{player.redCards}</td>
+                {onRelease && (
+                  <td className="actions-col" onClick={event => event.stopPropagation()}>
+                    {onRelease && (
+                      <button
+                        className="ctrl btn-sm reject"
+                        title="Rescindir o contrato e pagar a multa"
+                        onClick={() => onRelease(player)}
+                      >
+                        Rescindir
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

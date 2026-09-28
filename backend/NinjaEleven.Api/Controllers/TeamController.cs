@@ -19,11 +19,13 @@ public class TeamController : ControllerBase
 {
     private readonly TeamService _teamService;
     private readonly FinanceService _financeService;
+    private readonly ManagerService _managerService;
 
-    public TeamController(TeamService teamService, FinanceService financeService)
+    public TeamController(TeamService teamService, FinanceService financeService, ManagerService managerService)
     {
         _teamService = teamService;
         _financeService = financeService;
+        _managerService = managerService;
     }
 
     [HttpGet]
@@ -37,6 +39,23 @@ public class TeamController : ControllerBase
     public async Task<ActionResult<TeamDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
         var team = await _teamService.GetByIdAsync(id, cancellationToken);
+        return Ok(team.ToDto());
+    }
+
+    /// <summary>
+    /// Marks the club a manager is running, and unmarks the one that was before.
+    ///
+    /// The engine treats all thirty-six clubs alike and is right to; this mark says which club
+    /// has a person answering for it, which is the one thing the game cannot decide on its own.
+    /// The market is the only reader: an offer for one of this club's players goes to an inbox
+    /// to be accepted or refused, where every other club's is settled by the formula.
+    /// </summary>
+    [HttpPost("{id:guid}/manager-club")]
+    public async Task<ActionResult<TeamDto>> TakeOver(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var team = await _teamService.TakeOverAsManagerClubAsync(id, cancellationToken);
         return Ok(team.ToDto());
     }
 
@@ -117,5 +136,45 @@ public class TeamController : ControllerBase
             teamId, seasonId, competition, topN ?? ScorerRules.DefaultScorers, cancellationToken);
 
         return Ok(scorers.ToDtos());
+    }
+
+    /// <summary>
+    /// Changes the display name of the club the manager has taken charge of.
+    /// </summary>
+    [HttpPut("{id:guid}/name")]
+    public async Task<ActionResult<TeamDto>> UpdateName(
+        Guid id,
+        [FromBody] UpdateTeamNameRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var team = await _teamService.UpdateNameAsync(id, request.Name, cancellationToken);
+        return Ok(team.ToDto());
+    }
+
+    /// <summary>
+    /// Changes the kit colours of the club the manager has taken charge of.
+    /// </summary>
+    [HttpPut("{id:guid}/colors")]
+    public async Task<ActionResult<TeamDto>> UpdateColors(
+        Guid id,
+        [FromBody] UpdateTeamColorsRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var team = await _teamService.UpdateColorsAsync(
+            id, request.PrimaryColor, request.SecondaryColor, cancellationToken);
+        return Ok(team.ToDto());
+    }
+
+    /// <summary>
+    /// Changes the name of the manager (coach) of a club.
+    /// </summary>
+    [HttpPut("{teamId:guid}/manager-name")]
+    public async Task<ActionResult<ManagerDto>> UpdateManagerName(
+        Guid teamId,
+        [FromBody] ManagerRenameRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var manager = await _managerService.RenameAsync(teamId, request.Name, cancellationToken);
+        return Ok(manager.ToDto());
     }
 }

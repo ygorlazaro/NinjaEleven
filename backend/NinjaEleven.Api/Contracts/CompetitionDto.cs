@@ -14,6 +14,26 @@ public class TeamDto
     public int Rating { get; init; }
     public double Stars { get; init; }
     public StadiumDto? Stadium { get; init; }
+
+    /// <summary>
+    /// Whether this club is controlled by a human player. Null when the team has no manager
+    /// row at all; true when the manager has a linked user account; false when the manager
+    /// row exists but has no user (NPC-controlled).
+    /// </summary>
+    public bool? ControlledBy { get; init; }
+}
+
+/// <summary>Updates a club's display name.</summary>
+public class UpdateTeamNameRequestDto
+{
+    public string Name { get; init; } = string.Empty;
+}
+
+/// <summary>Updates a club's kit colours.</summary>
+public class UpdateTeamColorsRequestDto
+{
+    public string PrimaryColor { get; init; } = string.Empty;
+    public string SecondaryColor { get; init; } = string.Empty;
 }
 
 /// <summary>

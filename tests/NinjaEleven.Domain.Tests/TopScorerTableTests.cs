@@ -21,8 +21,8 @@ public class TopScorerTableTests
         int appearances = 20,
         int yellow = 0,
         int red = 0,
-        int year = 1996) =>
-        ScorerStanding.From(Guid.NewGuid(), goals, appearances, yellow, red, new DateOnly(year, 1, 15));
+        int age = 30) =>
+        ScorerStanding.From(Guid.NewGuid(), goals, appearances, yellow, red, age);
 
     [Fact]
     public void TheMostGoalsComesFirstAndNothingElseIsConsulted()
@@ -72,22 +72,22 @@ public class TopScorerTableTests
     }
 
     [Fact]
-    public void LevelOnEverythingButTheBirthDateIsSettledByTheOlderMan()
+    public void LevelOnEverythingButTheAgeIsSettledByTheOlderMan()
     {
         var table = TopScorerTable.Rank(new[]
         {
-            Line(goals: 11, appearances: 15, year: 2004),
-            Line(goals: 11, appearances: 15, year: 1991)
+            Line(goals: 11, appearances: 15, age: 22),
+            Line(goals: 11, appearances: 15, age: 35)
         });
 
-        Assert.Equal(new DateOnly(1991, 1, 15), table[0].BornOn);
+        Assert.Equal(35, table[0].Age);
         Assert.Equal(1, table[0].Position);
     }
 
     [Fact]
     public void TwoMenLevelOnTheWholeChainAreBothFirstAndBothTakeTheFirstPrize()
     {
-        var lines = new[] { Line(goals: 14, appearances: 22, yellow: 3, year: 1990), Line(goals: 14, appearances: 22, yellow: 3, year: 1990) };
+        var lines = new[] { Line(goals: 14, appearances: 22, yellow: 3, age: 36), Line(goals: 14, appearances: 22, yellow: 3, age: 36) };
 
         var table = TopScorerTable.Rank(lines);
 
@@ -101,10 +101,10 @@ public class TopScorerTableTests
     {
         var table = TopScorerTable.Rank(new[]
         {
-            Line(goals: 20, appearances: 22, year: 1990),
-            Line(goals: 14, appearances: 22, year: 1990),
-            Line(goals: 14, appearances: 22, year: 1990),
-            Line(goals: 9, appearances: 22, year: 1990)
+            Line(goals: 20, appearances: 22, age: 36),
+            Line(goals: 14, appearances: 22, age: 36),
+            Line(goals: 14, appearances: 22, age: 36),
+            Line(goals: 9, appearances: 22, age: 36)
         });
 
         var second = table.Where(line => line.Position == 2).ToList();
@@ -131,12 +131,12 @@ public class TopScorerTableTests
     }
 
     [Fact]
-    public void APlayerWithNoBirthDateIsNotTreatedAsTheYoungestManInTheCountry()
+    public void APlayerWithNoAgeIsNotTreatedAsTheYoungestManInTheCountry()
     {
         var lines = new[]
         {
-            ScorerStanding.From(Guid.NewGuid(), 9, 18, 0, 0, bornOn: null),
-            ScorerStanding.From(Guid.NewGuid(), 9, 18, 0, 0, bornOn: null)
+            ScorerStanding.From(Guid.NewGuid(), 9, 18, 0, 0, age: null),
+            ScorerStanding.From(Guid.NewGuid(), 9, 18, 0, 0, age: null)
         };
 
         var table = TopScorerTable.Rank(lines);

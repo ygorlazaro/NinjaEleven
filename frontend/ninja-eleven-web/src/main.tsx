@@ -1,10 +1,14 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useGameState } from '@/state';
-import { useCareerCheck } from '@/hooks/useCareerCheck';
+import { useAuthStore } from '@/state/auth';
 import { ProfileProvider } from '@/state/ProfileProvider';
+import { OfferProvider } from '@/state/OfferProvider';
 import AppShell from '@/components/Common/AppShell';
+import AuthRoot from '@/components/Auth/AuthRoot';
+import LoginScreen from '@/pages/LoginScreen';
+import RegisterScreen from '@/pages/RegisterScreen';
 import StartScreen from '@/pages/StartScreen';
 import LeagueScreen from '@/pages/LeagueScreen';
 import CupScreen from '@/pages/CupScreen';
@@ -22,25 +26,18 @@ import TransferScreen from '@/pages/TransferScreen';
 import '@/styles.css';
 
 /**
- * The root of the game.
- *
- * It goes to the manager's club when there is one, and to the club list when there is not —
- * but it never navigates on the strength of a club the browser merely remembers. A remembered
- * club is checked against the backend first, and the check is not skippable: navigating to
- * `/team/{id}` for a club that is not in the world is a screen that cannot answer anything,
- * and the manager's only way out of it is to edit the address bar.
+ * Guards a route behind an authenticated account. A user without a token is sent to
+ * the login screen; the team check is owned by the AuthRoot at `/`.
  */
-function Root() {
-  const selectedTeam = useGameState((s) => s.selectedTeam);
-  const career = useCareerCheck();
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const token = useAuthStore((s) => s.token);
+  const location = useLocation();
 
-  if (career === 'checking') {
-    return <div className="card start"><p>Carregando...</p></div>;
+  if (!token) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  return selectedTeam
-    ? <Navigate to={`/team/${selectedTeam.id}`} replace />
-    : <StartScreen />;
+  return children;
 }
 
 function App() {
@@ -49,20 +46,63 @@ function App() {
   return (
     <AppShell>
       <Routes>
-        <Route path="/" element={<Root />} />
-        <Route path="/league" element={<LeagueScreen />} />
-        <Route path="/copa" element={<CupScreen />} />
-        <Route path="/calendar" element={<CalendarScreen />} />
-        <Route path="/financeiro" element={<FinanceiroScreen />} />
-        <Route path="/club" element={<ClubScreen />} />
-        <Route path="/estadio" element={<StadiumScreen />} />
-        <Route path="/patrocinadores" element={<SponsorsScreen />} />
-         <Route path="/artilheiros" element={<ScorersScreen />} />
-         <Route path="/transfer" element={<TransferScreen />} />
-         <Route path="/match/lineup/:fixtureId" element={<LineupScreen />} />
-        <Route path="/team/:teamId" element={<TeamViewScreen />} />
-        <Route path="/player/:playerId" element={<PlayerProfileScreen />} />
-        <Route path="/match/:matchId" element={<MatchScreen />} />
+        <Route path="/login" element={<LoginScreen />} />
+        <Route path="/register" element={<RegisterScreen />} />
+        {/* The root is auth-aware: login screen when logged out, the club selector
+            or the manager's team otherwise. */}
+        <Route path="/" element={<AuthRoot />} />
+        <Route
+          path="/league"
+          element={<RequireAuth><LeagueScreen /></RequireAuth>}
+        />
+        <Route
+          path="/copa"
+          element={<RequireAuth><CupScreen /></RequireAuth>}
+        />
+        <Route
+          path="/calendar"
+          element={<RequireAuth><CalendarScreen /></RequireAuth>}
+        />
+        <Route
+          path="/financeiro"
+          element={<RequireAuth><FinanceiroScreen /></RequireAuth>}
+        />
+        <Route
+          path="/club"
+          element={<RequireAuth><ClubScreen /></RequireAuth>}
+        />
+        <Route
+          path="/estadio"
+          element={<RequireAuth><StadiumScreen /></RequireAuth>}
+        />
+        <Route
+          path="/patrocinadores"
+          element={<RequireAuth><SponsorsScreen /></RequireAuth>}
+        />
+        <Route
+          path="/artilheiros"
+          element={<RequireAuth><ScorersScreen /></RequireAuth>}
+        />
+        <Route
+          path="/transfer"
+          element={<RequireAuth><TransferScreen /></RequireAuth>}
+        />
+        <Route
+          path="/match/lineup/:fixtureId"
+          element={<RequireAuth><LineupScreen /></RequireAuth>}
+        />
+        <Route
+          path="/team/:teamId"
+          element={<RequireAuth><TeamViewScreen /></RequireAuth>}
+        />
+        <Route
+          path="/player/:playerId"
+          element={<RequireAuth><PlayerProfileScreen /></RequireAuth>}
+        />
+        <Route
+          path="/match/:matchId"
+          element={<RequireAuth><MatchScreen /></RequireAuth>}
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>
@@ -77,7 +117,9 @@ root.render(
   <React.StrictMode>
     <BrowserRouter>
       <ProfileProvider>
-        <App />
+        <OfferProvider>
+          <App />
+        </OfferProvider>
       </ProfileProvider>
     </BrowserRouter>
   </React.StrictMode>

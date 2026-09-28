@@ -14,9 +14,9 @@ namespace NinjaEleven.Domain.Tests;
 /// </summary>
 public class PlayerValuationTests
 {
-    private static Player PlayerBornIn(int age) => Player.Create(
+    private static Player PlayerOfAge(int age) => Player.Create(
         "Test Player",
-        new DateOnly(DateTime.Now.Year - age, 1, 1),
+        age,
         Position.MID,
         goalkeeperPower: 0,
         reflexes: 0,
@@ -185,7 +185,7 @@ public class PlayerValuationTests
     [Fact]
     public void The_price_of_a_player_reads_his_season_and_not_only_his_attributes()
     {
-        var player = PlayerBornIn(age: 25);
+        var player = PlayerOfAge(age: 25);
 
         var clean = PlayerValuation.MarketValue(player, StateWith(injuries: 0, redCards: 0));
         var knockedAbout = PlayerValuation.MarketValue(player, StateWith(injuries: 4, redCards: 2));
@@ -212,24 +212,33 @@ public class PlayerValuationTests
     [Fact]
     public void A_player_with_nothing_wrong_with_him_is_worth_more_than_one_with_something()
     {
-        var player = PlayerBornIn(age: 30);
-        var referenceDate = player.BirthDate.AddYears(30);
+        var player = PlayerOfAge(age: 30);
 
-        var clean = PlayerValuation.MarketValue(player, StateWith(0, 0), referenceDate);
-        var sentOff = PlayerValuation.MarketValue(player, StateWith(0, 1), referenceDate);
+        var clean = PlayerValuation.MarketValue(player, StateWith(0, 0));
+        var sentOff = PlayerValuation.MarketValue(player, StateWith(0, 1));
 
         Assert.True(sentOff < clean);
-        Assert.Equal(clean / 100m, PlayerValuation.SeasonWage(player, StateWith(0, 0), referenceDate));
+        Assert.Equal(clean / 100m, PlayerValuation.SeasonWage(player, StateWith(0, 0)));
     }
 
     [Fact]
     public void A_wage_read_off_a_player_is_the_wage_read_off_his_price()
     {
-        var player = PlayerBornIn(age: 25);
+        var player = PlayerOfAge(age: 25);
         var state = StateWith(1, 1);
 
         Assert.Equal(
             PlayerValuation.SeasonWage(PlayerValuation.MarketValue(player, state)),
             PlayerValuation.SeasonWage(player, state));
+    }
+
+    [Fact]
+    public void A_free_agent_costs_a_fifth_of_what_he_is_worth()
+    {
+        // There is nobody to buy him from, and a man worth 1.2 million is not picked up off the
+        // street for nothing: the signing fee is a share of his own value, so it rises and falls
+        // with the player rather than being a round number nobody can budget around.
+        Assert.Equal(240_000m, PlayerValuation.FreeAgentSigningFee(1_200_000m));
+        Assert.Equal(0m, PlayerValuation.FreeAgentSigningFee(0m));
     }
 }

@@ -22,6 +22,10 @@ public class ManagerRepository : IManagerRepository
         await _dbContext.Managers
             .FirstOrDefaultAsync(manager => manager.Id == id, cancellationToken);
 
+    public async Task<Manager?> ListByUserIdAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        await _dbContext.Managers
+            .FirstOrDefaultAsync(manager => manager.UserId == userId, cancellationToken);
+
     public async Task<bool> AnyAsync(CancellationToken cancellationToken = default) =>
         await _dbContext.Managers.AnyAsync(cancellationToken);
 

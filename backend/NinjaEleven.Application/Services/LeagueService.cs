@@ -307,7 +307,7 @@ public class LeagueService
                 line.Appearances,
                 line.YellowCards,
                 line.RedCards,
-                players[line.PlayerId].BirthDate))
+                players[line.PlayerId].Age))
             .OrderBy(line => players[line.PlayerId].Name, StringComparer.Ordinal)
             .ToList();
 
@@ -325,7 +325,7 @@ public class LeagueService
                 {
                     PlayerId = line.PlayerId,
                     PlayerName = player.Name,
-                    Age = player.CalculateAge(),
+                    Age = player.Age,
                     TeamId = source.TeamId,
                     TeamName = club?.Name,
                     TeamPrimaryColor = club?.PrimaryColor,

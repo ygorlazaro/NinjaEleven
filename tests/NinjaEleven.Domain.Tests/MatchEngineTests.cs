@@ -52,7 +52,7 @@ public class MatchEngineTests
     {
         return Player.Create(
             $"Player {index}",
-            DateOnly.FromDateTime(DateTime.Today.AddYears(-(18 + index % 10))),
+            18 + index % 10,
             position,
             speed: 12 + (index % 5),
             accuracy: 10 + (index % 5),

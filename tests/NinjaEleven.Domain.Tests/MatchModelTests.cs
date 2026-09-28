@@ -38,7 +38,7 @@ public class MatchModelTests
         return MatchPlayerSnapshot.FromPlayerSeasonState(
             Player.Create(
                 name,
-                DateOnly.FromDateTime(DateTime.Today.AddYears(-a.Age)),
+                a.Age,
                 position,
                 speed: a.Speed,
                 accuracy: a.Accuracy,

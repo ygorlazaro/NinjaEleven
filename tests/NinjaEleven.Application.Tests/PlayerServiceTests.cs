@@ -30,7 +30,7 @@ public class PlayerServiceTests
     private readonly Team _team = Team.Create("Clube Aurora", "CAU", "#E07B00", "#2B2B2B", 80);
     private readonly Player _player = Player.Create(
         "Edair Freire",
-        new DateOnly(1997, 3, 28),
+        28,
         Position.ATT,
         speed: 15,
         accuracy: 16,

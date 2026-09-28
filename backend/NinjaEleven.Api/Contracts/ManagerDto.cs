@@ -10,7 +10,20 @@ public class ManagerDto
     public Guid Id { get; init; }
     public string Name { get; init; } = string.Empty;
     public Guid TeamId { get; init; }
+    public Guid? UserId { get; init; }
     public DateTimeOffset StartedAt { get; init; }
+}
+
+public static class ManagerDtoMapper
+{
+    public static ManagerDto ToDto(this Domain.Managers.Manager manager) => new()
+    {
+        Id = manager.Id,
+        Name = manager.Name,
+        TeamId = manager.TeamId,
+        UserId = manager.UserId,
+        StartedAt = manager.StartedAt
+    };
 }
 
 /// <summary>

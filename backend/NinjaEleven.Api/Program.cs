@@ -1,8 +1,13 @@
 using System.Text.Json.Serialization;
+using NinjaEleven.Api;
 using NinjaEleven.Api.Middleware;
 using NinjaEleven.Api.Realtime;
 using NinjaEleven.Infrastructure;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Options;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +35,49 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
         return new BadRequestObjectResult(problem);
     };
 });
+
+var jwtOptions = builder.Configuration.GetSection("Jwt");
+builder.Services.Configure<JwtOptions>(jwtOptions);
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = jwtOptions["Issuer"],
+        ValidAudience = jwtOptions["Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(jwtOptions["Key"] ?? throw new InvalidOperationException("JWT key is missing.")))
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnChallenge = context =>
+        {
+            context.HandleResponse();
+            if (context.Response.HasStarted) return Task.CompletedTask;
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            context.Response.ContentType = "application/problem+json";
+            var problem = new ProblemDetails
+            {
+                Status = StatusCodes.Status401Unauthorized,
+                Title = "Unauthorized",
+                Detail = "Authentication is required to access this resource."
+            };
+            problem.Extensions["code"] = "Unauthorized";
+            return context.Response.WriteAsJsonAsync(problem, context.HttpContext.RequestAborted);
+        }
+    };
+});
+
+builder.Services.AddAuthorization();
 
 const string CorsPolicy = "frontend";
 builder.Services.AddCors(options => options.AddPolicy(CorsPolicy, policy => policy
@@ -76,6 +124,8 @@ await app.Services.InitializeDatabaseAsync(args.Contains("--seed"));
 
 app.UseExceptionHandler();
 app.UseCors(CorsPolicy);
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<MatchHub>("/matchHub");

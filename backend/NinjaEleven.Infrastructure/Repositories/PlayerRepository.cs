@@ -1,6 +1,5 @@
 using NinjaEleven.Application.Models;
-using NinjaEleven.Application.Repositories;
-using NinjaEleven.Domain.Enums;
+using NinjaEleven.Application.Repositories;using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Infrastructure.Persistence;
@@ -223,6 +222,89 @@ public class PlayerRepository : IPlayerRepository
             .Where(state => state.SeasonId == seasonId)
             .OrderBy(state => state.PlayerId)
             .ToListAsync(cancellationToken);
+
+    /// <summary>
+    /// Every player's whole career, in one read: the sum of every match line he has, for every
+    /// club at once.
+    ///
+    /// A market screen shows a hundred and twenty men at a time, and a career each read one
+    /// player at a time is a hundred and twenty queries for a list. The career is therefore
+    /// summed in the database and keyed by the player, which is also the only way the totals
+    /// can be right: they are the same sum the profile assembles, from the same lines.
+    /// </summary>
+    public async Task<IReadOnlyList<CareerTotals>> ListCareerTotalsAsync(
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.MatchPlayerStatistics
+            .AsNoTracking()
+            .GroupBy(line => line.PlayerId)
+            .Select(group => new CareerTotals
+            {
+                PlayerId = group.Key,
+                Line = new PlayerCareerLine
+                {
+                    Appearances = group.Count(),
+                    Started = group.Sum(line => line.Started ? 1 : 0),
+                    CameOn = group.Sum(line => line.CameOn ? 1 : 0),
+                    BenchUnused = group.Sum(line => line.WasOnBenchUnused ? 1 : 0),
+                    Goals = group.Sum(line => line.Goals),
+                    OwnGoals = group.Sum(line => line.OwnGoals),
+                    Saves = group.Sum(line => line.Saves),
+                    YellowCards = group.Sum(line => line.YellowCards),
+                    RedCards = group.Sum(line => line.RedCards),
+                    Injuries = group.Sum(line => line.WasInjured ? 1 : 0),
+                    MatchesMissed = group.Sum(line => line.InjuredOff ? 1 : 0)
+                }
+            })
+            .ToListAsync(cancellationToken);
+
+    /// <summary>
+    /// One player's career, split by the club he was wearing when he did each of these things.
+    ///
+    /// The split is on the match line's own club, and the season count is a distinct count
+    /// rather than a sum: a man who played four seasons for one club has four seasons there and
+    /// not sixteen, and a career read as a number of games cannot say how long a club had him.
+    /// </summary>
+    public async Task<IReadOnlyList<PlayerClubCareerLine>> ListClubCareerLinesAsync(
+        Guid playerId,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await _dbContext.MatchPlayerStatistics
+            .AsNoTracking()
+            .Where(line => line.PlayerId == playerId)
+            .GroupBy(line => line.TeamId)
+            .Select(group => new
+            {
+                TeamId = group.Key,
+                Seasons = group.Where(line => line.SeasonId != null)
+                    .Select(line => line.SeasonId!.Value)
+                    .Distinct()
+                    .Count(),
+                Line = new PlayerCareerLine
+                {
+                    Appearances = group.Count(),
+                    Started = group.Sum(line => line.Started ? 1 : 0),
+                    CameOn = group.Sum(line => line.CameOn ? 1 : 0),
+                    BenchUnused = group.Sum(line => line.WasOnBenchUnused ? 1 : 0),
+                    Goals = group.Sum(line => line.Goals),
+                    OwnGoals = group.Sum(line => line.OwnGoals),
+                    Saves = group.Sum(line => line.Saves),
+                    YellowCards = group.Sum(line => line.YellowCards),
+                    RedCards = group.Sum(line => line.RedCards),
+                    Injuries = group.Sum(line => line.WasInjured ? 1 : 0),
+                    MatchesMissed = group.Sum(line => line.InjuredOff ? 1 : 0)
+                }
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(row => new PlayerClubCareerLine
+            {
+                TeamId = row.TeamId,
+                Seasons = row.Seasons,
+                Total = row.Line
+            })
+            .ToList();
+    }
 
     public async Task AddSeasonStateAsync(
         PlayerSeasonState state,

@@ -74,6 +74,8 @@ public class SeasonCloseService
     private readonly SeasonCalendarService _calendar;
     private readonly FinanceService _finance;
     private readonly IDataSeeder _seeder;
+    private readonly RosterService _roster;
+    private readonly TransferService _transfers;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<SeasonCloseService> _logger;
 
@@ -90,6 +92,8 @@ public class SeasonCloseService
         SeasonCalendarService calendar,
         FinanceService finance,
         IDataSeeder seeder,
+        RosterService roster,
+        TransferService transfers,
         IUnitOfWork unitOfWork,
         ILogger<SeasonCloseService> logger)
     {
@@ -105,6 +109,8 @@ public class SeasonCloseService
         _calendar = calendar;
         _finance = finance;
         _seeder = seeder;
+        _roster = roster;
+        _transfers = transfers;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -331,9 +337,19 @@ public class SeasonCloseService
         // written.
         await _finance.CarryBalancesIntoSeasonAsync(previous.Id, season.Id, cancellationToken);
 
-        // The retiring players have left the pitch for the last time; the youngsters they
-        // are replaced by arrive as free agents on the market, unattached until a club signs
-        // them — just like any other free agent.
+        // The rosters follow the money: the men who said they would stop at the end of the old
+        // season are free agents now, everybody else is given a season to play, and the deals
+        // that were waiting for this season are pointed at it.
+        await _roster.OpenSeasonAsync(previous, season, cancellationToken);
+
+        // A proposal nobody answered in the season that has just ended is a rumour, not a deal,
+        // and a rumour left alive would go on saying the player is spoken for.
+        await _transfers.ExpireUnansweredAsync(previous.Id, cancellationToken);
+
+        // The season opens with its intake: the young free agents a club signs rather than buys.
+        // It is dealt here rather than when the world is written, because a season is opened
+        // exactly once — the guard at the top of this method returns the season that already
+        // exists — so the intake is dealt exactly once too.
         await _seeder.GenerateYoungPlayersAsync(season.Id, cancellationToken);
 
         _logger.LogInformation(

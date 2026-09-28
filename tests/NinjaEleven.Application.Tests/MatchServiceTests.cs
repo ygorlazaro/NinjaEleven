@@ -77,7 +77,7 @@ public class MatchServiceTests
         // case the one-goalkeeper rule has to survive.
         var reserve = Player.Create(
             $"{_home.ShortName} Reserva",
-            new DateOnly(1994, 1, 1),
+            30,
             Position.GK,
             speed: 12,
             accuracy: 12,
@@ -97,7 +97,7 @@ public class MatchServiceTests
             {
                 var player = Player.Create(
                     $"{team.ShortName} Extra {extra}",
-                    new DateOnly(1997, 1, 1),
+                    28,
                     Position.MID,
                     speed: 11,
                     accuracy: 11,
@@ -260,6 +260,7 @@ public class MatchServiceTests
                 _players.Object,
                 _seasons.Object,
                 _competitions.Object,
+                _rounds.Object,
                 _matches.Object,
                 _finance.Object,
                 _unitOfWork.Object,
@@ -308,7 +309,7 @@ public class MatchServiceTests
         {
             var player = Player.Create(
                 $"{team.ShortName} Player {_roster.Count}",
-                new DateOnly(1995, 1, 1),
+                29,
                 position,
                 speed: 12,
                 accuracy: 12,
@@ -327,7 +328,7 @@ public class MatchServiceTests
         {
             var player = Player.Create(
                 $"{team.ShortName} Bench {_roster.Count}",
-                new DateOnly(1996, 1, 1),
+                30,
                 Position.MID,
                 speed: 10,
                 accuracy: 10,

@@ -10,6 +10,7 @@ public interface IManagerRepository
 {
     Task<Manager?> GetByTeamAsync(Guid teamId, CancellationToken cancellationToken = default);
     Task<Manager?> GetAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<Manager?> ListByUserIdAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<bool> AnyAsync(CancellationToken cancellationToken = default);
     Task AddAsync(Manager manager, CancellationToken cancellationToken = default);
     void Update(Manager manager);

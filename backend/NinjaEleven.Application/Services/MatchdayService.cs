@@ -418,70 +418,98 @@ public class MatchdayService
     }
 
     /// <summary>
-    /// Runs the NPC transfer market when championship windows that are over include a round
-    /// the transfer window recognises as open (eleven and above). NPC business is settled when
-    /// the round closes, not on a timer, so a matchday left running over a weekend picks up
-    /// exactly the transfers it would have made the moment the day finished in real time.
+    /// Runs the transfer market when a window closes.
     ///
-    /// Two things happen: proposals are generated for the season after this one (accepted
-    /// NPC-to-NPC deals go straight to accepted), and accepted deals arriving this season —
-    /// proposed in the season before — are completed (contracts change, fees move).
+    /// Two things happen, and they happen on two different kinds of window. The clubs nobody is
+    /// watching do their business when a round of the <b>championship</b> closes — every round,
+    /// not only the ones inside a transfer window, because a club is free to table an offer on
+    /// a Tuesday and wait for the window to come round. A cup tie and the Supercup are not a
+    /// round of the league and do no business at all.
+    ///
+    /// The deals themselves arrive on the windows the rules name: the Supercup, which is the
+    /// first match of the season and the arrival a manager can count on at the start of a year,
+    /// and the championship's eleventh round, which is the mid-season window. A deal that is
+    /// waiting when either of them closes is completed there — contracts change, fees move, and
+    /// the player is on the books of his new club before the next round is played.
+    ///
+    /// The arrival round recorded on a completed deal is the round about to be played, not the
+    /// one just finished: a man who walks in when the eleventh round closes is in the squad for
+    /// the twelfth, and a deal that said otherwise would be a man joining a club for a matchday
+    /// nobody plays him in.
     /// </summary>
     private async Task RunTransfersOnWindowCloseAsync(
         IReadOnlyCollection<Round> justClosed,
         CancellationToken cancellationToken)
     {
-        var seasonRounds = new HashSet<Guid>();
+        var leagueSeasons = new HashSet<Guid>();
+        var windowClosures = new Dictionary<Guid, int>();
 
         foreach (var round in justClosed)
         {
-            if (!TransferWindowRules.IsOpen(round.Number))
+            var view = await _competitionRepository.GetSeasonViewByIdAsync(
+                round.CompetitionSeasonId, cancellationToken);
+
+            if (view is null)
             {
                 continue;
             }
 
-            var view = await _competitionRepository.GetSeasonViewByIdAsync(
-                round.CompetitionSeasonId, cancellationToken);
+            var superCupHasBeenPlayed = view.Type == CompetitionType.SuperCup;
+            var midSeasonWindow = view.Type == CompetitionType.League
+                                  && TransferWindowRules.IsOpen(round.Number);
 
-            if (view?.Type is CompetitionType.League)
+            if (!superCupHasBeenPlayed && !midSeasonWindow)
             {
-                seasonRounds.Add(view.SeasonId);
+                continue;
             }
+
+            if (view.Type == CompetitionType.League)
+            {
+                leagueSeasons.Add(view.SeasonId);
+            }
+
+            // The Supercup and the mid-season window both open the door for the season they
+            // belong to; the round recorded on the deal is the one the world is about to play.
+            var next = windowClosures.TryGetValue(view.SeasonId, out var current)
+                ? Math.Max(current, round.Number)
+                : round.Number;
+
+            windowClosures[view.SeasonId] = next;
         }
 
-        foreach (var seasonId in seasonRounds)
+        // A club that is not in the championship — the two that played the Supercup and nothing
+        // else this season — still runs its market on the rounds it does play, so the seasons
+        // here are the ones the windows named, not only the ones with a league table.
+        foreach (var seasonId in windowClosures.Keys
+                     .Concat(leagueSeasons)
+                     .Distinct())
         {
             try
             {
-                await _transfers.CalculateNpcTransfersAsync(seasonId, cancellationToken);
-                var currentRound = await GetCurrentRoundAsync(seasonId, cancellationToken);
-                await _transfers.CompletePendingTransfersAsync(
-                    seasonId, currentRound, cancellationToken);
+                if (leagueSeasons.Contains(seasonId) || windowClosures.ContainsKey(seasonId))
+                {
+                    await _transfers.CalculateNpcTransfersAsync(seasonId, cancellationToken);
+                }
+
+                if (!windowClosures.TryGetValue(seasonId, out var closedRound))
+                {
+                    continue;
+                }
+
+                var arrivalRound = Math.Min(
+                    CompetitionRules.LeagueMatchDays, closedRound + 1);
+
+                await _transfers.CompletePendingTransfersAsync(seasonId, arrivalRound, cancellationToken);
             }
             catch (Exception error)
             {
                 _logger.LogError(
                     error,
-                    "Could not run the NPC transfer market for season {SeasonId} when windows closed. The market is keyed by season, so asking again is safe.",
+                    "Could not run the transfer market for season {SeasonId} when its windows closed. " +
+                    "The market is keyed by season and round, so asking again is safe.",
                     seasonId);
             }
         }
-    }
-
-    /// <summary>
-    /// The round of the championship for a season, which is what the transfer window is
-    /// measured against. Read from the calendar rather than counted, because a season's
-    /// rounds are a fact about the fixtures and not a number this service may invent.
-    /// </summary>
-    private async Task<int> GetCurrentRoundAsync(Guid seasonId, CancellationToken cancellationToken)
-    {
-        var matchDays = await _matchRepository.GetMatchDaysAsync(seasonId, cancellationToken);
-        var current = matchDays
-            .Where(matchDay => matchDay.Date <= DateOnly.FromDateTime(DateTime.Now))
-            .OrderByDescending(matchDay => matchDay.Number)
-            .FirstOrDefault();
-
-        return current?.Number ?? 1;
     }
 
     /// <summary>

@@ -1,5 +1,7 @@
 namespace NinjaEleven.Domain.Managers;
 
+using NinjaEleven.Domain.Users;
+
 /// <summary>
 /// The manager of a club: the human decision-maker whose career the game is.
 ///
@@ -17,6 +19,14 @@ public class Manager
 
     /// <summary>The club the manager has taken charge of, for as long as the career lasts.</summary>
     public Guid TeamId { get; private set; }
+
+    /// <summary>
+    /// The user account that owns this career, or null while the club is still NPC-controlled.
+    /// A user taking over a club sets this; it is the mark that says "a person answers for this
+    /// club", read alongside <see cref="Team.IsManagerClub"/>.
+    /// </summary>
+    public Guid? UserId { get; private set; }
+    public User? User { get; private set; }
 
     /// <summary>When the career began, for the opening of the manager's history.</summary>
     public DateTimeOffset StartedAt { get; private set; }
@@ -38,6 +48,18 @@ public class Manager
             StartedAt = DateTimeOffset.UtcNow,
         };
     }
+
+    /// <summary>Links this manager to the user who owns the career.</summary>
+    public void SetUserId(Guid userId)
+    {
+        if (userId == Guid.Empty)
+            throw new ArgumentException("A user id cannot be empty.", nameof(userId));
+
+        UserId = userId;
+    }
+
+    /// <summary>Clears the user link, returning the club to NPC control.</summary>
+    public void ClearUserId() => UserId = null;
 
     public void SetName(string name)
     {

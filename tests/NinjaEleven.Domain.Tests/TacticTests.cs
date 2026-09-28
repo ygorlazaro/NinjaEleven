@@ -147,7 +147,7 @@ public class TacticTests
         MatchPlayerSnapshot.FromPlayerSeasonState(
             NinjaEleven.Domain.Players.Player.Create(
                 "Jogador",
-                DateOnly.FromDateTime(DateTime.Today.AddYears(-24)),
+                24,
                 position,
                 speed: speed,
                 accuracy: accuracy,

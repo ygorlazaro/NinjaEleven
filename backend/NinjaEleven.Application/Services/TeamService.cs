@@ -4,6 +4,7 @@ using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Teams;
+using NinjaEleven.Application.Abstractions;
 
 namespace NinjaEleven.Application.Services;
 
@@ -17,17 +18,38 @@ public class TeamService
     private readonly IPlayerRepository _playerRepository;
     private readonly ISeasonRepository _seasonRepository;
     private readonly IMatchRepository _matchRepository;
+    private readonly IUnitOfWork _unitOfWork;
 
     public TeamService(
         ITeamRepository teamRepository,
         IPlayerRepository playerRepository,
         ISeasonRepository seasonRepository,
-        IMatchRepository matchRepository)
+        IMatchRepository matchRepository,
+        IUnitOfWork unitOfWork)
     {
         _teamRepository = teamRepository;
         _playerRepository = playerRepository;
         _seasonRepository = seasonRepository;
         _matchRepository = matchRepository;
+        _unitOfWork = unitOfWork;
+    }
+
+    /// <summary>
+    /// Marks the club a manager is running, and unmarks whichever one was marked before.
+    ///
+    /// Almost the whole game treats every club the same, because the engine plays the club
+    /// nobody is watching and a manager's club is not special to a fixture. It is special to
+    /// exactly one thing — it answers for itself — and the market is the only reader of the
+    /// mark. Without it the clubs nobody is watching would settle a man's transfer by a roll of
+    /// the dice while the one club a person is playing was treated the same, which is the one
+    /// decision in the game that has to belong to a person.
+    /// </summary>
+    public async Task<Team> TakeOverAsManagerClubAsync(Guid teamId, CancellationToken cancellationToken)
+    {
+        var club = await _teamRepository.MarkAsManagerClubAsync(teamId, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return club;
     }
 
     /// <summary>
@@ -78,6 +100,44 @@ public class TeamService
     public async Task<Team> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
         await _teamRepository.GetAsync(id, cancellationToken)
             ?? throw new EntityNotFoundException(nameof(Team), id);
+
+    /// <summary>
+    /// Updates the name of a club that the manager has taken charge of.
+    /// </summary>
+    public async Task<Team> UpdateNameAsync(
+        Guid teamId,
+        string name,
+        CancellationToken cancellationToken = default)
+    {
+        var team = await _teamRepository.GetAsync(teamId, cancellationToken)
+            ?? throw new EntityNotFoundException(nameof(Team), teamId);
+
+        team.SetName(name);
+        _teamRepository.Update(team);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return team;
+    }
+
+    /// <summary>
+    /// Updates the kit colours of a club that the manager has taken charge of.
+    /// </summary>
+    public async Task<Team> UpdateColorsAsync(
+        Guid teamId,
+        string primaryColor,
+        string secondaryColor,
+        CancellationToken cancellationToken = default)
+    {
+        var team = await _teamRepository.GetAsync(teamId, cancellationToken)
+            ?? throw new EntityNotFoundException(nameof(Team), teamId);
+
+        team.SetPrimaryColor(primaryColor);
+        team.SetSecondaryColor(secondaryColor);
+        _teamRepository.Update(team);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return team;
+    }
 
     public async Task<IReadOnlyList<SquadPlayer>> GetSquadAsync(
         Guid teamId,
@@ -171,7 +231,7 @@ public class TeamService
         var live = await _teamRepository.GetLiveContractsAsync(teamId, cancellationToken);
         var stillHere = live.Select(membership => membership.PlayerId).ToHashSet();
         var scorers = new List<ClubScorerRow>(lines.Count);
-        var bornOn = new Dictionary<Guid, DateOnly>();
+        var ageOf = new Dictionary<Guid, int>();
 
         foreach (var line in lines)
         {
@@ -181,12 +241,12 @@ public class TeamService
                 continue;
             }
 
-            bornOn[player.Id] = player.BirthDate;
+            ageOf[player.Id] = player.Age;
             scorers.Add(new ClubScorerRow
             {
                 PlayerId = player.Id,
                 PlayerName = player.Name,
-                Age = player.CalculateAge(),
+                Age = player.Age,
                 Goals = line.Goals,
                 OwnGoals = line.OwnGoals,
                 Started = line.Started,
@@ -215,7 +275,7 @@ public class TeamService
                 row.Started + row.CameOn,
                 row.YellowCards,
                 row.RedCards,
-                bornOn.TryGetValue(row.PlayerId, out var birth) ? birth : null))
+                ageOf.TryGetValue(row.PlayerId, out var age) ? age : null))
             .ToList();
 
         var ordered = TopScorerTable.Rank(standings)

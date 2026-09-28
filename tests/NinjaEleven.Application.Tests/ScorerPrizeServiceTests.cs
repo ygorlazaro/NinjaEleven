@@ -460,7 +460,7 @@ public class ScorerPrizeServiceTests
     {
         var player = Player.Create(
             name,
-            new DateOnly(1994, 5, 20),
+            30,
             Position.ATT,
             speed: 14,
             accuracy: 14,

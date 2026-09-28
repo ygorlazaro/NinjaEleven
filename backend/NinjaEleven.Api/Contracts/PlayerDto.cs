@@ -7,7 +7,6 @@ public class PlayerDto
 {
     public Guid Id { get; init; }
     public string Name { get; init; } = string.Empty;
-    public DateOnly BirthDate { get; init; }
     public int Age { get; init; }
     public Position Position { get; init; }
     public int Speed { get; init; }
@@ -114,7 +113,6 @@ public class PlayerProfileDto
     public string Name { get; init; } = string.Empty;
     public string Position { get; init; } = string.Empty;
     public int Age { get; init; }
-    public DateOnly BirthDate { get; init; }
     public int Speed { get; init; }
     public int Accuracy { get; init; }
     public int Dribbling { get; init; }

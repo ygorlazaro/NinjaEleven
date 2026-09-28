@@ -8,6 +8,7 @@ using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Sponsors;
 using NinjaEleven.Domain.Teams;
+using NinjaEleven.Domain.Transfers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -120,7 +121,8 @@ public class DatabaseSeeder : IDataSeeder
         "Léo Condé",
         "Ranielle Ribeiro",
         "Higo Magalhães",
-        "Allan Aal"
+        "Allan Aal",
+        "Márcio Fernandes"
     };
     private static readonly (string Name, string Industry, string Color)[] SponsorCatalog =
     {
@@ -220,6 +222,18 @@ public class DatabaseSeeder : IDataSeeder
 
         var coachPool = CoachNames.OrderBy(_ => random.Next()).ToList();
 
+        // One coach per club, and a coach is a name a club is told apart by. A pool shorter
+        // than the catalog is not something to paper over by handing two clubs the same man:
+        // it means a club in the catalog has nobody to be managed by, and the failure belongs
+        // where somebody can read it and add a name, not as an index out of range forty lines
+        // later in a loop over teams.
+        if (coachPool.Count < TeamCatalog.Length)
+        {
+            throw new InvalidOperationException(
+                $"The coach pool has {coachPool.Count} names for {TeamCatalog.Length} clubs. " +
+                "Every club needs its own manager, so the pool has to cover the catalog.");
+        }
+
         for (var index = 0; index < TeamCatalog.Length; index++)
         {
             var definition = TeamCatalog[index];
@@ -262,14 +276,23 @@ public class DatabaseSeeder : IDataSeeder
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        // The first season is a season like any other, and it opens with its intake: the young
+        // free agents a club signs rather than buys. They are dealt after the world is saved
+        // because the intake reads the season it is dealt into, and a world written with every
+        // one of its three hundred names under contract is a world whose market has nothing in
+        // it for a manager to sign.
+        var intake = await AddYoungFreeAgentsAsync(
+            season.Id, YouthIntakeRules.FreeAgentsPerSeason, random, cancellationToken);
+
         _logger.LogInformation(
-            "Seeded {SeasonName}: {DivisionCount} divisions of {ClubsPerDivision} clubs, a cup of {CupSize} and a Supercup, with {TeamCount} teams and {PlayerCount} players.",
+            "Seeded {SeasonName}: {DivisionCount} divisions of {ClubsPerDivision} clubs, a cup of {CupSize} and a Supercup, with {TeamCount} teams, {PlayerCount} players and an intake of {Intake} young free agents.",
             season.Name,
             CompetitionRules.DivisionCount,
             CompetitionRules.ClubsPerDivision,
             CompetitionRules.CupSize,
             teams.Count,
-            players.Count);
+            players.Count,
+            intake);
     }
 
     private async Task SeedNamePoolsAsync(CancellationToken cancellationToken)
@@ -378,15 +401,24 @@ public class DatabaseSeeder : IDataSeeder
         return (players, seasonStates, memberships);
     }
 
-    private Player CreatePlayer(Position position, Random random, string face)
+    private Player CreatePlayer(Position position, Random random, string face) =>
+        CreatePlayer(position, random, face, random.Next(_options.YoungestAge, _options.OldestAge + 1));
+
+    /// <summary>
+    /// A player with a birth date somebody else has already decided — the young men the market
+    /// is fed with, who are sixteen to nineteen by rule rather than by the draw.
+    ///
+    /// Everything else is the seeded world's own formula, and that is the point: a prospect
+    /// arriving from the base is built by the same expression that builds a squad, so his keeper
+    /// is a keeper and his outfield men are outfield men. A generator that gave a seventeen-year-
+    /// old goalkeeper the same band as a centre back would be filling the market with players no
+    /// engine would ever pick, and a market full of players nobody can field is a market that
+    /// looks busy and is empty.
+    /// </summary>
+    private Player CreatePlayer(Position position, Random random, string face, int age)
     {
         var firstName = NameCatalog.AllFirstNames[random.Next(NameCatalog.AllFirstNames.Count)];
         var surname = NameCatalog.AllSurnames[random.Next(NameCatalog.AllSurnames.Count)];
-
-        var birthYear = random.Next(_options.OldestBirthYear, _options.YoungestBirthYear + 1);
-        var birthMonth = random.Next(1, 13);
-        var birthDay = random.Next(1, DateTime.DaysInMonth(birthYear, birthMonth) + 1);
-        var birthDate = new DateOnly(birthYear, birthMonth, birthDay);
 
         // A goalkeeper is built for his job: the engine weighs reflexes and power when it
         // picks the eleven, so a keeper with outfield attributes would never be chosen.
@@ -394,7 +426,7 @@ public class DatabaseSeeder : IDataSeeder
 
         return Player.Create(
             $"{firstName} {surname}",
-            birthDate,
+            age,
             position,
             speed: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
             accuracy: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
@@ -578,6 +610,12 @@ public class DatabaseSeeder : IDataSeeder
         }
     }
 
+    /// <summary>
+    /// Mixed into the backfill's seed so a backfill does not reproduce the exact same squad of
+    /// eighteen-year-olds the last one dealt.
+    /// </summary>
+    private const int seedSalt = 7717;
+
     private int RandomAttribute(Random random) =>
         random.Next(_options.MinimumAttribute, _options.MaximumAttribute + 1);
 
@@ -602,11 +640,19 @@ public class DatabaseSeeder : IDataSeeder
     }
 
     /// <summary>
-    /// Generates young players as free agents to replace those who retired, for the season
-    /// that is opening. Each retiree brings 0.8–1.2 replacements onto the market: a world that
-    /// loses twenty men opens with eighteen to twenty-four fresh names, so the pyramid keeps
-    /// its shape without a manager having to draft. The youngsters arrive unattached — no club,
-    /// no contract — and wait to be picked up like any other free agent.
+    /// Deals the season's intake: the young free agents a season opens with, unattached and
+    /// waiting to be signed.
+    ///
+    /// The count is <see cref="YouthIntakeRules.FreeAgentsPerSeason"/> and it does not depend on
+    /// what happened in the season before, because the rule is a count and not a ratio: a
+    /// season's first day has no retirements to divide by, and a market fed by a ratio opens
+    /// its first season with nobody in it at all — three hundred names who all belong to
+    /// somebody, and not one signing a manager could make. Every season gets its intake, the
+    /// same size, so the market a club shops in is never empty of a player it could pick up.
+    ///
+    /// It is called once per season, when the season opens: by the world being written for the
+    /// first one and by the season close for every one after. It is not called again on a
+    /// restart, so a world never grows a second intake into the same season.
     /// </summary>
     public async Task GenerateYoungPlayersAsync(Guid seasonId, CancellationToken cancellationToken = default)
     {
@@ -619,66 +665,98 @@ public class DatabaseSeeder : IDataSeeder
             return;
         }
 
-        var retiringCount = await _dbContext.PlayerSeasonStates
-            .CountAsync(s => s.SeasonId == seasonId && s.Retiring, cancellationToken);
-
-        if (retiringCount == 0)
-        {
-            _logger.LogInformation("No retirements declared for season {SeasonNumber}; no young players were generated.", season.Number);
-            return;
-        }
-
         var random = _options.RandomSeed.HasValue
             ? new Random(_options.RandomSeed.Value + season.Number)
             : Random.Shared;
 
-        var targetCount = (int)Math.Round(retiringCount * (0.8 + random.NextDouble() * 0.4));
-        var faces = DealFaces(targetCount, random);
+        var created = await AddYoungFreeAgentsAsync(season.Id, YouthIntakeRules.FreeAgentsPerSeason, random, cancellationToken);
 
+        _logger.LogInformation(
+            "Dealt the season {SeasonNumber} intake: {Count} young free agents.",
+            season.Number, created);
+    }
+
+    /// <summary>
+    /// Fills the market with a given number of young free agents, aged sixteen to nineteen.
+    ///
+    /// This is the backfill the rules ask for — a market with nothing in it is a market a manager
+    /// opens, sees three hundred under contract men and no way to improve any of them, and leaves
+    /// — and it is deliberately a count rather than a ratio: a ratio needs retirements to divide
+    /// and a world being seeded has none. The men are drawn from the same pool the squads are
+    /// drawn from, dealt faces like everybody else, and given no club: a young player is somebody
+    /// a club signs, not somebody a club buys.
+    /// </summary>
+    public async Task<int> SeedYoungFreeAgentsAsync(
+        int count = YouthIntakeRules.FreeAgentsPerSeason,
+        Guid? seasonId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var season = seasonId is { } wanted
+            ? await _dbContext.Seasons.FirstOrDefaultAsync(s => s.Id == wanted, cancellationToken)
+            : await _dbContext.Seasons
+                .Where(s => s.Status == Domain.Enums.SeasonStatus.InProgress)
+                .OrderByDescending(s => s.Number)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        if (season is null)
+        {
+            _logger.LogWarning("There is no season in progress; the young free agents were not seeded.");
+            return 0;
+        }
+
+        var random = _options.RandomSeed.HasValue
+            ? new Random(_options.RandomSeed.Value + seedSalt)
+            : Random.Shared;
+
+        var created = await AddYoungFreeAgentsAsync(season.Id, count, random, cancellationToken);
+
+        _logger.LogInformation(
+            "Seeded {Count} young free agents into season {SeasonNumber}.", created, season.Number);
+
+        return created;
+    }
+
+    /// <summary>
+    /// The men themselves: a birth date drawn so the player is between
+    /// <see cref="YouthIntakeRules.YoungestAge"/> and <see cref="YouthIntakeRules.OldestAge"/>
+    /// on the day the season opens, each built by the seeded world's own formulas, each dealt a
+    /// face from the pool, each attached to a season with no club and no contract.
+    ///
+    /// The age is drawn straight from the rule's band, because the age is now the fact the
+    /// world keeps about a player: there is no date to fall out of step with it, and the boy
+    /// who arrives in December and the boy who arrives in January are the age they are drawn
+    /// as on every screen of the game.
+    /// </summary>
+    private async Task<int> AddYoungFreeAgentsAsync(
+        Guid seasonId,
+        int count,
+        Random random,
+        CancellationToken cancellationToken)
+    {
+        if (count <= 0)
+        {
+            return 0;
+        }
+
+        var faces = DealFaces(count, random);
         var players = new List<Player>();
         var states = new List<PlayerSeasonState>();
 
-        for (var i = 0; i < targetCount; i++)
+        for (var i = 0; i < count; i++)
         {
-            var age = random.Next(16, 20);
-            var birthYear = season.StartDate.Year - age;
-            var birthMonth = random.Next(1, 13);
-            var birthDay = random.Next(1, DateTime.DaysInMonth(birthYear, birthMonth) + 1);
-            var birthDate = new DateOnly(birthYear, birthMonth, birthDay);
+            var age = random.Next(
+                YouthIntakeRules.YoungestAge,
+                YouthIntakeRules.OldestAge + 1);
 
-            // Young players are prospects, not finished products: their attributes land in the
-            // lower band, so a 19-year-old is recognisably able but a 16-year-old is a project.
-            var isGoalkeeper = random.NextDouble() < 0.15;
+            var isGoalkeeper = random.NextDouble() < YouthIntakeRules.GoalkeeperShare;
             var position = isGoalkeeper ? Position.GK : (Position)random.Next(1, 4);
 
-            var low = _options.MinimumAttribute;
-            var high = (_options.MinimumAttribute + _options.MaximumAttribute) / 2;
-
-            var speed = random.Next(low, high + 1);
-            var accuracy = random.Next(low, high + 1);
-            var dribbling = random.Next(low, high + 1);
-            var heading = random.Next(low, high + 1);
-            var strength = random.Next(low, high + 1);
-            var gkPower = isGoalkeeper ? random.Next(low, high + 1) : 0;
-            var reflexes = isGoalkeeper ? random.Next(low, high + 1) : 0;
-
-            var player = Player.Create(
-                $"{NameCatalog.AllFirstNames[random.Next(NameCatalog.AllFirstNames.Count)]} {NameCatalog.AllSurnames[random.Next(NameCatalog.AllSurnames.Count)]}",
-                birthDate,
-                position,
-                speed,
-                accuracy,
-                dribbling,
-                heading,
-                strength,
-                gkPower,
-                reflexes,
-                faces.Dequeue());
+            var player = CreatePlayer(position, random, faces.Dequeue(), age);
 
             players.Add(player);
             states.Add(PlayerSeasonState.CreateFreeAgent(
                 player.Id,
-                season.Id,
+                seasonId,
                 random.Next(_options.MinimumEnergy, _options.MaximumEnergy + 1)));
         }
 
@@ -686,8 +764,6 @@ public class DatabaseSeeder : IDataSeeder
         _dbContext.PlayerSeasonStates.AddRange(states);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation(
-            "Generated {Count} young free agents for {RetiredCount} retirements in season {SeasonNumber}.",
-            players.Count, retiringCount, season.Number);
+        return players.Count;
     }
 }

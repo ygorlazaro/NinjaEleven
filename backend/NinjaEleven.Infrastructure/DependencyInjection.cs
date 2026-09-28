@@ -5,6 +5,7 @@ using NinjaEleven.Application.Services;
 using NinjaEleven.Infrastructure.Persistence;
 using NinjaEleven.Infrastructure.Persistence.Seeding;
 using NinjaEleven.Infrastructure.Repositories;
+using NinjaEleven.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -47,7 +48,8 @@ public static class DependencyInjection
         services.AddScoped<ITransferRepository, TransferRepository>();
     services.AddScoped<ISponsorRepository, SponsorRepository>();
     services.AddScoped<ISponsorContractRepository, SponsorContractRepository>();
-    services.AddScoped<IManagerRepository, ManagerRepository>();
+        services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IManagerRepository, ManagerRepository>();
 
         return services;
     }
@@ -96,7 +98,10 @@ public static class DependencyInjection
         services.AddScoped<ScorerPrizeService>();
         services.AddScoped<SponsorOfferService>();
         services.AddScoped<ManagerService>();
+        services.AddScoped<AuthService>();
+        services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<TransferService>();
+        services.AddScoped<RosterService>();
         services.AddScoped<AttendanceContextFactory>();
 
         services.AddSingleton<IMatchSessionRegistry, MatchSessionRegistry>();

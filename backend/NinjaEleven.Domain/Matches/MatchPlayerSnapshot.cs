@@ -250,7 +250,7 @@ public class MatchPlayerSnapshot
         {
             PlayerId = player.Id,
             Name = player.Name,
-            Age = player.CalculateAge(),
+            Age = player.Age,
             Position = player.Position,
             Speed = player.Speed,
             Accuracy = player.Accuracy,

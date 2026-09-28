@@ -84,6 +84,30 @@ public static class PlayerValuation
     }
 
     /// <summary>
+    /// What a club pays to sign a player who has no club, in limos: a fifth of what he is worth.
+    ///
+    /// A free agent has nobody to buy him from, and a deal with no seller was a deal nobody
+    /// charged for — the market handed out a man worth a million limos to whichever club had a
+    /// squad room, and the whole value of the intake evaporated the first season anybody looked
+    /// at it. The fee is a share of the player's own value rather than a round number, so a club
+    /// that signs a wonder pays for the wonder and a club that signs a boy off the street pays
+    /// for the boy, and neither of them gets a man for nothing. Nobody receives it: there is no
+    /// counterparty on the other side of a signing, so the money leaves the buyer's book as a
+    /// cost and stops there.
+    ///
+    /// It is charged when the signing is agreed, like a purchase, and not when the player walks
+    /// through the door.
+    /// </summary>
+    public static decimal FreeAgentSigningFee(decimal marketValue) =>
+        decimal.Round(
+            marketValue * (FreeAgentSigningPercent / 100m),
+            2,
+            MidpointRounding.AwayFromZero);
+
+    /// <summary>The share of a free agent's own value that signing him costs, in percent.</summary>
+    public const decimal FreeAgentSigningPercent = 20m;
+
+    /// <summary>
     /// What one player costs a club for one season, in limos: a hundredth of what he is
     /// worth.
     ///
@@ -162,15 +186,14 @@ public static class PlayerValuation
     /// </summary>
     public static decimal MarketValue(
         Player player,
-        PlayerSeasonState seasonState,
-        DateOnly? referenceDate = null)
+        PlayerSeasonState seasonState)
     {
         if (player is null) throw new ArgumentNullException(nameof(player));
         if (seasonState is null) throw new ArgumentNullException(nameof(seasonState));
 
         return MarketValue(
             PlayerRating.CalculateStars(player),
-            player.CalculateAge(referenceDate),
+            player.Age,
             seasonState.Injuries,
             seasonState.RedCards);
     }
@@ -180,9 +203,8 @@ public static class PlayerValuation
     /// </summary>
     public static decimal SeasonWage(
         Player player,
-        PlayerSeasonState seasonState,
-        DateOnly? referenceDate = null)
+        PlayerSeasonState seasonState)
     {
-        return SeasonWage(MarketValue(player, seasonState, referenceDate));
+        return SeasonWage(MarketValue(player, seasonState));
     }
 }

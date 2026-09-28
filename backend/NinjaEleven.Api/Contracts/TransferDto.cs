@@ -10,12 +10,21 @@ public class TransferProposalDto
     public string PlayerName { get; init; } = string.Empty;
     public string PlayerPosition { get; init; } = string.Empty;
     public int PlayerAge { get; init; }
-    public Guid SellingClubId { get; init; }
+
+    /// <summary>Null when the player has no club: a signing has nobody selling him.</summary>
+    public Guid? SellingClubId { get; init; }
     public string SellingClubName { get; init; } = string.Empty;
+
     public Guid BuyingClubId { get; init; }
     public string BuyingClubName { get; init; } = string.Empty;
     public int ProposalSeasonNumber { get; init; }
+
+    /// <summary>The season he arrives in, which is not always the one after this.</summary>
     public int ArrivalSeasonNumber { get; init; }
+
+    /// <summary>The round he walks in on.</summary>
+    public int? ArrivalRoundNumber { get; init; }
+
     public decimal Fee { get; init; }
     public string Status { get; init; } = string.Empty;
     public DateOnly ProposedAt { get; init; }
@@ -43,6 +52,17 @@ public class TransferListingDto
     public string? TeamPrimaryColor { get; init; }
     public string? TeamSecondaryColor { get; init; }
 
+    /// <summary>Whether he is a free agent, and so is signed rather than bought.</summary>
+    public bool IsFreeAgent { get; init; }
+
+    /// <summary>
+    /// Whether somebody already has a live deal on him — a proposal waiting for an answer or one
+    /// already agreed. The market refuses a second offer on a man who is spoken for, so the row
+    /// has to say so: a manager who is only told by an error code that his own proposal from two
+    /// minutes ago is still on the table has been told something the market knew all along.
+    /// </summary>
+    public bool HasActiveProposal { get; init; }
+
     public int Energy { get; init; }
     public string Injury { get; init; } = string.Empty;
     public int InjuryMatchesRemaining { get; init; }
@@ -56,6 +76,22 @@ public class TransferListingDto
     public decimal? AskingPrice { get; init; }
 
     public PlayerCareerLineDto Season { get; init; } = new();
+
+    /// <summary>The whole career, every club included.</summary>
+    public PlayerCareerLineDto Total { get; init; } = new();
+
+    /// <summary>The career split by club, on the card that opens from a row.</summary>
+    public IReadOnlyList<PlayerClubCareerLineDto> Clubs { get; init; } = Array.Empty<PlayerClubCareerLineDto>();
+}
+
+/// <summary>
+/// One club's share of a career, and the seasons the man spent in that shirt.
+/// </summary>
+public class PlayerClubCareerLineDto
+{
+    public Guid TeamId { get; init; }
+    public string TeamName { get; init; } = string.Empty;
+    public int Seasons { get; init; }
     public PlayerCareerLineDto Total { get; init; } = new();
 }
 
@@ -68,6 +104,45 @@ public class TransferInboxDto
     public IReadOnlyList<TransferProposalDto> Outgoing { get; init; } = Array.Empty<TransferProposalDto>();
 }
 
+/// <summary>
+/// Everything the market was narrowed by, in one query string. Anything left out is not a
+/// filter, so a manager who sets two of them gets the list narrowed by exactly those two.
+/// </summary>
+public class TransferSearchQuery
+{
+    public Guid SeasonId { get; init; }
+    public Position? Position { get; init; }
+    public int? MinAge { get; init; }
+    public int? MaxAge { get; init; }
+    public double? MinStars { get; init; }
+    public double? MaxStars { get; init; }
+    public int? MinSpeed { get; init; }
+    public int? MinAccuracy { get; init; }
+    public int? MinDribbling { get; init; }
+    public int? MinHeading { get; init; }
+    public int? MinStrength { get; init; }
+    public int? MinGoalkeeperPower { get; init; }
+    public int? MinReflexes { get; init; }
+    public bool? Retiring { get; init; }
+    public bool FreeAgentsOnly { get; init; }
+    public bool WithClubOnly { get; init; }
+    public Guid? TeamId { get; init; }
+    public int Page { get; init; } = 1;
+    public int PageSize { get; init; } = 30;
+}
+
+public class TransferWindowStateDto
+{
+    public int SeasonNumber { get; init; }
+    public int CurrentRound { get; init; }
+    public bool IsOpen { get; init; }
+    public int ArrivalSeasonNumber { get; init; }
+    public int ArrivalRoundNumber { get; init; }
+
+    /// <summary>The same two facts in a sentence, in a manager's words.</summary>
+    public string ArrivalLabel { get; init; } = string.Empty;
+}
+
 public class TransferSearchResultDto
 {
     public IReadOnlyList<TransferListingDto> Players { get; init; } = Array.Empty<TransferListingDto>();
@@ -75,12 +150,13 @@ public class TransferSearchResultDto
     public int Page { get; init; }
     public int PageSize { get; init; }
     public int TotalPages { get; init; }
+    public TransferWindowStateDto Window { get; init; } = new();
 }
 
 public class TransferHistoryLineDto
 {
     public Guid PlayerId { get; init; }
-    public Guid SellingClubId { get; init; }
+    public Guid? SellingClubId { get; init; }
     public string SellingClubName { get; init; } = string.Empty;
     public Guid BuyingClubId { get; init; }
     public string BuyingClubName { get; init; } = string.Empty;
@@ -98,7 +174,11 @@ public class NpcTransferResultDto
     public int ProposalsMade { get; init; }
     public int Accepted { get; init; }
     public int Rejected { get; init; }
+    public int Signed { get; init; }
     public int Completed { get; init; }
+
+    /// <summary>How many offers on the table were answered this round.</summary>
+    public int Answered { get; init; }
 }
 
 public class ReleaseResultDto
@@ -108,6 +188,14 @@ public class ReleaseResultDto
     public Guid ClubId { get; init; }
     public string ClubName { get; init; } = string.Empty;
     public decimal ReleaseCost { get; init; }
+
+    /// <summary>
+    /// The offers the club had on the table for this player, which the release withdrew. A club
+    /// that has let a man go has nothing left to sell, and an offer still naming him as one of
+    /// its players is a promise it cannot keep.
+    /// </summary>
+    public int WithdrawnOffers { get; init; }
+
     public string Message { get; init; } = string.Empty;
 }
 
@@ -121,15 +209,12 @@ public class TransferProposeRequestDto
 public class TransferAnswerRequestDto
 {
     public bool Accept { get; init; }
+
+    /// <summary>
+    /// The club answering. It has to be the selling club, and it is named in the request
+    /// because the check is a real one: a buying club that could accept its own offer would be
+    /// setting its own price and signing its own cheque.
+    /// </summary>
+    public Guid ClubId { get; init; }
 }
 
-public class TransferRetireRequestDto
-{
-    public bool Retiring { get; init; }
-}
-
-public class TransferCompleteRequestDto
-{
-    public Guid ArrivalSeasonId { get; init; }
-    public int ArrivalRound { get; init; }
-}

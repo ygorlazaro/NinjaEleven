@@ -10,7 +10,6 @@ public class PlayerProfile
     public string Name { get; set; } = string.Empty;
     public string Position { get; set; } = string.Empty;
     public int Age { get; set; }
-    public DateOnly BirthDate { get; set; }
     public int Speed { get; set; }
     public int Accuracy { get; set; }
     public int Dribbling { get; set; }
@@ -98,6 +97,37 @@ public class PlayerCareerLine
 
     /// <summary>Matches off the pitch because he was carrying a knock.</summary>
     public int MatchesMissed { get; set; }
+}
+
+/// <summary>
+/// One club's share of a player's career: what he did in the shirt, and over how many seasons.
+///
+/// A career total on its own is half an answer. Six goals in five years says a man moved; the
+/// breakdown says where he scored them, and a market that shows only the sum is asking a club
+/// to pay for a whole career while saying nothing about which part of it this club is buying.
+/// The line is grouped by the club on the match itself, not by the club he finished at: a goal
+/// is scored in a shirt, and the shirt is what the number belongs to.
+/// </summary>
+public class PlayerClubCareerLine
+{
+    public Guid TeamId { get; set; }
+    public string TeamName { get; set; } = string.Empty;
+
+    /// <summary>Seasons in which the player has a line for this club, across the whole career.</summary>
+    public int Seasons { get; set; }
+
+    public PlayerCareerLine Total { get; set; } = new();
+}
+
+/// <summary>
+/// One player's whole career, keyed by the player, so a market listing can show what a man has
+/// done without asking the database about him one at a time.
+/// </summary>
+public class CareerTotals
+{
+    public Guid PlayerId { get; set; }
+
+    public PlayerCareerLine Line { get; set; } = new();
 }
 
 /// <summary>

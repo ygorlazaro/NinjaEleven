@@ -8,6 +8,7 @@ using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Sponsors;
 using NinjaEleven.Domain.Teams;
 using NinjaEleven.Domain.Transfers;
+using NinjaEleven.Domain.Users;
 using Microsoft.EntityFrameworkCore;
 
 namespace NinjaEleven.Infrastructure.Persistence;
@@ -31,6 +32,7 @@ public class NinjaElevenDbContext : DbContext
     public DbSet<Sponsor> Sponsors => Set<Sponsor>();
     public DbSet<SponsorContract> SponsorContracts => Set<SponsorContract>();
     public DbSet<Manager> Managers => Set<Manager>();
+    public DbSet<User> Users => Set<User>();
 
     public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Division> Divisions => Set<Division>();

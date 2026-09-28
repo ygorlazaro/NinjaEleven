@@ -12,6 +12,16 @@ public interface ITeamRepository
     Task<Team?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Marks this club as the one a manager is running, and unmarks the one that was before.
+    ///
+    /// The flag belongs to the team, not to a service, and it belongs in the repository because
+    /// two of them write it: a career beginning asks for it, and a club being taken over asks
+    /// for it. One row in the world carries it, and a second copy of this rule in two services
+    /// is a way for the world to end up with two.
+    /// </summary>
+    Task<Team> MarkAsManagerClubAsync(Guid teamId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// A set of clubs by their identifiers, in the order asked for. Reading a set of clubs one
     /// at a time is a query per club to answer a question about a division.
     /// </summary>
@@ -42,6 +52,14 @@ public interface ITeamRepository
     /// </summary>
     Task<IReadOnlyList<TeamMembership>> GetLiveContractsAsync(
         Guid teamId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The clubs that have no human manager assigned yet, so a new user can claim one.
+    /// "No human manager" is a manager row with no <see cref="Manager.UserId"/> —
+    /// or no manager row at all. A club that appears here is NPC-controlled.
+    /// </summary>
+    Task<IReadOnlyList<Team>> ListClubsWithoutManagerAsync(
         CancellationToken cancellationToken = default);
 
     /// <summary>

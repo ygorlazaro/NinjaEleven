@@ -14,7 +14,11 @@ public class PlayerConfiguration : IEntityTypeConfiguration<Player>
         builder.Property(p => p.Id).ValueGeneratedNever();
 
         builder.Property(p => p.Name).HasMaxLength(120).IsRequired();
-        builder.Property(p => p.BirthDate).HasColumnType("date").IsRequired();
+
+        // The age is the fact, not a birth date to be turned into one: it is what every screen
+        // reads and what the retirement rule is applied to, and it moves once a year when the
+        // season opens. See Player.Age.
+        builder.Property(p => p.Age).IsRequired();
         builder.Property(p => p.Position)
             .HasConversion<string>()
             .HasMaxLength(16)

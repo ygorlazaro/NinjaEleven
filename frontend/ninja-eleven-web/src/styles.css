@@ -43,6 +43,10 @@ button { cursor: pointer; }
    and the screen takes the rest, because a table of a division and a squad of twenty-three
    are both things that need every pixel of width they can be given. */
 .shell { display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 100vh; }
+/* The screen that opens a career has no column beside it: every door in the column leads
+   somewhere inside a career the manager has not started yet, and the division he is choosing
+   a club from needs the whole width. */
+.shell--bare { grid-template-columns: minmax(0, 1fr); }
 .shell-main { min-width: 0; padding: 22px 22px 40px; }
 .shell-main > .app { padding: 0; max-width: none; margin: 0; }
 
@@ -235,6 +239,51 @@ button { cursor: pointer; }
 .team-choice h3 { margin: 0 0 5px; }
 .team-choice .small { color: var(--muted); font-size: 15px; }
 .team-choice .rating { margin-top: 15px; font-size: 14px; color: var(--accent); }
+
+/* A card that carries a squad is not a card that fits in a quarter of a screen: the manager
+   is choosing between twenty-three men, and a card narrow enough for a name and a number is
+   a card that cannot hold either. The grid asks for what a squad needs and the columns land
+   wherever they land, so a wide screen reads the division across and a narrow one reads it
+   down. */
+.team-grid--squad { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+.team-choice__head { display: flex; align-items: flex-start; gap: 12px; }
+.team-choice__identity { min-width: 0; flex: 1; }
+.team-choice__identity h3 { margin: 0 0 4px; }
+.team-choice__identity .rating { margin-top: 0; }
+.team-choice__identity .small { font-size: 13px; }
+/* The shield at card size: the same shield the table and the club's page use, small enough
+   that it sits beside a name rather than above it. */
+.team-choice__crest {
+  width: 46px; height: 52px; font-size: 17px; border-width: 2px;
+  border-radius: 6px 6px 16px 16px;
+}
+
+/* The squad, under the club it belongs to. The men are read in the order a squad is read
+   everywhere else and the whole list is there, so the manager compares clubs by their bench
+   as well as by their first choice; the panel scrolls rather than growing the card, because
+   a card taller than the one beside it cannot be compared to it. */
+.squad-preview {
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);
+}
+.squad-preview--empty { color: var(--muted); font-size: 13px; padding-top: 12px; }
+.squad-preview__title {
+  font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 6px;
+}
+.squad-preview__list {
+  list-style: none; margin: 0; padding: 0;
+  max-height: 260px; overflow-y: auto;
+  display: grid; gap: 2px;
+}
+.squad-preview__row {
+  display: grid; grid-template-columns: 30px minmax(0, 1fr) 32px auto auto;
+  align-items: center; gap: 8px; font-size: 13px; line-height: 1.5;
+}
+.squad-preview__pos { color: var(--muted); font-size: 11px; font-weight: 700; }
+.squad-preview__name { text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.squad-preview__age { color: var(--muted); font-size: 12px; text-align: right; }
+.squad-preview__stars { color: var(--accent); font-size: 12px; }
+.squad-preview__flag { font-size: 12px; }
 
 .primary { border: 0; background: var(--accent); color: #12170f; font-weight: 900; padding: 12px 18px; border-radius: 9px; }
 .primary:disabled { opacity: .35; cursor: not-allowed; }
@@ -2393,6 +2442,11 @@ button { cursor: pointer; }
 
 .retiring-mark { margin-left: 6px; color: var(--orange); font-size: 14px; }
 
+/* A player somebody is already negotiating for. The market refuses a second offer on him, so
+   the row says it: a manager who has to press the button to be told is a manager who pressed
+   a button and was given an error code instead of a sentence. */
+.proposal-mark { margin-left: 6px; font-size: 13px; }
+
 .free-agent { color: var(--orange); font-style: italic; }
 
 .transfer-inbox-section { margin-top: 32px; }
@@ -2421,6 +2475,13 @@ button { cursor: pointer; }
 .btn-sm.accept { background: rgba(76,175,80,0.2); border-color: var(--green); color: var(--green); }
 .btn-sm.reject { background: rgba(244,67,54,0.2); border-color: var(--red); color: var(--red); }
 
+/* A club's own decisions, in the squad table. The buttons are in a column of their own and
+   are not a sort: what a man costs to let go is not a number the table can order by. */
+.actions-col { text-align: left; white-space: nowrap; }
+.actions-col th.actions-col { cursor: default; }
+.actions-col .btn-sm { margin-right: 6px; }
+.league-notice { color: var(--green); font-size: 14px; margin: 8px 0; }
+
 /* Transfer detail view */
 .transfer-detail { padding: 16px; }
 .transfer-detail__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
@@ -2436,7 +2497,8 @@ button { cursor: pointer; }
 .transfer-detail__v.accent { color: var(--accent); font-weight: 700; }
 .transfer-detail__v.retiring { color: var(--orange); font-weight: 700; }
 
-.transfer-detail__actions { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 16px; }
+/* The card's one action, under the name: what the manager opened the card to be able to do. */
+.transfer-detail__actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin-bottom: 20px; }
 .transfer-error { color: var(--red); }
 .transfer-success { color: var(--green); }
 
@@ -2445,3 +2507,60 @@ button { cursor: pointer; }
 .transfer-offer__input { width: 120px; }
 .transfer-offer__currency { font-size: 14px; color: var(--muted); }
 .transfer-offer__button { border-radius: 6px; }
+
+/* The market's filter row: a number the manager typed, and a count of what it found. */
+.transfer-filter-number { width: 72px; }
+.transfer-filter-attributes summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.transfer-filter-attributes .transfer-filter-row { margin-top: 8px; }
+.transfer-filter-attribute { display: flex; align-items: center; gap: 4px; }
+.transfer-filter-attribute label { color: var(--muted); font-size: 13px; }
+.transfer-count { color: var(--muted); font-size: 13px; margin: 8px 0; }
+
+/* The offer is a window over whatever is being read, not a block of controls inside one screen:
+   the market opens it on a row and a profile opens it on the man. It is the same window in both
+   places, so the numbers a manager reads in it are the numbers one form decided. */
+.offer-modal { width: min(520px, 100%); }
+.offer-modal .transfer-offer-bar { margin-bottom: 0; }
+.offer-modal__who { margin: 0 0 4px; color: var(--muted); font-size: 13px; }
+.offer-modal__club { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; }
+.offer-modal__asking { color: var(--muted); font-size: 13px; }
+
+/* The offer sits under the player's name, not at the foot of a card three screens long, and
+   the count of the offers waiting is on the column rather than inside the market screen. */
+.transfer-offer-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.transfer-offer-bar .transfer-offer { margin-top: 0; }
+.transfer-offer__button { font-weight: 700; }
+.transfer-offer__hint { color: var(--muted); font-size: 13px; margin: 0; }
+.transfer-offer-bar .transfer-error,
+.transfer-offer-bar .transfer-success,
+.transfer-offer-bar .transfer-window-note { margin: 0; }
+.transfer-inbox-count {
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--orange);
+  color: #12170f;
+  font-size: 12px;
+  font-weight: 700;
+}
+.sidebar-link__badge {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--orange);
+  color: #12170f;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+.profile-offer-btn { margin-left: 10px; white-space: nowrap; }

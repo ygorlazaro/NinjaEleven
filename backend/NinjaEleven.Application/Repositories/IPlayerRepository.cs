@@ -93,9 +93,8 @@ public interface IPlayerRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Every player's season state for one season, each carrying the player's birth date
-    /// so age-dependent rules (retirement, market value, NPC acceptance) are applied in
-    /// one pass rather than per player.
+    /// Every player's season state for one season, so age-dependent rules (retirement, market
+    /// value, NPC acceptance) are applied in one pass rather than per player.
     /// </summary>
     Task<IReadOnlyList<PlayerSeasonState>> ListAllSeasonStatesAsync(
         Guid seasonId,
@@ -107,4 +106,24 @@ public interface IPlayerRepository
     /// him for the season he is moving into.
     /// </summary>
     Task AddSeasonStateAsync(PlayerSeasonState state, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every player's whole career, summed from his match lines, in one read.
+    ///
+    /// A market screen shows a hundred and twenty men at a time, and a career read one player
+    /// at a time is a hundred and twenty queries for a list. The sums are made here rather than
+    /// in the service so that the market's career and the profile's career are the same sum of
+    /// the same lines.
+    /// </summary>
+    Task<IReadOnlyList<CareerTotals>> ListCareerTotalsAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One player's career split by the club he was wearing, with the number of seasons he has
+    /// a line for at each. A career total is half an answer; the split is the other half, and
+    /// it is what a club reads to know which part of a career it is buying.
+    /// </summary>
+    Task<IReadOnlyList<PlayerClubCareerLine>> ListClubCareerLinesAsync(
+        Guid playerId,
+        CancellationToken cancellationToken = default);
 }

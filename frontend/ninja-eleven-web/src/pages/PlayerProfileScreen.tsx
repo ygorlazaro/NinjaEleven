@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { PlayerApi, SeasonApi } from '@/api';
+import { useGameState } from '@/state';
+import { useOffer } from '@/state/OfferProvider';
 import type { PlayerProfileDto } from '@/types';
 import { positionLabel } from '@/services/formatters';
 import { formatLimo } from '@/services/limo';
@@ -38,6 +40,8 @@ const PAGESIZE = 20;
 
 const PlayerProfileScreen: React.FC = () => {
   const { playerId } = useParams<{ playerId: string }>();
+  const selectedTeamId = useGameState((s) => s.selectedTeam?.id);
+  const { openOffer } = useOffer();
   const [profile, setProfile] = useState<PlayerProfileDto | null>(null);
   const [seasonId, setSeasonId] = useState<string>('');
   const [scope, setScope] = useState<'season' | 'total'>('total');
@@ -175,6 +179,28 @@ const PlayerProfileScreen: React.FC = () => {
                     </ClubName>
                   ) : (
                     <span className="profile-team">Sem clube</span>
+                  )}
+                  {/*
+                    A profile is where a manager decides about a player, so it is where the
+                    offer is offered. The card answers "who is this man" and the market answers
+                    "what does he cost and who else wants him", and a manager who has just read
+                    a striker's attributes should not have to go and find him in a list of eight
+                    hundred to act on what he has just read.
+
+                    The offer is a window of the game's own — the same one the market opens on the
+                    same row — rather than a page to be sent to and a form to be filled in there.
+                    A manager decides here, and the thing he decided is made here; "Ver no
+                    mercado" is in the window for when he wants the rest of the market instead.
+                  */}
+                  {selectedTeamId && profile.teamId !== selectedTeamId && (
+                    <button
+                      type="button"
+                      className="ctrl profile-offer-btn"
+                      title="Abrir a proposta por este jogador"
+                      onClick={() => openOffer({ playerId: profile.playerId })}
+                    >
+                      🔄 Fazer proposta
+                    </button>
                   )}
                 </div>
                 <p className="profile-role">

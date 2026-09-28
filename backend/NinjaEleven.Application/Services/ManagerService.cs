@@ -47,6 +47,12 @@ public class ManagerService
     /// Creates the manager for a club the moment the career begins. This is the one place a
     /// club gets a manager, and the one place it is checked: a second call for the same club
     /// is refused, because a club already managed is not a club to be managed again.
+    ///
+    /// The club is also marked as the one a person is running, and this is the seam for it. The
+    /// mark is what the market reads to decide whose offers wait in an inbox and whose are
+    /// settled by a formula, so leaving it to a second call from the client is leaving the
+    /// market's idea of whose career this is to a client that may be a build behind. A career
+    /// that begins here has a person behind it, and that is exactly the fact the mark records.
     /// </summary>
     public async Task<Manager> CreateAsync(Guid teamId, string name, CancellationToken cancellationToken = default)
     {
@@ -61,9 +67,11 @@ public class ManagerService
 
         var manager = Manager.Create(teamId, name);
         await _managers.AddAsync(manager, cancellationToken);
+
+        var marked = await _teams.MarkAsManagerClubAsync(teamId, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Career started: {ManagerName} takes charge of {TeamName}.", name, team.Name);
+        _logger.LogInformation("Career started: {ManagerName} takes charge of {TeamName}.", name, marked.Name);
 
         return manager;
     }

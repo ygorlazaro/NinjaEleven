@@ -1,9 +1,10 @@
-import { SeasonApi, TeamApi, ManagerApi } from '@/api';
+import { SeasonApi, TeamApi, ManagerApi, TransferApi } from '@/api';
 import ClubCrest from '@/components/Club/ClubCrest';
 import ClubSquadTable from '@/components/Club/ClubSquadTable';
 import FormRun, { formOf } from '@/components/Club/FormRun';
 import { ClubName } from '@/components/Common/Names';
 import { useClubWindow } from '@/services/clubColors';
+import { formatLimo } from '@/services/limo';
 import { starsToString } from '@/services/formatters';
 import { useGameState } from '@/state';
 import type { SquadPlayerDto, TeamDto, TeamMatchRecordDto } from '@/types';
@@ -19,6 +20,8 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
   const [h2hMatches, setH2hMatches] = useState<TeamMatchRecordDto[]>([]);
   const [coachName, setCoachName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busyPlayerId, setBusyPlayerId] = useState<string | null>(null);
 
   const FORM_GUIDE_LENGTH = 10;
   const H2H_LENGTH = 5;
@@ -92,6 +95,50 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
     };
   }, [urlTeamId, seasonId, selectedTeam?.id]);
 
+  /**
+   * Rereads the squad after a decision the manager just took.
+   *
+   * The list is not edited here: a release ends a contract, and that is a fact the world holds.
+   * Patching the row would leave a screen that believes a player was let go while the club's
+   * books still carry him.
+   */
+  const reloadSquad = async () => {
+    const season = seasonId || (await SeasonApi.current()).id;
+    setPlayers(await TeamApi.getSquad(urlTeamId, season));
+  };
+
+  const handleRelease = async (player: SquadPlayerDto) => {
+    if (!urlTeamId) return;
+
+    if (!window.confirm(
+      `Rescindir o contrato de ${player.name}?\n\n` +
+      `O clube paga a multa: as rodadas restantes desta temporada e as temporadas que faltam ` +
+      `do contrato, metades do salário por rodada.`
+    )) {
+      return;
+    }
+
+    setBusyPlayerId(player.id);
+    setNotice(null);
+    setError(null);
+    try {
+      const result = await TransferApi.release(player.id, urlTeamId);
+      await reloadSquad();
+      // The settlement is a number the rules decided; the way it is written is this screen's,
+      // because every other amount in the game is written by the one formatter.
+      setNotice(
+        `${result.playerName} foi dispensado por ${formatLimo(result.releaseCost)}` +
+        (result.withdrawnOffers > 0
+          ? `, e ${result.withdrawnOffers} proposta(s) pela venda dele caíram.`
+          : '.')
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível rescindir o contrato.');
+    } finally {
+      setBusyPlayerId(null);
+    }
+  };
+
   const clubWindow = useClubWindow(team);
 
   const getH2HResultFromHumanPerspective = useMemo(() => (match: TeamMatchRecordDto): 'win' | 'draw' | 'loss' => {
@@ -149,7 +196,13 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
           <span className="club-swatch" style={{ background: team.secondaryColor || '#f2d34f' }} />
         </div>
 
-        <ClubSquadTable squad={players} />
+        {notice && <p className="league-notice">{notice}</p>}
+        {busyPlayerId && <p className="league-empty">Registrando a decisão…</p>}
+
+        <ClubSquadTable
+          squad={players}
+          onRelease={isOwnTeam ? handleRelease : undefined}
+        />
 
         <section className="club-form">
           <div className="club-form__head">

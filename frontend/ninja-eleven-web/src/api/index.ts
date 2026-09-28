@@ -24,8 +24,16 @@ import type {
    TransferProposalDto,
    TransferInboxDto,
    TransferSearchResultDto,
+   TransferSearchFilters,
    TransferHistoryLineDto,
-   ReleaseResultDto
+   ReleaseResultDto,
+   AuthResponseDto,
+   AuthRegisterRequestDto,
+   AuthLoginRequestDto,
+    ChangePasswordRequestDto,
+    UpdateTeamNameRequestDto,
+    UpdateTeamColorsRequestDto,
+    LinkManagerRequestDto,
 } from '../types';
 
 /**
@@ -41,6 +49,14 @@ const SCORER_POOL = 250;
 export const TeamApi = {
   list: () => api.get<TeamDto[]>('/team').then(r => r.data),
   get: (id: string) => api.get<TeamDto>(`/team/${id}`).then(r => r.data),
+  /**
+   * Marks the club as the manager's own. The flag is what the world reads to decide who a
+   * transfer belongs to — a proposal is only the manager's when the club is his — and it is
+   * written by the career opening rather than inferred from a route or a cookie, so a refresh
+   * does not turn a manager into a spectator.
+   */
+  takeOverAsManagerClub: (id: string) =>
+    api.post<TeamDto>(`/team/${id}/manager-club`).then(r => r.data),
   getSquad: (teamId: string, seasonId: string) =>
     api.get<SquadPlayerDto[]>(`/team/${teamId}/squad/${seasonId}`).then(r => r.data),
   /** The club's last finished matches, newest first, for the form guide on its card. */
@@ -75,13 +91,21 @@ export const TeamApi = {
    * is optional because a career's books are a long read and a manager asking how last season
    * went is asking about one of them.
    */
-  getFinance: (teamId: string, seasonId?: string, page = 1, pageSize = 10) =>
+   getFinance: (teamId: string, seasonId?: string, page = 1, pageSize = 10) =>
     api
       .get<FinanceLedgerDto>(
         `/team/${teamId}/finance?page=${page}&pageSize=${pageSize}` +
           (seasonId ? `&seasonId=${seasonId}` : '')
       )
       .then(r => r.data),
+
+  /** Changes the display name of the club the manager has taken charge of. */
+  updateName: (id: string, name: string) =>
+    api.put<TeamDto>(`/team/${id}/name`, { name } as UpdateTeamNameRequestDto).then(r => r.data),
+
+  /** Changes the kit colours of the club the manager has taken charge of. */
+  updateColors: (id: string, primaryColor: string, secondaryColor: string) =>
+    api.put<TeamDto>(`/team/${id}/colors`, { primaryColor, secondaryColor } as UpdateTeamColorsRequestDto).then(r => r.data),
 };
 
 export const PlayerApi = {
@@ -331,18 +355,44 @@ export const ManagerApi = {
 };
 
 export const TransferApi = {
+  /**
+   * The market, narrowed by whatever the manager set and paginated.
+   *
+   * Only the filters that are actually set are sent, because only the filters that are set are
+   * meant to exclude anybody: a market that loaded a different list of men for each combination
+   * of boxes is a market that disagrees with itself, and a manager cannot tell a filter from a
+   * bug. The order is the backend's own fixed shuffle, so page two is the same page two twice.
+   */
   search: (
     seasonId: string,
-    position?: 'GK' | 'DEF' | 'MID' | 'ATT',
-    retiring?: boolean,
-    freeAgents = false,
+    filters: TransferSearchFilters = {},
     page = 1,
     pageSize = 30
   ) => {
     const params = new URLSearchParams({ seasonId, page: String(page), pageSize: String(pageSize) });
-    if (position) params.set('position', position);
-    if (retiring !== undefined) params.set('retiring', String(retiring));
-    if (freeAgents) params.set('freeAgents', 'true');
+
+    const set = (name: string, value?: number | boolean | string) => {
+      if (value === undefined || value === '') return;
+      params.set(name, String(value));
+    };
+
+    set('position', filters.position);
+    set('minAge', filters.minAge);
+    set('maxAge', filters.maxAge);
+    set('minStars', filters.minStars);
+    set('maxStars', filters.maxStars);
+    set('minSpeed', filters.minSpeed);
+    set('minAccuracy', filters.minAccuracy);
+    set('minDribbling', filters.minDribbling);
+    set('minHeading', filters.minHeading);
+    set('minStrength', filters.minStrength);
+    set('minGoalkeeperPower', filters.minGoalkeeperPower);
+    set('minReflexes', filters.minReflexes);
+    set('retiring', filters.retiring);
+    set('freeAgentsOnly', filters.freeAgentsOnly);
+    set('withClubOnly', filters.withClubOnly);
+    set('teamId', filters.teamId);
+
     return api.get<TransferSearchResultDto>(`/transfer/search?${params.toString()}`).then(r => r.data);
   },
 
@@ -355,15 +405,47 @@ export const TransferApi = {
   getHistory: (playerId: string) =>
     api.get<TransferHistoryLineDto[]>(`/transfer/history/${playerId}`).then(r => r.data),
 
+  /**
+   * Offers a player to a club. The fee is optional: without it the asking price is offered, and
+   * a player with no club costs a signing fee rather than a price, because there is nobody to
+   * buy him from.
+   */
   propose: (playerId: string, buyingClubId: string, fee?: number) =>
     api.post<TransferProposalDto>('/transfer/propose', { playerId, buyingClubId, fee }).then(r => r.data),
 
-  answer: (transferId: string, accept: boolean) =>
-    api.post<TransferProposalDto>(`/transfer/${transferId}/answer`, { accept }).then(r => r.data),
+  /**
+   * Answers an offer addressed to this club. The club is named in the answer and checked by the
+   * backend against the seller: only the club holding the player can decide his price, and a
+   * buyer accepting its own offer would be writing its own cheque.
+   */
+  answer: (transferId: string, clubId: string, accept: boolean) =>
+    api.post<TransferProposalDto>(`/transfer/${transferId}/answer`, { clubId, accept }).then(r => r.data),
 
-  release: (playerId: string, clubId: string) =>
+    release: (playerId: string, clubId: string) =>
     api.post<ReleaseResultDto>(`/transfer/${playerId}/release?clubId=${clubId}`).then(r => r.data),
 
-  setRetiring: (playerId: string, retiring: boolean) =>
-    api.post(`/transfer/${playerId}/retire`, { retiring }).then(r => r.data),
+    /** Deals young free agents onto the market: sixteen to nineteen, no club, no contract. */
+    seedYoungPlayers: (count = 88) =>
+    api.post(`/transfer/seed-young-players?count=${count}`).then(r => r.data),
+};
+
+export const AuthApi = {
+  /** Registers a new account. If a team id and coach name are given, the career starts at once. */
+  register: (request: AuthRegisterRequestDto) =>
+    api.post<AuthResponseDto>('/auth/register', request).then(r => r.data),
+
+  login: (request: AuthLoginRequestDto) =>
+    api.post<AuthResponseDto>('/auth/login', request).then(r => r.data),
+
+  /** Changes the authenticated user's password. */
+  changePassword: (request: ChangePasswordRequestDto) =>
+    api.put('/auth/password', request).then(r => r.data),
+
+  /** The clubs that do not yet have a human manager, for the club-selection flow. */
+  getAvailableClubs: () =>
+    api.get<TeamDto[]>('/auth/available-clubs').then(r => r.data),
+
+  /** Links the authenticated user to a new manager, claiming a club. */
+  linkManager: (request: LinkManagerRequestDto) =>
+    api.post<ManagerDto>('/auth/link-manager', request).then(r => r.data),
 };

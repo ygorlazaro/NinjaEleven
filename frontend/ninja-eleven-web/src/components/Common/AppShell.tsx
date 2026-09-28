@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, Link } from 'react-router-dom';
+import { NavLink, Link, useLocation } from 'react-router-dom';
 import { SeasonApi, ManagerApi } from '@/api';
 import { useGameState } from '@/state';
 import { useNextFixture } from '@/hooks/useNextFixture';
+import { usePendingOfferCount, useCurrentSeasonId } from '@/hooks/usePendingOffers';
 import NextMatchBox from '@/components/Common/NextMatchBox';
 import ClubCrest from '@/components/Club/ClubCrest';
 
@@ -17,6 +18,23 @@ import ClubCrest from '@/components/Club/ClubCrest';
  */
 const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const selectedTeam = useGameState((s) => s.selectedTeam);
+  const { pathname } = useLocation();
+
+  /**
+   * The screen that opens the career is read without the column.
+   *
+   * Every link in the column is a place inside a career, and the screen that chooses the
+   * career is not inside one: a manager who has not taken a club is sent to a lineup with no
+   * lineup, to a next match that is not his, to a market that has not decided who is selling.
+   * The column also takes a fifth of the width away from a division of twelve clubs read side
+   * by side, so the screen that needs the most room is the one screen that does without it.
+   *
+   * It is the path that decides, not the career: a manager who refreshes `/` and lands back
+   * here has still not taken a club, and a manager whose club is in the store is on a path
+   * of its own a moment later.
+   */
+  const bare = pathname === '/';
+
   // The season being played. The sidebar's next match is a question about the calendar and
   // not about a store value, so the season is asked for rather than remembered — and the
   // career's season can change between matches.
@@ -61,8 +79,14 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { next } = useNextFixture(selectedTeam?.id, currentSeasonId);
   const lineupTarget = next ? `/match/lineup/${next.fixture.id}` : '/calendar';
 
+  // The same season the next match is read against, so the two numbers in the column are
+  // about the same world and one of them cannot be last season's answer to a question about
+  // this one.
+  const pendingOffers = usePendingOfferCount(selectedTeam?.id, currentSeasonId);
+
   return (
-    <div className="shell">
+    <div className={`shell${bare ? ' shell--bare' : ''}`}>
+      {!bare && (
       <aside className="sidebar">
         <NavLink to="/" className="sidebar-brand" onClick={event => {
           // The brand is a door home, and it is a button rather than a link-with-a-handler
@@ -192,6 +216,18 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
              >
                <span className="sidebar-link__icon">🔄</span>
                <span className="sidebar-link__label">Mercado</span>
+               {/* An offer nobody answers dies at the end of the season, so the count of the
+                   ones waiting is on the column rather than inside the screen it belongs to:
+                   a manager has to be able to find out there is a decision to make without
+                   already knowing that he has one. */}
+               {pendingOffers > 0 && (
+                 <span
+                   className="sidebar-link__badge"
+                   title={`${pendingOffers} proposta(s) aguardando sua resposta`}
+                 >
+                   {pendingOffers}
+                 </span>
+               )}
              </NavLink>
            )}
          </nav>
@@ -200,8 +236,10 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             foot of the column so it is on every screen: the eleven he picks is chosen for
             this opponent, at this ground, and the column is the one place a manager is on
             whatever screen he happens to be reading. */}
-         {selectedTeam && <NextMatchBox team={selectedTeam} next={next} />}
+          {selectedTeam && <NextMatchBox team={selectedTeam} next={next} />}
       </aside>
+      )}
+
 
       <main className="shell-main">{children}</main>
     </div>

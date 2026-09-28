@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CompetitionApi, SeasonApi, TeamApi, ManagerApi } from '@/api';
+import { AuthApi, CompetitionApi, ManagerApi, SeasonApi, TeamApi } from '@/api';
 import { API_BASE_URL } from '@/config/env';
+import ClubCrest from '@/components/Club/ClubCrest';
+import { PlayerName } from '@/components/Common/Names';
 import { useGameState } from '@/state';
+import { useAuthStore } from '@/state/auth';
 import { divisionsOf } from '@/types';
-import type { CompetitionEditionDto, SeasonDto, TeamDto } from '@/types';
-import { TEAM_COLOR_PALETTES, pick, starsToString } from '@/services/formatters';
+import type { CompetitionEditionDto, SeasonDto, SquadPlayerDto, TeamDto } from '@/types';
+import { TEAM_COLOR_PALETTES, pick, positionLabel, sortByPosition, starsToString } from '@/services/formatters';
 
 const StartScreen: React.FC = () => {
   const navigate = useNavigate();
@@ -14,6 +17,8 @@ const StartScreen: React.FC = () => {
   const setSeasonInfo = useGameState((s) => s.setSeasonInfo);
   const setCompetitionInfo = useGameState((s) => s.setCompetitionInfo);
   const selectedCompetition = useGameState((s) => s.selectedCompetition);
+  const setTeamId = useAuthStore((s) => s.setTeamId);
+  const setCoachName = useAuthStore((s) => s.setCoachName);
 
   const [clubs, setClubs] = useState<TeamDto[]>([]);
   const [seasons, setSeasons] = useState<SeasonDto[]>([]);
@@ -116,6 +121,53 @@ const StartScreen: React.FC = () => {
     setSelectedClubId(null);
   }, [selectedEditionId]);
 
+  /**
+   * The squad of every club in the division, so the choice is made by reading men rather than
+   * by reading a number of stars.
+   *
+   * Taking over a club is the one decision in the game that cannot be undone, and a manager
+   * makes it by looking at the eleven he would inherit. So the whole division's squads are
+   * asked for, all of them, at once — a card that shows the eleven a club would field and a
+   * card that hides it behind a click are the same screen to one manager and not the same
+   * screen to another, and a manager who has to click twelve times before he has compared
+   * two clubs is a manager who compares them on the stars.
+   *
+   * They are asked of the backend, one call per club, against the season being chosen, because
+   * a squad is a fact about a club in a season and not a list the client may build out of the
+   * teams it already has.
+   */
+  const [squads, setSquads] = useState<Record<string, SquadPlayerDto[]>>({});
+  const [squadsLoading, setSquadsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedSeasonId || divisionClubs.length === 0) {
+      setSquads({});
+      return;
+    }
+
+    let cancelled = false;
+    setSquadsLoading(true);
+
+    Promise.all(
+      divisionClubs.map(club =>
+        TeamApi.getSquad(club.id, selectedSeasonId)
+          .then(squad => [club.id, sortByPosition(squad)] as const)
+          // A club whose squad will not load still has to be choosable: the card says the squad
+          // could not be read and the manager goes on to the club's own page, which can.
+          .catch(() => [club.id, [] as SquadPlayerDto[]] as const)
+      )
+    )
+      .then(entries => {
+        if (cancelled) return;
+        setSquads(Object.fromEntries(entries));
+      })
+      .finally(() => {
+        if (!cancelled) setSquadsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [divisionClubs, selectedSeasonId]);
+
   if (loading) {
     return (
       <div className="card start">
@@ -152,10 +204,11 @@ const StartScreen: React.FC = () => {
     const club = divisionClubs.find(team => team.id === selectedClubId);
     if (!club) return;
 
-    // A career can only begin once. If the backend already has a manager for this club the
-    // coach-name gate is skipped — the club is taken over, not re-christened.
+    // A manager can only be created once per user. If the backend already has one for this
+    // club the coach-name gate is skipped — the club is taken over, not re-christened.
     setCoachError(null);
     let managerName = '';
+
     try {
       const existing = await ManagerApi.getByTeam(club.id);
       managerName = existing.name;
@@ -194,11 +247,17 @@ const StartScreen: React.FC = () => {
     const club = divisionClubs.find(team => team.id === selectedClubId);
     if (!club) return;
 
+    // The authenticated user is not logged in, so we link them to a newly created manager
+    // rather than creating an unlinked one. The auth store is updated with the new team id
+    // so the next check in AuthRoot navigates straight to the club screen.
     setCoachError(null);
     try {
-      await ManagerApi.create(club.id, coachNameInput.trim());
+      const manager = await AuthApi.linkManager({ teamId: club.id, coachName: coachNameInput.trim() });
       setShowCoachModal(false);
       setCoachNameInput('');
+
+      setTeamId(club.id);
+      setCoachName(manager.name);
 
       setSelectedTeam(club);
       setLeagueTeams(divisionClubs);
@@ -206,8 +265,6 @@ const StartScreen: React.FC = () => {
       setCompetitionInfo(editions.find(e => e.id === selectedEditionId) || null);
       navigate(`/team/${club.id}?season=${selectedSeasonId}&edition=${selectedEditionId}`);
     } catch (err: any) {
-      // The backend refuses a second manager, so a name typed here is already taken only
-      // if the club was picked again after a refresh — the message says so in stable words.
       const code = err?.response?.data?.code || err?.response?.data?.message || err?.message;
       setCoachError(code || 'Não foi possível criar o técnico.');
     }
@@ -253,13 +310,15 @@ const StartScreen: React.FC = () => {
         {clubsLoading
           ? 'Carregando clubes...'
           : `${divisionClubs.length} clubes nesta divisão`}
+        {squadsLoading && !clubsLoading ? ' • carregando elencos...' : ''}
       </div>
 
-      <div className="team-grid">
+      <div className="team-grid team-grid--squad">
         {divisionClubs.map((club, i) => {
           const colors = club.primaryColor && club.secondaryColor
             ? { primary: club.primaryColor, secondary: club.secondaryColor }
             : pick(TEAM_COLOR_PALETTES);
+          const squad = squads[club.id];
 
           return (
             <div
@@ -269,21 +328,30 @@ const StartScreen: React.FC = () => {
               data-i={i}
               style={{ '--team-primary': colors.primary, '--team-secondary': colors.secondary } as React.CSSProperties}
             >
-              <div
-                className="crest"
-                style={{ background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})` }}
-              >
-                {club.shortName.split(' ').map(w => w[0]).slice(0, 2).join('')}
-              </div>
-              <h3>{club.name}</h3>
-              <div className="rating" style={{ color: colors.primary }}>
-                ELenco {starsToString(club.stars)}
-              </div>
-              {club.stadium && (
-                <div className="small">
-                  {club.stadium.name} • {club.stadium.capacity.toLocaleString('pt-BR')} lugares
+              {/* The shield goes beside the name rather than above it: a card that carries a squad
+                  is read by the manager in two glances — the club, then the men — and the badge
+                  is how he tells the twelve apart before he has read a word of either. */}
+              <div className="team-choice__head">
+                <ClubCrest
+                  primary={colors.primary}
+                  secondary={colors.secondary}
+                  name={club.name}
+                  className="team-choice__crest"
+                />
+                <div className="team-choice__identity">
+                  <h3>{club.name}</h3>
+                  <div className="rating" style={{ color: colors.primary }}>
+                    ELenco {starsToString(club.stars)}
+                  </div>
+                  {club.stadium && (
+                    <div className="small">
+                      {club.stadium.name} • {club.stadium.capacity.toLocaleString('pt-BR')} lugares
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+
+              <ClubSquadPreview squad={squad} loading={squadsLoading} />
             </div>
           );
         })}
@@ -346,6 +414,58 @@ const selectStyle: React.CSSProperties = {
   color: 'var(--text)',
   border: '1px solid var(--line)',
   borderRadius: '7px'
+};
+
+/**
+ * A club's squad, read on the card, before the club is chosen.
+ *
+ * Every man, in the order the rest of the game reads a squad in — keepers, defenders,
+ * midfielders, attackers — and with his line, his age and his stars, because those are the
+ * three things a manager compares between two clubs. The list is complete and scrollable
+ * rather than trimmed to a starting eleven: a card that showed eleven of twenty-three would
+ * be a card about a match the manager has not agreed to play yet, and the two men left on the
+ * bench are exactly what a manager taking a club over is buying.
+ *
+ * A name is a door, here as everywhere: the manager who wants to know who a striker is before
+ * he takes the club asks, rather than taking the club and finding out. The name stops the
+ * click so that reading a name never selects a club by accident.
+ */
+const ClubSquadPreview: React.FC<{ squad?: SquadPlayerDto[]; loading: boolean }> = ({
+  squad,
+  loading
+}) => {
+  if (loading && !squad) {
+    return <div className="squad-preview squad-preview--empty">Carregando elenco...</div>;
+  }
+
+  if (!squad) {
+    return <div className="squad-preview squad-preview--empty">Elenco indisponível.</div>;
+  }
+
+  if (squad.length === 0) {
+    return <div className="squad-preview squad-preview--empty">Elenco indisponível.</div>;
+  }
+
+  return (
+    <div className="squad-preview">
+      <div className="squad-preview__title">Elenco ({squad.length})</div>
+      <ul className="squad-preview__list">
+        {squad.map(player => (
+          <li className="squad-preview__row" key={player.id}>
+            <span className="squad-preview__pos">{positionLabel(player.position)}</span>
+            <PlayerName playerId={player.id} className="squad-preview__name">
+              {player.name}
+            </PlayerName>
+            <span className="squad-preview__age">{player.age}a</span>
+            <span className="squad-preview__stars">{starsToString(player.stars)}</span>
+            {player.injuryMatchesRemaining > 0 && (
+              <span className="squad-preview__flag" title="Lesionado">🩹</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 };
 
 export default StartScreen;

@@ -65,13 +65,16 @@ const RoundContextPanel: React.FC<RoundContextPanelProps> = ({
     return 'scheduled';
   };
 
-  const formatDate = (dateStr: string) => {
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return dateStr;
-    }
+  /**
+   * What the fixture is doing, in words. A fixture carries no date of its own — the season is
+   * counted in matchdays, and every match in a round is the same day by construction — so the
+   * date this row used to print was always the same string for all of them, and was a
+   * formatting of nothing. What does differ row to row is whether the match has been played.
+   */
+  const STATUS_WORDS: Record<string, string> = {
+    finished: 'Encerrada',
+    live: 'Em andamento',
+    scheduled: 'Agendada'
   };
 
   const formatScore = (homeGoals?: number | null, awayGoals?: number | null) => {
@@ -97,7 +100,7 @@ const RoundContextPanel: React.FC<RoundContextPanelProps> = ({
                 className={`round-context__match ${isManagerMatch ? 'manager-match' : ''} ${status}`}
               >
                 <div className="round-context__match-info">
-                  <span className="round-context__match-time">{formatDate(f.playedAt || '')}</span>
+                  <span className="round-context__match-time">{STATUS_WORDS[status]}</span>
                   {isManagerMatch && <span className="round-context__badge">Sua partida</span>}
                 </div>
                 <div className="round-context__teams">

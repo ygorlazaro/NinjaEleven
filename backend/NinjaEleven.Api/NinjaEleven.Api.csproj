@@ -4,6 +4,8 @@
     <ProjectReference Include="..\NinjaEleven.Application\NinjaEleven.Application.csproj" />
     <ProjectReference Include="..\NinjaEleven.Infrastructure\NinjaEleven.Infrastructure.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.10.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.4" />
   </ItemGroup>
 
   <PropertyGroup>

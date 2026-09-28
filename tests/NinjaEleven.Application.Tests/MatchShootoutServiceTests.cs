@@ -232,7 +232,7 @@ public class MatchShootoutServiceTests
     {
         var player = Player.Create(
             name,
-            new DateOnly(1995, 1, 1),
+            31,
             position,
             speed: 12,
             accuracy: 12,
@@ -582,6 +582,7 @@ public class MatchShootoutServiceTests
                 _players.Object,
                 _seasons.Object,
                 _competitions.Object,
+                _rounds.Object,
                 _matches.Object,
                 _finance.Object,
                 _unitOfWork.Object,

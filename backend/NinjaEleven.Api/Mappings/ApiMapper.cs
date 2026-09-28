@@ -10,8 +10,7 @@ public static PlayerDto ToDto(this Domain.Players.Player player) => new()
 {
     Id = player.Id,
     Name = player.Name,
-    BirthDate = player.BirthDate,
-    Age = player.CalculateAge(),
+    Age = player.Age,
     Position = player.Position,
     Speed = player.Speed,
     Accuracy = player.Accuracy,
@@ -45,7 +44,7 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
 {
     Id = squadPlayer.Player.Id,
     Name = squadPlayer.Player.Name,
-    Age = squadPlayer.Player.CalculateAge(),
+    Age = squadPlayer.Player.Age,
     Position = squadPlayer.Player.Position,
     Speed = squadPlayer.Player.Speed,
     Accuracy = squadPlayer.Player.Accuracy,
@@ -76,23 +75,26 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
     SeasonId = squadPlayer.SeasonState.SeasonId
 };
 
-public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => new()
-{
-    Id = team.Id,
-    Name = team.Name,
-    ShortName = team.ShortName,
-    PrimaryColor = team.PrimaryColor,
-    SecondaryColor = team.SecondaryColor,
-    Rating = (int)Math.Round(stars * 20), // 0-5 stars -> 0-100 scale
-    Stars = stars,
-    Stadium = team.Stadium != null ? new StadiumDto
+    public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => new()
     {
-        Id = team.Stadium.Id,
-        Name = team.Stadium.Name,
-        Capacity = team.Stadium.Capacity,
-        TicketPrice = team.Stadium.TicketPrice
-    } : null
-};
+        Id = team.Id,
+        Name = team.Name,
+        ShortName = team.ShortName,
+        PrimaryColor = team.PrimaryColor,
+        SecondaryColor = team.SecondaryColor,
+        Rating = (int)Math.Round(stars * 20), // 0-5 stars -> 0-100 scale
+        Stars = stars,
+        Stadium = team.Stadium != null ? new StadiumDto
+        {
+            Id = team.Stadium.Id,
+            Name = team.Stadium.Name,
+            Capacity = team.Stadium.Capacity,
+            TicketPrice = team.Stadium.TicketPrice
+        } : null,
+        ControlledBy = team.Managers.Any()
+            ? (bool?) team.Managers.Any(m => m.UserId.HasValue)
+            : null
+    };
 
     public static IReadOnlyList<TeamDto> ToDtos(this IEnumerable<Domain.Teams.Team> teams) =>
         teams.Select(team => team.ToDto()).ToList();
@@ -778,7 +780,6 @@ public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profi
     Name = profile.Name,
     Position = profile.Position,
     Age = profile.Age,
-    BirthDate = profile.BirthDate,
     Speed = profile.Speed,
     Accuracy = profile.Accuracy,
     Dribbling = profile.Dribbling,
@@ -960,8 +961,17 @@ public static class TeamMatchRecordMapping
         SeasonsLeft = listing.SeasonsLeft,
         IsInLastSeason = listing.IsInLastSeason,
         AskingPrice = listing.AskingPrice,
+        IsFreeAgent = listing.IsFreeAgent,
+        HasActiveProposal = listing.HasActiveProposal,
         Season = listing.Season.ToCareerLineDto(),
-        Total = listing.Total.ToCareerLineDto()
+        Total = listing.Total.ToCareerLineDto(),
+        Clubs = listing.Clubs.Select(c => new PlayerClubCareerLineDto
+        {
+            TeamId = c.TeamId,
+            TeamName = c.TeamName,
+            Seasons = c.Seasons,
+            Total = c.Total.ToCareerLineDto()
+        }).ToArray()
     };
 
     public static TransferProposalDto ToDto(this Application.Models.TransferProposal proposal) => new()
@@ -977,6 +987,7 @@ public static class TeamMatchRecordMapping
         BuyingClubName = proposal.BuyingClubName,
         ProposalSeasonNumber = proposal.ProposalSeasonNumber,
         ArrivalSeasonNumber = proposal.ArrivalSeasonNumber,
+        ArrivalRoundNumber = proposal.ArrivalRoundNumber,
         Fee = proposal.Fee,
         Status = proposal.Status,
         ProposedAt = proposal.ProposedAt,
@@ -999,7 +1010,16 @@ public static class TeamMatchRecordMapping
         Total = result.Total,
         Page = result.Page,
         PageSize = result.PageSize,
-        TotalPages = result.TotalPages
+        TotalPages = result.TotalPages,
+        Window = new TransferWindowStateDto
+        {
+            SeasonNumber = result.Window.SeasonNumber,
+            CurrentRound = result.Window.CurrentRound,
+            IsOpen = result.Window.IsOpen,
+            ArrivalSeasonNumber = result.Window.ArrivalSeasonNumber,
+            ArrivalRoundNumber = result.Window.ArrivalRoundNumber,
+            ArrivalLabel = result.Window.ArrivalLabel
+        }
     };
 
     public static TransferHistoryLineDto ToDto(this Application.Models.PlayerTransferHistoryLine line) => new()

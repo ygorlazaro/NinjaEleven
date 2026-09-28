@@ -153,6 +153,7 @@ public class MatchdayWaveTests
         _players.Object,
         _seasons.Object,
         _competitions.Object,
+        _rounds.Object,
         _matches.Object,
         _finance.Object,
         _unitOfWork.Object,

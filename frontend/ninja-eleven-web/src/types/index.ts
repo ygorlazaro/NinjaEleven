@@ -3,7 +3,6 @@ export type Guid = string;
 export interface PlayerDto {
   id: Guid;
   name: string;
-  birthDate: string;
   age: number;
   position: string;
   speed: number;
@@ -91,6 +90,8 @@ export interface TeamDto {
   rating: number;
   stars: number;
   stadium?: StadiumDto | null;
+  /** True if the club has a human manager, false if NPC-controlled, null if no manager row exists. */
+  controlledBy?: boolean | null;
 }
 
 export interface StadiumDto {
@@ -135,6 +136,17 @@ export interface TransferListingDto {
   teamName?: string | null;
   teamPrimaryColor?: string | null;
   teamSecondaryColor?: string | null;
+  /**
+   * Whether he is a free agent: nobody to buy him from, so a club signs him for a signing fee
+   * rather than a price.
+   */
+  isFreeAgent: boolean;
+  /**
+   * Whether somebody already has a live deal on him — a proposal waiting for an answer or one
+   * already agreed, the manager's own included. The market refuses a second offer on a man who
+   * is spoken for, so the row says it before the button does.
+   */
+  hasActiveProposal: boolean;
   energy: number;
   injury: string;
   injuryMatchesRemaining: number;
@@ -147,6 +159,16 @@ export interface TransferListingDto {
   askingPrice?: number | null;
   season: PlayerCareerLineDto;
   total: PlayerCareerLineDto;
+  /** The career split by club, filled in on the card that opens from a row. */
+  clubs: PlayerClubCareerLineDto[];
+}
+
+/** One club's share of a player's career, and the seasons he spent in that shirt. */
+export interface PlayerClubCareerLineDto {
+  teamId: Guid;
+  teamName: string;
+  seasons: number;
+  total: PlayerCareerLineDto;
 }
 
 export interface TransferProposalDto {
@@ -155,12 +177,15 @@ export interface TransferProposalDto {
   playerName: string;
   playerPosition: string;
   playerAge: number;
-  sellingClubId: Guid;
+  /** Null when the player has no club: a signing, not a purchase. */
+  sellingClubId?: Guid | null;
   sellingClubName: string;
   buyingClubId: Guid;
   buyingClubName: string;
   proposalSeasonNumber: number;
   arrivalSeasonNumber: number;
+  /** The round he walks in on: the eleventh of this season, or the first of the next. */
+  arrivalRoundNumber?: number | null;
   fee: number;
   status: TransferStatus;
   proposedAt: string;
@@ -176,17 +201,53 @@ export interface TransferInboxDto {
   outgoing: TransferProposalDto[];
 }
 
+/**
+ * Where the world is in its transfer calendar, told by the backend rather than worked out here:
+ * a number a manager reads is a number the rules decided, and a screen that counted the rounds
+ * itself would eventually count them differently from the calendar they are played on.
+ */
+export interface TransferWindowStateDto {
+  seasonNumber: number;
+  currentRound: number;
+  isOpen: boolean;
+  arrivalSeasonNumber: number;
+  arrivalRoundNumber: number;
+  arrivalLabel: string;
+}
+
 export interface TransferSearchResultDto {
   players: TransferListingDto[];
   total: number;
   page: number;
   pageSize: number;
   totalPages: number;
+  window: TransferWindowStateDto;
+}
+
+/** Everything the market is narrowed by. An absent filter narrows nothing. */
+export interface TransferSearchFilters {
+  position?: 'GK' | 'DEF' | 'MID' | 'ATT';
+  minAge?: number;
+  maxAge?: number;
+  minStars?: number;
+  maxStars?: number;
+  minSpeed?: number;
+  minAccuracy?: number;
+  minDribbling?: number;
+  minHeading?: number;
+  minStrength?: number;
+  minGoalkeeperPower?: number;
+  minReflexes?: number;
+  retiring?: boolean;
+  freeAgentsOnly?: boolean;
+  withClubOnly?: boolean;
+  teamId?: string;
 }
 
 export interface TransferHistoryLineDto {
   playerId: Guid;
-  sellingClubId: Guid;
+  /** Null when nobody sold him: a free agent who was signed has a history line too. */
+  sellingClubId?: Guid | null;
   sellingClubName: string;
   buyingClubId: Guid;
   buyingClubName: string;
@@ -205,6 +266,8 @@ export interface ReleaseResultDto {
   clubId: Guid;
   clubName: string;
   releaseCost: number;
+  /** Offers the club had on the table for him, withdrawn along with the contract. */
+  withdrawnOffers: number;
   message: string;
 }
 
@@ -212,6 +275,8 @@ export interface NpcTransferResultDto {
   proposalsMade: number;
   accepted: number;
   rejected: number;
+  /** Free agents a club picked up while it was short of the minimum. */
+  signed: number;
   completed: number;
 }
 
@@ -893,7 +958,6 @@ export type PlayerProfileDto = {
   name: string;
   position: Position;
   age: number;
-  birthDate: string;
   speed: number;
   accuracy: number;
   dribbling: number;
@@ -1234,6 +1298,8 @@ export type ManagerDto = {
   id: Guid;
   name: string;
   teamId: Guid;
+  /** The user who owns this career, or null for NPC-controlled clubs. */
+  userId?: Guid | null;
   startedAt: string;
 };
 
@@ -1457,4 +1523,44 @@ export interface TopScorerPrizeDto {
    * new money: it does not come out of the champion's cheque.
    */
   amount?: number | null;
+}
+
+/** Returned by login and register: the JWT and the identity it carries. */
+export interface AuthResponseDto {
+  token: string;
+  userId: Guid;
+  email: string;
+  teamId?: Guid | null;
+  coachName?: string | null;
+}
+
+export interface AuthRegisterRequestDto {
+  email: string;
+  password: string;
+  coachName?: string;
+  teamId?: Guid | null;
+}
+
+export interface AuthLoginRequestDto {
+  email: string;
+  password: string;
+}
+
+export interface ChangePasswordRequestDto {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface LinkManagerRequestDto {
+  teamId: string;
+  coachName: string;
+}
+
+export interface UpdateTeamNameRequestDto {
+  name: string;
+}
+
+export interface UpdateTeamColorsRequestDto {
+  primaryColor: string;
+  secondaryColor: string;
 }

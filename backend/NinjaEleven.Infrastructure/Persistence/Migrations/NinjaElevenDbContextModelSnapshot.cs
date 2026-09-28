@@ -455,12 +455,20 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("team_id");
 
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
                     b.HasKey("Id")
                         .HasName("pk_managers");
 
                     b.HasIndex("TeamId")
                         .IsUnique()
                         .HasDatabaseName("ix_managers_team_id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_managers_user_id");
 
                     b.ToTable("managers", (string)null);
                 });
@@ -904,9 +912,9 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("accuracy");
 
-                    b.Property<DateOnly>("BirthDate")
-                        .HasColumnType("date")
-                        .HasColumnName("birth_date");
+                    b.Property<int>("Age")
+                        .HasColumnType("integer")
+                        .HasColumnName("age");
 
                     b.Property<int>("Dribbling")
                         .HasColumnType("integer")
@@ -993,6 +1001,10 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("red_cards");
 
+                    b.Property<bool>("Retiring")
+                        .HasColumnType("boolean")
+                        .HasColumnName("retiring");
+
                     b.Property<int>("Saves")
                         .HasColumnType("integer")
                         .HasColumnName("saves");
@@ -1005,7 +1017,7 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("suspension_matches");
 
-                    b.Property<Guid>("TeamId")
+                    b.Property<Guid?>("TeamId")
                         .HasColumnType("uuid")
                         .HasColumnName("team_id");
 
@@ -1242,6 +1254,10 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("active_sponsor_contract_id");
 
+                    b.Property<bool>("IsManagerClub")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_manager_club");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -1334,6 +1350,119 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_team_memberships_team_id_start_date");
 
                     b.ToTable("team_memberships", (string)null);
+                });
+
+            modelBuilder.Entity("NinjaEleven.Domain.Transfers.Transfer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int?>("ArrivalRoundNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("arrival_round_id");
+
+                    b.Property<Guid?>("ArrivalSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("arrival_season_id");
+
+                    b.Property<int>("ArrivalSeasonNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("arrival_season_number");
+
+                    b.Property<Guid>("BuyingClubId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("buying_club_id");
+
+                    b.Property<DateOnly?>("CompletedAt")
+                        .HasColumnType("date")
+                        .HasColumnName("completed_at");
+
+                    b.Property<decimal>("Fee")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("fee");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("player_id");
+
+                    b.Property<Guid>("ProposalSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("proposal_season_id");
+
+                    b.Property<DateOnly>("ProposedAt")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("date")
+                        .HasColumnName("proposed_at");
+
+                    b.Property<DateOnly?>("ResolvedAt")
+                        .HasColumnType("date")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<Guid?>("SellingClubId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("selling_club_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_transfers");
+
+                    b.HasIndex("ArrivalSeasonId")
+                        .HasDatabaseName("ix_transfers_arrival_season_id");
+
+                    b.HasIndex("BuyingClubId")
+                        .HasDatabaseName("ix_transfers_buying_club_id");
+
+                    b.HasIndex("PlayerId")
+                        .HasDatabaseName("ix_transfers_player_id");
+
+                    b.HasIndex("ArrivalSeasonNumber", "Status")
+                        .HasDatabaseName("ix_transfers_arrival_season_number_status");
+
+                    b.HasIndex("ProposalSeasonId", "Status")
+                        .HasDatabaseName("ix_transfers_proposal_season_id_status");
+
+                    b.HasIndex("SellingClubId", "BuyingClubId", "PlayerId")
+                        .HasDatabaseName("ix_transfers_selling_club_id_buying_club_id_player_id");
+
+                    b.ToTable("transfers", (string)null);
+                });
+
+            modelBuilder.Entity("NinjaEleven.Domain.Users.User", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("password_hash");
+
+                    b.HasKey("Id")
+                        .HasName("pk_users");
+
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasDatabaseName("ix_users_email");
+
+                    b.ToTable("users", (string)null);
                 });
 
             modelBuilder.Entity("NinjaEleven.Domain.Competitions.CompetitionParticipant", b =>
@@ -1503,6 +1632,23 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_finance_movements_teams_team_id");
                 });
 
+            modelBuilder.Entity("NinjaEleven.Domain.Managers.Manager", b =>
+                {
+                    b.HasOne("NinjaEleven.Domain.Teams.Team", null)
+                        .WithMany("Managers")
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_managers_teams_team_id");
+
+                    b.HasOne("NinjaEleven.Domain.Users.User", "User")
+                        .WithOne("Manager")
+                        .HasForeignKey("NinjaEleven.Domain.Managers.Manager", "UserId")
+                        .HasConstraintName("fk_managers_users_user_id");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("NinjaEleven.Domain.Matches.Fixture", b =>
                 {
                     b.HasOne("NinjaEleven.Domain.Teams.Team", null)
@@ -1608,7 +1754,6 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TeamId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
                         .HasConstraintName("fk_player_season_states_teams_team_id");
                 });
 
@@ -1656,6 +1801,52 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_team_memberships_teams_team_id");
+                });
+
+            modelBuilder.Entity("NinjaEleven.Domain.Transfers.Transfer", b =>
+                {
+                    b.HasOne("NinjaEleven.Domain.Seasons.Season", null)
+                        .WithMany()
+                        .HasForeignKey("ArrivalSeasonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transfers_seasons_arrival_season_id");
+
+                    b.HasOne("NinjaEleven.Domain.Teams.Team", null)
+                        .WithMany()
+                        .HasForeignKey("BuyingClubId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transfers_teams_buying_club_id");
+
+                    b.HasOne("NinjaEleven.Domain.Players.Player", null)
+                        .WithMany()
+                        .HasForeignKey("PlayerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transfers_players_player_id");
+
+                    b.HasOne("NinjaEleven.Domain.Seasons.Season", null)
+                        .WithMany()
+                        .HasForeignKey("ProposalSeasonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transfers_seasons_proposal_season_id");
+
+                    b.HasOne("NinjaEleven.Domain.Teams.Team", null)
+                        .WithMany()
+                        .HasForeignKey("SellingClubId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transfers_teams_selling_club_id");
+                });
+
+            modelBuilder.Entity("NinjaEleven.Domain.Teams.Team", b =>
+                {
+                    b.Navigation("Managers");
+                });
+
+            modelBuilder.Entity("NinjaEleven.Domain.Users.User", b =>
+                {
+                    b.Navigation("Manager");
                 });
 #pragma warning restore 612, 618
         }

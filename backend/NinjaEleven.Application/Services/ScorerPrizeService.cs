@@ -193,7 +193,7 @@ public class ScorerPrizeService
                 line.Appearances,
                 line.YellowCards,
                 line.RedCards,
-                players[line.PlayerId].BirthDate))
+                players[line.PlayerId].Age))
             // A level pair is printed in the order the two names are. The names are the last
             // thing a reader has, not a rule that outranks a season's football.
             .OrderBy(line => players[line.PlayerId].Name, StringComparer.Ordinal)
@@ -213,7 +213,7 @@ public class ScorerPrizeService
                 {
                     PlayerId = line.PlayerId,
                     PlayerName = player.Name,
-                    Age = player.CalculateAge(),
+                    Age = player.Age,
                     TeamId = source.TeamId,
                     TeamName = club?.Name,
                     TeamPrimaryColor = club?.PrimaryColor,

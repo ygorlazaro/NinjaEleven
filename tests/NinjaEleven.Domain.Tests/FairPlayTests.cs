@@ -219,7 +219,7 @@ public class FairPlayTests
         {
             var player = Player.Create(
                 $"{team.ShortName} {positions[i]} {i}",
-                DateOnly.FromDateTime(DateTime.Today.AddYears(-24)),
+                24,
                 positions[i],
                 speed: 12,
                 accuracy: 12,
@@ -636,7 +636,7 @@ public class FairPlayTests
         MatchPlayerSnapshot.FromPlayerSeasonState(
             Player.Create(
                 $"{team.ShortName} {name}",
-                DateOnly.FromDateTime(DateTime.Today.AddYears(-24)),
+                24,
                 position,
                 speed: 13,
                 accuracy: accuracy,

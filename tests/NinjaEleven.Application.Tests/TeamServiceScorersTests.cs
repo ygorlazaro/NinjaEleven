@@ -1,5 +1,6 @@
 using Moq;
 using NinjaEleven.Application.Models;
+using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Application.Services;
 using NinjaEleven.Domain.Common;
@@ -36,13 +37,14 @@ public class TeamServiceScorersTests
     private readonly Guid _teamId = Guid.NewGuid();
     private readonly Guid _seasonId = Guid.NewGuid();
 
-    private TeamService Service() => new(_teams.Object, _players.Object, _seasons.Object, _matches.Object);
+    private TeamService Service() => new(
+        _teams.Object, _players.Object, _seasons.Object, _matches.Object, Mock.Of<IUnitOfWork>());
 
     private Player GivenPlayer(string name, int age = 26)
     {
         var player = Player.Create(
             name,
-            new DateOnly(DateTime.UtcNow.Year - age, 1, 15),
+            age,
             Position.ATT,
             speed: 15,
             accuracy: 15,

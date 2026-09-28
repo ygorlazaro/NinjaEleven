@@ -270,7 +270,7 @@ public class EnergyRecoveryAndPenaltyTests
 
         var player = Player.Create(
             "Test Player",
-            DateOnly.FromDateTime(DateTime.Today.AddYears(-age)),
+            age,
             position,
             speed: skill,
             accuracy: skill,

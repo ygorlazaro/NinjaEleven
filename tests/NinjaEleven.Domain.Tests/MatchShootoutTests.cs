@@ -44,7 +44,7 @@ public class MatchShootoutTests
         {
             var player = Player.Create(
                 $"Jogador {offset}-{index}",
-                DateOnly.FromDateTime(DateTime.Today.AddYears(-(20 + index % 6))),
+                20 + index % 6,
                 positions[index],
                 speed: 12 + (index % 5),
                 accuracy: 12 + (index % 5),
@@ -436,7 +436,7 @@ public class MatchShootoutTests
         sentOff.SendOff(35);
 
         var reserve = MatchPlayerSnapshot.FromPlayerSeasonState(
-            Player.Create("Nunca Jogou", DateOnly.FromDateTime(DateTime.Today.AddYears(-24)),
+            Player.Create("Nunca Jogou", 24,
                 Position.ATT, 15, 15, 15, 15, 15, 15, 15),
             PlayerSeasonState.Create(Guid.NewGuid(), Guid.NewGuid(), _homeId, 99));
 
