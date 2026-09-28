@@ -15,7 +15,8 @@ import type {
   CompetitionFilter,
   CupBracketDto,
   CupPrizeDto,
-  DivisionPurseDto
+  DivisionPurseDto,
+  TopScorerPrizeListDto
 } from '../types';
 
 /**
@@ -127,6 +128,20 @@ export const CompetitionApi = {
    * backend-owned for the same reason the championship's shares are.
    */
   getCupPrizes: () => api.get<CupPrizeDto[]>('/competition/cup-prizes').then(r => r.data),
+
+  /**
+   * What an edition pays its artilharia, and who is holding the three places.
+   *
+   * Asked of an edition rather than of a season, because a season's championship is three
+   * editions with three artilharias and three titles: one answer for the season would be a list
+   * of the whole country's top scorers with no way to say which title pays which of them. A cup
+   * is one edition, and the same call answers it — with each scorer carrying the division whose
+   * title paid him.
+   */
+  getTopScorerPrizes: (competitionSeasonId: string) =>
+    api
+      .get<TopScorerPrizeListDto>(`/competition/${competitionSeasonId}/top-scorer-prize`)
+      .then(r => r.data),
 };
 
 export const SeasonApi = {

@@ -211,6 +211,7 @@ const ScorersScreen: React.FC = () => {
                 <th className="scorer-table__name">Jogador</th>
                 <th>Gols</th>
                 <th>Jogos</th>
+                <th>Cartões</th>
                 <th>G/J</th>
               </tr>
             </thead>
@@ -221,7 +222,17 @@ const ScorersScreen: React.FC = () => {
                     key={row.playerId}
                     className={row.isStillAtClub ? '' : 'scorer-table__row--gone'}
                   >
-                    <td className="scorer-table__pos">{row.position}</td>
+                    {/* The position is the backend's, and it can be shared: the chain is goals,
+                        then fewest games, then fewest cards, then age, and two men level on all
+                        four are both in the same place rather than one above the other. */}
+                    <td className="scorer-table__pos">
+                      {row.position}
+                      {row.tiedWith > 0 && (
+                        <span className="scorers__tied" title={`Empatado com ${row.tiedWith} outro(s)`}>
+                          =
+                        </span>
+                      )}
+                    </td>
                     <td className="scorer-table__name">
                       <PlayerName playerId={row.playerId}>{row.playerName}</PlayerName>
                       <span className="scorer-table__meta">
@@ -237,6 +248,13 @@ const ScorersScreen: React.FC = () => {
                         start. */}
                     <td>
                       {row.started} ({row.cameOn})
+                    </td>
+                    {/* The cards weighed as the order weighs them: a yellow is one and a red is
+                        three. It is the third thing that decides a level pair, so it is a column
+                        rather than a footnote — and the weighting is the backend's, printed here
+                        as the number the order was settled on. */}
+                    <td className="scorer-table__rate" title={`${row.yellowCards} amarelo(s) e ${row.redCards} vermelho(s)`}>
+                      {row.cardPoints}
                     </td>
                     {/* The rate is the backend's number. A screen that divided the two
                         itself would be the second place in the game that knows what a goal a

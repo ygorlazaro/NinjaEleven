@@ -1,3 +1,5 @@
+using NinjaEleven.Domain.Competitions;
+
 namespace NinjaEleven.Application.Models;
 
 /// <summary>
@@ -24,8 +26,40 @@ public class ScorerRow
     public int Age { get; init; }
     public int Goals { get; init; }
 
+    /// <summary>
+    /// Games he played in the competition: started plus came on. It is on the row because the
+    /// order of the table is decided by it — fewer games for the same goals is a better season —
+    /// and a table that could not show it would be asking a manager to trust an order it could
+    /// not explain.
+    /// </summary>
+    public int Appearances { get; init; }
+
+    /// <summary>Yellow cards, as the order weighs them: one point each.</summary>
+    public int YellowCards { get; init; }
+
+    /// <summary>Red cards, as the order weighs them: three points each.</summary>
+    public int RedCards { get; init; }
+
+    /// <summary>
+    /// The cards already weighted — a yellow is one, a red is three. Carried so that a screen
+    /// never adds the two columns up on its own, and so a manager can see the number the order
+    /// was settled on rather than having to work it out.
+    /// </summary>
+    public int CardPoints => YellowCards + RedCards * ScorerStanding.RedCardPoints;
+
     /// <summary>Where the player stands, counted from one. Decided by the backend.</summary>
     public int Position { get; set; }
+
+    /// <summary>
+    /// How many other players share this position, and zero when nobody does.
+    /// </summary>
+    /// <remarks>
+    /// A scorers table is level more often than a league table is, and a table that showed two
+    /// men as first and second when they are on the same number of goals would be inventing an
+    /// order the game does not have. Where the chain could not separate them, they are both
+    /// first, and this is what lets a screen say so.
+    /// </remarks>
+    public int TiedWith { get; set; }
 }
 
 /// <summary>
@@ -92,13 +126,52 @@ public class ClubScorerRow
     public int CameOn { get; init; }
 
     /// <summary>
+    /// Yellow and red cards, in two columns and weighed in a third.
+    /// </summary>
+    /// <remarks>
+    /// They are here because the order of a club's own list of scorers is the same chain the
+    /// artilharia prizes are settled on — goals, then fewest games, then fewest cards — so a
+    /// striker ahead of a team-mate on the league page is ahead of him here for the same reason
+    /// and by the same arithmetic. A yellow is worth one and a red three, and the weighing is
+    /// done in one place.
+    /// </remarks>
+    public int YellowCards { get; init; }
+
+    /// <inheritdoc cref="YellowCards"/>
+    public int RedCards { get; init; }
+
+    /// <summary>The two card columns weighed against each other, as the order weighs them.</summary>
+    public int CardPoints =>
+        YellowCards * ScorerStanding.YellowCardPoints + RedCards * ScorerStanding.RedCardPoints;
+
+    /// <summary>
     /// Whether the player is still at the club: he has a membership that has not ended.
     /// Decided here and not by the client, which cannot know a contract from a shirt.
     /// </summary>
     public bool IsStillAtClub { get; init; }
 
+    /// <summary>
+    /// Games he played for the club: started plus came off the bench.
+    /// </summary>
+    /// <remarks>
+    /// The two columns are kept as well, because a manager wants to know both — the split is
+    /// the difference between a striker the staff trusted to start and one they used when
+    /// nobody else was fit.
+    /// </remarks>
+    public int Appearances => Started + CameOn;
+
     /// <summary>Where the player stands in the club's table, counted from one.</summary>
     public int Position { get; set; }
+
+    /// <summary>
+    /// How many other players of the club share this position, and zero when nobody does.
+    /// </summary>
+    /// <remarks>
+    /// The chain is goals, then games, then cards, then age, and it is the chain the division's
+    /// artilharia is settled on too. Two men level on all four are both first here, and this is
+    /// what lets a screen say so rather than inventing an order between them.
+    /// </remarks>
+    public int TiedWith { get; set; }
 
     /// <summary>
     /// Goals per appearance, or null when he never appeared.

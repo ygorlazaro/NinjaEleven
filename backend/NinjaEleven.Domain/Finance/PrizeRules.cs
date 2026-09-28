@@ -197,4 +197,86 @@ public static class PrizeRules
         5 => CupFinalLoser,
         _ => 0m
     };
+
+    /// <summary>
+    /// How many of a competition's top scorers are paid, first place included.
+    /// </summary>
+    public const int TopScorerPlaces = 3;
+
+    /// <summary>What the first top scorer takes, as a share of the champion's own prize.</summary>
+    public const decimal TopScorerFirstRate = 0.10m;
+
+    /// <summary>What the second top scorer takes.</summary>
+    public const decimal TopScorerSecondRate = 0.05m;
+
+    /// <summary>What the third top scorer takes.</summary>
+    public const decimal TopScorerThirdRate = 0.03m;
+
+    /// <summary>
+    /// The share of the champion's prize that goes with a place in the artilharia, and zero for
+    /// a place there is none of.
+    /// </summary>
+    /// <remarks>
+    /// A place past the third pays nothing rather than the smallest share as a default: a method
+    /// whose fall-through branch is a payment is a method that will pay the fourth-best striker
+    /// in the country for a prize nobody announced.
+    /// </remarks>
+    public static decimal TopScorerRate(int place) => place switch
+    {
+        1 => TopScorerFirstRate,
+        2 => TopScorerSecondRate,
+        3 => TopScorerThirdRate,
+        _ => 0m
+    };
+
+    /// <summary>
+    /// What a top scorer is paid for a place in the artilharia: a share of what the champion of
+    /// that division is paid for winning it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The champion's prize is the base and not the whole purse, so the artilharia scales with
+    /// the division it belongs to: the first division's top striker is paid a share of a title
+    /// worth many millions, the third division's a share of a much smaller one, and the two
+    /// tables are read in the same words and answered in the money of their own level.
+    /// </para>
+    /// <para>
+    /// The money is new money and comes out of nobody's share. It is not taken off the
+    /// champion's cheque, because a title is paid for a season's football and a prize for scoring
+    /// is paid for a season's goals: a manager whose club wins the division and whose striker
+    /// wins the artilharia is paid twice, and the club that finished second with the same striker
+    /// is paid once. The division's purse is the measure of the prize and nothing more.
+    /// </para>
+    /// </remarks>
+    /// <param name="place">Which of the prizes, counted from one.</param>
+    /// <param name="clubsInDivision">How many clubs the division's title was paid across.</param>
+    /// <param name="purse">What the division's table was paid out of.</param>
+    public static decimal TopScorerPrize(int place, int clubsInDivision, decimal purse) =>
+        TopScorerShareOf(place, ChampionshipPrize(1, clubsInDivision, purse));
+
+    /// <summary>
+    /// A place in any competition's artilharia, taken from that competition's own title.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The base is the title of the competition the goals were scored in, which is the whole
+    /// rule: the cup's artilharia is a share of the cup's own champion's prize, so a
+    /// third-division forward who tops the cup's scoring is paid the same as a first-division
+    /// one who does — the cup runs across the pyramid, and its prize is the cup's, not the
+    /// pyramid's. Reading a cup striker's share out of his own club's division would price the
+    /// same goals three different ways according to which club he happened to play for, which
+    /// is a rule about divisions wearing the words of a rule about a cup.
+    /// </para>
+    /// <para>
+    /// Like the division's, it is new money and not a slice of anyone's cheque: a club that wins
+    /// the cup with its own top scorer on the sheet is paid the title and the artilharia, because
+    /// winning the cup and scoring in it are two things the club did.
+    /// </para>
+    /// </remarks>
+    /// <param name="place">Which of the prizes, counted from one.</param>
+    /// <param name="championPrize">What the champion of that competition is paid.</param>
+    public static decimal TopScorerShareOf(int place, decimal championPrize) =>
+        place is >= 1 and <= TopScorerPlaces
+            ? Round(championPrize * TopScorerRate(place))
+            : 0m;
 }

@@ -288,6 +288,34 @@ public class ScorerDto
     /// <summary>The club's colours, so the club beside his name can be drawn as its own shield.</summary>
     public string? TeamPrimaryColor { get; init; }
     public string? TeamSecondaryColor { get; init; }
+
+    /// <summary>
+    /// Where he stands, counted from one, decided by the backend's chain.
+    /// </summary>
+    /// <remarks>
+    /// The position is the whole point of the chain and it is not a row number: two players level
+    /// on goals, games, cards and age are both first, and a client that numbered its own rows
+    /// would be inventing an order between two men it cannot tell apart.
+    /// </remarks>
+    public int Position { get; init; }
+
+    /// <summary>How many other players share this position, and zero when nobody does.</summary>
+    public int TiedWith { get; init; }
+
+    /// <summary>Games he played, which is the second thing the order looks at.</summary>
+    public int Appearances { get; init; }
+
+    /// <summary>Yellow cards, as the order weighs them: one point each.</summary>
+    public int YellowCards { get; init; }
+
+    /// <summary>Red cards, as the order weighs them: three points each.</summary>
+    public int RedCards { get; init; }
+
+    /// <summary>
+    /// The two card columns already weighed together, so a client never adds them up on its own
+    /// and a manager can read the number the order was settled on.
+    /// </summary>
+    public int CardPoints { get; init; }
 }
 
 /// <summary>
@@ -310,6 +338,21 @@ public class ClubScorerDto
     public int OwnGoals { get; init; }
     public int Started { get; init; }
     public int CameOn { get; init; }
+
+    /// <summary>Games he played: started plus came on, which is the second thing the order looks at.</summary>
+    public int Appearances { get; init; }
+
+    /// <summary>Yellow cards, as the order weighs them: one point each.</summary>
+    public int YellowCards { get; init; }
+
+    /// <summary>Red cards, as the order weighs them: three points each.</summary>
+    public int RedCards { get; init; }
+
+    /// <summary>The two card columns already weighed together.</summary>
+    public int CardPoints { get; init; }
+
+    /// <summary>How many other players of the club share this position, and zero when nobody does.</summary>
+    public int TiedWith { get; init; }
 
     /// <summary>Goals per appearance, or null when the player never appeared.</summary>
     public double? GoalsPerAppearance { get; init; }
@@ -486,4 +529,77 @@ public class CupPrizeDto
 
     /// <summary>Whether this is the winner's cheque rather than a consolation.</summary>
     public bool IsChampion { get; init; }
+}
+
+
+/// <summary>
+/// What a competition pays its artilharia: the three shares, and who is holding each of them.
+/// </summary>
+public class TopScorerPrizeListDto
+{
+    public Guid CompetitionSeasonId { get; init; }
+    public Guid SeasonId { get; init; }
+
+    /// <summary>The edition's own name: a division's, or the cup's.</summary>
+    public string CompetitionName { get; init; } = string.Empty;
+
+    /// <summary>1 is the top of the pyramid, and null for a cup.</summary>
+    public int? Tier { get; init; }
+
+    /// <summary>
+    /// The champion's prize these shares are a part of, and null for a cup: a cup has no purse,
+    /// so each of its scorers is paid a share of the title of the division his club is in.
+    /// </summary>
+    public decimal? BaseAmount { get; init; }
+
+    /// <summary>The three shares, first place first, whether or not anybody took them.</summary>
+    public IReadOnlyList<TopScorerRateDto> Rates { get; init; } = Array.Empty<TopScorerRateDto>();
+
+    /// <summary>The men who are paid, in the order the table holds them.</summary>
+    public IReadOnlyList<TopScorerPrizeDto> Winners { get; init; } = Array.Empty<TopScorerPrizeDto>();
+}
+
+/// <summary>One place's share, said on its own so a panel does not have to know the rule.</summary>
+public class TopScorerRateDto
+{
+    public int Place { get; init; }
+    public decimal Rate { get; init; }
+}
+
+/// <summary>
+/// One man in a competition's artilharia, and what his club is paid for it.
+/// </summary>
+public class TopScorerPrizeDto
+{
+    public Guid PlayerId { get; init; }
+    public string PlayerName { get; init; } = string.Empty;
+    public int Age { get; init; }
+    public Guid TeamId { get; init; }
+    public string? TeamName { get; init; }
+    public string? TeamPrimaryColor { get; init; }
+    public string? TeamSecondaryColor { get; init; }
+
+    /// <summary>Where he stands, counted from one, shared with anyone the chain could not part.</summary>
+    public int Position { get; init; }
+
+    /// <summary>Which of the three prizes this is. Not the same as the position after a shared place.</summary>
+    public int PrizeSlot { get; init; }
+
+    /// <summary>How many other players share this position, and zero when nobody does.</summary>
+    public int TiedWith { get; init; }
+
+    public int Goals { get; init; }
+    public int Appearances { get; init; }
+
+    /// <summary>The cards already weighed: a yellow is one and a red is three.</summary>
+    public int CardPoints { get; init; }
+
+    /// <summary>The share of the champion's prize this place carries: 0.10, 0.05 or 0.03.</summary>
+    public decimal Rate { get; init; }
+
+    /// <summary>
+    /// What the club is paid, and null when the competition has no champion's prize to take a
+    /// share of. The money is new: it does not come out of the champion's cheque.
+    /// </summary>
+    public decimal? Amount { get; init; }
 }

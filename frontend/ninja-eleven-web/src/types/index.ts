@@ -469,6 +469,15 @@ export interface CompetitionStandingsDto {
   hasLiveMatches: boolean;
 }
 
+/**
+ * One line of a top scorers table.
+ *
+ * **The order and the numbers that settle it are the backend's.** Goals first, then fewest
+ * games, then fewest cards (a yellow is one and a red is three), then oldest — so a screen that
+ * sorted its own rows by goals and age would be inventing an order between two players the game
+ * says are level, and the three prizes that hang on that order with it. A screen shows the
+ * position it is given and the columns that explain it.
+ */
 export interface ScorerDto {
   playerId: Guid;
   playerName: string;
@@ -479,6 +488,16 @@ export interface ScorerDto {
   /** The club's colours, so the club beside his name is drawn as its own shield. */
   teamPrimaryColor?: string | null;
   teamSecondaryColor?: string | null;
+  /** Where he stands, counted from one, and shared with anyone the chain could not part. */
+  position: number;
+  /** How many other players share this position, and zero when nobody does. */
+  tiedWith: number;
+  /** Games he played: started plus came off the bench. The second thing the order looks at. */
+  appearances: number;
+  yellowCards: number;
+  redCards: number;
+  /** The two card columns already weighed: a yellow is one point and a red is three. */
+  cardPoints: number;
 }
 
 export interface MatchEngineEventDto {
@@ -1127,6 +1146,14 @@ export type ClubScorerDto = {
   ownGoals: number;
   started: number;
   cameOn: number;
+  /** Games he played, which is the second thing the order of this table looks at. */
+  appearances: number;
+  yellowCards: number;
+  redCards: number;
+  /** The two card columns already weighed: a yellow is one and a red is three. */
+  cardPoints: number;
+  /** How many other players of the club share this position, and zero when nobody does. */
+  tiedWith: number;
   /** Goals per appearance, decided by the backend; null when he never appeared. */
   goalsPerAppearance: number | null;
   isStillAtClub: boolean;
@@ -1254,4 +1281,66 @@ export interface CupPrizeDto {
   amount: number;
   /** Whether this is the winner's cheque rather than a consolation. */
   isChampion: boolean;
+}
+
+/**
+ * What a competition pays its artilharia: the three shares, and who is holding each of them.
+ *
+ * It is asked of an edition and not of a season because a season's championship is three
+ * editions, each with its own artilharia and its own title to be a share of. A cup has no purse
+ * of its own, so each of its three scorers is paid a share of the title of the division his club
+ * is in, and each line says whose title that was.
+ */
+export interface TopScorerPrizeListDto {
+  competitionSeasonId: string;
+  seasonId: string;
+  /** The edition's own name: a division's, or the cup's. */
+  competitionName: string;
+  /** 1 is the top of the pyramid, and null for a cup. */
+  tier?: number | null;
+  /** The champion's prize these shares are a part of, and null for a cup. */
+  baseAmount?: number | null;
+  /** The three shares, first place first, whether or not anybody took them. */
+  rates: TopScorerRateDto[];
+  winners: TopScorerPrizeDto[];
+}
+
+/** One place's share, said on its own so a panel does not have to know the rule. */
+export interface TopScorerRateDto {
+  place: number;
+  /** The share of the champion's prize: 0.1, 0.05 or 0.03. */
+  rate: number;
+}
+
+/**
+ * One man in a competition's artilharia, and what his club is paid for it.
+ *
+ * `position` and `prizeSlot` are two numbers because they are not always the same: two men
+ * level on the whole chain are both second, both take the second prize, and the third prize is
+ * paid to nobody. One number would have to choose between calling a man third who is not, and
+ * paying a second place less than the prize for second.
+ */
+export interface TopScorerPrizeDto {
+  playerId: Guid;
+  playerName: string;
+  age: number;
+  teamId: Guid;
+  teamName?: string | null;
+  teamPrimaryColor?: string | null;
+  teamSecondaryColor?: string | null;
+  position: number;
+  prizeSlot: number;
+  /** How many other players share this position, and zero when nobody does. */
+  tiedWith: number;
+  goals: number;
+  appearances: number;
+  /** The cards already weighed: a yellow is one and a red is three. */
+  cardPoints: number;
+  /** The share of the champion's prize this place carries. */
+  rate: number;
+  /**
+   * What the club is paid, and null when the competition has no title to take a share of. It is
+   * new money: it does not come out of the champion's cheque.
+   */
+  amount?: number | null;
 }

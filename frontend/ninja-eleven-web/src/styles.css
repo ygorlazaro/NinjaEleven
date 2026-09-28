@@ -298,7 +298,17 @@ button { cursor: pointer; }
 .scorers { width: 100%; border-collapse: collapse; font-size: 13px; }
 .scorers th { color: var(--muted); font-size: 11px; text-transform: uppercase; text-align: left; padding: 7px; }
 .scorers td { padding: 7px; border-top: 1px solid rgba(34, 56, 75, .5); }
-.scorers td:nth-child(4) { text-align: center; }
+/* The numbers are centred and the words are not, and the rule is on the column rather than on
+   its position: a table that grew a column would move a position-numbered rule onto the wrong
+   one, which is a quiet way to left-align a column of goals. */
+.scorers__num { text-align: center; }
+.scorers th.scorers__num { vertical-align: baseline; }
+.scorers__pos { width: 2.4em; color: var(--muted); text-align: center; }
+/* The "=" beside a position says the chain could not part him from the men on that place, and
+   the title says how many: a table that numbered two level strikers first and second would be
+   inventing an order, and this is the cheapest way to say it did not. */
+.scorers__tied { color: var(--accent); font-weight: 900; margin-left: 2px; cursor: help; }
+.scorers__hint { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 4px; cursor: help; }
 .scorers tr.user-row { background: color-mix(in srgb, var(--accent) 9%, transparent); }
 .scorers tr.user-row td:first-child { box-shadow: inset 3px 0 var(--accent); }
 .scorer-tabs { margin-bottom: 8px; }
@@ -1129,6 +1139,38 @@ button { cursor: pointer; }
    column: the lines are the phases a club is knocked out in, and they read in the order a club
    meets them. */
 .cup-prize-legend__rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+
+/* The artilharia sits under the cup's ladder in the same panel, so it is separated by a rule and
+   a smaller heading rather than by a second box: a cup that pays a consolation and a prize for
+   its scorers is one list of money, and two cards side by side would be two answers to one
+   question. The rule is above the block and below it, so the ladder and the three men read as
+   two parts of the same legend. */
+.cup-prize-legend__artilharia {
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);
+}
+.cup-prize-legend__artilharia .top-scorer-prize__rows { margin-top: 6px; }
+.prize-legend__subtitle {
+  margin: 0 0 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--muted);
+}
+
+/* The artilharia is a list of three men, so its rows are a line of place, a line of money and a
+   line of who: the panel is narrow, and a table of three names is a table a manager reads with
+   his finger. The place and the money sit on the first line and the man under them. */
+.top-scorer-prize__rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.top-scorer-prize__row { flex-wrap: wrap; }
+.top-scorer-prize__position { flex: 1 1 auto; }
+.top-scorer-prize__man {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  flex: 1 1 100%; padding-top: 2px; color: var(--text);
+}
+.top-scorer-prize__figures { color: var(--muted); font-size: 11px; }
+.top-scorer-prize__tied {
+  color: var(--accent); font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+}
+/* Under a cup legend the two panels are one column of two lists, so the second needs the gap
+   the grid would otherwise swallow. */
+.cup-prize-legend > .top-scorer-prize { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
 /* The club card gives the whole modal to a squad, so it is wider than a player profile
    and the columns get the room they need to be compared rather than scanned. */
 /* The club card is the club's own colours, and the whole card rather than one panel of it.

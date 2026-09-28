@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Repositories;
@@ -28,6 +29,10 @@ public class MatchdayWaveTests
     private readonly Mock<ICompetitionRepository> _competitions = new(MockBehavior.Loose);
     private readonly Mock<IMatchRepository> _matches = new(MockBehavior.Loose);
     private readonly Mock<IUnitOfWork> _unitOfWork = new(MockBehavior.Loose);
+    private readonly Mock<IPlayerRepository> _players = new(MockBehavior.Loose);
+    private readonly Mock<ITeamRepository> _teams = new(MockBehavior.Loose);
+    private readonly Mock<IFinanceRepository> _finance = new(MockBehavior.Loose);
+    private readonly Mock<ISeasonRepository> _seasons = new(MockBehavior.Loose);
 
     private readonly Guid _seasonId = Guid.NewGuid();
     private readonly Guid _matchDayId = Guid.NewGuid();
@@ -126,6 +131,22 @@ public class MatchdayWaveTests
             });
     }
 
+    private ScorerPrizeService CreateScorerPrizes() => new(
+        _competitions.Object,
+        _players.Object,
+        _teams.Object,
+        new FinanceService(
+            _finance.Object,
+            _teams.Object,
+            _players.Object,
+            _fixtures.Object,
+            _rounds.Object,
+            _matchDays.Object,
+            _seasons.Object,
+            _unitOfWork.Object,
+            NullLogger<FinanceService>.Instance),
+        NullLogger<ScorerPrizeService>.Instance);
+
     private MatchdayService CreateService()
     {
         var service = new MatchdayService(
@@ -134,7 +155,9 @@ public class MatchdayWaveTests
             _fixtures.Object,
             _competitions.Object,
             _matches.Object,
-            _unitOfWork.Object);
+            CreateScorerPrizes(),
+            _unitOfWork.Object,
+            NullLogger<MatchdayService>.Instance);
 
         service.UseStarter((fixtureId, _) =>
         {
@@ -220,7 +243,9 @@ public class MatchdayWaveTests
             _fixtures.Object,
             _competitions.Object,
             _matches.Object,
-            _unitOfWork.Object);
+            CreateScorerPrizes(),
+            _unitOfWork.Object,
+            NullLogger<MatchdayService>.Instance);
 
         // The last of the eighteen finishes, and the day is over with nothing behind it.
         foreach (var fixture in _championship)

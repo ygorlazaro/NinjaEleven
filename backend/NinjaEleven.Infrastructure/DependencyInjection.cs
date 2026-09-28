@@ -89,6 +89,7 @@ public static class DependencyInjection
         services.AddScoped<LeagueService>();
         services.AddScoped<StandingsService>();
         services.AddScoped<CupBracketService>();
+        services.AddScoped<ScorerPrizeService>();
         services.AddScoped<AttendanceContextFactory>();
 
         services.AddSingleton<IMatchSessionRegistry, MatchSessionRegistry>();

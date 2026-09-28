@@ -43,6 +43,17 @@ public record SeasonCloseResult(
 /// won, and a shelf that read the current division of a club to decide what it has won would
 /// take the 1ª Divisão title away from a club that is now in the 2ª.
 ///
+/// **The artilharia is paid here too, and it is money on top.** The three top scorers of every
+/// division and of the cup are paid a share of the champion's own prize, and that money is not
+/// taken off anybody: a title is paid for a season's football and a prize for scoring is paid
+/// for a season's goals, so a club that wins the division and whose striker wins the artilharia
+/// is paid twice. A club may take both prizes, and two of its own men may be in the same
+/// artilharia — nothing says a club's goals are worth less because they were scored for it.
+///
+/// The Supercup is not on the list. It is one match between two clubs, and an artilharia of one
+/// evening is a striker's single goal being paid a season's first prize; a prize nobody would
+/// believe if they read it is better not to exist.
+///
 /// **The Supercup is the first match of the season that follows**, between the champion of
 /// the first division and the cup's winner, and a club that won both is not allowed to play
 /// itself: the second club of the first division comes in its place, because a Supercup is two

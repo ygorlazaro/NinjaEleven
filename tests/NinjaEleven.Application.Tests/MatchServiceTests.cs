@@ -245,7 +245,14 @@ public class MatchServiceTests
             _fixtures.Object,
             _competitions.Object,
             _matches.Object,
-            _unitOfWork.Object),
+            new ScorerPrizeService(
+                _competitions.Object,
+                _players.Object,
+                _teams.Object,
+                CreateFinance(),
+                NullLogger<ScorerPrizeService>.Instance),
+            _unitOfWork.Object,
+            NullLogger<MatchdayService>.Instance),
         new FinanceService(
             _finance.Object,
             _teams.Object,
@@ -256,6 +263,17 @@ public class MatchServiceTests
             _seasons.Object,
             _unitOfWork.Object,
             NullLogger<FinanceService>.Instance));
+
+    private FinanceService CreateFinance() => new(
+        _finance.Object,
+        _teams.Object,
+        _players.Object,
+        _fixtures.Object,
+        _rounds.Object,
+        _matchDays.Object,
+        _seasons.Object,
+        _unitOfWork.Object,
+        NullLogger<FinanceService>.Instance);
 
     private void AddSquad(Team team, int energy)
     {

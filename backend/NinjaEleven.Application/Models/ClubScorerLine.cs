@@ -1,3 +1,5 @@
+using NinjaEleven.Domain.Competitions;
+
 namespace NinjaEleven.Application.Models;
 
 /// <summary>
@@ -33,4 +35,34 @@ public class ClubScorerLine
 
     /// <summary>Games he came off the bench for. Kept apart: a manager wants to know both.</summary>
     public int CameOn { get; init; }
+
+    /// <summary>Yellow cards, summed from the match lines.</summary>
+    public int YellowCards { get; init; }
+
+    /// <summary>Red cards, summed from the match lines.</summary>
+    public int RedCards { get; init; }
+
+    /// <summary>
+    /// Games he played: started plus came on.
+    /// </summary>
+    /// <remarks>
+    /// It is a count of matches and not of minutes, and it is worked out here so that a table
+    /// which orders by "fewest games" and a rate printed as goals per appearance are reading the
+    /// same number. A man who was an unused substitute all season has no appearance at all: he
+    /// did not play, and counting him as having appeared once would put a striker's rate below
+    /// his own and reward a season on the bench.
+    /// </remarks>
+    public int Appearances => Started + CameOn;
+
+    /// <summary>
+    /// The cards weighed against each other for the order of a scorers table: a yellow is one
+    /// and a red is three.
+    /// </summary>
+    /// <remarks>
+    /// The weighting is the domain's and is not worked out twice. A screen that added the two
+    /// columns up in a different proportion would be settling a tie between two players by its
+    /// own rules, and the prize that tie decides would then depend on who was reading it.
+    /// </remarks>
+    public int CardPoints =>
+        YellowCards * ScorerStanding.YellowCardPoints + RedCards * ScorerStanding.RedCardPoints;
 }

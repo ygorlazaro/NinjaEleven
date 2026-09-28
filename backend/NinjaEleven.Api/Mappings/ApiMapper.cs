@@ -326,7 +326,47 @@ public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => ne
         TeamId = row.TeamId,
         TeamName = row.TeamName,
         TeamPrimaryColor = row.TeamPrimaryColor,
-        TeamSecondaryColor = row.TeamSecondaryColor
+        TeamSecondaryColor = row.TeamSecondaryColor,
+        Position = row.Position,
+        TiedWith = row.TiedWith,
+        Appearances = row.Appearances,
+        YellowCards = row.YellowCards,
+        RedCards = row.RedCards,
+        CardPoints = row.CardPoints
+    };
+
+    public static TopScorerPrizeListDto ToDto(this Application.Models.TopScorerPrizeList list) => new()
+    {
+        CompetitionSeasonId = list.CompetitionSeasonId,
+        SeasonId = list.SeasonId,
+        CompetitionName = list.CompetitionName,
+        Tier = list.Tier,
+        BaseAmount = list.BaseAmount,
+        Rates = list.Rates.Select(rate => new TopScorerRateDto
+        {
+            Place = rate.Place,
+            Rate = rate.Rate
+        }).ToList(),
+        Winners = list.Winners.Select(winner => winner.ToDto()).ToList()
+    };
+
+    public static TopScorerPrizeDto ToDto(this Application.Models.TopScorerPrizeRow row) => new()
+    {
+        PlayerId = row.PlayerId,
+        PlayerName = row.PlayerName,
+        Age = row.Age,
+        TeamId = row.TeamId,
+        TeamName = row.TeamName,
+        TeamPrimaryColor = row.TeamPrimaryColor,
+        TeamSecondaryColor = row.TeamSecondaryColor,
+        Position = row.Position,
+        PrizeSlot = row.PrizeSlot,
+        TiedWith = row.TiedWith,
+        Goals = row.Goals,
+        Appearances = row.Appearances,
+        CardPoints = row.CardPoints,
+        Rate = row.Rate,
+        Amount = row.Amount
     };
 
     public static ClubScorerDto ToDto(this Application.Models.ClubScorerRow row) => new()
@@ -339,6 +379,11 @@ public static TeamDto ToDto(this Domain.Teams.Team team, double stars = 0) => ne
         OwnGoals = row.OwnGoals,
         Started = row.Started,
         CameOn = row.CameOn,
+        Appearances = row.Appearances,
+        YellowCards = row.YellowCards,
+        RedCards = row.RedCards,
+        CardPoints = row.CardPoints,
+        TiedWith = row.TiedWith,
         GoalsPerAppearance = row.GoalsPerAppearance,
         IsStillAtClub = row.IsStillAtClub
     };

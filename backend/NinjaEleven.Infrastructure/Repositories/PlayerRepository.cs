@@ -1,6 +1,7 @@
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Enums;
+using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -71,9 +72,7 @@ public class PlayerRepository : IPlayerRepository
 
     /// <summary>
     /// The goals of a club's men in a season, summed from the match lines and grouped by
-    /// player. Only men who scored are returned: a table of scorers that carried every man who
-    /// played would put a defender who never scored in the same list as a striker, and the
-    /// list would then be a squad.
+    /// player.
     /// </summary>
     public async Task<IReadOnlyList<ClubScorerLine>> ListClubScorerLinesAsync(
         Guid teamId,
@@ -102,38 +101,19 @@ public class PlayerRepository : IPlayerRepository
             query = query.Where(row => row.Type == wanted);
         }
 
-        // Own goals are summed apart and never added to the goals: a goal conceded into his
-        // own net is a defender's error, and a scorers table that counted it would hand a
-        // centre-back a column of goals he did not score.
-        var rows = await query
-            .GroupBy(row => new { row.line.PlayerId, row.line.TeamId })
-            .Select(group => new ClubScorerLine
-            {
-                PlayerId = group.Key.PlayerId,
-                TeamId = group.Key.TeamId,
-                Goals = group.Sum(row => row.line.Goals),
-                OwnGoals = group.Sum(row => row.line.OwnGoals),
-                Started = group.Sum(row => row.line.Started ? 1 : 0),
-                CameOn = group.Sum(row => row.line.CameOn ? 1 : 0)
-            })
-            .ToListAsync(cancellationToken);
-
-        return rows
-            .Where(line => line.Goals > 0)
-            .OrderByDescending(line => line.Goals)
-            .ThenBy(line => line.PlayerId)
-            .ToList();
+        return ReadLines(await GroupAsync(query.Select(row => row.line), cancellationToken));
     }
 
     /// <summary>
     /// A season's goals by player, across every club in it, and optionally restricted to one
     /// kind of competition.
-    ///
+    /// </summary>
+    /// <remarks>
     /// The chain is the club list's, without the club: a line knows its match, a match its
     /// fixture, a fixture its round, and only the round's edition knows the kind of competition
     /// the tie was. So a cup chart is a walk and not a column, and the same walk the club's own
     /// scorers page walks — which is the point of a rule being in one place.
-    /// </summary>
+    /// </remarks>
     public async Task<IReadOnlyList<ClubScorerLine>> ListSeasonScorerLinesAsync(
         Guid seasonId,
         CompetitionType? competitionType = null,
@@ -157,25 +137,81 @@ public class PlayerRepository : IPlayerRepository
             query = query.Where(row => row.Type == wanted);
         }
 
-        // Own goals are never added to a player's goals, for the same reason the club's list does
-        // not: a defender's error into his own net is not a goal he scored.
-        var rows = await query
-            .GroupBy(row => new { row.line.PlayerId, row.line.TeamId })
+        return ReadLines(await GroupAsync(query.Select(row => row.line), cancellationToken));
+    }
+
+    /// <summary>
+    /// One edition's goals by player, across every club in it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The edition and not the kind of competition, because the championship is three editions of
+    /// one kind. A season's list restricted to "League" counts all three divisions at once, which
+    /// is right for a chart of the country and wrong for the artilharia of one division: the
+    /// first division's prize list built that way would be topped by a second-division striker
+    /// and then paid the first division's money.
+    /// </para>
+    /// <para>
+    /// A cup is one edition of its own, so this is how the cup's chart is read as well — one
+    /// walk, and the cup needs no special case to be counted correctly.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyList<ClubScorerLine>> ListEditionScorerLinesAsync(
+        Guid competitionSeasonId,
+        CancellationToken cancellationToken = default)
+    {
+        var query =
+            from line in _dbContext.MatchPlayerStatistics.AsNoTracking()
+            join match in _dbContext.Matches.AsNoTracking() on line.MatchId equals match.Id
+            join fixture in _dbContext.Fixtures.AsNoTracking() on match.FixtureId equals fixture.Id
+            join round in _dbContext.Rounds.AsNoTracking() on fixture.RoundId equals round.Id
+            where round.CompetitionSeasonId == competitionSeasonId
+            select line;
+
+        return ReadLines(await GroupAsync(query, cancellationToken));
+    }
+
+    /// <summary>
+    /// Sums a set of match lines into one row per player and club.
+    /// </summary>
+    /// <remarks>
+    /// The goals, the games and the cards are read out of the same lines here, in one
+    /// projection, so no list of scorers can be built with one of the three missing — a table
+    /// that could count goals and not bookings could not order two level strikers at all.
+    ///
+    /// Own goals are summed into their own column and never added to the goals: a goal conceded
+    /// into his own net is a defender's error, and a scorers table that counted it would hand a
+    /// centre-back a column of goals he did not score.
+    /// </remarks>
+    private static Task<List<ClubScorerLine>> GroupAsync(
+        IQueryable<MatchPlayerStatistics> lines,
+        CancellationToken cancellationToken) =>
+        lines
+            .GroupBy(line => new { line.PlayerId, line.TeamId })
             .Select(group => new ClubScorerLine
             {
                 PlayerId = group.Key.PlayerId,
                 TeamId = group.Key.TeamId,
-                Goals = group.Sum(row => row.line.Goals),
-                OwnGoals = group.Sum(row => row.line.OwnGoals),
-                Started = group.Sum(row => row.line.Started ? 1 : 0),
-                CameOn = group.Sum(row => row.line.CameOn ? 1 : 0)
+                Goals = group.Sum(line => line.Goals),
+                OwnGoals = group.Sum(line => line.OwnGoals),
+                Started = group.Sum(line => line.Started ? 1 : 0),
+                CameOn = group.Sum(line => line.CameOn ? 1 : 0),
+                YellowCards = group.Sum(line => line.YellowCards),
+                RedCards = group.Sum(line => line.RedCards)
             })
             .ToListAsync(cancellationToken);
 
-        return rows
+    /// <summary>
+    /// Only men who scored, in the order they are read in.
+    /// </summary>
+    /// <remarks>
+    /// A table of scorers that carried every man who played would put a defender who never
+    /// scored in the same list as a striker, and the list would then be a squad.
+    /// </remarks>
+    private static IReadOnlyList<ClubScorerLine> ReadLines(List<ClubScorerLine> rows) =>
+        rows
             .Where(line => line.Goals > 0)
             .OrderByDescending(line => line.Goals)
             .ThenBy(line => line.PlayerId)
             .ToList();
-    }
 }

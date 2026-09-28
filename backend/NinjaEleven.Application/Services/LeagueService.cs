@@ -238,20 +238,28 @@ public class LeagueService
             })
             .ToList();
 
-/// <summary>
-
-    /// Top scorers of a season, derived from the season state of the players.
+    /// <summary>
+    /// The top scorers of a season, and of one kind of competition inside it, in the order the
+    /// domain's chain gives.
     /// </summary>
     /// <param name="seasonId">The season being counted.</param>
     /// <param name="top">How many to return.</param>
     /// <param name="competition">
     /// League, Cup or Supercup; null for the whole season.
     ///
-    /// A season's own state counts every kind of competition at once, so a cup's chart cannot be
-    /// read off it: it is counted from the match lines instead, which is the same sum restricted
-    /// to the cup's matches. A cup chart built from the season total would be a league's goals
-    /// wearing the cup's name, and a manager would read his striker's cup run off it wrong.
+    /// A season's own counters count every kind of competition at once, so a cup's chart cannot
+    /// be read off them: it is counted from the match lines instead, which is the same sum
+    /// restricted to the cup's matches. A cup chart built from the season total would be a
+    /// league's goals wearing the cup's name, and a manager would read his striker's cup run off
+    /// it wrong.
     /// </param>
+    /// <remarks>
+    /// Every kind is counted from the match lines, not only the filtered ones. The chain that
+    /// orders a scorers table reaches for games played and cards booked, and the season's own
+    /// counters carry goals and nothing else — so a season-wide artilharia settled without the
+    /// other two numbers would be a table of the whole country ranked by different rules from
+    /// the ones the artilharia prizes are paid on.
+    /// </remarks>
     public async Task<IReadOnlyList<ScorerRow>> GetScorersAsync(
         Guid seasonId,
         int top = 15,
@@ -263,74 +271,73 @@ public class LeagueService
             throw new EntityNotFoundException("Season", seasonId);
         }
 
-        if (competition.HasValue)
+        var lines = await _playerRepository.ListSeasonScorerLinesAsync(
+            seasonId, competition, cancellationToken);
+
+        if (lines.Count == 0)
         {
-            var lines = await _playerRepository.ListSeasonScorerLinesAsync(
-                seasonId, competition.Value, cancellationToken);
-
-            // A player who changed clubs inside the season has a line per club, and a scorers
-            // list with the same man on it twice is a list of nobody in particular. He is
-            // counted once, under the club he scored for most.
-            var byPlayer = lines
-                .GroupBy(line => line.PlayerId)
-                .Select(group => group.OrderByDescending(line => line.Goals).First())
-                .ToList();
-
-            var players = (await _playerRepository.ListAsync(cancellationToken))
-                .Where(player => byPlayer.Any(line => line.PlayerId == player.Id))
-                .ToList();
-            var clubs = await _teamRepository.ListByIdsAsync(byPlayer.Select(line => line.TeamId), cancellationToken);
-            var playerById = players.ToDictionary(player => player.Id);
-            var clubById = clubs.ToDictionary(club => club.Id);
-
-            return byPlayer
-                .Where(line => playerById.ContainsKey(line.PlayerId))
-                .Select(line => new ScorerRow
-                {
-                    PlayerId = line.PlayerId,
-                    PlayerName = playerById[line.PlayerId].Name,
-                    Age = playerById[line.PlayerId].CalculateAge(),
-                    TeamId = line.TeamId,
-                    TeamName = clubById.TryGetValue(line.TeamId, out var club) ? club.Name : null,
-                    TeamPrimaryColor = club?.PrimaryColor,
-                    TeamSecondaryColor = club?.SecondaryColor,
-                    Goals = line.Goals
-                })
-                .Take(Math.Max(top, 0))
-                .ToList();
+            return Array.Empty<ScorerRow>();
         }
 
-        var states = await _playerRepository.ListSeasonStatesAsync(seasonId, null, cancellationToken);
-        var goals = states
-            .Where(state => state.Goals > 0)
-            .OrderByDescending(state => state.Goals)
+        // A player who changed clubs inside the season has a line per club, and a scorers list
+        // with the same man on it twice is a list of nobody in particular. He is counted once,
+        // under the club he scored for most — and the games and the cards come off that same
+        // line, so the chain is settled on one club's season rather than on a mixture of two.
+        var byPlayer = lines
+            .GroupBy(line => line.PlayerId)
+            .Select(group => group.OrderByDescending(line => line.Goals).First())
             .ToList();
 
-        var scorers = new List<ScorerRow>(goals.Count);
+        var players = (await _playerRepository.ListAsync(cancellationToken))
+            .Where(player => byPlayer.Any(line => line.PlayerId == player.Id))
+            .ToDictionary(player => player.Id);
+        var clubs = await _teamRepository.ListByIdsAsync(
+            byPlayer.Select(line => line.TeamId), cancellationToken);
+        var clubById = clubs.ToDictionary(club => club.Id);
 
-        foreach (var state in goals)
-        {
-            var player = await _playerRepository.GetAsync(state.PlayerId, cancellationToken);
-            if (player is null)
+        // Ordered by the name before the chain ranks them, because a pair the chain cannot
+        // separate comes back in the order it went in, and a level pair is printed
+        // alphabetically: the names are the last thing a reader has, not a rule that outranks a
+        // season's football.
+        var standings = byPlayer
+            .Where(line => players.ContainsKey(line.PlayerId))
+            .Select(line => ScorerStanding.From(
+                line.PlayerId,
+                line.Goals,
+                line.Appearances,
+                line.YellowCards,
+                line.RedCards,
+                players[line.PlayerId].BirthDate))
+            .OrderBy(line => players[line.PlayerId].Name, StringComparer.Ordinal)
+            .ToList();
+
+        var linesById = byPlayer.ToDictionary(line => line.PlayerId);
+
+        return TopScorerTable.Rank(standings)
+            .Take(Math.Max(top, 0))
+            .Select(line =>
             {
-                continue;
-            }
+                var source = linesById[line.PlayerId];
+                var player = players[line.PlayerId];
+                var club = clubById.GetValueOrDefault(source.TeamId);
 
-            var team = await _teamRepository.GetAsync(state.TeamId, cancellationToken);
-
-            scorers.Add(new ScorerRow
-            {
-                PlayerId = player.Id,
-                PlayerName = player.Name,
-                Age = player.CalculateAge(),
-                TeamId = state.TeamId,
-                TeamName = team?.Name,
-                TeamPrimaryColor = team?.PrimaryColor,
-                TeamSecondaryColor = team?.SecondaryColor,
-                Goals = state.Goals
-            });
-        }
-
-        return scorers.Take(Math.Max(top, 0)).ToList();
+                return new ScorerRow
+                {
+                    PlayerId = line.PlayerId,
+                    PlayerName = player.Name,
+                    Age = player.CalculateAge(),
+                    TeamId = source.TeamId,
+                    TeamName = club?.Name,
+                    TeamPrimaryColor = club?.PrimaryColor,
+                    TeamSecondaryColor = club?.SecondaryColor,
+                    Goals = source.Goals,
+                    Appearances = source.Appearances,
+                    YellowCards = source.YellowCards,
+                    RedCards = source.RedCards,
+                    Position = line.Position,
+                    TiedWith = line.TiedWith
+                };
+            })
+            .ToList();
     }
 }

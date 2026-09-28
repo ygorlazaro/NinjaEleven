@@ -1,7 +1,8 @@
 import React from 'react';
-import type { CupPrizeDto } from '@/types';
+import type { CupPrizeDto, TopScorerPrizeListDto } from '@/types';
 import { formatLimo } from '@/services/limo';
 import CupTrophy from '@/components/Cup/CupTrophy';
+import TopScorerPrizeRows, { formatRate, shareLabel } from '@/components/League/TopScorerPrizeRows';
 
 /**
  * What a cup run is worth, said under the bracket it belongs to.
@@ -27,9 +28,27 @@ import CupTrophy from '@/components/Cup/CupTrophy';
  * falls — five million, ten thousand, three million — and a column with a shape is one a manager
  * reads twice: the finalist's consolation would sit near the bottom with the small money, and the
  * biggest cheque in the competition would have a neighbour a fifth of its size.
+ *
+ * **The artilharia is in the same list, because it is the same question.** A manager asking what
+ * his club is playing for is asking two things and not one: how far the run pays, and what the
+ * three men scoring in it are paid for it. The consolation and the artilharia were two panels, one
+ * under the other, each with its own title and its own idea of what a cup pays — and a screen
+ * that separates them makes a manager read that his cup is worth a champion's purse and stop
+ * there. So the cup says it once: the ladder, and then the three strikers and what each of them
+ * takes home, drawn in the same rows the division's panel draws them in.
+ *
+ * **The artilharia is a share of the cup's own champion's prize**, which is the same five million
+ * the top of this ladder pays and not a share of any division's purse: the cup runs across the
+ * pyramid, so a third-division forward at the top of its scoring is paid exactly what a
+ * first-division one is paid. It is also money on top rather than a slice of the champion's
+ * cheque — a club that wins the cup with its own top scorer on the sheet is paid the title and
+ * the artilharia, because those are two things it did.
  */
-const CupPrizeLegend: React.FC<{ prizes: CupPrizeDto[] }> = ({ prizes }) => {
-  if (prizes.length === 0) return null;
+const CupPrizeLegend: React.FC<{
+  prizes: CupPrizeDto[];
+  scorerPrize?: TopScorerPrizeListDto | null;
+}> = ({ prizes, scorerPrize }) => {
+  if (prizes.length === 0 && !scorerPrize) return null;
 
   return (
     <div className="prize-legend cup-prize-legend">
@@ -38,25 +57,46 @@ const CupPrizeLegend: React.FC<{ prizes: CupPrizeDto[] }> = ({ prizes }) => {
         A copa paga na saída: quem é eliminado leva a cota da fase em que caiu, e quem ganha leva
         o prêmio do título.
       </p>
-      <div className="cup-prize-legend__rows">
-        {byAmount(prizes).map(prize => (
-          <div
-            key={`${prize.tieRound}-${prize.isChampion}`}
-            className={`prize-legend__row ${prize.isChampion ? 'prize-legend__row--champion' : ''}`}
-          >
-            <span className="prize-legend__position">
-              {prize.isChampion ? (
-                <>
-                  <CupTrophy size={15} /> Campeão
-                </>
-              ) : (
-                `Eliminado em ${roundNameOf(prize)}`
-              )}
-            </span>
-            <span className="prize-legend__amount">{formatLimo(prize.amount)}</span>
-          </div>
-        ))}
-      </div>
+      {prizes.length > 0 && (
+        <div className="cup-prize-legend__rows">
+          {byAmount(prizes).map(prize => (
+            <div
+              key={`${prize.tieRound}-${prize.isChampion}`}
+              className={`prize-legend__row ${prize.isChampion ? 'prize-legend__row--champion' : ''}`}
+            >
+              <span className="prize-legend__position">
+                {prize.isChampion ? (
+                  <>
+                    <CupTrophy size={15} /> Campeão
+                  </>
+                ) : (
+                  `Eliminado em ${roundNameOf(prize)}`
+                )}
+              </span>
+              <span className="prize-legend__amount">{formatLimo(prize.amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {scorerPrize && (
+        <div className="cup-prize-legend__artilharia">
+          <h4 className="prize-legend__subtitle">Artilharia — {scorerPrize.competitionName}</h4>
+          <p className="prize-legend__hint">
+            Cada artilheiro da copa leva uma parte do prêmio do campeão da copa, que é de{' '}
+            <b>{formatLimo(scorerPrize.baseAmount ?? 0)}</b>:{' '}
+            {scorerPrize.rates.map((share, index) => (
+              <span key={share.place}>
+                {index > 0 && ' • '}
+                {shareLabel(share.place)} {formatRate(share.rate)}
+              </span>
+            ))}
+            . É dinheiro a mais: não sai do prêmio do campeão, e um clube que ganha a copa
+            tendo o artilheiro dela leva os dois prêmios.
+          </p>
+          <TopScorerPrizeRows prize={scorerPrize} />
+        </div>
+      )}
     </div>
   );
 };

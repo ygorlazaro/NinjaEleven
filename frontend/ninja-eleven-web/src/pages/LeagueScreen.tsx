@@ -9,7 +9,8 @@ import type {
   MatchdayReportDto,
   RoundDto,
   SeasonDto,
-  TeamDto
+  TeamDto,
+  TopScorerPrizeListDto
 } from '@/types';
 import { divisionsOf } from '@/types';
 import StandingsTable from '@/components/League/StandingsTable';
@@ -18,6 +19,7 @@ import ScorersList from '@/components/League/ScorersList';
 import MatchdayReportPanel from '@/components/League/MatchdayReportPanel';
 import PrizeLegend from '@/components/League/PrizeLegend';
 import DivisionTrophy from '@/components/League/DivisionTrophy';
+import TopScorerPrizePanel from '@/components/League/TopScorerPrizePanel';
 
 const isScheduled = (f: FixtureDto) => f.status === 'Scheduled';
 const involves = (f: FixtureDto, teamId?: string) =>
@@ -53,6 +55,10 @@ const LeagueScreen: React.FC = () => {
   // than a fact about this season, so it is asked for once and it does not change with the
   // filters: a manager reading his ninth place wants to know what ninth place is worth.
   const [purses, setPurses] = useState<DivisionPurseDto[]>([]);
+  // The artilharia of the division on screen, which is not the same number everywhere: each
+  // division's three top scorers are paid a share of that division's own title, so the panel
+  // follows the dropdown rather than being read once for the pyramid.
+  const [scorerPrize, setScorerPrize] = useState<TopScorerPrizeListDto | null>(null);
 
   // The round the manager is in is the first one that still has a fixture nobody
   // played. Rounds are not gated by the calendar: they simply follow the results.
@@ -66,15 +72,20 @@ const LeagueScreen: React.FC = () => {
 
   const refresh = useCallback(
     async (competitionSeasonId: string, seasonId: string) => {
-      const [fixtureData, standingData, scorerData] = await Promise.all([
+      // The artilharia is asked of the division being shown, so the money under the table is the
+      // money of that table. A prize panel that did not follow the dropdown would be paying a
+      // third-division striker a first-division cheque on the first division's page.
+      const [fixtureData, standingData, scorerData, prizeData] = await Promise.all([
         FixtureApi.list(),
         LeagueApi.getStandings(competitionSeasonId),
         LeagueApi.getScorers(seasonId),
+        CompetitionApi.getTopScorerPrizes(competitionSeasonId).catch(() => null),
       ]);
 
       setAllFixtures(fixtureData);
       setStandings(standingData);
       setScorers(scorerData);
+      setScorerPrize(prizeData);
     },
     [setStandings, setScorers]
   );
@@ -404,6 +415,10 @@ const LeagueScreen: React.FC = () => {
               userId={selectedTeam?.id}
               onSelect={openFixture}
             />
+          </div>
+
+          <div className="league-panel">
+            <TopScorerPrizePanel prize={scorerPrize} />
           </div>
 
           <div className="league-panel">

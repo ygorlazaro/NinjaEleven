@@ -76,4 +76,19 @@ public interface IPlayerRepository
         Guid seasonId,
         CompetitionType? competitionType = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One edition's goals by player, from the match lines, across every club in it.
+    /// </summary>
+    /// <remarks>
+    /// The edition and not the kind of competition, because the championship is three editions of
+    /// one kind. A season's list restricted to "League" counts all three divisions at once, which
+    /// is a chart of the country and not a division's artilharia: a first-division prize list
+    /// counted that way would be topped by a third-division striker and then paid out of the
+    /// first division's title money.
+    /// </remarks>
+    /// <param name="competitionSeasonId">The edition the goals are of: a division, or the cup.</param>
+    Task<IReadOnlyList<ClubScorerLine>> ListEditionScorerLinesAsync(
+        Guid competitionSeasonId,
+        CancellationToken cancellationToken = default);
 }

@@ -14,11 +14,16 @@ public class CompetitionController : ControllerBase
 {
     private readonly CompetitionService _competitionService;
     private readonly CupBracketService _cupBracketService;
+    private readonly ScorerPrizeService _scorerPrizeService;
 
-    public CompetitionController(CompetitionService competitionService, CupBracketService cupBracketService)
+    public CompetitionController(
+        CompetitionService competitionService,
+        CupBracketService cupBracketService,
+        ScorerPrizeService scorerPrizeService)
     {
         _competitionService = competitionService;
         _cupBracketService = cupBracketService;
+        _scorerPrizeService = scorerPrizeService;
     }
 
     /// <summary>
@@ -43,6 +48,32 @@ public class CompetitionController : ControllerBase
         }
 
         return Ok(bracket.ToDto());
+    }
+
+    /// <summary>
+    /// What one edition pays its artilharia, and who is holding the three places.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The edition is the address rather than the season, because a season's championship is
+    /// three editions: one artilharia per division, each paid a share of its own division's
+    /// title, and a season-wide answer would be a list of the whole country's top scorers with
+    /// no way to say which title pays which of them.
+    /// </para>
+    /// <para>
+    /// A cup is one edition and has no purse of its own, so each of its three scorers is paid a
+    /// share of the title of the division his club is in, and each line says whose title that
+    /// was. The shares come back whether or not anybody has scored yet: a legend of a prize that
+    /// has not been won is still the rule a manager is reading.
+    /// </para>
+    /// </remarks>
+    [HttpGet("{competitionSeasonId:guid}/top-scorer-prize")]
+    public async Task<ActionResult<TopScorerPrizeListDto>> GetTopScorerPrize(
+        Guid competitionSeasonId,
+        CancellationToken cancellationToken)
+    {
+        var prizes = await _scorerPrizeService.GetAsync(competitionSeasonId, cancellationToken);
+        return Ok(prizes.ToDto());
     }
 
     [HttpGet]

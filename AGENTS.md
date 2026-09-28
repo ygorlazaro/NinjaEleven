@@ -98,6 +98,8 @@ POST /season                                GET  /league/scorer/{seasonId}?topN=
 GET  /player/{id}/profile?seasonId=
 
 GET  /team/{teamId}/scorer?seasonId=&competition=&topN=
+
+GET  /competition/{editionId}/top-scorer-prize
 ```
 
 Domain errors return RFC 7807 with a stable `code` (e.g. `TeamNotFound`,
@@ -440,10 +442,63 @@ three filters it answers are all decided by the backend:
   only the men under contract would quietly rewrite the club's history every time a window
   opened. The flag is what the client's "Ainda no clube" box filters on, so the answer is the
   whole list and the question is asked on top of it.
-- **The order is goals, then the fewest games for them, then the name.** Eight in ten and
-  eight in twenty are not the same striker, and `GoalsPerAppearance` is worked out in the
-  service for the same reason every other number is: a rate the client invents is a rate two
-  clients may invent differently. A player who never appeared is given `null` and not zero.
+- **The order is goals, then the fewest games for them, then the fewest cards, then the
+  oldest.** Eight in ten and eight in twenty are not the same striker, and `GoalsPerAppearance`
+  is worked out in the service for the same reason every other number is: a rate the client
+  invents is a rate two clients may invent differently. A player who never appeared is given
+  `null` and not zero. The name is what a level pair is *printed* in and is not a rule that
+  outranks a season's football.
+- **The whole chain is `TopScorerTable.Rank`, and it is the chain every scorers list in the
+  game is settled on** — the club's own page, a division's artilharia and the cup's. A yellow
+  card is worth one point and a red is worth three (`ScorerStanding`), because the count is
+  about who was on the pitch most and a red is what takes a man off it.
+- **A pair level on the whole chain shares its place, and the place below it is paid to
+  nobody.** Two men level on goals, games, cards and age are both second; both take the second
+  prize; the third prize goes unwarded. There is no fifth rule to break a tie nobody can break,
+  and a coin, a name or the order the rows came out of the database would each pay two equally
+  good strikers different money for saying the same thing. The row carries `TiedWith` so a
+  screen can say "empatado" rather than invent an order.
+- **The season-wide chart is counted from the match lines, not from the season's own counters.**
+  The counters carry goals and nothing else, so an artilharia ordered without games and cards
+  would be a table of the whole country ranked by different rules from the ones its prizes are
+  paid on.
+
+## The Prize of the Artilharia
+
+`GET /competition/{editionId}/top-scorer-prize` is what one edition pays its top three scorers,
+and who holds each place. It is asked of an **edition** and not of a season because a season's
+championship is three editions with three tables and three purses.
+
+- **It is a share of the champion's own prize: 10%, 5% and 3%** (`PrizeRules.TopScorerRate`,
+  spent through `TopScorerShareOf`). The base is the title rather than the whole purse, so the
+  pyramid scales: the first division's top striker is paid a share of a title worth millions,
+  the third's a share of a much smaller one, and the two are read in the same words.
+- **The base is the title of the competition the goals were scored in**, which is the whole
+  rule for a cup: the cup's artilharia is a share of the cup's own champion's prize
+  (`PrizeRules.CupChampionPrize`), so all three of its places are shares of one purse and a
+  third-division forward who tops the cup's scoring is paid exactly what a first-division one
+  is paid. Reading a cup striker's share out of his own club's division would price the same
+  goals three different ways according to the shirt he happened to be wearing, and it would make
+  a cup whose artilharia is worth something a rule about divisions wearing the words of a rule
+  about a cup. An edition that is neither a division nor a cup has no title, so it has no
+  artilharia to price, and its rows carry `amount: null` rather than a number the service made up.
+- **The shares are new money, not a slice of anybody's cheque.** The title is the measure of
+  the prize and nothing else: a club that wins a competition and whose striker wins its
+  artilharia is paid twice, and a club can take two of the three prizes in the same table —
+  two men scoring is two things the club did.
+- **It is paid when the edition is over, not when the season is**
+  (`ScorerPrizeService.PayAsync`, called from `MatchdayService` as each window closes). A window
+  closing is the only moment the world knows a competition is finished — a division's last
+  matchday, the cup's final going to penalties — and a season close pays out everything at once,
+  which would leave a club waiting months for a cheque for a cup it had already won. So the
+  first division finishing its season while the third is two matchdays short pays its own
+  artilharia and the third's stays unwon, which is why it is per competition and not per season.
+  The reference is `artilharia:{editionId}:{playerId}` — keyed by the player rather than the
+  place, so a table that moved between two calls cannot pay the second place's money to a man who
+  was not there the first time, and so a window closed twice (once by its last match, once by a
+  process that was down over the weekend) pays once. The Supercup is not on the list: it
+  is one match, and an artilharia of one evening would be a striker's single goal paid a
+  season's first prize.
 
 ## Faces
 

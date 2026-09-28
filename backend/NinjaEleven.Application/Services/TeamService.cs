@@ -1,6 +1,7 @@
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
+using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Teams;
 
@@ -170,6 +171,7 @@ public class TeamService
         var live = await _teamRepository.GetLiveContractsAsync(teamId, cancellationToken);
         var stillHere = live.Select(membership => membership.PlayerId).ToHashSet();
         var scorers = new List<ClubScorerRow>(lines.Count);
+        var bornOn = new Dictionary<Guid, DateOnly>();
 
         foreach (var line in lines)
         {
@@ -179,6 +181,7 @@ public class TeamService
                 continue;
             }
 
+            bornOn[player.Id] = player.BirthDate;
             scorers.Add(new ClubScorerRow
             {
                 PlayerId = player.Id,
@@ -188,27 +191,47 @@ public class TeamService
                 OwnGoals = line.OwnGoals,
                 Started = line.Started,
                 CameOn = line.CameOn,
+                YellowCards = line.YellowCards,
+                RedCards = line.RedCards,
                 IsStillAtClub = stillHere.Contains(player.Id)
             });
         }
 
-        var ordered = scorers
-            .OrderByDescending(row => row.Goals)
-            .ThenBy(row => row.Started + row.CameOn)
-            .ThenBy(row => row.PlayerName, StringComparer.Ordinal)
-            .Take(ScorerRules.Clamp(topN))
+        // The chain is the domain's and the same one a division's or the cup's artilharia is
+        // settled on: goals, then fewest games, then fewest cards by weight, then oldest. The
+        // club's own list is not a different competition with a different order — a striker who
+        // is level on goals with a team-mate is level with him for the same reasons on the club's
+        // page as he is on the league's.
+        //
+        // The name is the print order of a pair the chain could not separate, and nothing more:
+        // the positions come off the chain, so two men level on the whole of it are both first
+        // rather than being told apart by the alphabet.
+        var byId = scorers.ToDictionary(row => row.PlayerId);
+        var standings = scorers
+            .OrderBy(row => row.PlayerName, StringComparer.Ordinal)
+            .Select(row => ScorerStanding.From(
+                row.PlayerId,
+                row.Goals,
+                row.Started + row.CameOn,
+                row.YellowCards,
+                row.RedCards,
+                bornOn.TryGetValue(row.PlayerId, out var birth) ? birth : null))
             .ToList();
 
-        for (var index = 0; index < ordered.Count; index++)
-        {
-            var row = ordered[index];
-            var appearances = row.Started + row.CameOn;
+        var ordered = TopScorerTable.Rank(standings)
+            .Take(ScorerRules.Clamp(topN))
+            .Select(line =>
+            {
+                var row = byId[line.PlayerId];
+                row.Position = line.Position;
+                row.TiedWith = line.TiedWith;
+                row.GoalsPerAppearance = row.Started + row.CameOn > 0
+                    ? Math.Round((double)row.Goals / (row.Started + row.CameOn), 2)
+                    : null;
 
-            row.Position = index + 1;
-            row.GoalsPerAppearance = appearances > 0
-                ? Math.Round((double)row.Goals / appearances, 2)
-                : null;
-        }
+                return row;
+            })
+            .ToList();
 
         return ordered;
     }

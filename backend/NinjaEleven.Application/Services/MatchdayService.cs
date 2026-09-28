@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Competitions;
@@ -48,7 +49,9 @@ public class MatchdayService
     private readonly IFixtureRepository _fixtureRepository;
     private readonly ICompetitionRepository _competitionRepository;
     private readonly IMatchRepository _matchRepository;
+    private readonly ScorerPrizeService _scorerPrizes;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ILogger<MatchdayService> _logger;
 
     /// <summary>
     /// The seam that starts a fixture, so this service can start a wave without knowing how
@@ -74,14 +77,18 @@ public class MatchdayService
         IFixtureRepository fixtureRepository,
         ICompetitionRepository competitionRepository,
         IMatchRepository matchRepository,
-        IUnitOfWork unitOfWork)
+        ScorerPrizeService scorerPrizes,
+        IUnitOfWork unitOfWork,
+        ILogger<MatchdayService> logger)
     {
         _matchDayRepository = matchDayRepository;
         _roundRepository = roundRepository;
         _fixtureRepository = fixtureRepository;
         _competitionRepository = competitionRepository;
         _matchRepository = matchRepository;
+        _scorerPrizes = scorerPrizes;
         _unitOfWork = unitOfWork;
+        _logger = logger;
     }
 
     /// <summary>
@@ -375,6 +382,7 @@ public class MatchdayService
         CancellationToken cancellationToken)
     {
         var closed = false;
+        var justClosed = new List<Round>();
 
         foreach (var window in rounds.Where(item => !item.IsCompleted))
         {
@@ -390,13 +398,85 @@ public class MatchdayService
 
             window.Complete();
             _roundRepository.Update(window);
+            justClosed.Add(window);
             closed = true;
         }
 
-        if (closed)
+        if (!closed)
         {
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return;
         }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await PayTheArtilleriasThatWereWonAsync(justClosed, cancellationToken);
+    }
+
+    /// <summary>
+    /// Pays the artilharia of every edition whose football is now all played, and of no other.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A window closing is the only moment the world knows a competition is over: a division's
+    /// last matchday, the cup's final going to penalties. So the artilharia is paid there rather
+    /// than at the season close, which would hold a cup that was decided in June until
+    /// December. It is asked of the editions whose window just closed, and only of those whose
+    /// every window is now closed — the first division finishing its season while the third is
+    /// two matchdays short pays its own artilharia and the third's stays unwon, which is the
+    /// whole point of paying it per competition instead of per season.
+    /// </para>
+    /// <para>
+    /// The Supercup is not on the list: it is one match, and an artilharia of one evening would
+    /// be a striker's single goal paid a season's prize. A prize that cannot be paid is not
+    /// allowed to take the money down with it either — a failure here is logged and the season
+    /// goes on, because a ledger line that is written wrong is repairable and a calendar that
+    /// will not close because of it is not.
+    /// </para>
+    /// </remarks>
+    private async Task PayTheArtilleriasThatWereWonAsync(
+        IReadOnlyCollection<Round> justClosed,
+        CancellationToken cancellationToken)
+    {
+        var editions = justClosed
+            .Select(window => window.CompetitionSeasonId)
+            .Distinct()
+            .ToList();
+
+        foreach (var editionId in editions)
+        {
+            try
+            {
+                if (await IsTheEditionOverAsync(editionId, cancellationToken))
+                {
+                    await _scorerPrizes.PayAsync(editionId, cancellationToken);
+                }
+            }
+            catch (Exception error)
+            {
+                _logger.LogError(
+                    error,
+                    "Could not pay the artilharia of edition {EditionId} whose last window just closed. The prize is keyed by player, so asking again pays it once.",
+                    editionId);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether an edition has played all of its football: every window of it is closed, and it
+    /// runs an artilharia at all.
+    /// </summary>
+    private async Task<bool> IsTheEditionOverAsync(
+        Guid competitionSeasonId,
+        CancellationToken cancellationToken)
+    {
+        var view = await _competitionRepository.GetSeasonViewByIdAsync(competitionSeasonId, cancellationToken);
+        if (view is null || view.Type is not (CompetitionType.League or CompetitionType.Cup))
+        {
+            return false;
+        }
+
+        var windows = await _roundRepository.ListByCompetitionSeasonAsync(competitionSeasonId, cancellationToken);
+
+        return windows.Count > 0 && windows.All(window => window.IsCompleted);
     }
 
     /// <summary>

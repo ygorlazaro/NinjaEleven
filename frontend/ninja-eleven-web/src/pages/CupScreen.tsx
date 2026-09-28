@@ -2,7 +2,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CompetitionApi, LeagueApi, SeasonApi } from '@/api';
 import { useGameState } from '@/state';
-import type { CompetitionEditionDto, CupBracketDto, CupPrizeDto, ScorerDto, SeasonDto } from '@/types';
+import type {
+  CompetitionEditionDto,
+  CupBracketDto,
+  CupPrizeDto,
+  ScorerDto,
+  SeasonDto,
+  TopScorerPrizeListDto
+} from '@/types';
 import CupBracket from '@/components/Cup/CupBracket';
 import CupPrizeLegend from '@/components/Cup/CupPrizeLegend';
 import CupTrophy from '@/components/Cup/CupTrophy';
@@ -38,6 +45,10 @@ const CupScreen: React.FC = () => {
   // reading him off the league. The pool is the size the list needs so that the manager's own
   // players are in it whatever their position in the cup's fifteen.
   const [cupScorers, setCupScorers] = useState<ScorerDto[]>([]);
+  // The cup's artilharia. Unlike the consolation ladder above it, this is a fact of the season
+  // and it does follow the filter: the three men being paid are the three of this cup, and the
+  // amount each is paid is a share of the title of the division his own club is in.
+  const [scorerPrize, setScorerPrize] = useState<TopScorerPrizeListDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -60,13 +71,15 @@ const CupScreen: React.FC = () => {
 
       setEdition(cup);
 
-      const [bracketData, scorerData] = await Promise.all([
+      const [bracketData, scorerData, prizeData] = await Promise.all([
         CompetitionApi.getBracket(cup.id),
-        LeagueApi.getScorers(seasonId, 250, 'Cup')
+        LeagueApi.getScorers(seasonId, 250, 'Cup'),
+        CompetitionApi.getTopScorerPrizes(cup.id).catch(() => null)
       ]);
 
       setBracket(bracketData);
       setCupScorers(scorerData);
+      setScorerPrize(prizeData);
     } catch (err: any) {
       const code = err?.response?.data?.code;
       setError(code ? `Erro ao carregar a copa (${code}).` : 'Erro ao carregar a copa.');
@@ -167,7 +180,7 @@ const CupScreen: React.FC = () => {
               the two questions a manager opens a knockout screen with. */}
           <div className="cup-top-grid">
             <div className="cup-prize-legend">
-              <CupPrizeLegend prizes={cupPrizes} />
+              <CupPrizeLegend prizes={cupPrizes} scorerPrize={scorerPrize} />
             </div>
             <div className="league-panel">
               <h3 className="cup-screen__panel-title"><CupTrophy size={16} /> Artilheiros da Copa</h3>
@@ -176,6 +189,7 @@ const CupScreen: React.FC = () => {
                 userTeamId={selectedTeam?.id}
                 userTeamName={selectedTeam?.name}
                 emptyMessage="Ainda não há gols na copa."
+                allLabel="Copa"
               />
             </div>
           </div>
