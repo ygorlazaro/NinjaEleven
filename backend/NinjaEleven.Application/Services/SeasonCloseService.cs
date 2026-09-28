@@ -73,6 +73,7 @@ public class SeasonCloseService
     private readonly StandingsService _standings;
     private readonly SeasonCalendarService _calendar;
     private readonly FinanceService _finance;
+    private readonly IDataSeeder _seeder;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<SeasonCloseService> _logger;
 
@@ -88,6 +89,7 @@ public class SeasonCloseService
         StandingsService standings,
         SeasonCalendarService calendar,
         FinanceService finance,
+        IDataSeeder seeder,
         IUnitOfWork unitOfWork,
         ILogger<SeasonCloseService> logger)
     {
@@ -102,6 +104,7 @@ public class SeasonCloseService
         _standings = standings;
         _calendar = calendar;
         _finance = finance;
+        _seeder = seeder;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -327,6 +330,11 @@ public class SeasonCloseService
         // the club closed the last one with and not a copy of a book that is still being
         // written.
         await _finance.CarryBalancesIntoSeasonAsync(previous.Id, season.Id, cancellationToken);
+
+        // The retiring players have left the pitch for the last time; the youngsters they
+        // are replaced by arrive as free agents on the market, unattached until a club signs
+        // them — just like any other free agent.
+        await _seeder.GenerateYoungPlayersAsync(season.Id, cancellationToken);
 
         _logger.LogInformation(
             "Opened season {Number} ({Name}) from {Previous}.",

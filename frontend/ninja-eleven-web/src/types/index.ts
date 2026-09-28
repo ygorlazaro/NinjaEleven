@@ -20,7 +20,8 @@ export interface PlayerSeasonStateDto {
   id: Guid;
   playerId: Guid;
   seasonId: Guid;
-  teamId: Guid;
+  /** Null for a free agent. */
+  teamId?: Guid | null;
   energy: number;
   goals: number;
   yellowCards: number;
@@ -74,7 +75,10 @@ export interface SquadPlayerDto {
   isInLastSeason: boolean;
 
   isAvailable: boolean;
-  teamId: Guid;
+  /** Whether the player has declared he will retire at the end of the season. */
+  retiring: boolean;
+  /** Null for a free agent: a player with no club is available to anyone. */
+  teamId?: Guid | null;
   seasonId: Guid;
 }
 
@@ -110,6 +114,105 @@ export interface CompetitionDto {
   id: Guid;
   name: string;
   type: string;
+}
+
+export type TransferStatus = 'Pending' | 'Accepted' | 'Rejected' | 'Completed' | 'Expired';
+
+export interface TransferListingDto {
+  playerId: Guid;
+  name: string;
+  position: string;
+  age: number;
+  speed: number;
+  accuracy: number;
+  dribbling: number;
+  heading: number;
+  strength: number;
+  goalkeeperPower: number;
+  reflexes: number;
+  stars: number;
+  teamId?: Guid | null;
+  teamName?: string | null;
+  teamPrimaryColor?: string | null;
+  teamSecondaryColor?: string | null;
+  energy: number;
+  injury: string;
+  injuryMatchesRemaining: number;
+  retiring: boolean;
+  marketValue?: number | null;
+  salary?: number | null;
+  contractSeasons: number;
+  seasonsLeft: number;
+  isInLastSeason: boolean;
+  askingPrice?: number | null;
+  season: PlayerCareerLineDto;
+  total: PlayerCareerLineDto;
+}
+
+export interface TransferProposalDto {
+  transferId: Guid;
+  playerId: Guid;
+  playerName: string;
+  playerPosition: string;
+  playerAge: number;
+  sellingClubId: Guid;
+  sellingClubName: string;
+  buyingClubId: Guid;
+  buyingClubName: string;
+  proposalSeasonNumber: number;
+  arrivalSeasonNumber: number;
+  fee: number;
+  status: TransferStatus;
+  proposedAt: string;
+  resolvedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export interface TransferInboxDto {
+  clubId: Guid;
+  clubName: string;
+  proposalSeasonNumber: number;
+  incoming: TransferProposalDto[];
+  outgoing: TransferProposalDto[];
+}
+
+export interface TransferSearchResultDto {
+  players: TransferListingDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface TransferHistoryLineDto {
+  playerId: Guid;
+  sellingClubId: Guid;
+  sellingClubName: string;
+  buyingClubId: Guid;
+  buyingClubName: string;
+  fee: number;
+  status: TransferStatus;
+  proposedAt: string;
+  resolvedAt?: string | null;
+  completedAt?: string | null;
+  proposalSeasonNumber: number;
+  arrivalSeasonNumber: number;
+}
+
+export interface ReleaseResultDto {
+  playerId: Guid;
+  playerName: string;
+  clubId: Guid;
+  clubName: string;
+  releaseCost: number;
+  message: string;
+}
+
+export interface NpcTransferResultDto {
+  proposalsMade: number;
+  accepted: number;
+  rejected: number;
+  completed: number;
 }
 
 /**

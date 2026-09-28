@@ -1,13 +1,14 @@
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
+using NinjaEleven.Domain.Finance;
 using NinjaEleven.Domain.Managers;
 using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Sponsors;
 using NinjaEleven.Domain.Teams;
+using NinjaEleven.Domain.Transfers;
 using Microsoft.EntityFrameworkCore;
-using NinjaEleven.Domain.Finance;
 
 namespace NinjaEleven.Infrastructure.Persistence;
 
@@ -26,6 +27,7 @@ public class NinjaElevenDbContext : DbContext
     public DbSet<TeamMembership> TeamMemberships => Set<TeamMembership>();
     public DbSet<Stadium> Stadiums => Set<Stadium>();
     public DbSet<FinanceMovement> FinanceMovements => Set<FinanceMovement>();
+    public DbSet<Transfer> Transfers => Set<Transfer>();
     public DbSet<Sponsor> Sponsors => Set<Sponsor>();
     public DbSet<SponsorContract> SponsorContracts => Set<SponsorContract>();
     public DbSet<Manager> Managers => Set<Manager>();

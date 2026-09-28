@@ -85,6 +85,15 @@ public interface IMatchRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The matchdays of a season, in order. A transfer window is measured against the
+    /// calendar, and the calendar is the matchdays — so the round a transfer is proposed in
+    /// is read off the number of the day a match was played on.
+    /// </summary>
+    Task<IReadOnlyList<Domain.Competitions.MatchDay>> GetMatchDaysAsync(
+        Guid seasonId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// A player's whole match history with each match already resolved — opponent, score
     /// and round — because a history that has to be assembled row by row is a history that
     /// takes a hundred queries to draw.

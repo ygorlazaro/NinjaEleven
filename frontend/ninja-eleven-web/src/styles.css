@@ -2362,3 +2362,86 @@ button { cursor: pointer; }
 
 /* Stars column styling */
 .stars-col { color: var(--accent); font-weight: 700; }
+
+/* Transfer market screen */
+.transfer-screen { padding: 16px; }
+.transfer-header { display: flex; align-items: center; gap: 24px; margin-bottom: 24px; flex-wrap: wrap; }
+.transfer-header h2 { margin: 0; }
+.transfer-season { display: flex; align-items: center; gap: 8px; }
+.transfer-seasons select { max-width: 240px; }
+.transfer-window-closed { color: var(--red); font-weight: 700; margin: 0; }
+
+.transfer-search-section { margin-bottom: 32px; }
+.transfer-search-section h3 { margin-top: 0; }
+.transfer-filters { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.transfer-filter-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.transfer-filter-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+
+.transfer-table { width: 100%; border-collapse: collapse; }
+.transfer-table th, .transfer-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); text-align: right; }
+.transfer-table th { text-align: center; color: var(--muted); font-size: 13px; cursor: pointer; user-select: none; }
+.transfer-table th.squad-name, .transfer-table td.squad-name { text-align: left; }
+.transfer-table td.num { font-variant-numeric: tabular-nums; }
+.transfer-table td.money { font-variant-numeric: tabular-nums; }
+.transfer-table td.accent { color: var(--accent); font-weight: 700; }
+.transfer-table td.contract-cell { font-variant-numeric: tabular-nums; }
+
+.transfer-player-row { cursor: pointer; transition: background-color 0.15s; }
+.transfer-player-row:hover { background: rgba(255,255,255,0.03); }
+
+.transfer-empty { color: var(--muted); padding: 24px; text-align: center; }
+
+.retiring-mark { margin-left: 6px; color: var(--orange); font-size: 14px; }
+
+.free-agent { color: var(--orange); font-style: italic; }
+
+.transfer-inbox-section { margin-top: 32px; }
+.transfer-inbox-section h3 { margin-bottom: 8px; }
+.transfer-inbox-section h4 { margin-top: 24px; margin-bottom: 8px; color: var(--muted); }
+
+.transfer-history-section { margin-top: 32px; }
+
+.proposal-row td { vertical-align: middle; }
+.status-pending { opacity: 0.7; }
+.status-accepted { }
+.status-rejected { opacity: 0.5; }
+.status-completed { }
+.status-expired { opacity: 0.4; }
+
+.status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.status-pending .status-badge, .status-pending .status-badge { background: rgba(255,193,7,0.2); color: var(--orange); }
+.status-badge.status-pending { background: rgba(255,193,7,0.15); color: var(--orange); border: 1px solid var(--orange); }
+.status-badge.status-accepted { background: rgba(76,175,80,0.15); color: var(--green); border: 1px solid var(--green); }
+.status-badge.status-rejected { background: rgba(244,67,54,0.15); color: var(--red); border: 1px solid var(--red); }
+.status-badge.status-completed { background: rgba(33,150,243,0.15); color: #4fc3f7; border: 1px solid #4fc3f7; }
+.status-badge.status-expired { background: rgba(158,158,158,0.15); color: var(--muted); border: 1px solid var(--muted); }
+
+/* Proposal action buttons */
+.btn-sm { padding: 4px 10px; font-size: 13px; border-radius: 4px; }
+.btn-sm.accept { background: rgba(76,175,80,0.2); border-color: var(--green); color: var(--green); }
+.btn-sm.reject { background: rgba(244,67,54,0.2); border-color: var(--red); color: var(--red); }
+
+/* Transfer detail view */
+.transfer-detail { padding: 16px; }
+.transfer-detail__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.transfer-detail__head h3 { margin: 0; }
+.transfer-detail__close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--muted); }
+
+.transfer-detail__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.transfer-detail__section { }
+.transfer-detail__section-title { margin-top: 0; margin-bottom: 12px; font-size: 14px; color: var(--muted); }
+.transfer-detail__kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
+.transfer-detail__k { color: var(--muted); font-size: 13px; }
+.transfer-detail__v { font-size: 14px; }
+.transfer-detail__v.accent { color: var(--accent); font-weight: 700; }
+.transfer-detail__v.retiring { color: var(--orange); font-weight: 700; }
+
+.transfer-detail__actions { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 16px; }
+.transfer-error { color: var(--red); }
+.transfer-success { color: var(--green); }
+
+.transfer-offer { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.transfer-offer__label { font-size: 14px; color: var(--muted); }
+.transfer-offer__input { width: 120px; }
+.transfer-offer__currency { font-size: 14px; color: var(--muted); }
+.transfer-offer__button { border-radius: 6px; }

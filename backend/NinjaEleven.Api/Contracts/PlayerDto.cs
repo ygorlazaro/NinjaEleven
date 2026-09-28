@@ -25,7 +25,7 @@ public class PlayerSeasonStateDto
     public Guid Id { get; init; }
     public Guid PlayerId { get; init; }
     public Guid SeasonId { get; init; }
-    public Guid TeamId { get; init; }
+    public Guid? TeamId { get; init; }
     public int Energy { get; init; }
     public int Goals { get; init; }
     public int YellowCards { get; init; }
@@ -98,7 +98,8 @@ public class SquadPlayerDto
     public decimal AskingPrice { get; init; }
 
     public bool IsAvailable { get; init; }
-    public Guid TeamId { get; init; }
+    public bool Retiring { get; init; }
+    public Guid? TeamId { get; init; }
     public Guid SeasonId { get; init; }
 }
 

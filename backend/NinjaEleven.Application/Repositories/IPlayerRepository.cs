@@ -91,4 +91,20 @@ public interface IPlayerRepository
     Task<IReadOnlyList<ClubScorerLine>> ListEditionScorerLinesAsync(
         Guid competitionSeasonId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every player's season state for one season, each carrying the player's birth date
+    /// so age-dependent rules (retirement, market value, NPC acceptance) are applied in
+    /// one pass rather than per player.
+    /// </summary>
+    Task<IReadOnlyList<PlayerSeasonState>> ListAllSeasonStatesAsync(
+        Guid seasonId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Adds a season state for a player. Used when a transfer moves a player to a new club
+    /// for the arrival season — the player keeps his identity, and a new state is given to
+    /// him for the season he is moving into.
+    /// </summary>
+    Task AddSeasonStateAsync(PlayerSeasonState state, CancellationToken cancellationToken = default);
 }

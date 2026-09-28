@@ -147,6 +147,17 @@ public class MatchdayWaveTests
             NullLogger<FinanceService>.Instance),
         NullLogger<ScorerPrizeService>.Instance);
 
+    private TransferService CreateTransfers() => new(
+        Mock.Of<ITransferRepository>(),
+        _teams.Object,
+        _players.Object,
+        _seasons.Object,
+        _competitions.Object,
+        _matches.Object,
+        _finance.Object,
+        _unitOfWork.Object,
+        NullLogger<TransferService>.Instance);
+
     private MatchdayService CreateService()
     {
         var service = new MatchdayService(
@@ -156,6 +167,7 @@ public class MatchdayWaveTests
             _competitions.Object,
             _matches.Object,
             CreateScorerPrizes(),
+            CreateTransfers(),
             _unitOfWork.Object,
             NullLogger<MatchdayService>.Instance);
 
@@ -244,6 +256,7 @@ public class MatchdayWaveTests
             _competitions.Object,
             _matches.Object,
             CreateScorerPrizes(),
+            CreateTransfers(),
             _unitOfWork.Object,
             NullLogger<MatchdayService>.Instance);
 

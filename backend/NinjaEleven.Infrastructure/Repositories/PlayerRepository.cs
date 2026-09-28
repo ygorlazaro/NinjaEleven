@@ -214,4 +214,18 @@ public class PlayerRepository : IPlayerRepository
             .OrderByDescending(line => line.Goals)
             .ThenBy(line => line.PlayerId)
             .ToList();
+
+    public async Task<IReadOnlyList<PlayerSeasonState>> ListAllSeasonStatesAsync(
+        Guid seasonId,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.PlayerSeasonStates
+            .AsNoTracking()
+            .Where(state => state.SeasonId == seasonId)
+            .OrderBy(state => state.PlayerId)
+            .ToListAsync(cancellationToken);
+
+    public async Task AddSeasonStateAsync(
+        PlayerSeasonState state,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.PlayerSeasonStates.AddAsync(state, cancellationToken);
 }

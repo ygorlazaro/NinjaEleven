@@ -71,6 +71,7 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
     AskingPrice = squadPlayer.AskingPrice,
     Salary = squadPlayer.Salary,
     IsAvailable = squadPlayer.IsAvailable,
+    Retiring = squadPlayer.Retiring,
     TeamId = squadPlayer.SeasonState.TeamId,
     SeasonId = squadPlayer.SeasonState.SeasonId
 };
@@ -915,4 +916,109 @@ public static class TeamMatchRecordMapping
                 IsChampion = prize.IsChampion
             })
             .ToList();
+
+    public static PlayerCareerLineDto ToCareerLineDto(this Application.Models.PlayerCareerLine line) => new()
+    {
+        Appearances = line.Appearances,
+        Started = line.Started,
+        CameOn = line.CameOn,
+        BenchUnused = line.BenchUnused,
+        Goals = line.Goals,
+        OwnGoals = line.OwnGoals,
+        Saves = line.Saves,
+        YellowCards = line.YellowCards,
+        RedCards = line.RedCards,
+        Injuries = line.Injuries,
+        MatchesMissed = line.MatchesMissed
+    };
+
+    public static TransferListingDto ToDto(this Application.Models.TransferListing listing) => new()
+    {
+        PlayerId = listing.PlayerId,
+        Name = listing.Name,
+        Position = listing.Position,
+        Age = listing.Age,
+        Speed = listing.Speed,
+        Accuracy = listing.Accuracy,
+        Dribbling = listing.Dribbling,
+        Heading = listing.Heading,
+        Strength = listing.Strength,
+        GoalkeeperPower = listing.GoalkeeperPower,
+        Reflexes = listing.Reflexes,
+        Stars = listing.Stars,
+        TeamId = listing.TeamId,
+        TeamName = listing.TeamName,
+        TeamPrimaryColor = listing.TeamPrimaryColor,
+        TeamSecondaryColor = listing.TeamSecondaryColor,
+        Energy = listing.Energy,
+        Injury = listing.Injury,
+        InjuryMatchesRemaining = listing.InjuryMatchesRemaining,
+        Retiring = listing.Retiring,
+        MarketValue = listing.MarketValue,
+        Salary = listing.Salary,
+        ContractSeasons = listing.ContractSeasons,
+        SeasonsLeft = listing.SeasonsLeft,
+        IsInLastSeason = listing.IsInLastSeason,
+        AskingPrice = listing.AskingPrice,
+        Season = listing.Season.ToCareerLineDto(),
+        Total = listing.Total.ToCareerLineDto()
+    };
+
+    public static TransferProposalDto ToDto(this Application.Models.TransferProposal proposal) => new()
+    {
+        TransferId = proposal.TransferId,
+        PlayerId = proposal.PlayerId,
+        PlayerName = proposal.PlayerName,
+        PlayerPosition = proposal.PlayerPosition,
+        PlayerAge = proposal.PlayerAge,
+        SellingClubId = proposal.SellingClubId,
+        SellingClubName = proposal.SellingClubName,
+        BuyingClubId = proposal.BuyingClubId,
+        BuyingClubName = proposal.BuyingClubName,
+        ProposalSeasonNumber = proposal.ProposalSeasonNumber,
+        ArrivalSeasonNumber = proposal.ArrivalSeasonNumber,
+        Fee = proposal.Fee,
+        Status = proposal.Status,
+        ProposedAt = proposal.ProposedAt,
+        ResolvedAt = proposal.ResolvedAt,
+        CompletedAt = proposal.CompletedAt
+    };
+
+    public static TransferInboxDto ToDto(this Application.Models.TransferInbox inbox) => new()
+    {
+        ClubId = inbox.ClubId,
+        ClubName = inbox.ClubName,
+        ProposalSeasonNumber = inbox.ProposalSeasonNumber,
+        Incoming = inbox.Incoming.Select(p => p.ToDto()).ToArray(),
+        Outgoing = inbox.Outgoing.Select(p => p.ToDto()).ToArray()
+    };
+
+    public static TransferSearchResultDto ToDto(this Application.Models.TransferSearchResult result) => new()
+    {
+        Players = result.Players.Select(p => p.ToDto()).ToArray(),
+        Total = result.Total,
+        Page = result.Page,
+        PageSize = result.PageSize,
+        TotalPages = result.TotalPages
+    };
+
+    public static TransferHistoryLineDto ToDto(this Application.Models.PlayerTransferHistoryLine line) => new()
+    {
+        PlayerId = line.PlayerId,
+        SellingClubId = line.SellingClubId,
+        SellingClubName = line.SellingClubName,
+        BuyingClubId = line.BuyingClubId,
+        BuyingClubName = line.BuyingClubName,
+        Fee = line.Fee,
+        Status = line.Status,
+        ProposedAt = line.ProposedAt,
+        ResolvedAt = line.ResolvedAt,
+        CompletedAt = line.CompletedAt,
+        ProposalSeasonNumber = line.ProposalSeasonNumber,
+        ArrivalSeasonNumber = line.ArrivalSeasonNumber
+    };
+
+    public static IReadOnlyList<TransferHistoryLineDto> ToDtos(
+        this IEnumerable<Application.Models.PlayerTransferHistoryLine> lines) =>
+        lines.Select(line => line.ToDto()).ToList();
 }

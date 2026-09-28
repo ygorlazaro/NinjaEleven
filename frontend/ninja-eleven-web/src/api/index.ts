@@ -19,7 +19,13 @@ import type {
   TopScorerPrizeListDto,
    SponsorOfferDto,
    SponsorBookDto,
-   ManagerDto
+   ManagerDto,
+   TransferListingDto,
+   TransferProposalDto,
+   TransferInboxDto,
+   TransferSearchResultDto,
+   TransferHistoryLineDto,
+   ReleaseResultDto
 } from '../types';
 
 /**
@@ -322,4 +328,42 @@ export const ManagerApi = {
   /** Changes the manager's name. */
   rename: (teamId: string, name: string) =>
     api.put<ManagerDto>(`/team/${teamId}/manager`, { name }).then(r => r.data),
+};
+
+export const TransferApi = {
+  search: (
+    seasonId: string,
+    position?: 'GK' | 'DEF' | 'MID' | 'ATT',
+    retiring?: boolean,
+    freeAgents = false,
+    page = 1,
+    pageSize = 30
+  ) => {
+    const params = new URLSearchParams({ seasonId, page: String(page), pageSize: String(pageSize) });
+    if (position) params.set('position', position);
+    if (retiring !== undefined) params.set('retiring', String(retiring));
+    if (freeAgents) params.set('freeAgents', 'true');
+    return api.get<TransferSearchResultDto>(`/transfer/search?${params.toString()}`).then(r => r.data);
+  },
+
+  getListing: (playerId: string, seasonId: string) =>
+    api.get<TransferListingDto>(`/transfer/listing/${playerId}?seasonId=${seasonId}`).then(r => r.data),
+
+  getInbox: (clubId: string, seasonId: string) =>
+    api.get<TransferInboxDto>(`/transfer/inbox/${clubId}?seasonId=${seasonId}`).then(r => r.data),
+
+  getHistory: (playerId: string) =>
+    api.get<TransferHistoryLineDto[]>(`/transfer/history/${playerId}`).then(r => r.data),
+
+  propose: (playerId: string, buyingClubId: string, fee?: number) =>
+    api.post<TransferProposalDto>('/transfer/propose', { playerId, buyingClubId, fee }).then(r => r.data),
+
+  answer: (transferId: string, accept: boolean) =>
+    api.post<TransferProposalDto>(`/transfer/${transferId}/answer`, { accept }).then(r => r.data),
+
+  release: (playerId: string, clubId: string) =>
+    api.post<ReleaseResultDto>(`/transfer/${playerId}/release?clubId=${clubId}`).then(r => r.data),
+
+  setRetiring: (playerId: string, retiring: boolean) =>
+    api.post(`/transfer/${playerId}/retire`, { retiring }).then(r => r.data),
 };

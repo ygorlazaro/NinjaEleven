@@ -43,4 +43,16 @@ public interface ITeamRepository
     Task<IReadOnlyList<TeamMembership>> GetLiveContractsAsync(
         Guid teamId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every active membership across all clubs for a season, so a transfer search can
+    /// build its listings in one query rather than one club at a time.
+    /// </summary>
+    Task<IReadOnlyList<TeamMembership>> ListAllContractsAsync(
+        Guid seasonId,
+        CancellationToken cancellationToken = default);
+
+    Task AddMembershipAsync(TeamMembership membership, CancellationToken cancellationToken = default);
+
+    void UpdateMembership(TeamMembership membership);
 }

@@ -243,8 +243,11 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
                   {!selectedIds?.has(player.id) && elsewhereIds?.has(player.id) && (
                     <span className="pick-mark" title="Está no outro grupo">⇤</span>
                   )}
-                  <PlayerName playerId={player.id}>{player.name}</PlayerName>
-                  {player.injury !== 'None' && (
+                   <PlayerName playerId={player.id}>{player.name}</PlayerName>
+                   {player.retiring && (
+                     <span className="retiring-mark" title="Aposentadoria declarada">🏁</span>
+                   )}
+                   {player.injury !== 'None' && (
                     <span className="injury-mark" title={`Lesionado: ${player.injury}`}>🩹</span>
                   )}
                 </td>

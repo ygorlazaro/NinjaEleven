@@ -78,4 +78,22 @@ public class TeamRepository : ITeamRepository
             .Where(membership => membership.TeamId == teamId && membership.EndDate == null)
             .OrderBy(membership => membership.PlayerId)
             .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<TeamMembership>> ListAllContractsAsync(
+        Guid seasonId,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => membership.EndDate == null)
+            .OrderBy(membership => membership.TeamId, Comparer<Guid>.Default)
+            .ThenBy(membership => membership.PlayerId)
+            .ToListAsync(cancellationToken);
+
+    public async Task AddMembershipAsync(
+        TeamMembership membership,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.TeamMemberships.AddAsync(membership, cancellationToken);
+
+    public void UpdateMembership(TeamMembership membership) =>
+        _dbContext.TeamMemberships.Update(membership);
 }

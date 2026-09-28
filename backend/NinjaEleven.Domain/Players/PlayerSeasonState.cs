@@ -11,7 +11,14 @@ public class PlayerSeasonState
     public Guid Id { get; private set; }
     public Guid PlayerId { get; private set; }
     public Guid SeasonId { get; private set; }
-    public Guid TeamId { get; private set; }
+
+    /// <summary>
+    /// The club the player is on this season, or null when he is a free agent. A player with
+    /// no club has a season state — his goals and knocks still belong to him — and the
+    /// state says so rather than omitting itself, because a market that could not ask a
+    /// man what he did last year could not ask him what he is worth this one.
+    /// </summary>
+    public Guid? TeamId { get; private set; }
 
     public int Energy { get; private set; }
     public int Goals { get; private set; }
@@ -42,6 +49,15 @@ public class PlayerSeasonState
     /// </summary>
     public int Injuries { get; private set; }
 
+    /// <summary>
+    /// Whether the player has declared he will retire at the end of this season. A man
+    /// between thirty-seven and forty-two may say so at the start of a season, and the flag
+    /// is what the squad table and the profile show: a shirt with a man walking away from it
+    /// at the end of the year is a fact about the man, and it is a fact the club has to plan
+    /// around, so it belongs to the season state and not to a screen.
+    /// </summary>
+    public bool Retiring { get; private set; }
+
     private PlayerSeasonState() { }
 
     public static PlayerSeasonState Create(
@@ -67,6 +83,47 @@ public class PlayerSeasonState
             Injuries = 0,
         };
     }
+
+    /// <summary>
+    /// A season state for a player who is not on a club. The state still carries his goals
+    /// and his knocks, because a free agent's worth is read from the season he has had and
+    /// not from the fact that he is looking for work.
+    /// </summary>
+    public static PlayerSeasonState CreateFreeAgent(
+        Guid playerId,
+        Guid seasonId,
+        int energy)
+    {
+        return new PlayerSeasonState
+        {
+            Id = Guid.NewGuid(),
+            PlayerId = playerId,
+            SeasonId = seasonId,
+            TeamId = null,
+            Energy = ClampEnergy(energy),
+            Goals = 0,
+            Saves = 0,
+            YellowCards = 0,
+            RedCards = 0,
+            SuspensionMatches = 0,
+            Injury = Injury.None,
+            InjuryMatchesRemaining = 0,
+            Injuries = 0,
+        };
+    }
+
+    /// <summary>
+    /// Moves the player to a club, or releases him from one. A transfer is the moment a man
+    /// changes shirts, and this is the line that says so: the state's club is the club he is
+    /// playing for, and a man who has been sold has a new one.
+    /// </summary>
+    public void SetTeam(Guid? teamId) => TeamId = teamId;
+
+    /// <summary>
+    /// Clears the retirement flag at the start of a new season. A man who retired last year
+    /// is not retiring this one, and the flag is about the season he is about to play.
+    /// </summary>
+    public void ClearRetirement() => Retiring = false;
 
     private static int ClampEnergy(int value) => Math.Max(1, Math.Min(100, value));
 
@@ -125,6 +182,26 @@ public class PlayerSeasonState
     }
 
     public void SetInjury(Injury injury) => Injury = injury;
+
+    /// <summary>
+    /// Marks the player as retiring at the end of the season, or clears the mark. Only a man
+    /// of the age that may retire may be marked, and the mark is a season's: it is reset at
+    /// the start of the next one, because a retirement is a thing a man decides about the
+    /// year he is about to play and not a thing that follows him into the next.
+    /// </summary>
+    public void SetRetiring(bool retiring, int age)
+    {
+        if (retiring && (age < RetirementRules.MinRetirementAge || age > RetirementRules.MaxRetirementAge))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(age),
+                age,
+                $"A player of {age} cannot declare he is retiring; only men between " +
+                $"{RetirementRules.MinRetirementAge} and {RetirementRules.MaxRetirementAge} may.");
+        }
+
+        Retiring = retiring;
+    }
 
     /// <summary>
     /// One match of his club has been played: a suspension or an injury costs one match

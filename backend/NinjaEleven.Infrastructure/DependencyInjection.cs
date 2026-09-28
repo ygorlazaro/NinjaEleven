@@ -44,6 +44,7 @@ public static class DependencyInjection
         services.AddScoped<ICupTieRepository, CupTieRepository>();
         services.AddScoped<ITrophyRepository, TrophyRepository>();
         services.AddScoped<IFinanceRepository, FinanceRepository>();
+        services.AddScoped<ITransferRepository, TransferRepository>();
     services.AddScoped<ISponsorRepository, SponsorRepository>();
     services.AddScoped<ISponsorContractRepository, SponsorContractRepository>();
     services.AddScoped<IManagerRepository, ManagerRepository>();
@@ -95,6 +96,7 @@ public static class DependencyInjection
         services.AddScoped<ScorerPrizeService>();
         services.AddScoped<SponsorOfferService>();
         services.AddScoped<ManagerService>();
+        services.AddScoped<TransferService>();
         services.AddScoped<AttendanceContextFactory>();
 
         services.AddSingleton<IMatchSessionRegistry, MatchSessionRegistry>();

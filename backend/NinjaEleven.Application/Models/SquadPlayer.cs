@@ -32,6 +32,12 @@ public class SquadPlayer
     public bool IsAvailable => SeasonState.IsAvailable;
 
     /// <summary>
+    /// Whether the player has declared he will retire at the end of the season. The flag travels
+    /// with the squad so the table can show the walking-away icon without a second lookup.
+    /// </summary>
+    public bool Retiring => SeasonState.Retiring;
+
+    /// <summary>
     /// How many seasons the club has him signed for, which is what his wage is a share of.
     /// It travels with the squad rather than being looked up per screen, so a wage shown on a
     /// squad table and the wage charged to the club's book are read from the same contract.

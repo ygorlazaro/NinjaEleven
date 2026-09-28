@@ -84,11 +84,15 @@ public class PlayerService
                 // season state is where a player's knocks and sendings-off live: a price read
                 // from last season's knocks would be a different man's price, and a profile
                 // without a season has no knocks to read and no price to quote.
-                var contract = await ResolveContractAsync(
-                    player.Id,
-                    state.TeamId,
-                    state.SeasonId,
-                    cancellationToken);
+                TeamMembership? contract = null;
+                if (state.TeamId is not null)
+                {
+                    contract = await ResolveContractAsync(
+                        player.Id,
+                        state.TeamId.Value,
+                        state.SeasonId,
+                        cancellationToken);
+                }
 
                 profile.MarketValue = PlayerValuation.MarketValue(player, state);
                 profile.Salary = PlayerValuation.SeasonWage(player, state);

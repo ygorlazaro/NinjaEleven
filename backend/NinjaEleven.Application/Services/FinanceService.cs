@@ -393,6 +393,63 @@ public class FinanceService
     }
 
     /// <summary>
+    /// Records the money that moves when a transfer completes. The selling club is paid the
+    /// fee and the buying club is charged it, and both lines carry the transfer's own
+    /// reference so a deal that is settled twice is settled once.
+    ///
+    /// The two lines are written in the same call because a transfer is one transaction: a
+    /// club that is paid and a club that is charged are the two halves of it, and writing
+    /// one without the other would be a book that disagrees with itself about what happened.
+    /// </summary>
+    public async Task RecordTransferAsync(
+        Guid transferId,
+        Guid sellingClubId,
+        Guid buyingClubId,
+        Guid seasonId,
+        int? matchDayNumber,
+        decimal fee,
+        CancellationToken cancellationToken = default)
+    {
+        var sellingReference = $"transfer:{transferId}:sale";
+        var buyingReference = $"transfer:{transferId}:purchase";
+
+        if (await _finance.ExistsWithReferenceAsync(
+                sellingClubId, seasonId, FinanceMovementKind.TransferIn, sellingReference, cancellationToken))
+        {
+            return;
+        }
+
+        var sellingLine = await AppendAsync(
+            sellingClubId,
+            seasonId,
+            matchDayNumber,
+            FinanceMovementKind.TransferIn,
+            $"Venda de jogador — multa {fee:N2}",
+            fee,
+            transferId,
+            cancellationToken,
+            sellingReference);
+
+        await AppendAsync(
+            buyingClubId,
+            seasonId,
+            matchDayNumber,
+            FinanceMovementKind.TransferOut,
+            $"Compra de jogador — multa {fee:N2}",
+            -fee,
+            transferId,
+            cancellationToken,
+            buyingReference);
+
+        _logger.LogInformation(
+            "Transfer {TransferId} settled: {SellingClub} received {Fee}, {BuyingClub} paid {Fee}.",
+            transferId,
+            sellingLine.BalanceAfter,
+            fee,
+            fee);
+    }
+
+    /// <summary>
     /// Writes a line on top of what the club already has.
     ///
     /// The balance and the sequence both come from the club's own last line, so every line is

@@ -175,16 +175,26 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           {/* Who scores for the club, over every season and every competition. It sits with
               the club's own pages because it is a page about the club: the league's scorers
               answer "who leads the division" and this one answers "who is this club's". */}
-          {selectedTeam && (
-            <NavLink
-              to="/artilheiros"
-              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-            >
-              <span className="sidebar-link__icon">⚽</span>
-              <span className="sidebar-link__label">Artilheiros</span>
-            </NavLink>
-          )}
-        </nav>
+           {selectedTeam && (
+             <NavLink
+               to="/artilheiros"
+               className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+             >
+               <span className="sidebar-link__icon">⚽</span>
+               <span className="sidebar-link__label">Artilheiros</span>
+             </NavLink>
+           )}
+
+           {selectedTeam && (
+             <NavLink
+               to="/transfer"
+               className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+             >
+               <span className="sidebar-link__icon">🔄</span>
+               <span className="sidebar-link__label">Mercado</span>
+             </NavLink>
+           )}
+         </nav>
 
         {/* The match he is about to play, said before he goes and play it, and pinned to the
             foot of the column so it is on every screen: the eleven he picks is chosen for

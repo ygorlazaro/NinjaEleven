@@ -18,6 +18,7 @@ import StadiumScreen from '@/pages/StadiumScreen';
 import SponsorsScreen from '@/pages/SponsorsScreen';
 import ScorersScreen from '@/pages/ScorersScreen';
 import PlayerProfileScreen from '@/pages/PlayerProfileScreen';
+import TransferScreen from '@/pages/TransferScreen';
 import '@/styles.css';
 
 /**
@@ -56,8 +57,9 @@ function App() {
         <Route path="/club" element={<ClubScreen />} />
         <Route path="/estadio" element={<StadiumScreen />} />
         <Route path="/patrocinadores" element={<SponsorsScreen />} />
-        <Route path="/artilheiros" element={<ScorersScreen />} />
-        <Route path="/match/lineup/:fixtureId" element={<LineupScreen />} />
+         <Route path="/artilheiros" element={<ScorersScreen />} />
+         <Route path="/transfer" element={<TransferScreen />} />
+         <Route path="/match/lineup/:fixtureId" element={<LineupScreen />} />
         <Route path="/team/:teamId" element={<TeamViewScreen />} />
         <Route path="/player/:playerId" element={<PlayerProfileScreen />} />
         <Route path="/match/:matchId" element={<MatchScreen />} />

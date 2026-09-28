@@ -254,6 +254,16 @@ public class MatchServiceTests
                 _teams.Object,
                 CreateFinance(),
                 NullLogger<ScorerPrizeService>.Instance),
+            new TransferService(
+                Mock.Of<ITransferRepository>(),
+                _teams.Object,
+                _players.Object,
+                _seasons.Object,
+                _competitions.Object,
+                _matches.Object,
+                _finance.Object,
+                _unitOfWork.Object,
+                NullLogger<TransferService>.Instance),
             _unitOfWork.Object,
             NullLogger<MatchdayService>.Instance),
         new FinanceService(

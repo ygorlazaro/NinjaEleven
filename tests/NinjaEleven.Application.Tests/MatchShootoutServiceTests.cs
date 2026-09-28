@@ -576,6 +576,16 @@ public class MatchShootoutServiceTests
                     _unitOfWork.Object,
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<FinanceService>.Instance),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<ScorerPrizeService>.Instance),
+            new TransferService(
+                Mock.Of<NinjaEleven.Application.Repositories.ITransferRepository>(),
+                _teams.Object,
+                _players.Object,
+                _seasons.Object,
+                _competitions.Object,
+                _matches.Object,
+                _finance.Object,
+                _unitOfWork.Object,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<TransferService>.Instance),
             _unitOfWork.Object,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchdayService>.Instance),
         new FinanceService(

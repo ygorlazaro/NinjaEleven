@@ -1,10 +1,12 @@
 using Microsoft.Extensions.Logging;
 using NinjaEleven.Application.Abstractions;
+using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Matches;
+using NinjaEleven.Domain.Transfers;
 
 namespace NinjaEleven.Application.Services;
 
@@ -50,6 +52,7 @@ public class MatchdayService
     private readonly ICompetitionRepository _competitionRepository;
     private readonly IMatchRepository _matchRepository;
     private readonly ScorerPrizeService _scorerPrizes;
+    private readonly TransferService _transfers;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<MatchdayService> _logger;
 
@@ -78,6 +81,7 @@ public class MatchdayService
         ICompetitionRepository competitionRepository,
         IMatchRepository matchRepository,
         ScorerPrizeService scorerPrizes,
+        TransferService transfers,
         IUnitOfWork unitOfWork,
         ILogger<MatchdayService> logger)
     {
@@ -87,6 +91,7 @@ public class MatchdayService
         _competitionRepository = competitionRepository;
         _matchRepository = matchRepository;
         _scorerPrizes = scorerPrizes;
+        _transfers = transfers;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -409,6 +414,74 @@ public class MatchdayService
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         await PayTheArtilleriasThatWereWonAsync(justClosed, cancellationToken);
+        await RunTransfersOnWindowCloseAsync(justClosed, cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs the NPC transfer market when championship windows that are over include a round
+    /// the transfer window recognises as open (eleven and above). NPC business is settled when
+    /// the round closes, not on a timer, so a matchday left running over a weekend picks up
+    /// exactly the transfers it would have made the moment the day finished in real time.
+    ///
+    /// Two things happen: proposals are generated for the season after this one (accepted
+    /// NPC-to-NPC deals go straight to accepted), and accepted deals arriving this season —
+    /// proposed in the season before — are completed (contracts change, fees move).
+    /// </summary>
+    private async Task RunTransfersOnWindowCloseAsync(
+        IReadOnlyCollection<Round> justClosed,
+        CancellationToken cancellationToken)
+    {
+        var seasonRounds = new HashSet<Guid>();
+
+        foreach (var round in justClosed)
+        {
+            if (!TransferWindowRules.IsOpen(round.Number))
+            {
+                continue;
+            }
+
+            var view = await _competitionRepository.GetSeasonViewByIdAsync(
+                round.CompetitionSeasonId, cancellationToken);
+
+            if (view?.Type is CompetitionType.League)
+            {
+                seasonRounds.Add(view.SeasonId);
+            }
+        }
+
+        foreach (var seasonId in seasonRounds)
+        {
+            try
+            {
+                await _transfers.CalculateNpcTransfersAsync(seasonId, cancellationToken);
+                var currentRound = await GetCurrentRoundAsync(seasonId, cancellationToken);
+                await _transfers.CompletePendingTransfersAsync(
+                    seasonId, currentRound, cancellationToken);
+            }
+            catch (Exception error)
+            {
+                _logger.LogError(
+                    error,
+                    "Could not run the NPC transfer market for season {SeasonId} when windows closed. The market is keyed by season, so asking again is safe.",
+                    seasonId);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The round of the championship for a season, which is what the transfer window is
+    /// measured against. Read from the calendar rather than counted, because a season's
+    /// rounds are a fact about the fixtures and not a number this service may invent.
+    /// </summary>
+    private async Task<int> GetCurrentRoundAsync(Guid seasonId, CancellationToken cancellationToken)
+    {
+        var matchDays = await _matchRepository.GetMatchDaysAsync(seasonId, cancellationToken);
+        var current = matchDays
+            .Where(matchDay => matchDay.Date <= DateOnly.FromDateTime(DateTime.Now))
+            .OrderByDescending(matchDay => matchDay.Number)
+            .FirstOrDefault();
+
+        return current?.Number ?? 1;
     }
 
     /// <summary>

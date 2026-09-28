@@ -178,13 +178,21 @@ public class DatabaseSeeder : IDataSeeder
             return;
         }
 
+        await SeedStartingWorldAsync(random, cancellationToken);
+        await GiveFacesToTheWorldAlreadySeededAsync(random, cancellationToken);
+        await GiveManagersToTheWorldAlreadySeededAsync(random, cancellationToken);
+        await OpenTheBooksOfTheWorldAlreadySeededAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Creates the starting world for a brand-new database: one season, three divisions, a
+    /// cup and a Supercup, thirty-six clubs with squads, and books opened for each.
+    /// </summary>
+    private async Task SeedStartingWorldAsync(Random random, CancellationToken cancellationToken)
+    {
         var season = CreateSeason();
         var startDate = season.StartDate;
 
-        // The three divisions of the pyramid are permanent rows: a club is in a division, and
-        // a division is a tier of the country rather than something a season invents. The
-        // season's three league editions point at them, one per tier, which is what lets a
-        // club be promoted out of one edition and into another without moving in the database.
         var divisions = CompetitionRules.Tiers()
             .Select(tier => Division.Create(null, tier))
             .ToList();
@@ -210,7 +218,6 @@ public class DatabaseSeeder : IDataSeeder
         var managers = new List<Manager>();
         var faces = DealFaces(TeamCatalog.Length * _options.PlayersPerTeam, random);
 
-        // Shuffle coach names so each world gets a different assignment
         var coachPool = CoachNames.OrderBy(_ => random.Next()).ToList();
 
         for (var index = 0; index < TeamCatalog.Length; index++)
@@ -223,19 +230,12 @@ public class DatabaseSeeder : IDataSeeder
             stadiums.Add(stadium);
             team.SetStadium(stadium);
 
-            // Each club enters the edition of the tier it is in, which is the only league
-            // entry it has. The cup and the Supercup are entered by CupQualification and by
-            // the season that follows, not by the seeder guessing at a draw.
             participants.Add(CompetitionParticipant.Create(
                 leagueEditions[definition.Tier - 1].Id,
                 team.Id));
 
-            // Every club in the world opens a book, the thirty-five the manager never picks
-            // included: a table of clubs with money in a country of clubs without it would be
-            // a game where being nobody matters.
             movements.Add(FinanceMovement.Seed(team.Id, season.Id, FinanceRules.StartingBalance));
 
-            // Every club gets a manager from the shuffled pool
             var coachName = coachPool[index];
             managers.Add(Manager.Create(team.Id, coachName));
 
@@ -599,5 +599,95 @@ public class DatabaseSeeder : IDataSeeder
     {
         var low = _options.MinimumAttribute + 3 * (_options.MaximumAttribute - _options.MinimumAttribute) / 4;
         return random.Next(Math.Min(low, _options.MaximumAttribute), _options.MaximumAttribute + 1);
+    }
+
+    /// <summary>
+    /// Generates young players as free agents to replace those who retired, for the season
+    /// that is opening. Each retiree brings 0.8–1.2 replacements onto the market: a world that
+    /// loses twenty men opens with eighteen to twenty-four fresh names, so the pyramid keeps
+    /// its shape without a manager having to draft. The youngsters arrive unattached — no club,
+    /// no contract — and wait to be picked up like any other free agent.
+    /// </summary>
+    public async Task GenerateYoungPlayersAsync(Guid seasonId, CancellationToken cancellationToken = default)
+    {
+        var season = await _dbContext.Seasons
+            .FirstOrDefaultAsync(s => s.Id == seasonId, cancellationToken);
+
+        if (season is null)
+        {
+            _logger.LogWarning("No season found for {SeasonId}; young players were not generated.", seasonId);
+            return;
+        }
+
+        var retiringCount = await _dbContext.PlayerSeasonStates
+            .CountAsync(s => s.SeasonId == seasonId && s.Retiring, cancellationToken);
+
+        if (retiringCount == 0)
+        {
+            _logger.LogInformation("No retirements declared for season {SeasonNumber}; no young players were generated.", season.Number);
+            return;
+        }
+
+        var random = _options.RandomSeed.HasValue
+            ? new Random(_options.RandomSeed.Value + season.Number)
+            : Random.Shared;
+
+        var targetCount = (int)Math.Round(retiringCount * (0.8 + random.NextDouble() * 0.4));
+        var faces = DealFaces(targetCount, random);
+
+        var players = new List<Player>();
+        var states = new List<PlayerSeasonState>();
+
+        for (var i = 0; i < targetCount; i++)
+        {
+            var age = random.Next(16, 20);
+            var birthYear = season.StartDate.Year - age;
+            var birthMonth = random.Next(1, 13);
+            var birthDay = random.Next(1, DateTime.DaysInMonth(birthYear, birthMonth) + 1);
+            var birthDate = new DateOnly(birthYear, birthMonth, birthDay);
+
+            // Young players are prospects, not finished products: their attributes land in the
+            // lower band, so a 19-year-old is recognisably able but a 16-year-old is a project.
+            var isGoalkeeper = random.NextDouble() < 0.15;
+            var position = isGoalkeeper ? Position.GK : (Position)random.Next(1, 4);
+
+            var low = _options.MinimumAttribute;
+            var high = (_options.MinimumAttribute + _options.MaximumAttribute) / 2;
+
+            var speed = random.Next(low, high + 1);
+            var accuracy = random.Next(low, high + 1);
+            var dribbling = random.Next(low, high + 1);
+            var heading = random.Next(low, high + 1);
+            var strength = random.Next(low, high + 1);
+            var gkPower = isGoalkeeper ? random.Next(low, high + 1) : 0;
+            var reflexes = isGoalkeeper ? random.Next(low, high + 1) : 0;
+
+            var player = Player.Create(
+                $"{NameCatalog.AllFirstNames[random.Next(NameCatalog.AllFirstNames.Count)]} {NameCatalog.AllSurnames[random.Next(NameCatalog.AllSurnames.Count)]}",
+                birthDate,
+                position,
+                speed,
+                accuracy,
+                dribbling,
+                heading,
+                strength,
+                gkPower,
+                reflexes,
+                faces.Dequeue());
+
+            players.Add(player);
+            states.Add(PlayerSeasonState.CreateFreeAgent(
+                player.Id,
+                season.Id,
+                random.Next(_options.MinimumEnergy, _options.MaximumEnergy + 1)));
+        }
+
+        _dbContext.Players.AddRange(players);
+        _dbContext.PlayerSeasonStates.AddRange(states);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Generated {Count} young free agents for {RetiredCount} retirements in season {SeasonNumber}.",
+            players.Count, retiringCount, season.Number);
     }
 }
