@@ -16,7 +16,10 @@ import type {
   CupBracketDto,
   CupPrizeDto,
   DivisionPurseDto,
-  TopScorerPrizeListDto
+  TopScorerPrizeListDto,
+   SponsorOfferDto,
+   SponsorBookDto,
+   ManagerDto
 } from '../types';
 
 /**
@@ -289,4 +292,34 @@ export const MatchApi = {
       .then(r => r.data),
   getResult: (matchId: string) =>
     api.get<MatchResult>(`/match/result/${matchId}`).then(r => r.data),
+};
+
+export const SponsorApi = {
+  /**
+   * The sponsor book of a club for a season: the deal on the shirt, how many matches
+   * are left, and the offers waiting for the manager to choose.
+   */
+  getBook: (teamId: string, seasonId: string) =>
+    api.get<SponsorBookDto>(`/team/${teamId}/sponsor?seasonId=${seasonId}`).then(r => r.data),
+  /** Signs a new shirt deal. Fails if the current one is still active. */
+  sign: (teamId: string, seasonId: string, sponsorId: string, perMatchFee?: number, contractMatches?: number) =>
+    api
+      .post<SponsorBookDto>(`/team/${teamId}/sponsor/sign?seasonId=${seasonId}`, {
+        sponsorId,
+        perMatchFee,
+        contractMatches
+      })
+      .then(r => r.data),
+};
+
+export const ManagerApi = {
+  /** The manager of a club, if the career has begun. */
+  getByTeam: (teamId: string) =>
+    api.get<ManagerDto>(`/team/${teamId}/manager`).then(r => r.data),
+  /** Creates the manager and starts the career. A club already managed is refused. */
+  create: (teamId: string, name: string) =>
+    api.post<ManagerDto>(`/team/${teamId}/manager`, { name }).then(r => r.data),
+  /** Changes the manager's name. */
+  rename: (teamId: string, name: string) =>
+    api.put<ManagerDto>(`/team/${teamId}/manager`, { name }).then(r => r.data),
 };

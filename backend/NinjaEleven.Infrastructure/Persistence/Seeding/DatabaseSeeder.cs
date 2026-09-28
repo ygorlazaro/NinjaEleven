@@ -5,6 +5,7 @@ using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Finance;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
+using NinjaEleven.Domain.Sponsors;
 using NinjaEleven.Domain.Teams;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -78,6 +79,38 @@ public class DatabaseSeeder : IDataSeeder
         ("Esporte Clube Dourado", "ECD", "#F9A825", "#212121", 3)
     };
 
+    /// <summary>
+    /// The master sponsor pool: twenty companies whose names go on shirts.
+    ///
+    /// The pool is larger than a season needs so that a shuffled draw of it deals different
+    /// shirts to different clubs, and a club that changes sponsor mid-career can sign one
+    /// the others did not get. Each sponsor carries its industry and a colour so the shirt
+    /// renders the mark in the mark's own hue.
+    /// </summary>
+    private static readonly (string Name, string Industry, string Color)[] SponsorCatalog =
+    {
+        ("Cia. Energética Paulista", "Energia", "#E0A800"),
+        ("Banco do Vale", "Financeiro", "#2E7D32"),
+        ("Rede Ferrovia do Sul", "Transportes", "#1565C0"),
+        ("Construtora Rocha & Filhos", "Construção", "#6A1B9A"),
+        ("Cooperativa Aurora", "Alimentos", "#AD1457"),
+        ("Telecom Nordeste", "Telecomunicações", "#00838F"),
+        ("Grupo Martelo", "Varejo", "#F45118"),
+        ("Petrobraz", "Petróleo", "#00695C"),
+        ("Mineração Serra", "Mineração", "#4E3482"),
+        ("Agropecuária Verde", "Agronegócio", "#388E3C"),
+        ("Aviação Regional", "Aéreo", "#0277BD"),
+        ("Celular Sul", "Telecomunicações", "#00857A"),
+        ("Cervejaria Lager", "Bebidas", "#FFD700"),
+        ("Cosméticos Bella", "Beleza", "#C2185B"),
+        ("Indústria de Plásticos", "Manufatura", "#5D4037"),
+        ("Logística Expressa", "Transportes", "#EF6C00"),
+        ("Mecânica dos Campos", "Automotivo", "#455A64"),
+        ("Miniaturas Fantasy", "Lazer", "#3949AB"),
+        ("Pet Shop Felino", "Varejo", "#EC0000"),
+        ("Tech Solutions", "Tecnologia", "#00B0FF")
+    };
+
     private readonly NinjaElevenDbContext _dbContext;
     private readonly DatabaseSeedOptions _options;
     private readonly ILogger<DatabaseSeeder> _logger;
@@ -95,6 +128,7 @@ public class DatabaseSeeder : IDataSeeder
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
         await SeedNamePoolsAsync(cancellationToken);
+        await SeedSponsorsAsync(cancellationToken);
 
         var random = _options.RandomSeed.HasValue
             ? new Random(_options.RandomSeed.Value)
@@ -208,6 +242,26 @@ public class DatabaseSeeder : IDataSeeder
             await _dbContext.SaveChangesAsync(cancellationToken);
             _logger.LogInformation("Seeded {Count} surnames.", NameCatalog.AllSurnames.Count);
         }
+    }
+
+    /// <summary>
+    /// The master sponsor catalog: the companies that can appear on a shirt. Seeded only
+    /// once, so a world re-seeded keeps its sponsors and a sponsor that has been signed by a
+    /// club is the same row it always was.
+    /// </summary>
+    private async Task SeedSponsorsAsync(CancellationToken cancellationToken)
+    {
+        if (await _dbContext.Sponsors.AnyAsync(cancellationToken))
+        {
+            return;
+        }
+
+        _dbContext.Sponsors.AddRange(SponsorCatalog.Select(
+            sponsor => Sponsor.Create(sponsor.Name, sponsor.Industry, sponsor.Color)));
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Seeded {Count} sponsors.", SponsorCatalog.Length);
     }
 
     /// <summary>

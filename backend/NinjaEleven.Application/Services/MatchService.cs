@@ -65,6 +65,7 @@ public class MatchService
     /// the one the engine played without him.
     /// </summary>
     private readonly FinanceService _financeService;
+    private readonly SponsorOfferService _sponsorService;
 
     public MatchService(
         IMatchRepository matchRepository,
@@ -78,7 +79,8 @@ public class MatchService
         IUnitOfWork unitOfWork,
         CupProgressionService cupProgression,
         MatchdayService matchday,
-        FinanceService financeService)
+        FinanceService financeService,
+        SponsorOfferService sponsorService)
     {
         _matchRepository = matchRepository;
         _teamRepository = teamRepository;
@@ -92,6 +94,7 @@ public class MatchService
         _cupProgression = cupProgression;
         _matchday = matchday;
         _financeService = financeService;
+        _sponsorService = sponsorService;
     }
 
     public async Task<IReadOnlyList<Match>> GetAllAsync(CancellationToken cancellationToken = default) =>
@@ -1312,6 +1315,20 @@ public class MatchService
             seasonId,
             day,
             match.Id,
+            cancellationToken);
+
+        await _sponsorService.PayPerMatchAsync(
+            fixture.HomeTeamId,
+            match.Id,
+            seasonId,
+            day,
+            cancellationToken);
+
+        await _sponsorService.PayPerMatchAsync(
+            fixture.AwayTeamId,
+            match.Id,
+            seasonId,
+            day,
             cancellationToken);
     }
 

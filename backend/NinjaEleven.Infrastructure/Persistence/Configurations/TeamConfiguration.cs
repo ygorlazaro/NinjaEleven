@@ -24,6 +24,11 @@ public class TeamConfiguration : IEntityTypeConfiguration<Team>
             .HasForeignKey<Team>(t => t.StadiumId)
             .IsRequired(false);
 
+        builder.HasOne(t => t.ActiveSponsorContract)
+            .WithMany()
+            .HasForeignKey(t => t.ActiveSponsorContractId)
+            .IsRequired(false);
+
         builder.HasIndex(t => t.Name);
     }
 }

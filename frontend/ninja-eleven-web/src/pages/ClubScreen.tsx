@@ -1,13 +1,13 @@
-import React, { useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import type { ClubHistoryEventDto, ClubProfileDto, ClubTrophyDto, TeamDto } from '@/types';
-import { formatLimo } from '@/services/limo';
-import { useClubWindow } from '@/services/clubColors';
-import { mockClubProfile } from '@/mock/clubProfile';
-import { mockSponsorBook } from '@/mock/clubBusiness';
+import { SeasonApi, TeamApi, SponsorApi, ManagerApi } from '@/api';
 import KitShirt from '@/components/Club/KitShirt';
 import DivisionTrophy from '@/components/League/DivisionTrophy';
+import { mockClubProfile } from '@/mock/clubProfile';
+import { useClubWindow } from '@/services/clubColors';
+import { formatLimo } from '@/services/limo';
 import { useGameState } from '@/state';
+import type { ClubHistoryEventDto, ClubProfileDto, ClubTrophyDto, TeamDto } from '@/types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 /**
  * What a kind of event is said as, and what it is marked with.
@@ -181,6 +181,67 @@ const TrophyShelf: React.FC<{ trophies: ClubTrophyDto[] }> = ({ trophies }) => {
 const ClubScreen: React.FC = () => {
   const selectedTeam = useGameState((s) => s.selectedTeam);
   const clubWindow = useClubWindow(selectedTeam);
+  const [seasonId, setSeasonId] = useState<string>('');
+  const [balance, setBalance] = useState<number | null>(null);
+  const [squadSize, setSquadSize] = useState<number | null>(null);
+  const [sponsorName, setSponsorName] = useState<string | null>(null);
+  const [sponsorIndustry, setSponsorIndustry] = useState<string | null>(null);
+  const [sponsorMatchesLeft, setSponsorMatchesLeft] = useState<number>(0);
+  const [coachName, setCoachName] = useState<string | null>(null);
+  const [editingCoach, setEditingCoach] = useState(false);
+  const [coachInput, setCoachInput] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+
+    SeasonApi.current()
+      .then(season => {
+        if (alive) setSeasonId(season.id);
+      })
+      .catch(() => {});
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedTeam || !seasonId) return;
+
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const [finance, squad, book] = await Promise.all([
+          TeamApi.getFinance(selectedTeam.id, seasonId),
+          TeamApi.getSquad(selectedTeam.id, seasonId),
+          SponsorApi.getBook(selectedTeam.id, seasonId),
+        ]);
+
+        if (cancelled) return;
+
+        setBalance(finance.balance);
+        setSquadSize(squad.length);
+        setSponsorName(book.current?.name ?? null);
+        setSponsorIndustry(book.current?.industry ?? null);
+        setSponsorMatchesLeft(book.matchesLeft);
+        ManagerApi.getByTeam(selectedTeam.id)
+          .then(manager => { if (!cancelled) setCoachName(manager.name); })
+          .catch(() => {});
+      } catch {
+        if (!cancelled) {
+          setBalance(0);
+          setSquadSize(23);
+        }
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTeam, seasonId]);
 
   if (!selectedTeam) {
     return (
@@ -193,8 +254,26 @@ const ClubScreen: React.FC = () => {
     );
   }
 
-  // The stand-in is built per club, so a manager who changes clubs gets that club's page.
-  const club: ClubProfileDto = mockClubProfile(selectedTeam);
+  const handleRenameCoach = async () => {
+    if (!selectedTeam || !coachInput.trim()) return;
+
+    try {
+      const manager = await ManagerApi.rename(selectedTeam.id, coachInput.trim());
+      setCoachName(manager.name);
+      setEditingCoach(false);
+    } catch (err) {
+      // If the rename fails the local value is not changed, so the name on the screen
+      // stays honest: a name that did not save is a name the screen should not claim.
+    }
+  };
+
+  // The stand-in fills the parts of the page the backend has not grown into yet — the titles
+  // on the shelf, the career's arc — and the screen overrides the numbers the backend now owns:
+  // the balance, the squad size, the shirt sponsor, and the manager's name.
+  const club: ClubProfileDto = { ...mockClubProfile(selectedTeam) };
+  club.balance = balance ?? club.balance;
+  club.squadSize = squadSize ?? club.squadSize;
+  if (coachName) club.coachName = coachName;
 
   return (
     <div className="app">
@@ -232,8 +311,39 @@ const ClubScreen: React.FC = () => {
         {/* Four figures: who runs the club, how many men it keeps, what it has in the bank and
             where it has been. The balance is the one that answers a question worth asking —
             a club is a manager's problem the day he cannot pay a wage. */}
-        <section className="club-figures">
-          <Figure label="Técnico" value={club.coachName} icon="🧑‍💼" />
+        <figure className="club-figures">
+          <span className="club-figure">
+            <span className="club-figure__icon">🧑‍💼</span>
+            <span className="club-figure__value">
+              {editingCoach ? (
+                <span className="coach-edit">
+                  <input
+                    className="ctrl coach-edit__input"
+                    value={coachInput}
+                    onChange={e => setCoachInput(e.target.value)}
+                    placeholder={club.coachName}
+                    autoFocus
+                  />
+                  <button className="ctrl coach-edit__save" onClick={handleRenameCoach}>Salvar</button>
+                  <button className="ctrl" onClick={() => { setEditingCoach(false); setCoachInput(''); }}>Cancelar</button>
+                </span>
+              ) : (
+                club.coachName
+              )}
+            </span>
+            <span className="club-figure__label">
+              Técnico
+              {coachName && !editingCoach && (
+                <button
+                  className="coach-edit__icon"
+                  title="Renomear técnico"
+                  onClick={() => { setEditingCoach(true); setCoachInput(coachName); }}
+                >
+                  ✏️
+                </button>
+              )}
+            </span>
+          </span>
           <Figure label="Jogadores" value={String(club.squadSize)} icon="👥" />
           <Figure label="Saldo em caixa" value={formatLimo(club.balance)} icon="💰" accent />
           <Figure
@@ -241,6 +351,26 @@ const ClubScreen: React.FC = () => {
             value={`⬆️ ${club.promotions}  ⬇️ ${club.relegations}`}
             icon="🔁"
           />
+        </figure>
+
+        {/* The shirt sponsor, and how many games the deal still runs. A sponsorship is paid per
+            match, so the deal's length in games is what the manager reads here: a club whose
+            sponsor still has matches to pay is one that cannot be shopped around. */}
+        <section className="club-sponsor">
+          <h3 className="club-section-title">Patrocinador do momento</h3>
+          {sponsorName ? (
+            <p className="club-sponsor__line">
+              <span className="club-sponsor__name">{sponsorName}</span>
+              {sponsorIndustry && <span className="club-sponsor__industry">• {sponsorIndustry}</span>}
+              <span className="club-sponsor__left">
+                {sponsorMatchesLeft} {sponsorMatchesLeft === 1 ? 'jogo' : 'jogos'} restantes
+              </span>
+            </p>
+          ) : (
+            <p className="club-sponsor__line club-sponsor__none">
+              Sem patrocinador — assine um para começar a faturar.
+            </p>
+          )}
         </section>
 
         <KitWall team={selectedTeam} />
@@ -280,7 +410,27 @@ const ClubScreen: React.FC = () => {
  */
 const KitWall: React.FC<{ team: TeamDto }> = ({ team }) => {
   const seed = [...team.id].reduce((sum, character) => sum + character.charCodeAt(0), 0);
-  const sponsor = mockSponsorBook(team).current.name;
+  const [sponsorName, setSponsorName] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+
+    SeasonApi.current()
+      .then(season => SponsorApi.getBook(team.id, season.id))
+      .then(book => {
+        if (alive) {
+          setSponsorName(book.current?.name ?? '');
+        }
+      })
+      .catch(() => {
+        if (alive) setSponsorName('');
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [team]);
+
   const { primaryColor, secondaryColor } = team;
 
   return (
@@ -293,7 +443,7 @@ const KitWall: React.FC<{ team: TeamDto }> = ({ team }) => {
           secondary={secondaryColor}
           seed={team.id}
           number={(seed % 20) + 1}
-          sponsor={sponsor}
+          sponsor={sponsorName}
         />
         <KitShirt
           variant="away"

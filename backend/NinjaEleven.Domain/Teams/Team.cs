@@ -1,3 +1,5 @@
+using NinjaEleven.Domain.Sponsors;
+
 namespace NinjaEleven.Domain.Teams;
 
 /// <summary>
@@ -14,6 +16,10 @@ public class Team
     public int Rating { get; private set; }
     public Guid? StadiumId { get; private set; }
     public Stadium? Stadium { get; private set; }
+
+    /// <summary>The current active sponsor contract on this club's shirt, if any.</summary>
+    public Guid? ActiveSponsorContractId { get; private set; }
+    public SponsorContract? ActiveSponsorContract { get; private set; }
 
     private Team() { }
 
@@ -39,5 +45,25 @@ public class Team
     {
         Stadium = stadium;
         StadiumId = stadium?.Id;
+    }
+
+    /// <summary>
+    /// Signs a sponsor deal for this club. A club can only sign one deal at a time: the
+    /// current one must be paid off before another can take its place.
+    /// </summary>
+    public void SignSponsorContract(SponsorContract contract)
+    {
+        if (ActiveSponsorContract is not null && ActiveSponsorContract.IsActive)
+            throw new InvalidOperationException("A club cannot have two active sponsor deals.");
+
+        ActiveSponsorContract = contract;
+        ActiveSponsorContractId = contract.Id;
+    }
+
+    /// <summary>Clears the current sponsor deal without recording it as paid or terminated.</summary>
+    public void ClearSponsorContract()
+    {
+        ActiveSponsorContract = null;
+        ActiveSponsorContractId = null;
     }
 }

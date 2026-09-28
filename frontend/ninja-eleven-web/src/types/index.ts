@@ -1113,14 +1113,25 @@ export type SponsorOfferDto = {
  */
 export type SponsorBookDto = {
   teamId: Guid;
-  /** The sponsor on the shirt, and the deal it was signed on. */
-  current: SponsorOfferDto;
+  /** The sponsor on the shirt, and the deal it was signed on. Null when the club has no deal. */
+  current: SponsorOfferDto | null;
   /** Matches of the deal still to be played. Zero is the only moment a change is allowed. */
   matchesLeft: number;
   /** The offers on the table, five of them, which is a shortlist and not a market. */
   candidates: SponsorOfferDto[];
   /** The one the club is carrying, so the card can say who it is at a glance. */
   masterSponsorId: string;
+};
+
+/**
+ * The manager of a club: the name chosen when the career began, and the club it belongs to.
+ * A club has one manager and only one — the career begins once.
+ */
+export type ManagerDto = {
+  id: Guid;
+  name: string;
+  teamId: Guid;
+  startedAt: string;
 };
 
 /**

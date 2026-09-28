@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NinjaEleven.Infrastructure.Persistence;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NinjaEleven.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NinjaElevenDbContext))]
-    partial class NinjaElevenDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260928033802_AddSponsorEntities")]
+    partial class AddSponsorEntities
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -433,36 +436,6 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_finance_movements_team_id_season_id_sequence");
 
                     b.ToTable("finance_movements", (string)null);
-                });
-
-            modelBuilder.Entity("NinjaEleven.Domain.Managers.Manager", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
-                        .HasColumnName("name");
-
-                    b.Property<DateTimeOffset>("StartedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("started_at");
-
-                    b.Property<Guid>("TeamId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("team_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_managers");
-
-                    b.HasIndex("TeamId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_managers_team_id");
-
-                    b.ToTable("managers", (string)null);
                 });
 
             modelBuilder.Entity("NinjaEleven.Domain.Matches.Fixture", b =>

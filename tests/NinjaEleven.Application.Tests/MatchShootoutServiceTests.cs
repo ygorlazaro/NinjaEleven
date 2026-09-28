@@ -3,6 +3,7 @@ using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Matches;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
+using NinjaEleven.Application.Repositories;
 using NinjaEleven.Application.Services;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
@@ -68,6 +69,8 @@ public class MatchShootoutServiceTests
     private readonly Mock<ITrophyRepository> _trophies = new(MockBehavior.Loose);
     private readonly Mock<IMatchDayRepository> _matchDays = new(MockBehavior.Loose);
     private readonly Mock<IFinanceRepository> _finance = new(MockBehavior.Loose);
+    private readonly Mock<ISponsorRepository> _sponsors = new(MockBehavior.Loose);
+    private readonly Mock<ISponsorContractRepository> _sponsorContracts = new(MockBehavior.Loose);
     private readonly Mock<ISeasonRepository> _seasons = new(MockBehavior.Loose);
     private readonly MatchSessionRegistry _sessions = new();
 
@@ -584,5 +587,13 @@ public class MatchShootoutServiceTests
             _matchDays.Object,
             _seasons.Object,
             _unitOfWork.Object,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<FinanceService>.Instance));
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<FinanceService>.Instance),
+        new SponsorOfferService(
+            _sponsors.Object,
+            _sponsorContracts.Object,
+            _teams.Object,
+            _finance.Object,
+            _seasons.Object,
+            _unitOfWork.Object,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<SponsorOfferService>.Instance));
 }

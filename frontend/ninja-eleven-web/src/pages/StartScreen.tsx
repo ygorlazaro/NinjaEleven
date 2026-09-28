@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CompetitionApi, SeasonApi, TeamApi } from '@/api';
+import { CompetitionApi, SeasonApi, TeamApi, ManagerApi } from '@/api';
 import { API_BASE_URL } from '@/config/env';
 import { useGameState } from '@/state';
 import { divisionsOf } from '@/types';
@@ -23,6 +23,9 @@ const StartScreen: React.FC = () => {
   const [selectedEditionId, setSelectedEditionId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [coachNameInput, setCoachNameInput] = useState('');
+  const [coachError, setCoachError] = useState<string | null>(null);
+  const [showCoachModal, setShowCoachModal] = useState(false);
 
   const divisions = useMemo(() => divisionsOf(editions), [editions]);
 
@@ -145,28 +148,75 @@ const StartScreen: React.FC = () => {
     );
   }
 
-  const startPressed = () => {
+  const startPressed = async () => {
     const club = divisionClubs.find(team => team.id === selectedClubId);
     if (!club) return;
 
-    setSelectedTeam(club);
-    setLeagueTeams(divisionClubs);
-    setSeasonInfo(seasons.find(s => s.id === selectedSeasonId) || null);
-    setCompetitionInfo(editions.find(e => e.id === selectedEditionId) || null);
+    // A career can only begin once. If the backend already has a manager for this club the
+    // coach-name gate is skipped — the club is taken over, not re-christened.
+    setCoachError(null);
+    let managerName = '';
+    try {
+      const existing = await ManagerApi.getByTeam(club.id);
+      managerName = existing.name;
+    } catch {
+      // The modal that asks for a name is what follows only when there is no manager yet.
+    }
 
-    // The season and the division are queries of the screens behind this one, not a rewrite
-    // of the url: the router owns the path, so navigation has to go through it. A career
-    // opens on the club the manager just took over, because that squad is the first thing he
-    // reads — and the division he is about to manage is named alongside it, because a club
-    // with no division is a club with no table.
-    navigate(`/team/${club.id}?season=${selectedSeasonId}&edition=${selectedEditionId}`);
+    const proceed = () => {
+      setSelectedTeam(club);
+      setLeagueTeams(divisionClubs);
+      setSeasonInfo(seasons.find(s => s.id === selectedSeasonId) || null);
+      setCompetitionInfo(editions.find(e => e.id === selectedEditionId) || null);
+
+      // The season and the division are queries of the screens behind this one, not a rewrite
+      // of the url: the router owns the path, so navigation has to go through it. A career
+      // opens on the club the manager just took over, because that squad is the first thing he
+      // reads — and the division he is about to manage is named alongside it, because a club
+      // with no division is a club with no table.
+      navigate(`/team/${club.id}?season=${selectedSeasonId}&edition=${selectedEditionId}`);
+    };
+
+    if (managerName) {
+      proceed();
+      return;
+    }
+
+    // No manager yet: ask for a name and create one before the career opens. This is a modal
+    // overlay so the StartScreen stays behind it, and pressing Escape or clicking outside
+    // cancels back into the team picker.
+    setShowCoachModal(true);
   };
 
   const canStart = selectedClubId !== null && selectedSeasonId !== '' && selectedEditionId !== '';
 
+  const createManagerAndProceed = async () => {
+    const club = divisionClubs.find(team => team.id === selectedClubId);
+    if (!club) return;
+
+    setCoachError(null);
+    try {
+      await ManagerApi.create(club.id, coachNameInput.trim());
+      setShowCoachModal(false);
+      setCoachNameInput('');
+
+      setSelectedTeam(club);
+      setLeagueTeams(divisionClubs);
+      setSeasonInfo(seasons.find(s => s.id === selectedSeasonId) || null);
+      setCompetitionInfo(editions.find(e => e.id === selectedEditionId) || null);
+      navigate(`/team/${club.id}?season=${selectedSeasonId}&edition=${selectedEditionId}`);
+    } catch (err: any) {
+      // The backend refuses a second manager, so a name typed here is already taken only
+      // if the club was picked again after a refresh — the message says so in stable words.
+      const code = err?.response?.data?.code || err?.response?.data?.message || err?.message;
+      setCoachError(code || 'Não foi possível criar o técnico.');
+    }
+  };
+
   return (
-    <div className="card start">
-      <h1>Nova carreira</h1>
+    <>
+      <div className="card start">
+        <h1>Nova carreira</h1>
       <p>Escolha a divisão, escolha um dos clubes e coloque seu time em campo.</p>
 
       {seasons.length > 1 && (
@@ -247,7 +297,45 @@ const StartScreen: React.FC = () => {
       >
         Escolher clube e começar
       </button>
-    </div>
+      </div>
+
+      {showCoachModal && (
+        <div className="modal-backdrop" onClick={() => setShowCoachModal(false)}>
+          <div
+            className="start-modal"
+            onClick={e => e.stopPropagation()}
+            onKeyDown={e => {
+              if (e.key === 'Escape') setShowCoachModal(false);
+            }}
+          >
+            <h2>Novo técnico</h2>
+            <p>Dê um nome ao seu treinador para começar a carreira em {divisionClubs.find(t => t.id === selectedClubId)?.name || ''}.</p>
+            <input
+              className="ctrl"
+              type="text"
+              placeholder="Nome do técnico"
+              value={coachNameInput}
+              onChange={e => setCoachNameInput(e.target.value)}
+              autoFocus
+              onKeyDown={e => {
+                if (e.key === 'Enter') createManagerAndProceed();
+              }}
+            />
+            {coachError && <div className="error">{coachError}</div>}
+            <div className="modal-actions">
+              <button className="ctrl" onClick={() => setShowCoachModal(false)}>Cancelar</button>
+              <button
+                className="primary"
+                disabled={!coachNameInput.trim()}
+                onClick={createManagerAndProceed}
+              >
+                Criar técnico
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

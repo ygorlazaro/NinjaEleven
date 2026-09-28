@@ -185,12 +185,17 @@ const mockTrophies = (team: TeamDto, seed: number): ClubTrophyDto[] => {
   ];
 };
 
+export const mockCoachName = (team: TeamDto): string => {
+  const seed = stableSeed(team);
+  return pick(COACH_NAMES, seed, 4);
+};
+
 /**
  * The whole page for a club, from the club itself plus a stand-in for the rest.
  *
  * The name and the colours are the real club's, so a manager who changes clubs sees that
- * club's page and not the same page twice — a mock that ignored the club would look right on
- * the first club and be obviously a mock on the second.
+ * club's page and not the same page twice — a mock that ignored the club would look right on the
+ * first club and be obviously a mock on the second.
  */
 export const mockClubProfile = (team: TeamDto): ClubProfileDto => {
   const seed = stableSeed(team);

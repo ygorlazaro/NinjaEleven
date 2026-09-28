@@ -159,6 +159,45 @@ button { cursor: pointer; }
   .next-match { flex: 1 1 200px; min-width: 0; }
 }
 
+.sidebar-club-card {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 14px; padding: 9px 10px; border-radius: 9px;
+  text-decoration: none; color: inherit; border: 1px solid transparent;
+}
+.sidebar-club-card:hover { background: #10202e; border-color: #46657d; }
+.sidebar-club-card__crest {
+  width: 34px; height: 38px; font-size: 14px; flex: 0 0 auto;
+}
+.sidebar-club-card__body { display: flex; flex-direction: column; min-width: 0; }
+.sidebar-club-card__name {
+  color: var(--text); font-size: 13px; font-weight: 700; line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sidebar-club-card__coach {
+  color: var(--muted); font-size: 11px; line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* The coach figure on the club screen: a name that can be clicked into an inline editor. */
+.coach-edit {
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.coach-edit__input {
+  width: 160px; padding: 2px 6px; font-size: 13px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--text);
+}
+.coach-edit__save {
+  font-size: 11px; padding: 2px 8px;
+}
+.coach-edit__icon {
+  display: inline-block; margin-left: 4px; opacity: .5; font-size: 11px;
+  cursor: pointer;
+}
+.coach-edit__icon:hover { opacity: 1; }
+.club-figure { cursor: default; }
+.club-figure--editable:hover .club-figure__value { background: rgba(255,255,255,.04); }
+
 .card {
   background: linear-gradient(180deg, rgba(17, 31, 45, .96), rgba(9, 19, 29, .96));
   border: 1px solid var(--line);
@@ -888,6 +927,24 @@ button { cursor: pointer; }
   position: fixed; inset: 0; z-index: 40; display: grid; place-items: start center;
   padding: 20px; overflow-y: auto; background: rgba(0, 0, 0, .72);
 }
+
+/* The coach-name modal on the StartScreen: narrower, centered, with a name field. */
+.start-modal {
+  width: min(420px, 100%); margin: 0; padding: 24px;
+  background: linear-gradient(180deg, rgba(17, 31, 45, .99), rgba(9, 19, 29, .99));
+  border: 1px solid var(--line); border-top: 3px solid var(--accent);
+  border-radius: 14px; box-shadow: 0 25px 80px rgba(0, 0, 0, .5);
+}
+.start-modal h2 { margin: 0 0 10px; font-size: 20px; }
+.start-modal p { margin: 0 0 16px; color: var(--muted); }
+.start-modal input[type="text"] {
+  width: 100%; padding: 8px; margin-bottom: 12px;
+  font-size: 14px; background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px;
+}
+.error { color: var(--red); font-size: 13px; margin: 4px 0 8px; }
+.modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+.modal-actions > * { flex: 1; }
 .profile-modal {
   width: min(95vw, 1200px); margin: 20px 0; padding: 24px;
   background: linear-gradient(180deg, rgba(17, 31, 45, .99), rgba(9, 19, 29, .99));
@@ -1742,6 +1799,19 @@ button { cursor: pointer; }
   letter-spacing: .09em; text-transform: uppercase;
 }
 
+.club-sponsor { margin-bottom: 20px; }
+.club-sponsor__line {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px;
+  background: #0a1520; gap: 10px;
+}
+.club-sponsor__name { font-weight: 700; }
+.club-sponsor__industry { color: var(--muted); font-size: 14px; margin-left: 6px; }
+.club-sponsor__left {
+  color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
+}
+.club-sponsor__none { color: var(--muted); }
+
 /* The shelf. Medals stand on a plank: a border under the row is what makes it a
    shelf rather than a list, and the border-top of the plank is the shelf's own edge. */
 .club-shelf { margin-bottom: 20px; }
@@ -1962,6 +2032,11 @@ button { cursor: pointer; }
     rgba(255, 255, 255, 0.05)
   );
   border: 1px solid color-mix(in srgb, var(--sponsor) 55%, transparent);
+}
+
+.sponsor-master--none {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .sponsor-master__mark {

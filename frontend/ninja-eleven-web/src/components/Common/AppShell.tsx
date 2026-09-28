@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { SeasonApi } from '@/api';
+import { NavLink, Link } from 'react-router-dom';
+import { SeasonApi, ManagerApi } from '@/api';
 import { useGameState } from '@/state';
 import { useNextFixture } from '@/hooks/useNextFixture';
 import NextMatchBox from '@/components/Common/NextMatchBox';
+import ClubCrest from '@/components/Club/ClubCrest';
 
 /**
  * The frame every screen is read in: the game on the left, the screen on the right.
@@ -15,7 +16,6 @@ import NextMatchBox from '@/components/Common/NextMatchBox';
  * is something the game answers to, not something this file knows about.
  */
 const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const navigate = useNavigate();
   const selectedTeam = useGameState((s) => s.selectedTeam);
   // The season being played. The sidebar's next match is a question about the calendar and
   // not about a store value, so the season is asked for rather than remembered — and the
@@ -33,7 +33,22 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       alive = false;
     };
   }, []);
-  const forgetClub = useGameState((s) => s.forgetClub);
+  const [managerName, setManagerName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedTeam) {
+      setManagerName(null);
+      return;
+    }
+
+    let alive = true;
+
+    ManagerApi.getByTeam(selectedTeam.id)
+      .then(manager => { if (alive) setManagerName(manager.name); })
+      .catch(() => { if (alive) setManagerName(null); });
+
+    return () => { alive = false; };
+  }, [selectedTeam?.id]);
 
   // The lineup is addressed by fixture, so the link has to know which one. When there is
   // none to play the link is not a broken door: it goes to the calendar, which is where a
@@ -59,6 +74,27 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <span className="sidebar-brand__ninja">Ninja</span>{' '}
           <span className="sidebar-brand__eleven">Eleven</span>
         </NavLink>
+
+        {/* The club the manager is running: its crest, its name and its coach, as a card at the
+            top of the column so the manager never loses track of who he is before he thinks about
+            where to go. The coach's name comes from the backend — the manager entity the career
+            began with — and falls back to nothing when the career has not yet named him. */}
+        {selectedTeam && (
+          <Link to="/club" className="sidebar-club-card">
+            <ClubCrest
+              primary={selectedTeam.primaryColor}
+              secondary={selectedTeam.secondaryColor}
+              name={selectedTeam.name}
+              className="sidebar-club-card__crest"
+            />
+            <div className="sidebar-club-card__body">
+              <span className="sidebar-club-card__name">{selectedTeam.name}</span>
+              <span className="sidebar-club-card__coach">
+                {managerName ?? '…'}
+              </span>
+            </div>
+          </Link>
+        )}
 
         <nav className="sidebar-nav">
           <NavLink
@@ -154,20 +190,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             foot of the column so it is on every screen: the eleven he picks is chosen for
             this opponent, at this ground, and the column is the one place a manager is on
             whatever screen he happens to be reading. */}
-        {selectedTeam && <NextMatchBox team={selectedTeam} next={next} />}
-
-        {/* The club has to be forgotten before the root can be reached: the root sends a
-            manager with a club to that club, so navigating there with one still selected
-            would arrive back here having changed nothing. */}
-        <button
-          className="sidebar-back"
-          onClick={() => {
-            forgetClub();
-            navigate('/');
-          }}
-        >
-          Trocar de clube
-        </button>
+         {selectedTeam && <NextMatchBox team={selectedTeam} next={next} />}
       </aside>
 
       <main className="shell-main">{children}</main>
