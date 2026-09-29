@@ -158,16 +158,32 @@ public class TeamService
         var memberships = await _teamRepository.GetSquadAsync(teamId, seasonId, cancellationToken);
         var squad = new List<SquadPlayer>(memberships.Count);
 
+        if (memberships.Count == 0)
+        {
+            return squad;
+        }
+
+        // A squad is twenty-three men and a page of a club is read by everybody who looks at a
+        // matchday, so the men and their season's state are read in two queries rather than two
+        // per row. A player with a contract and no state in the season is skipped, exactly as
+        // he was when he was read one at a time.
+        var players = await _teamRepository.GetPlayersAsync(
+            memberships.Select(membership => membership.PlayerId),
+            cancellationToken);
+        var states = (await _playerRepository.ListSeasonStatesByPlayerIdsAsync(
+                seasonId,
+                memberships.Select(membership => membership.PlayerId),
+                cancellationToken))
+            .ToDictionary(state => state.PlayerId);
+
         foreach (var membership in memberships)
         {
-            var player = await _playerRepository.GetAsync(membership.PlayerId, cancellationToken);
-            if (player is null)
+            if (!players.TryGetValue(membership.PlayerId, out var player))
             {
                 continue;
             }
 
-            var seasonState = await _playerRepository.GetSeasonStateAsync(player.Id, seasonId, cancellationToken);
-            if (seasonState is null)
+            if (!states.TryGetValue(player.Id, out var seasonState))
             {
                 continue;
             }
@@ -233,10 +249,15 @@ public class TeamService
         var scorers = new List<ClubScorerRow>(lines.Count);
         var ageOf = new Dictionary<Guid, int>();
 
+        // The men behind the lines are read in one go: a club's scorers list is a page about
+        // its history, and a page of a hundred names asked for a hundred and one players.
+        var players = await _teamRepository.GetPlayersAsync(
+            lines.Select(line => line.PlayerId).Distinct(),
+            cancellationToken);
+
         foreach (var line in lines)
         {
-            var player = await _playerRepository.GetAsync(line.PlayerId, cancellationToken);
-            if (player is null)
+            if (!players.TryGetValue(line.PlayerId, out var player))
             {
                 continue;
             }

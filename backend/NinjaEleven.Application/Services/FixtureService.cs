@@ -1,6 +1,7 @@
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
+using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Teams;
 
@@ -25,17 +26,19 @@ public class FixtureService
         _roundRepository = roundRepository;
     }
 
+    /// <summary>
+    /// Every fixture of the world, with the two clubs and the match each one is about.
+    ///
+    /// The clubs and the matches are read in three queries rather than one per fixture: a
+    /// season is five hundred fixtures and the two clubs of all of them are forty-eight names,
+    /// so a fixture list that asked per fixture was asking the same forty-eight questions five
+    /// hundred times — and it is asked on every load of the calendar and of the championship.
+    /// </summary>
     public async Task<IReadOnlyList<FixtureDetails>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         var fixtures = await _fixtureRepository.ListAsync(cancellationToken);
-        var details = new List<FixtureDetails>(fixtures.Count);
 
-        foreach (var fixture in fixtures)
-        {
-            details.Add(await EnrichAsync(fixture, cancellationToken));
-        }
-
-        return details;
+        return await EnrichManyAsync(fixtures, cancellationToken);
     }
 
     public async Task<FixtureDetails> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -43,7 +46,7 @@ public class FixtureService
         var fixture = await _fixtureRepository.GetAsync(id, cancellationToken)
             ?? throw new EntityNotFoundException("Fixture", id);
 
-        return await EnrichAsync(fixture, cancellationToken);
+        return (await EnrichManyAsync([fixture], cancellationToken))[0];
     }
 
     public async Task<IReadOnlyList<FixtureDetails>> GetByRoundAsync(
@@ -56,28 +59,48 @@ public class FixtureService
         }
 
         var fixtures = await _fixtureRepository.ListByRoundAsync(roundId, cancellationToken);
-        var results = new List<FixtureDetails>(fixtures.Count);
 
-        foreach (var fixture in fixtures)
-        {
-            results.Add(await EnrichAsync(fixture, cancellationToken));
-        }
-
-        return results;
+        return await EnrichManyAsync(fixtures, cancellationToken);
     }
 
-    private async Task<FixtureDetails> EnrichAsync(Fixture fixture, CancellationToken cancellationToken)
+    /// <summary>
+    /// A list of fixtures carrying the two clubs and the match behind each one, read in three
+    /// queries. The match of a fixture is the newest row of it that was not abandoned, so a
+    /// fixture that was interrupted and replayed still shows the match anybody is watching.
+    /// </summary>
+    private async Task<IReadOnlyList<FixtureDetails>> EnrichManyAsync(
+        IReadOnlyList<Fixture> fixtures,
+        CancellationToken cancellationToken)
     {
-        var homeTeam = await _teamRepository.GetAsync(fixture.HomeTeamId, cancellationToken);
-        var awayTeam = await _teamRepository.GetAsync(fixture.AwayTeamId, cancellationToken);
-        var match = await _matchRepository.GetByFixtureAsync(fixture.Id, cancellationToken);
-
-        return new FixtureDetails
+        if (fixtures.Count == 0)
         {
-            Fixture = fixture,
-            HomeTeam = homeTeam,
-            AwayTeam = awayTeam,
-            Match = match
-        };
+            return Array.Empty<FixtureDetails>();
+        }
+
+        var clubs = await _teamRepository.ListByIdsAsync(
+            fixtures.SelectMany(fixture => new[] { fixture.HomeTeamId, fixture.AwayTeamId }).Distinct(),
+            cancellationToken);
+        var clubById = clubs.ToDictionary(club => club.Id);
+
+        // Ordered by creation, so the last row per fixture is the newest one that stands.
+        var matches = await _matchRepository.ListByFixtureIdsAsync(
+            fixtures.Select(fixture => fixture.Id),
+            cancellationToken);
+        var matchByFixture = matches
+            .Where(match => match.Status != MatchStatus.Abandoned)
+            .GroupBy(match => match.FixtureId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(match => match.CreatedAt).First());
+
+        return fixtures
+            .Select(fixture => new FixtureDetails
+            {
+                Fixture = fixture,
+                HomeTeam = clubById.GetValueOrDefault(fixture.HomeTeamId),
+                AwayTeam = clubById.GetValueOrDefault(fixture.AwayTeamId),
+                Match = matchByFixture.GetValueOrDefault(fixture.Id)
+            })
+            .ToList();
     }
 }

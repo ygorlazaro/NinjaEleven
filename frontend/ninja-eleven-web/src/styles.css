@@ -258,6 +258,14 @@ button { cursor: pointer; }
   border-radius: 6px 6px 16px 16px;
 }
 
+/* The ranking's shield. The table of clubs is a column of numbers with a name in it, so the
+   crest sits at the size of a table crest rather than the size of a club page's — and its size
+   is said here, in the stylesheet, rather than as an inline measurement on one screen. */
+.ranking-crest {
+  width: 28px; height: 28px; font-size: 11px; border-width: 1px;
+  border-radius: 4px 4px 9px 9px;
+}
+
 /* The squad, under the club it belongs to. The men are read in the order a squad is read
    everywhere else and the whole list is there, so the manager compares clubs by their bench
    as well as by their first choice; the panel scrolls rather than growing the card, because
@@ -459,6 +467,36 @@ button { cursor: pointer; }
 .team-header-main .profile-team { margin: 0; font-size: 28px; color: var(--text); }
 .team-stars { color: var(--gold, #ffd700); font-size: 18px; font-weight: 700; white-space: nowrap; }
 .team-view-summary .squad-hint { margin: 0; color: var(--muted); font-size: 14px; }
+
+/* The division a club is in and the place it holds there, said under the club's name on its
+   own page. The division's name is a door: it opens the table this line belongs to, with the
+   edition in the link, so a seventh place in the fourth division opens the fourth division
+   rather than whichever table the screen was showing. The place beside it is the table's own
+   line — a position, the size of the table it is a position in, and the points behind it. */
+.club-division {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin: 1px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.club-division__trophy { flex-shrink: 0; }
+.club-division__name {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--club-ink, var(--accent));
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.club-division__name:hover { text-decoration-style: solid; }
+.club-division__place { white-space: nowrap; }
+.club-division--none { color: var(--muted); font-style: italic; }
 .match-header { padding: 16px 20px 18px; }
 
 /* The ground the match is being played in, said where a manager looks for it: under the

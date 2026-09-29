@@ -2216,16 +2216,41 @@ public class MatchService
         var round = await _roundRepository.GetAsync(roundId, cancellationToken)
             ?? throw new EntityNotFoundException("Round", roundId);
 
-        var fixtures = (await _fixtureRepository.ListAsync(cancellationToken))
-            .Where(fixture => fixture.RoundId == roundId)
-            .ToList();
+        var fixtures = await _fixtureRepository.ListByRoundAsync(roundId, cancellationToken);
+
+        if (fixtures.Count == 0)
+        {
+            return new MatchdayReport
+            {
+                RoundId = round.Id,
+                RoundNumber = round.Number,
+                Entries = new List<MatchdayReportEntry>()
+            };
+        }
+
+        // The clubs of the whole round are the same names in every row of it, and the matches
+        // are one query rather than one per fixture: a matchday is read on every load of the
+        // championship, and it is the panel beside the table rather than behind it.
+        var clubs = await _teamRepository.ListByIdsAsync(
+            fixtures.SelectMany(fixture => new[] { fixture.HomeTeamId, fixture.AwayTeamId }).Distinct(),
+            cancellationToken);
+        var clubById = clubs.ToDictionary(club => club.Id);
+
+        var matches = await _matchRepository.ListByFixtureIdsAsync(
+            fixtures.Select(fixture => fixture.Id),
+            cancellationToken);
+        var matchByFixture = matches
+            .Where(match => match.Status != MatchStatus.Abandoned)
+            .GroupBy(match => match.FixtureId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(match => match.CreatedAt).First());
 
         var report = new List<MatchdayReportEntry>();
 
         foreach (var fixture in fixtures)
         {
-            var match = await _matchRepository.GetByFixtureAsync(fixture.Id, cancellationToken);
-            if (match is null || !match.IsFinished)
+            if (!matchByFixture.TryGetValue(fixture.Id, out var match) || !match.IsFinished)
             {
                 continue;
             }
@@ -2238,8 +2263,8 @@ public class MatchService
                 .Where(description => !string.IsNullOrWhiteSpace(description))
                 .ToList();
 
-            var home = await _teamRepository.GetAsync(fixture.HomeTeamId, cancellationToken);
-            var away = await _teamRepository.GetAsync(fixture.AwayTeamId, cancellationToken);
+            var home = clubById.GetValueOrDefault(fixture.HomeTeamId);
+            var away = clubById.GetValueOrDefault(fixture.AwayTeamId);
 
             report.Add(new MatchdayReportEntry
             {

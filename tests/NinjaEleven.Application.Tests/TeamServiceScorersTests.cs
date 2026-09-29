@@ -37,6 +37,13 @@ public class TeamServiceScorersTests
     private readonly Guid _teamId = Guid.NewGuid();
     private readonly Guid _seasonId = Guid.NewGuid();
 
+    /// <summary>
+    /// The men of the world, so the batched reader the service uses has an answer. A club's
+    /// scorers list is a page about a hundred names, and reading them one at a time was a
+    /// hundred queries for one page.
+    /// </summary>
+    private readonly List<Player> _roster = new();
+
     private TeamService Service() => new(
         _teams.Object, _players.Object, _seasons.Object, _matches.Object, Mock.Of<IUnitOfWork>());
 
@@ -54,8 +61,15 @@ public class TeamServiceScorersTests
             goalkeeperPower: 0,
             reflexes: 8);
 
+        _roster.Add(player);
         _players.Setup(repository => repository.GetAsync(player.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(player);
+        _teams.Setup(repository => repository.GetPlayersAsync(
+                It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .Returns((IEnumerable<Guid> playerIds, CancellationToken _) =>
+                Task.FromResult<Dictionary<Guid, Player>>(
+                    _roster.Where(roster => playerIds.Contains(roster.Id))
+                        .ToDictionary(roster => roster.Id)));
 
         return player;
     }

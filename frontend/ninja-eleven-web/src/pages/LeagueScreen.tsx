@@ -71,21 +71,25 @@ const LeagueScreen: React.FC = () => {
   }, []);
 
   const refresh = useCallback(
-    async (competitionSeasonId: string, seasonId: string) => {
+    async (competitionSeasonId: string, seasonId: string, fixtureData: FixtureDto[]) => {
       // The artilharia is asked of the division being shown, so the money under the table is the
       // money of that table. A prize panel that did not follow the dropdown would be paying a
       // third-division striker a first-division cheque on the first division's page.
-      const [fixtureData, standingData, scorerData, prizeData] = await Promise.all([
-        FixtureApi.list(),
+      //
+      // The fixture list arrives as an argument because it is read once by the caller and used
+      // twice: the calendar and the round that is being looked at are the same rows, and a
+      // screen that fetched them a second time was paying for the season's whole football twice
+      // on every load.
+      const [standingData, scorerData, prizeData] = await Promise.all([
         LeagueApi.getStandings(competitionSeasonId),
         LeagueApi.getScorers(seasonId),
         CompetitionApi.getTopScorerPrizes(competitionSeasonId).catch(() => null),
       ]);
 
-      setAllFixtures(fixtureData);
       setStandings(standingData);
       setScorers(scorerData);
       setScorerPrize(prizeData);
+      setAllFixtures(fixtureData);
     },
     [setStandings, setScorers]
   );
@@ -123,8 +127,22 @@ const LeagueScreen: React.FC = () => {
 
         const divisions = editionList.filter(edition => edition.isDivision);
         const wanted = params.get('edition') || '';
+
+        // The division a manager opens on is his club's own. A pyramid of four divisions has
+        // four tables and the manager has one of them: sending him to the first division to
+        // read a table his club is not in is a screen that opens on somebody else's season. So
+        // the club is asked where it is, and its division is the default — while an explicit
+        // `?edition=` in the link still wins, because a table somebody is looking at is a link
+        // they can send on.
+        const clubStanding = selectedTeam
+          ? await TeamApi.getStanding(selectedTeam.id, seasonId).catch(() => null)
+          : null;
+
+        if (cancelled) return;
+
         const division =
           divisions.find(edition => edition.id === wanted) ||
+          divisions.find(edition => edition.id === clubStanding?.competitionSeasonId) ||
           divisions.find(edition => edition.id === selectedCompetition?.id) ||
           divisions[0];
 
@@ -138,8 +156,13 @@ const LeagueScreen: React.FC = () => {
         setCompetitionInfo(division);
 
         // The clubs of this division, and only this division's: they are the ones the table
-        // is about and the ones the calendar below belongs to.
-        const clubs = await CompetitionApi.listClubs(division.id);
+        // is about and the ones the calendar below belongs to. The season's fixtures come in
+        // the same breath — the calendar is the season, and it is one read of the world.
+        const [clubs, roundList, fixtureData] = await Promise.all([
+          CompetitionApi.listClubs(division.id),
+          RoundApi.listByCompetitionSeason(division.id),
+          FixtureApi.list(),
+        ]);
         if (cancelled) return;
         setLeagueTeams(clubs);
 
@@ -147,16 +170,10 @@ const LeagueScreen: React.FC = () => {
         // it to be set up again would draw a second schedule for clubs that already have one,
         // and with thirty-six clubs in one edition it would draw the wrong one: the pyramid
         // gives each division its own twelve, and that is not something a client can hand in.
-        const roundList = await RoundApi.listByCompetitionSeason(division.id);
-        if (cancelled) return;
         setRounds(roundList);
-
-        await refresh(division.id, seasonId);
-
-        const fixtureData = await FixtureApi.list();
-        if (cancelled) return;
-        setAllFixtures(fixtureData);
         setCurrentRoundId(pickCurrentRound(roundList, fixtureData));
+
+        await refresh(division.id, seasonId, fixtureData);
       } catch (err: any) {
         const code = err?.response?.data?.code;
         if (!cancelled) {
@@ -168,7 +185,7 @@ const LeagueScreen: React.FC = () => {
     initialize();
 
     return () => { cancelled = true; };
-  }, [params, pickCurrentRound, refresh, setCompetitionInfo, setLeagueTeams]);
+  }, [params, pickCurrentRound, refresh, setCompetitionInfo, setLeagueTeams, selectedTeam?.id]);
 
   // The season list is independent of the chosen division, so it is read once. The dropdown
   // reads it; the default the screen falls back to is the season that is in progress, exactly

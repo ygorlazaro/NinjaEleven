@@ -76,16 +76,16 @@ public class SeasonCalendarService
         var matchDays = await _matchDayRepository.ListBySeasonAsync(seasonId, cancellationToken);
         var views = await _competitionRepository.ListSeasonViewsAsync(seasonId, cancellationToken);
 
-        var rounds = views.Count == 0
-            ? Array.Empty<Round>()
-            : await _roundRepository.ListAsync(cancellationToken);
-
-        var windows = rounds
-            .Where(round => round.MatchDayId is not null
-                && views.Any(view => view.Id == round.CompetitionSeasonId))
-            .OrderBy(round => round.Number)
-            .ThenBy(round => round.Window)
-            .ToList();
+        // Only this season's editions are asked about, so the calendar of a career that has
+        // played eight seasons does not read the other seven to draw the one being opened.
+        var windows = views.Count == 0
+            ? new List<Round>()
+            : (await _roundRepository.ListByCompetitionSeasonIdsAsync(
+                    views.Select(view => view.Id), cancellationToken))
+                .Where(round => round.MatchDayId is not null)
+                .OrderBy(round => round.Number)
+                .ThenBy(round => round.Window)
+                .ToList();
 
         return new SeasonCalendar
         {
@@ -196,9 +196,8 @@ public class SeasonCalendarService
         var views = await _competitionRepository.ListSeasonViewsAsync(seasonId, cancellationToken);
         if (views.Count == 0) return false;
 
-        var rounds = await _roundRepository.ListAsync(cancellationToken);
-        var ids = rounds
-            .Where(round => views.Any(view => view.Id == round.CompetitionSeasonId))
+        var ids = (await _roundRepository.ListByCompetitionSeasonIdsAsync(
+                views.Select(view => view.Id), cancellationToken))
             .Select(round => round.Id)
             .ToList();
 
@@ -220,9 +219,12 @@ public class SeasonCalendarService
     private async Task DiscardTheHalfDrawnCalendarAsync(Guid seasonId, CancellationToken cancellationToken)
     {
         var views = await _competitionRepository.ListSeasonViewsAsync(seasonId, cancellationToken);
-        var rounds = await _roundRepository.ListAsync(cancellationToken);
 
-        var mine = rounds.Where(round => views.Any(view => view.Id == round.CompetitionSeasonId)).ToList();
+        var mine = views.Count == 0
+            ? new List<Round>()
+            : (await _roundRepository.ListByCompetitionSeasonIdsAsync(
+                    views.Select(view => view.Id), cancellationToken))
+                .ToList();
         if (mine.Count == 0) return;
 
         var fixtures = await _fixtureRepository.ListByRoundIdsAsync(

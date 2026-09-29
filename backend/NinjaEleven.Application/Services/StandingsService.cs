@@ -27,22 +27,19 @@ public class StandingsService
     private readonly IMatchRepository _matchRepository;
     private readonly ICompetitionRepository _competitionRepository;
     private readonly ITeamRepository _teamRepository;
-    private readonly IPlayerRepository _playerRepository;
 
     public StandingsService(
         IRoundRepository roundRepository,
         IFixtureRepository fixtureRepository,
         IMatchRepository matchRepository,
         ICompetitionRepository competitionRepository,
-        ITeamRepository teamRepository,
-        IPlayerRepository playerRepository)
+        ITeamRepository teamRepository)
     {
         _roundRepository = roundRepository;
         _fixtureRepository = fixtureRepository;
         _matchRepository = matchRepository;
         _competitionRepository = competitionRepository;
         _teamRepository = teamRepository;
-        _playerRepository = playerRepository;
     }
 
     /// <summary>
@@ -110,6 +107,55 @@ public class StandingsService
 
         return table.FirstOrDefault(row => row.TeamId == teamId)
             ?? throw new EntityNotFoundException("Standing", teamId);
+    }
+
+    /// <summary>
+    /// The division a club is in during a season, and the line it holds there.
+    ///
+    /// It is one call because a club's page is read by somebody looking at that club and not
+    /// at the pyramid: the division and the position are two halves of one answer, and asking
+    /// for the second one first is how a screen ends up reading four tables to find one line —
+    /// or, worse, reading none of them and printing a division it guessed.
+    /// </summary>
+    public async Task<ClubStanding> GetClubStandingAsync(
+        Guid teamId,
+        Guid seasonId,
+        CancellationToken cancellationToken = default)
+    {
+        // The squad's strength is answered whatever the club is enrolled in: it is a fact about
+        // the men and the season, and a club with no table this season still has a squad.
+        var strength = (await SquadStrengthAsync([teamId], seasonId, cancellationToken))
+            .GetValueOrDefault(teamId);
+
+        var view = await _competitionRepository.GetDivisionSeasonForTeamAsync(
+            teamId, seasonId, cancellationToken);
+
+        // A club enrolled in no division of this season has no table to be on. That is a fact
+        // and not a failure, so the answer comes back with nothing in it rather than refusing.
+        if (view is null)
+        {
+            return new ClubStanding
+            {
+                TeamId = teamId,
+                SeasonId = seasonId,
+                SquadStars = strength
+            };
+        }
+
+        var standings = await GetAsync(view.Id, cancellationToken);
+        var table = standings.HasLiveMatches ? standings.Projected : standings.Official;
+
+        return new ClubStanding
+        {
+            TeamId = teamId,
+            SeasonId = seasonId,
+            CompetitionSeasonId = view.Id,
+            DivisionName = view.Name,
+            Tier = view.Tier,
+            ClubsInDivision = standings.Official.Count,
+            SquadStars = strength,
+            Row = table.FirstOrDefault(row => row.TeamId == teamId)
+        };
     }
 
     /// <summary>
@@ -248,6 +294,12 @@ public class StandingsService
     /// but they are on the club, and a table that hid them would show a club as weaker
     /// because its goalkeeper was ill.
     /// </summary>
+    /// <remarks>
+    /// The squads and the players behind them are read in two queries rather than one per club
+    /// and one per man. The strength of a table is the same fact for every club in it, and a
+    /// reader that asked club by club and player by player was three hundred round trips to say
+    /// twelve numbers — which is what made a division's table time out rather than arrive.
+    /// </remarks>
     private async Task<Dictionary<Guid, double>> SquadStrengthAsync(
         IReadOnlyCollection<Guid> teamIds,
         Guid seasonId,
@@ -255,20 +307,32 @@ public class StandingsService
     {
         var strength = new Dictionary<Guid, double>();
 
+        if (teamIds.Count == 0)
+        {
+            return strength;
+        }
+
+        var squads = await _teamRepository.GetSquadsAsync(teamIds, seasonId, cancellationToken);
+        var playerIds = squads.Values
+            .SelectMany(memberships => memberships)
+            .Select(membership => membership.PlayerId)
+            .Distinct()
+            .ToList();
+        var players = playerIds.Count == 0
+            ? new Dictionary<Guid, Player>()
+            : await _teamRepository.GetPlayersAsync(playerIds, cancellationToken);
+
         foreach (var teamId in teamIds)
         {
-            var memberships = await _teamRepository.GetSquadAsync(teamId, seasonId, cancellationToken);
-            var players = new List<Player>();
+            var squad = squads.TryGetValue(teamId, out var memberships)
+                ? memberships
+                    .Select(membership => players.GetValueOrDefault(membership.PlayerId))
+                    .Where(player => player is not null)
+                    .Select(player => player!)
+                    .ToList()
+                : new List<Player>();
 
-            foreach (var membership in memberships)
-            {
-                if (await _playerRepository.GetAsync(membership.PlayerId, cancellationToken) is { } player)
-                {
-                    players.Add(player);
-                }
-            }
-
-            strength[teamId] = PlayerRating.CalculateTeamStars(players);
+            strength[teamId] = PlayerRating.CalculateTeamStars(squad);
         }
 
         return strength;

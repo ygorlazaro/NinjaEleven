@@ -109,4 +109,11 @@ public interface ITeamRepository
     Task<Dictionary<Guid, Player>> GetPlayersAsync(
         IEnumerable<Guid> playerIds,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets all squads for a season in a single query.
+    /// </summary>
+    Task<Dictionary<Guid, IReadOnlyList<TeamMembership>>> GetAllSquadsAsync(
+        Guid seasonId,
+        CancellationToken cancellationToken = default);
 }

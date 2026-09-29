@@ -20,12 +20,18 @@ public class TeamController : ControllerBase
     private readonly TeamService _teamService;
     private readonly FinanceService _financeService;
     private readonly ManagerService _managerService;
+    private readonly StandingsService _standingsService;
 
-    public TeamController(TeamService teamService, FinanceService financeService, ManagerService managerService)
+    public TeamController(
+        TeamService teamService,
+        FinanceService financeService,
+        ManagerService managerService,
+        StandingsService standingsService)
     {
         _teamService = teamService;
         _financeService = financeService;
         _managerService = managerService;
+        _standingsService = standingsService;
     }
 
     [HttpGet]
@@ -136,6 +142,25 @@ public class TeamController : ControllerBase
             teamId, seasonId, competition, topN ?? ScorerRules.DefaultScorers, cancellationToken);
 
         return Ok(scorers.ToDtos());
+    }
+
+    /// <summary>
+    /// The club's place in a season: the division it is in and the line it holds there.
+    ///
+    /// It is asked of the club and not of a competition because the club is the subject, and
+    /// the season is required: a club's division is not a fact about the club, it is the
+    /// enrolment it holds for that season — the same club is a different club in a different
+    /// division next year, and a division read off the club itself would be a division that
+    /// survives a relegation.
+    /// </summary>
+    [HttpGet("{teamId:guid}/standing")]
+    public async Task<ActionResult<ClubStandingDto>> GetStanding(
+        Guid teamId,
+        [FromQuery] Guid seasonId,
+        CancellationToken cancellationToken)
+    {
+        var standing = await _standingsService.GetClubStandingAsync(teamId, seasonId, cancellationToken);
+        return Ok(standing.ToDto());
     }
 
     /// <summary>

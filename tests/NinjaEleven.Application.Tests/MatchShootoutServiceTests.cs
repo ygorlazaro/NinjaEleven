@@ -169,6 +169,24 @@ public class MatchShootoutServiceTests
                     .Where(state => state.TeamId == teamId)
                     .Select(state => TeamMembership.Create(state.PlayerId, teamId, new DateOnly(2026, 1, 1)))
                     .ToList()));
+        // The same book read the way a table reads it: the squads of every club at once, and
+        // the men behind them at once, rather than a query per club and a query per man.
+        _teams.Setup(repo => repo.GetSquadsAsync(
+                It.IsAny<IEnumerable<Guid>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns((IEnumerable<Guid> teamIds, Guid _, CancellationToken __) =>
+                Task.FromResult<Dictionary<Guid, IReadOnlyList<TeamMembership>>>(
+                    teamIds.ToDictionary(
+                        teamId => teamId,
+                        teamId => (IReadOnlyList<TeamMembership>)_states
+                            .Where(state => state.TeamId == teamId)
+                            .Select(state => TeamMembership.Create(state.PlayerId, teamId, new DateOnly(2026, 1, 1)))
+                            .ToList())));
+        _teams.Setup(repo => repo.GetPlayersAsync(
+                It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .Returns((IEnumerable<Guid> playerIds, CancellationToken __) =>
+                Task.FromResult<Dictionary<Guid, Player>>(
+                    _roster.Where(player => playerIds.Contains(player.Id))
+                        .ToDictionary(player => player.Id)));
         _players.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>()))
             .Returns(() => Task.FromResult<IReadOnlyList<Player>>(_roster));
         _players.Setup(repo => repo.ListSeasonStatesAsync(
@@ -533,8 +551,7 @@ public class MatchShootoutServiceTests
                 _fixtures.Object,
                 _matches.Object,
                 _competitions.Object,
-                _teams.Object,
-                _players.Object)),
+                _teams.Object)),
         _unitOfWork.Object,
         new CupProgressionService(
             _cupTies.Object,

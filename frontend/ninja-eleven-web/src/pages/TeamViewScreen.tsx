@@ -3,11 +3,12 @@ import ClubCrest from '@/components/Club/ClubCrest';
 import ClubSquadTable from '@/components/Club/ClubSquadTable';
 import FormRun, { formOf } from '@/components/Club/FormRun';
 import { ClubName } from '@/components/Common/Names';
+import DivisionTrophy from '@/components/League/DivisionTrophy';
 import { useClubWindow } from '@/services/clubColors';
 import { formatLimo } from '@/services/limo';
 import { starsToString } from '@/services/formatters';
 import { useGameState } from '@/state';
-import type { SquadPlayerDto, TeamDto, TeamMatchRecordDto } from '@/types';
+import type { ClubStandingDto, SquadPlayerDto, TeamDto, TeamMatchRecordDto } from '@/types';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
@@ -19,6 +20,11 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
   const [matches, setMatches] = useState<TeamMatchRecordDto[]>([]);
   const [h2hMatches, setH2hMatches] = useState<TeamMatchRecordDto[]>([]);
   const [coachName, setCoachName] = useState<string | null>(null);
+  // The division the club is in this season and the line it holds there. It is the backend's
+  // answer rather than something worked out here: a club's division is its enrolment for the
+  // season, so a screen that guessed from the season's list of divisions would be a screen
+  // printing a tier the club does not play in.
+  const [standing, setStanding] = useState<ClubStandingDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busyPlayerId, setBusyPlayerId] = useState<string | null>(null);
@@ -81,9 +87,20 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
       ]);
 
       if (cancelled) return;
-      setPlayers(await TeamApi.getSquad(urlTeamId, season));
+
+      // The squad and the club's place in the season are read together: they are two halves of
+      // the same page, and a club's own place is asked of the club. A club in no division
+      // answers with nothing in it, and the screen says so rather than inventing a tier.
+      const [squadData, place] = await Promise.all([
+        TeamApi.getSquad(urlTeamId, season),
+        TeamApi.getStanding(urlTeamId, season).catch(() => null),
+      ]);
+      if (cancelled) return;
+
+      setPlayers(squadData);
       setMatches(form);
       setH2hMatches(h2h);
+      setStanding(place);
     };
 
     load().catch(error => {
@@ -163,6 +180,51 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
 
   const isOwnTeam = selectedTeam && selectedTeam.id === urlTeamId;
 
+  /**
+   * The club's strength, as the season's own squad is measured: the average of every man on the
+   * books, which is the number the division's table seeds a club with. The club row itself
+   * carries no strength of its own — a club is a name and two colours — so the one that arrives
+   * with the club's place in the season is the one read here, and the club's own value is the
+   * fallback for a season that could not be read at all.
+   */
+  const clubStars = standing?.squadStars ?? team.stars;
+
+  /**
+   * The club's season, said in one line: the division it is in, where it stands in it, and the
+   * table the line belongs to.
+   *
+   * The position is the one the division's own table holds, and the link carries the edition with
+   * it — a club that is seventh in the fourth division opens the fourth division's table, not the
+   * first one the screen happens to show. A club with no division this season says so, because
+   * "not enrolled" is a fact about the world and a made-up tier would not be.
+   */
+  const divisionLine = standing?.competitionSeasonId ? (
+    <p className="club-division">
+      {standing.tier != null && <DivisionTrophy tier={standing.tier} size={18} className="club-division__trophy" />}
+      <button
+        type="button"
+        className="club-division__name"
+        onClick={() => navigate(
+          `/league?season=${standing.seasonId}&edition=${standing.competitionSeasonId}`
+        )}
+        title="Abrir a tabela desta divisão"
+      >
+        {standing.divisionName}
+      </button>
+      {standing.row && (
+        <span className="club-division__place">
+          {standing.row.position}º de {standing.clubsInDivision ?? '—'}
+          {' • '}
+          {standing.row.points} pts
+          {' • '}
+          {standing.row.played} jogos
+        </span>
+      )}
+    </p>
+  ) : (
+    <p className="club-division club-division--none">Sem divisão nesta temporada</p>
+  );
+
   return (
     <div className="app">
       <div className="team-view-overlay">
@@ -177,18 +239,28 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
             <div className="team-header-info">
               <div className="team-header-main">
                 <h2 className="profile-name">{team.name}</h2>
-                <span className="team-stars">{starsToString(team.stars)}</span>
+                <span className="team-stars" title="Força do elenco">{starsToString(clubStars)}</span>
               </div>
               <p className="squad-hint">
                 {players.length} jogadores
                 {team.stadium && ` • ${team.stadium.name} • ${team.stadium.capacity.toLocaleString('pt-BR')} lugares`}
               </p>
+              {divisionLine}
               {coachName && (
                 <p className="coach-name">Técnico: {coachName}</p>
               )}
             </div>
           </div>
-          <button className="ctrl" onClick={() => navigate('/league')}>Tabela e jogos</button>
+          <button
+            className="ctrl"
+            onClick={() => navigate(
+              standing?.competitionSeasonId
+                ? `/league?season=${standing.seasonId}&edition=${standing.competitionSeasonId}`
+                : '/league'
+            )}
+          >
+            Tabela e jogos
+          </button>
         </div>
 
         <div className="club-colors">

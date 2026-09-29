@@ -45,7 +45,15 @@ const LineupScreen: React.FC = () => {
   const [positionFilter, setPositionFilter] = useState<Position | 'ALL'>('ALL');
   const [tactics, setTactics] = useState<TacticDto[]>([]);
   const [tacticCode, setTacticCode] = useState<string | undefined>(undefined);
-  const seasonId = useGameState((s) => s.selectedSeason?.id);
+  /**
+   * The season this eleven belongs to, kept by the screen.
+   *
+   * It used to be read from the shared store, which is a value nothing ever writes: the
+   * suggestion silently did nothing, and a button that does nothing with no message is the one
+   * bug a manager cannot argue with. The season the squad was read for is the season the
+   * eleven is picked in, and this is the one the screen already resolved for that read.
+   */
+  const [seasonId, setSeasonId] = useState('');
   const selectedCompetition = useGameState((s) => s.selectedCompetition);
 
   /**
@@ -53,19 +61,44 @@ const LineupScreen: React.FC = () => {
    * has ordered. Asking is the point: the screen used to work the eleven out itself, by
    * its own idea of who is good, and it could propose a reserve goalkeeper and an eleven
    * with no shape in it at all — the same eleven the engine would never have picked.
+   *
+   * The season arrives as an argument rather than being read from a store, so the first ask
+   * and every later one — the button, the tactic dropdown — are the same question asked the
+   * same way, and a failure says so on the screen instead of leaving the eleven as it was.
    */
   const suggestFromStaff = useCallback(
-    async (code?: string) => {
-      if (!selectedTeam || !seasonId) return;
+    async (season: string, code?: string) => {
+      if (!selectedTeam) return;
+
+      setError(null);
+
       try {
-        const suggestion = await MatchApi.getSuggestedEleven(selectedTeam.id, seasonId, code);
+        const suggestion = await MatchApi.getSuggestedEleven(selectedTeam.id, season, code);
         setSelected(new Set(suggestion.starterIds));
         setSelectedBench(new Set(suggestion.benchIds));
       } catch (err) {
         console.error('Failed to ask for a suggested eleven:', err);
+        setError('A comissão técnica não respondeu. Tente de novo em instantes.');
       }
     },
-    [selectedTeam?.id, seasonId]
+    [selectedTeam?.id]
+  );
+
+  /**
+   * The staff's eleven for a shape, asked with the season this screen resolved. A button that
+   * cannot answer says why it is blocked rather than doing nothing at all: a control which
+   * silently refuses is the one thing a manager cannot argue with.
+   */
+  const askStaffFor = useCallback(
+    (code?: string) => {
+      if (!selectedTeam || !seasonId) {
+        setError('O elenco ainda está sendo carregado.');
+        return;
+      }
+
+      suggestFromStaff(seasonId, code);
+    },
+    [selectedTeam?.id, seasonId, suggestFromStaff]
   );
 
   useEffect(() => {
@@ -97,7 +130,10 @@ const LineupScreen: React.FC = () => {
           );
 
         setSquad(roster);
-        await suggestFromStaff();
+        setSeasonId(season.id);
+        // The staff are asked once the season is known, because the suggestion is a question
+        // about a season's squad: asked without one there is no answer to show.
+        await suggestFromStaff(season.id);
       } catch (err) {
         console.error('Failed to load the squad:', err);
         setError('Não foi possível carregar o elenco.');
@@ -244,17 +280,6 @@ const LineupScreen: React.FC = () => {
     setError(`Elenco completo: ${STARTERS} titulares e ${BENCH_SIZE} reservas.`);
   };
 
-  /**
-   * The technical staff picks the eleven, for the shape currently ordered. It is the
-   * same advice a manager would get: the best goalkeeper, the shape the manager asked for
-   * filled with the men who are best at each line's job, and nobody injured or suspended.
-   * The manager can still change every name.
-   */
-  const askTheCommission = () => {
-    setError(null);
-    suggestFromStaff(tacticCode);
-  };
-
   const startMatch = async () => {
     if (selected.size !== STARTERS) {
       setError(`Escolha exatamente ${STARTERS} jogadores titulares.`);
@@ -373,7 +398,7 @@ const LineupScreen: React.FC = () => {
               onChange={event => {
                 const code = event.target.value || undefined;
                 setTacticCode(code);
-                suggestFromStaff(code);
+                askStaffFor(code);
               }}
             >
               <option value="">Do elenco</option>
@@ -433,7 +458,11 @@ const LineupScreen: React.FC = () => {
           <button className="ctrl" onClick={() => navigate('/league')} disabled={starting}>
             Voltar
           </button>
-          <button className="ctrl" onClick={askTheCommission} disabled={starting}>
+          {/* The same question the tactic dropdown asks, so one button and one dropdown do not
+              drift into two different advices. It is not disabled while the squad loads: a
+              control that is greyed out with no reason is the one thing a manager cannot argue
+              with, and the screen says what is wrong instead. */}
+          <button className="ctrl" onClick={() => askStaffFor(tacticCode)} disabled={starting}>
             🧠 Pedir à comissão técnica
           </button>
           <button

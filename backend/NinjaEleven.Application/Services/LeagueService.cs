@@ -288,9 +288,13 @@ public class LeagueService
             .Select(group => group.OrderByDescending(line => line.Goals).First())
             .ToList();
 
-        var players = (await _playerRepository.ListAsync(cancellationToken))
-            .Where(player => byPlayer.Any(line => line.PlayerId == player.Id))
-            .ToDictionary(player => player.Id);
+        // The men are read by the ids the lines already carry. A chart of the whole country is
+        // a few hundred names out of a thousand, and asking for the thousand to answer a
+        // question about the three hundred is how a scorers panel became the slowest thing on
+        // the page.
+        var players = (await _teamRepository.GetPlayersAsync(
+            byPlayer.Select(line => line.PlayerId).Distinct(),
+            cancellationToken));
         var clubs = await _teamRepository.ListByIdsAsync(
             byPlayer.Select(line => line.TeamId), cancellationToken);
         var clubById = clubs.ToDictionary(club => club.Id);

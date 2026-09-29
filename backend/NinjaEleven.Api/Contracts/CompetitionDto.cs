@@ -296,6 +296,51 @@ public class CompetitionStandingsDto
     public bool HasLiveMatches { get; init; }
 }
 
+/// <summary>
+/// A club's place in the season: which division it is in and the line it holds there.
+///
+/// It is a club's answer and not a table's, because a club is what a manager opens. The
+/// edition comes back with it, so the screen can send a manager to the very table this line
+/// belongs to instead of making him find it among the season's divisions, and a club with no
+/// division comes back with nothing in it rather than as an error the page has to catch.
+/// </summary>
+public class ClubStandingDto
+{
+    public Guid TeamId { get; init; }
+    public Guid SeasonId { get; init; }
+
+    /// <summary>The edition the club is in, and null when it is in no division this season.</summary>
+    public Guid? CompetitionSeasonId { get; init; }
+
+    /// <summary>"4ª Divisão", and empty when the club is in none.</summary>
+    public string DivisionName { get; init; } = string.Empty;
+
+    /// <summary>1 is the top of the pyramid. Null when the club is in no division.</summary>
+    public int? Tier { get; init; }
+
+    /// <summary>
+    /// The strength of the club's squad this season, the same average the division's table is
+    /// seeded with. It is here rather than read from a club because a club's strength is a fact
+    /// about its men and its season, and it is answered even for a club that is in no division
+    /// at all this season.
+    /// </summary>
+    public double SquadStars { get; init; }
+
+    /// <summary>
+    /// How many clubs the division holds, so a position reads as one of a number. It is the
+    /// size of the table the club is on and it is the backend's, because the pyramid is a rule
+    /// rather than a number a screen keeps a copy of.
+    /// </summary>
+    public int? ClubsInDivision { get; init; }
+
+    /// <summary>
+    /// The club's line in that division, and null when the division has not been drawn yet.
+    /// The numbers on it are the same ones the division's own table carries, because it is
+    /// that table's line.
+    /// </summary>
+    public StandingDto? Row { get; init; }
+}
+
 public class ScorerDto
 {
     public Guid PlayerId { get; init; }

@@ -35,10 +35,28 @@ public class RoundRepository : IRoundRepository
             .OrderBy(round => round.Number)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<Round>> ListByCompetitionSeasonIdsAsync(
+        IEnumerable<Guid> competitionSeasonIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = competitionSeasonIds.ToList();
+
+        if (ids.Count == 0)
+        {
+            return Array.Empty<Round>();
+        }
+
+        return await _dbContext.Rounds
+            .AsNoTracking()
+            .Where(round => ids.Contains(round.CompetitionSeasonId))
+            .OrderBy(round => round.CompetitionSeasonId)
+            .ThenBy(round => round.Number)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<Round>> ListByMatchDayAsync(
         Guid matchDayId,
-        CancellationToken cancellationToken = default) =>
-        await _dbContext.Rounds
+        CancellationToken cancellationToken = default) =>        await _dbContext.Rounds
             .AsNoTracking()
             .Where(round => round.MatchDayId == matchDayId)
             .OrderBy(round => round.Window)

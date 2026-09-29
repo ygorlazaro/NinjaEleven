@@ -84,8 +84,7 @@ const RankingScreen: React.FC = () => {
                       primary={club.primaryColor}
                       secondary={club.secondaryColor}
                       name={club.teamName}
-                      className="team-choice__crest"
-                      style={{ width: '28px', height: '28px' }}
+                      className="ranking-crest"
                     />
                     <div>
                       <span style={{ fontWeight: 500 }}>{club.teamName}</span>

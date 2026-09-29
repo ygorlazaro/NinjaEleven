@@ -78,6 +78,7 @@ All routes are singular. Controllers only map DTOs; the flow is
 GET  /team                                  GET  /round
 GET  /team/{id}                             GET  /round/{id}
 GET  /team/{teamId}/squad/{seasonId}         GET  /round/by-competition-season/{id}
+GET  /team/{teamId}/standing?seasonId=
 
 GET  /player                                GET  /fixture
 GET  /player/{id}                           GET  /fixture/{id}
@@ -107,6 +108,21 @@ Domain errors return RFC 7807 with a stable `code` (e.g. `TeamNotFound`,
 Malformed requests (an id that is not a guid, a missing field) answer 400 with
 `code: ValidationFailed`. `POST /league/setup` is idempotent: when the edition already
 has a schedule it returns the existing one instead of creating a second one.
+
+**A read is a read, not a question per row.** A service answers about a set — a division, a
+matchday, the whole world — by reading the set and then working it out, and never by asking
+the repository once per item. That is not a style preference: `GET /ranking` used to ask for
+each club's own history, and each club's own history was three seasons of tables, and each
+table read a squad man by man, so a page of sixty-four clubs was a quarter of a million round
+trips and answered in half a minute. The same rule is what keeps `GET /fixture`,
+`GET /league/standing/{id}` and `GET /team/{id}/standing` under a tenth of a second.
+
+The shape of the fix is always the same: a reader that takes a set (`GetSquadsAsync`,
+`GetPlayersAsync`, `ListSeasonViewsAsync(seasonIds)`, `ListByCompetitionSeasonsAsync`,
+`ListByCompetitionSeasonIdsAsync`, `ListSeasonStatesByPlayerIdsAsync`,
+`ListByIdsAsync`, `ListByFixtureIdsAsync`) and a service that calls it once. A loop that
+awaits a repository call inside it needs a reader that takes the whole set, and the reader
+belongs in the repository interface rather than being hidden behind a service that re-queries.
 
 The flow is: pick a club (`#/`), read the squad (`#/team/{teamId}`), see the fixtures
 (`#/league`), choose the eleven (`#/match/lineup/{fixtureId}`), then play

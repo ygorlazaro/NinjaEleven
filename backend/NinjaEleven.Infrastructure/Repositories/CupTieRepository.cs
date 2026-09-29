@@ -90,6 +90,25 @@ public class CupTieRepository : ICupTieRepository
 
         return allClubs.Where(c => !eliminated.Contains(c)).ToList();
     }
+
+    public async Task<Dictionary<Guid, IReadOnlyList<CupTie>>> ListByCompetitionSeasonsAsync(
+        IEnumerable<Guid> competitionSeasonIds,
+        CancellationToken cancellationToken = default)
+    {
+        var seasonIdList = competitionSeasonIds.ToList();
+        
+        var ties = await _dbContext.CupTies
+            .AsNoTracking()
+            .Where(tie => seasonIdList.Contains(tie.CompetitionSeasonId))
+            .OrderBy(tie => tie.CompetitionSeasonId)
+            .ThenBy(tie => tie.RoundNumber)
+            .ThenBy(tie => tie.Id)
+            .ToListAsync(cancellationToken);
+
+        return ties
+            .GroupBy(t => t.CompetitionSeasonId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<CupTie>)g.ToList());
+    }
 }
 
 public class TrophyRepository : ITrophyRepository

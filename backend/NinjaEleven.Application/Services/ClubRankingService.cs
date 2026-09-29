@@ -1,8 +1,8 @@
+using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
-using NinjaEleven.Domain.Finance;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Teams;
@@ -13,17 +13,39 @@ namespace NinjaEleven.Application.Services;
 /// Service for calculating the Ninja Ranking of clubs.
 /// The ranking is based on league performance (last 3 seasons) and cup performance (last 3 seasons).
 /// </summary>
+/// <remarks>
+/// The whole table is worked out in one pass over the world. The seasons' editions are read
+/// together, each edition's table is built once and read by every club in it, the cup ties of
+/// every season arrive in one query, and the squads of the season in progress arrive as one
+/// book. A ranking that asked each club for its own history asked the same question of the
+/// same tables once per club — and a division's table is a hundred round trips on its own,
+/// which is how a page of forty-eight clubs became a page that timed out.
+/// </remarks>
 public class ClubRankingService
 {
+    /// <summary>
+    /// The weight each of the last three seasons carries, most recent first. Three seasons of
+    /// a club's football, and the one in progress is not one of them: a season being played is
+    /// not a result.
+    /// </summary>
+    private static readonly int[] SeasonWeights = [3, 2, 1];
+
+    /// <summary>
+    /// The divisions of a season and where every club stood in each of their tables, best tier
+    /// first. A club belongs to one division, so the first table it is found in is the one it
+    /// played in — which is the whole reason the divisions are ordered here rather than left
+    /// to whichever one the reader happened to build first.
+    /// </summary>
+    private sealed record SeasonTables(
+        Guid SeasonId,
+        IReadOnlyList<DivisionTable> Divisions);
+
+    /// <summary>One division's table of one season, as a position per club.</summary>
+    private sealed record DivisionTable(int Tier, IReadOnlyDictionary<Guid, int> Positions);
+
     private readonly ITeamRepository _teams;
     private readonly ICompetitionRepository _competitions;
     private readonly ISeasonRepository _seasons;
-    private readonly IDivisionRepository _divisions;
-    private readonly ITrophyRepository _trophies;
-    private readonly IMatchRepository _matches;
-    private readonly IFixtureRepository _fixtures;
-    private readonly IRoundRepository _rounds;
-    private readonly IMatchDayRepository _matchDays;
     private readonly ICupTieRepository _cupTies;
     private readonly StandingsService _standings;
 
@@ -31,24 +53,12 @@ public class ClubRankingService
         ITeamRepository teams,
         ICompetitionRepository competitions,
         ISeasonRepository seasons,
-        IDivisionRepository divisions,
-        ITrophyRepository trophies,
-        IMatchRepository matches,
-        IFixtureRepository fixtures,
-        IRoundRepository rounds,
-        IMatchDayRepository matchDays,
         ICupTieRepository cupTies,
         StandingsService standings)
     {
         _teams = teams;
         _competitions = competitions;
         _seasons = seasons;
-        _divisions = divisions;
-        _trophies = trophies;
-        _matches = matches;
-        _fixtures = fixtures;
-        _rounds = rounds;
-        _matchDays = matchDays;
         _cupTies = cupTies;
         _standings = standings;
     }
@@ -67,25 +77,49 @@ public class ClubRankingService
         var currentSeason = await _seasons.GetAsync(currentSeasonId, cancellationToken)
             ?? throw new EntityNotFoundException("Season", currentSeasonId);
 
-        // Get the last 3 finished seasons (excluding current if in progress)
+        // The last three seasons that are over, and the season in progress: every answer below
+        // is a question about the same set of editions, so they are read together.
         var allSeasons = await _seasons.ListAsync(cancellationToken);
         var finishedSeasons = allSeasons
-            .Where(s => s.Status == SeasonStatus.Finished && s.Number < currentSeason.Number)
-            .OrderByDescending(s => s.Number)
-            .Take(3)
+            .Where(season => season.Status == SeasonStatus.Finished && season.Number < currentSeason.Number)
+            .OrderByDescending(season => season.Number)
+            .Take(SeasonWeights.Length)
             .ToList();
 
         var allTeams = await _teams.ListAsync(cancellationToken);
-        var allDivisions = (await _divisions.ListAsync(cancellationToken)).ToDictionary(d => d.Tier);
+        var teamIds = allTeams.Select(team => team.Id).ToList();
+
+        var seasonIds = new[] { currentSeasonId }.Concat(finishedSeasons.Select(season => season.Id)).ToList();
+        var views = await _competitions.ListSeasonViewsAsync(seasonIds, cancellationToken);
+
+        var tables = await SeasonTablesAsync(views, cancellationToken);
+        var cupTies = await CupTiesAsync(views, finishedSeasons, cancellationToken);
+        var currentTier = await _teams.GetTeamDivisionsAsync(currentSeasonId, teamIds, cancellationToken);
+        var strength = await SquadStrengthAsync(currentSeasonId, teamIds, cancellationToken);
 
         var entries = new List<ClubRankingEntry>();
 
         foreach (var team in allTeams)
         {
-            var rankingBase = await CalculateRankingBase(team.Id, finishedSeasons, cancellationToken);
-            var cupScore = await CalculateCupScoreAsync(team.Id, finishedSeasons, cancellationToken);
-            var (currentDivision, currentStrength) = await GetCurrentDivisionAndStrengthAsync(
-                team.Id, currentSeasonId, cancellationToken);
+            var seasonScores = new Dictionary<int, int>();
+            var cupScores = new Dictionary<int, int>();
+            var rankingBase = 0;
+            var cupScore = 0;
+
+            for (var i = 0; i < finishedSeasons.Count; i++)
+            {
+                var season = finishedSeasons[i];
+                var weight = SeasonWeights[i];
+
+                var seasonScore = SeasonScoreOf(tables, season.Id, team.Id);
+                var cupPoints = CupPointsOf(cupTies.GetValueOrDefault(season.Id), team.Id);
+
+                seasonScores[season.Number] = seasonScore;
+                cupScores[season.Number] = cupPoints;
+
+                rankingBase += seasonScore * weight;
+                cupScore += cupPoints * weight;
+            }
 
             entries.Add(new ClubRankingEntry
             {
@@ -98,199 +132,202 @@ public class ClubRankingService
                 RankingPoints = rankingBase + cupScore,
                 RankingBase = rankingBase,
                 CupScore = cupScore,
-                CurrentDivision = currentDivision,
-                CurrentDivisionName = allDivisions.TryGetValue(currentDivision, out var div) 
-                    ? CompetitionRules.DivisionName(currentDivision) 
+                CurrentDivision = currentTier.GetValueOrDefault(team.Id),
+                CurrentDivisionName = currentTier.TryGetValue(team.Id, out var tier)
+                    ? CompetitionRules.DivisionName(tier)
                     : "",
-                Strength = currentStrength,
-                SeasonScores = await GetSeasonScoresAsync(team.Id, finishedSeasons, cancellationToken),
-                CupScores = await GetCupScoresAsync(team.Id, finishedSeasons, cancellationToken)
+                Strength = strength.GetValueOrDefault(team.Id),
+                SeasonScores = seasonScores,
+                CupScores = cupScores
             });
         }
 
-        // Sort by ranking points descending
         return entries
-            .OrderByDescending(e => e.RankingPoints)
-            .ThenByDescending(e => e.Strength)
+            .OrderByDescending(entry => entry.RankingPoints)
+            .ThenByDescending(entry => entry.Strength)
             .ToList()
-            .Select((e, i) => { e.Position = i + 1; return e; })
+            .Select((entry, index) => { entry.Position = index + 1; return entry; })
             .ToList();
     }
 
-    private async Task<int> CalculateRankingBase(Guid teamId, IReadOnlyList<Season> finishedSeasons, CancellationToken cancellationToken)
+    /// <summary>
+    /// The tables of every season asked about, one per edition. A division's table is built
+    /// once and read by every club in it: the ranking needs a position for forty-eight clubs
+    /// out of twelve tables, and a table that was rebuilt per club was a table read forty-eight
+    /// times.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<Guid, SeasonTables>> SeasonTablesAsync(
+        IReadOnlyDictionary<Guid, IReadOnlyList<CompetitionSeasonView>> views,
+        CancellationToken cancellationToken)
     {
-        if (finishedSeasons.Count == 0)
+        var tables = new Dictionary<Guid, SeasonTables>();
+
+        foreach (var pair in views)
+        {
+            var divisions = new List<DivisionTable>();
+
+            foreach (var view in pair.Value
+                         .Where(view => view.Type == CompetitionType.League && view.Tier.HasValue))
+            {
+                var collection = await _standings.CollectAsync(view.Id, view, cancellationToken);
+                if (collection.Seeds.Count == 0)
+                {
+                    continue;
+                }
+
+                divisions.Add(new DivisionTable(
+                    view.Tier!.Value,
+                    StandingTable.Build(collection.Seeds, collection.Finished)
+                        .ToDictionary(entry => entry.TeamId, entry => entry.Position)));
+            }
+
+            tables[pair.Key] = new SeasonTables(
+                pair.Key,
+                divisions.OrderBy(division => division.Tier).ToList());
+        }
+
+        return tables;
+    }
+
+    /// <summary>
+    /// The cup ties of every season asked about, keyed by the season they belong to. The ties
+    /// know the edition they were drawn in, and the season is what the ranking sums over, so
+    /// the two are joined here once instead of inside a loop over clubs.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<Guid, IReadOnlyList<CupTie>>> CupTiesAsync(
+        IReadOnlyDictionary<Guid, IReadOnlyList<CompetitionSeasonView>> views,
+        IReadOnlyList<Season> finishedSeasons,
+        CancellationToken cancellationToken)
+    {
+        var cupEditions = new Dictionary<Guid, Guid>();
+        foreach (var season in finishedSeasons)
+        {
+            var cup = views.TryGetValue(season.Id, out var seasonViews)
+                ? seasonViews.FirstOrDefault(view => view.Type == CompetitionType.Cup)
+                : null;
+
+            if (cup is not null)
+            {
+                cupEditions[season.Id] = cup.Id;
+            }
+        }
+
+        if (cupEditions.Count == 0)
+        {
+            return new Dictionary<Guid, IReadOnlyList<CupTie>>();
+        }
+
+        var byEdition = await _cupTies.ListByCompetitionSeasonsAsync(
+            cupEditions.Values.Distinct().ToList(),
+            cancellationToken);
+
+        return cupEditions
+            .Where(pair => byEdition.ContainsKey(pair.Value))
+            .ToDictionary(pair => pair.Key, pair => byEdition[pair.Value]);
+    }
+
+    /// <summary>
+    /// What one season of one club is worth: the place it took in the division it played,
+    /// weighted by that division. A club with no table in that season scored nothing, which is
+    /// a club that was not there rather than a club that finished last.
+    /// </summary>
+    private static int SeasonScoreOf(
+        IReadOnlyDictionary<Guid, SeasonTables> tables,
+        Guid seasonId,
+        Guid teamId)
+    {
+        if (!tables.TryGetValue(seasonId, out var season))
         {
             return 0;
         }
 
-        var total = 0;
-        var weights = new[] { 3, 2, 1 }; // Most recent season gets weight 3
-
-        for (var i = 0; i < Math.Min(finishedSeasons.Count, 3); i++)
+        foreach (var division in season.Divisions)
         {
-            var season = finishedSeasons[i];
-            var weight = weights[i];
-            var seasonScore = await CalculateSeasonScore(teamId, season.Id, cancellationToken);
-            total += seasonScore * weight;
-        }
-
-        return total;
-    }
-
-    private async Task<int> CalculateSeasonScore(Guid teamId, Guid seasonId, CancellationToken cancellationToken)
-    {
-        // Find the league edition for each division this team played in
-        var views = await _competitions.ListSeasonViewsAsync(seasonId, cancellationToken);
-        var leagueViews = views.Where(v => v.Type == CompetitionType.League && v.Tier.HasValue).ToList();
-
-        foreach (var view in leagueViews)
-        {
-            var collection = await _standings.CollectAsync(view.Id, view, cancellationToken);
-            if (collection.Seeds.Count == 0)
+            if (division.Positions.TryGetValue(teamId, out var position))
             {
-                continue;
-            }
-
-            var table = StandingTable.Build(collection.Seeds, collection.Finished);
-            var tableList = table.ToList();
-            var position = tableList.FindIndex(s => s.TeamId == teamId) + 1;
-
-            if (position > 0)
-            {
-                // PositionScore = 17 - position (1st = 16, 16th = 1)
-                var positionScore = 17 - position;
-                // DivisionWeight = 5 - division (1st div = 4, 4th div = 1)
-                var divisionWeight = 5 - view.Tier!.Value;
-                return positionScore * divisionWeight;
+                return (17 - position) * (5 - division.Tier);
             }
         }
 
         return 0;
     }
 
-    private async Task<int> CalculateCupScoreAsync(Guid teamId, IReadOnlyList<Season> finishedSeasons, CancellationToken cancellationToken)
+    /// <summary>
+    /// How many points a club's cup run was worth, taken from the round it fell in and from
+    /// whether it won the last tie it played. The final pays two amounts because the losing
+    /// side of a final is a fact in its own right: the runner-up is paid nearly the winner's
+    /// money, which is what makes the cup worth playing to the bottom of it.
+    /// </summary>
+    private static int CupPointsOf(IReadOnlyList<CupTie>? ties, Guid teamId)
     {
-        if (finishedSeasons.Count == 0)
+        if (ties is null)
         {
             return 0;
         }
 
-        var total = 0;
-        var weights = new[] { 3, 2, 1 };
+        var latestTie = ties
+            .Where(tie => tie.HomeTeamId == teamId || tie.AwayTeamId == teamId)
+            .OrderByDescending(tie => tie.RoundNumber)
+            .FirstOrDefault();
 
-        for (var i = 0; i < Math.Min(finishedSeasons.Count, 3); i++)
-        {
-            var season = finishedSeasons[i];
-            var weight = weights[i];
-            var cupPoints = await GetCupPointsForSeasonAsync(teamId, season.Id, cancellationToken);
-            total += cupPoints * weight;
-        }
-
-        return total;
-    }
-
-    private async Task<int> GetCupPointsForSeasonAsync(Guid teamId, Guid seasonId, CancellationToken cancellationToken)
-    {
-        // Find cup edition for this season
-        var views = await _competitions.ListSeasonViewsAsync(seasonId, cancellationToken);
-        var cupView = views.FirstOrDefault(v => v.Type == CompetitionType.Cup);
-
-        if (cupView is null)
+        if (latestTie is null)
         {
             return 0;
         }
 
-        // Find how far this team went in the cup
-        var ties = await _cupTies.ListByCompetitionSeasonAsync(cupView.Id, cancellationToken);
-        var teamTies = ties.Where(t => t.HomeTeamId == teamId || t.AwayTeamId == teamId).ToList();
-
-        if (teamTies.Count == 0)
+        return latestTie.RoundNumber switch
         {
-            return 0; // Eliminated in 32nd round (didn't qualify - but with 64 clubs all should qualify)
-        }
-
-        // Find the latest round this team played and whether they won
-        var latestTie = teamTies.OrderByDescending(t => t.RoundNumber).First();
-        
-        // Points based on round reached
-        var points = latestTie.RoundNumber switch
-        {
-            1 => 0, // Eliminated in 32nd round (64 -> 32)
-            2 => 5, // Reached 16th round (32 -> 16)
-            3 => 10, // Reached round of 16 (16 -> 8)
-            4 => 20, // Reached quarter-finals (8 -> 4)
-            5 => 35, // Reached semi-finals (4 -> 2)
-            6 => latestTie.WinnerTeamId == teamId ? 70 : 50, // Final: winner 70, runner-up 50
+            1 => 0,     // Out in the round of thirty-two: the club was never really in it.
+            2 => 5,
+            3 => 10,
+            4 => 20,
+            5 => 35,
+            6 => latestTie.WinnerTeamId == teamId ? 70 : 50,
             _ => 0
         };
-
-        return points;
     }
 
-    private async Task<(int Division, double Strength)> GetCurrentDivisionAndStrengthAsync(
-        Guid teamId, Guid seasonId, CancellationToken cancellationToken)
+    /// <summary>
+    /// The strength of every squad of a season, read as one book rather than club by club.
+    /// The strength column is what separates two clubs with the same points, and it is the
+    /// same number a table is seeded with.
+    /// </summary>
+    private async Task<Dictionary<Guid, double>> SquadStrengthAsync(
+        Guid seasonId,
+        IReadOnlyCollection<Guid> teamIds,
+        CancellationToken cancellationToken)
     {
-        var views = await _competitions.ListSeasonViewsAsync(seasonId, cancellationToken);
-        var leagueViews = views.Where(v => v.Type == CompetitionType.League && v.Tier.HasValue).ToList();
+        var strength = new Dictionary<Guid, double>();
 
-        foreach (var view in leagueViews)
+        if (teamIds.Count == 0)
         {
-            var collection = await _standings.CollectAsync(view.Id, view, cancellationToken);
-            if (collection.Seeds.Count == 0)
-            {
-                continue;
-            }
-
-            var table = StandingTable.Build(collection.Seeds, collection.Finished);
-            if (table.Any(s => s.TeamId == teamId))
-            {
-                var squad = await GetSquadForTeamAsync(teamId, seasonId, cancellationToken);
-                var strength = ClubStrength.Calculate(squad);
-                return (view.Tier!.Value, strength);
-            }
+            return strength;
         }
 
-        return (0, 0);
-    }
+        var squads = await _teams.GetSquadsAsync(teamIds, seasonId, cancellationToken);
+        var playerIds = squads.Values
+            .SelectMany(memberships => memberships)
+            .Select(membership => membership.PlayerId)
+            .Distinct()
+            .ToList();
+        var players = playerIds.Count == 0
+            ? new Dictionary<Guid, Player>()
+            : await _teams.GetPlayersAsync(playerIds, cancellationToken);
 
-    private async Task<List<Player>> GetSquadForTeamAsync(Guid teamId, Guid seasonId, CancellationToken cancellationToken)
-    {
-        var memberships = await _teams.GetSquadAsync(teamId, seasonId, cancellationToken);
-        var players = new List<Player>();
-
-        foreach (var membership in memberships)
+        foreach (var teamId in teamIds)
         {
-            var player = await _teams.GetPlayerAsync(membership.PlayerId, cancellationToken);
-            if (player is not null)
-            {
-                players.Add(player);
-            }
+            var squad = squads.TryGetValue(teamId, out var memberships)
+                ? memberships
+                    .Select(membership => players.GetValueOrDefault(membership.PlayerId))
+                    .Where(player => player is not null)
+                    .Select(player => player!)
+                    .ToList()
+                : new List<Player>();
+
+            strength[teamId] = ClubStrength.Calculate(squad);
         }
 
-        return players;
-    }
-
-    private async Task<Dictionary<int, int>> GetSeasonScoresAsync(
-        Guid teamId, IReadOnlyList<Season> finishedSeasons, CancellationToken cancellationToken)
-    {
-        var scores = new Dictionary<int, int>();
-        foreach (var season in finishedSeasons)
-        {
-            scores[season.Number] = await CalculateSeasonScore(teamId, season.Id, cancellationToken);
-        }
-        return scores;
-    }
-
-    private async Task<Dictionary<int, int>> GetCupScoresAsync(
-        Guid teamId, IReadOnlyList<Season> finishedSeasons, CancellationToken cancellationToken)
-    {
-        var scores = new Dictionary<int, int>();
-        foreach (var season in finishedSeasons)
-        {
-            scores[season.Number] = await GetCupPointsForSeasonAsync(teamId, season.Id, cancellationToken);
-        }
-        return scores;
+        return strength;
     }
 }
 

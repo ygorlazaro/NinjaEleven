@@ -124,6 +124,25 @@ public class MatchServiceTests
                     .Where(state => state.TeamId == teamId)
                     .Select(state => TeamMembership.Create(state.PlayerId, teamId, new DateOnly(2026, 1, 1)))
                     .ToList()));
+        // The same book read the way a table reads it: every club's squad in one go, and the
+        // men behind them in another. A table that asked club by club would be a table that
+        // times out, so the batched readers are what the tests hold it to.
+        _teams.Setup(repo => repo.GetSquadsAsync(
+                It.IsAny<IEnumerable<Guid>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns((IEnumerable<Guid> teamIds, Guid _, CancellationToken __) =>
+                Task.FromResult<Dictionary<Guid, IReadOnlyList<TeamMembership>>>(
+                    teamIds.ToDictionary(
+                        teamId => teamId,
+                        teamId => (IReadOnlyList<TeamMembership>)_states
+                            .Where(state => state.TeamId == teamId)
+                            .Select(state => TeamMembership.Create(state.PlayerId, teamId, new DateOnly(2026, 1, 1)))
+                            .ToList())));
+        _teams.Setup(repo => repo.GetPlayersAsync(
+                It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .Returns((IEnumerable<Guid> playerIds, CancellationToken __) =>
+                Task.FromResult<Dictionary<Guid, Player>>(
+                    _roster.Where(player => playerIds.Contains(player.Id))
+                        .ToDictionary(player => player.Id)));
         // A book that remembers what was written in it, because the two rules of a ledger
         // are the two questions it has to answer honestly: what the balance is now, and
         // whether a line that must happen once has already happened.
@@ -210,8 +229,7 @@ public class MatchServiceTests
             _fixtures.Object,
             _matches.Object,
             _competitions.Object,
-            _teams.Object,
-            _players.Object));
+            _teams.Object));
 
     private MatchService CreateService() => new(
         _matches.Object,

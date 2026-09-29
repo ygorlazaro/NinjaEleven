@@ -34,6 +34,13 @@ public interface ICupTieRepository
     Task<IReadOnlyList<Guid>> GetAliveClubsInCupAsync(
         Guid competitionSeasonId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets all cup ties for multiple competition seasons in a single query.
+    /// </summary>
+    Task<Dictionary<Guid, IReadOnlyList<CupTie>>> ListByCompetitionSeasonsAsync(
+        IEnumerable<Guid> competitionSeasonIds,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

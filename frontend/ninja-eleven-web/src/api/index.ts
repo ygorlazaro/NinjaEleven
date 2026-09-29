@@ -13,6 +13,7 @@ import type {
   FinanceLedgerDto,
   ClubScorerDto,
   CompetitionFilter,
+  ClubStandingDto,
   CupBracketDto,
   CupPrizeDto,
   DivisionPurseDto,
@@ -59,6 +60,16 @@ export const TeamApi = {
     api.post<TeamDto>(`/team/${id}/manager-club`).then(r => r.data),
   getSquad: (teamId: string, seasonId: string) =>
     api.get<SquadPlayerDto[]>(`/team/${teamId}/squad/${seasonId}`).then(r => r.data),
+  /**
+   * The club's place in a season: the division it is in and the line it holds there.
+   *
+   * Asked of the club rather than of a competition, because the club is the subject and the
+   * season is what says which division — the same club is a different club in a different
+   * division next year, and a division read off the club itself would survive a relegation.
+   * The season is required for the same reason: without it the question has no answer.
+   */
+  getStanding: (teamId: string, seasonId: string) =>
+    api.get<ClubStandingDto>(`/team/${teamId}/standing?seasonId=${seasonId}`).then(r => r.data),
   /** The club's last finished matches, newest first, for the form guide on its card. */
   getMatches: (teamId: string, limit = 10) =>
     api.get<TeamMatchRecordDto[]>(`/team/${teamId}/matches?limit=${limit}`).then(r => r.data),

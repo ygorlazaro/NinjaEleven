@@ -59,6 +59,24 @@ public class PlayerRepository : IPlayerRepository
         return await query.ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<PlayerSeasonState>> ListSeasonStatesByPlayerIdsAsync(
+        Guid seasonId,
+        IEnumerable<Guid> playerIds,
+        CancellationToken cancellationToken = default)
+    {
+        var playerIdList = playerIds.ToList();
+
+        if (playerIdList.Count == 0)
+        {
+            return Array.Empty<PlayerSeasonState>();
+        }
+
+        return await _dbContext.PlayerSeasonStates
+            .AsNoTracking()
+            .Where(state => state.SeasonId == seasonId && playerIdList.Contains(state.PlayerId))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<PlayerSeasonState?> GetSeasonStateForUpdateAsync(
         Guid playerId,
         Guid seasonId,

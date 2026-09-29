@@ -119,6 +119,42 @@ public class CompetitionRepository : ICompetitionRepository
             .ThenBy(view => view.CompetitionName)
             .ToListAsync(cancellationToken);
 
+    public async Task<Dictionary<Guid, IReadOnlyList<CompetitionSeasonView>>> ListSeasonViewsAsync(
+        IEnumerable<Guid> seasonIds,
+        CancellationToken cancellationToken = default)
+    {
+        var seasonIdList = seasonIds.ToList();
+        
+        var views = await SeasonViews
+            .Where(view => seasonIdList.Contains(view.SeasonId))
+            .OrderBy(view => view.SeasonId)
+            .ThenBy(view => view.Tier ?? int.MaxValue)
+            .ThenBy(view => view.Type)
+            .ThenBy(view => view.CompetitionName)
+            .ToListAsync(cancellationToken);
+
+        return views
+            .GroupBy(v => v.SeasonId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<CompetitionSeasonView>)g.ToList());
+    }
+
+    public async Task<CompetitionSeasonView?> GetDivisionSeasonForTeamAsync(
+        Guid teamId,
+        Guid seasonId,
+        CancellationToken cancellationToken = default) =>
+        await (from view in SeasonViews
+               join participant in _dbContext.CompetitionParticipants.AsNoTracking()
+                   on view.Id equals participant.CompetitionSeasonId
+               where participant.TeamId == teamId
+                     && view.SeasonId == seasonId
+                     && view.DivisionId != null
+               // Best tier first: a club entered in more than one division of a season is a
+               // broken enrolment, and the table a manager should be sent to is the one its
+               // players are actually seeded in.
+               orderby view.Tier
+               select view)
+            .FirstOrDefaultAsync(cancellationToken);
+
     public async Task AddSeasonAsync(
         CompetitionSeason competitionSeason,
         CancellationToken cancellationToken = default) =>

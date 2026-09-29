@@ -56,6 +56,26 @@ public interface ICompetitionRepository
         Guid seasonId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Every edition of every competition for multiple seasons in a single query.
+    /// </summary>
+    Task<Dictionary<Guid, IReadOnlyList<CompetitionSeasonView>>> ListSeasonViewsAsync(
+        IEnumerable<Guid> seasonIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The division a club is in during a season, or null when it is in none.
+    ///
+    /// A club has no division of its own — it is enrolled in one for the season, and a club
+    /// that changes tier is the same club in another edition. So the question "which division
+    /// is this club in" is answered by the enrolment, and it is asked of the enrolment rather
+    /// than of the club, which is the only place the answer exists.
+    /// </summary>
+    Task<CompetitionSeasonView?> GetDivisionSeasonForTeamAsync(
+        Guid teamId,
+        Guid seasonId,
+        CancellationToken cancellationToken = default);
+
     Task AddSeasonAsync(CompetitionSeason competitionSeason, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<CompetitionParticipant>> ListParticipantsAsync(

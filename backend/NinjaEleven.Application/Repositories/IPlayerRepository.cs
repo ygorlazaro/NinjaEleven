@@ -29,6 +29,18 @@ public interface IPlayerRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The season state of a set of players, in one query.
+    ///
+    /// A club's squad is a question about twenty-three men, and asking the state of each of
+    /// them separately made a squad page forty-eight round trips. The state is keyed by player
+    /// and season, so a squad of one is the same answer as a set of any size.
+    /// </summary>
+    Task<IReadOnlyList<PlayerSeasonState>> ListSeasonStatesByPlayerIdsAsync(
+        Guid seasonId,
+        IEnumerable<Guid> playerIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The same state, but tracked, for a caller that is going to change it. The read
     /// only overload detaches the entity, so writing a season total needs this one.
     /// </summary>

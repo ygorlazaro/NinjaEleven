@@ -638,6 +638,40 @@ export interface CompetitionStandingsDto {
 }
 
 /**
+ * A club's place in a season: which division it is in, and the line it holds there.
+ *
+ * It is asked of a club rather than of a table, because a club is what a manager opens, and
+ * the season is required — a club's division is its enrolment for that season, not a fact
+ * about the club, so the same club is in another division next year. `competitionSeasonId`
+ * comes back with it so a screen can take the manager to the very table this line is on,
+ * and a club in no division of that season comes back with nulls instead of an error: it is a
+ * fact about the world, not a failure to read one.
+ */
+export interface ClubStandingDto {
+  teamId: Guid;
+  seasonId: Guid;
+  competitionSeasonId?: Guid | null;
+  /** "4ª Divisão", and empty when the club is in none. */
+  divisionName: string;
+  /** 1 is the top of the pyramid. Null when the club is in no division. */
+  tier?: number | null;
+  /**
+   * How many clubs the division holds, so a position reads as one of a number: "7º de 12" is a
+   * place in a table, and "7º" alone is a place in a list nobody can see.
+   */
+  clubsInDivision?: number | null;
+  /**
+   * The strength of the club's squad this season, the same average the division's table is
+   * seeded with. It comes from here rather than from the club because a club's strength is a
+   * fact about its men and its season, and it is answered even for a club that is in no
+   * division at all this season.
+   */
+  squadStars: number;
+  /** The club's own line, and null when the division has not been drawn yet. */
+  row?: StandingDto | null;
+}
+
+/**
  * One line of a top scorers table.
  *
  * **The order and the numbers that settle it are the backend's.** Goals first, then fewest

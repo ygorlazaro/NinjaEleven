@@ -288,7 +288,9 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
     public static StandingDto ToDto(this Application.Models.StandingRow row) => new()
     {
         TeamId = row.TeamId,
-        Team = row.Team?.ToDto(),
+        // The club inside a table carries the strength that table seeded it with. A club drawn
+        // with no stars in a table that ranked it by them is a club that reads as worthless.
+        Team = row.Team?.ToDto(row.Stars),
         Position = row.Position,
         Points = row.Points,
         Played = row.Played,
@@ -307,6 +309,18 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
 
     public static IReadOnlyList<StandingDto> ToDtos(this IEnumerable<Application.Models.StandingRow> rows) =>
         rows.Select(row => row.ToDto()).ToList();
+
+    public static ClubStandingDto ToDto(this Application.Models.ClubStanding standing) => new()
+    {
+        TeamId = standing.TeamId,
+        SeasonId = standing.SeasonId,
+        CompetitionSeasonId = standing.CompetitionSeasonId,
+        DivisionName = standing.DivisionName,
+        Tier = standing.Tier,
+        SquadStars = standing.SquadStars,
+        ClubsInDivision = standing.ClubsInDivision,
+        Row = standing.Row?.ToDto()
+    };
 
     public static CompetitionStandingsDto ToDto(this Application.Models.CompetitionStandings standings) => new()
     {

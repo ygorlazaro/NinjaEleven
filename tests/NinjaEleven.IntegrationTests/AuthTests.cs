@@ -34,8 +34,7 @@ public class AuthTests
             new FixtureRepository(db),
             new MatchRepository(db),
             competitions,
-            teams,
-            new PlayerRepository(db));
+            teams);
         var passwordHasher = new BcryptPasswordHasher();
         var unitOfWork = new EfUnitOfWork(db);
 

@@ -274,4 +274,26 @@ public class TeamRepository : ITeamRepository
             .Where(p => playerIdList.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, cancellationToken);
     }
+
+    /// <summary>
+    /// Gets all squads for a season in a single query.
+    /// </summary>
+    public async Task<Dictionary<Guid, IReadOnlyList<TeamMembership>>> GetAllSquadsAsync(
+        Guid seasonId,
+        CancellationToken cancellationToken = default)
+    {
+        var seasonEntity = await _dbContext.Seasons
+            .AsNoTracking()
+            .FirstAsync(s => s.Id == seasonId, cancellationToken);
+
+        var memberships = await _dbContext.TeamMemberships
+            .AsNoTracking()
+            .Where(m => m.StartDate <= seasonEntity.EndDate
+                     && (m.EndDate == null || m.EndDate >= seasonEntity.StartDate))
+            .ToListAsync(cancellationToken);
+
+        return memberships
+            .GroupBy(m => m.TeamId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<TeamMembership>)g.OrderBy(m => m.PlayerId).ToList());
+    }
 }
