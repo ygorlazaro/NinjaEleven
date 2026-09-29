@@ -23,6 +23,7 @@ import SponsorsScreen from '@/pages/SponsorsScreen';
 import ScorersScreen from '@/pages/ScorersScreen';
 import PlayerProfileScreen from '@/pages/PlayerProfileScreen';
 import TransferScreen from '@/pages/TransferScreen';
+import RankingScreen from '@/pages/RankingScreen';
 import '@/styles.css';
 
 /**
@@ -79,12 +80,16 @@ function App() {
           path="/patrocinadores"
           element={<RequireAuth><SponsorsScreen /></RequireAuth>}
         />
-        <Route
-          path="/artilheiros"
-          element={<RequireAuth><ScorersScreen /></RequireAuth>}
-        />
-        <Route
-          path="/transfer"
+<Route
+            path="/artilheiros"
+            element={<RequireAuth><ScorersScreen /></RequireAuth>}
+          />
+          <Route
+            path="/ranking"
+            element={<RequireAuth><RankingScreen /></RequireAuth>}
+          />
+          <Route
+            path="/transfer"
           element={<RequireAuth><TransferScreen /></RequireAuth>}
         />
         <Route

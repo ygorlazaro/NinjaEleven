@@ -115,7 +115,7 @@ public class Player
         Face = face;
     }
 
-    private static int Clamp(int value) => Math.Max(1, Math.Min(20, value));
+    private static int Clamp(int value) => Math.Max(1, Math.Min(100, value));
 
     private static int ClampAge(int age) => Math.Max(YoungestAge, Math.Min(OldestAge, age));
 }

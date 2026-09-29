@@ -1041,4 +1041,26 @@ public static class TeamMatchRecordMapping
     public static IReadOnlyList<TransferHistoryLineDto> ToDtos(
         this IEnumerable<Application.Models.PlayerTransferHistoryLine> lines) =>
         lines.Select(line => line.ToDto()).ToList();
+
+    public static ClubRankingDto ToDto(this Application.Services.ClubRankingEntry entry) => new()
+    {
+        TeamId = entry.TeamId,
+        TeamName = entry.TeamName,
+        TeamShortName = entry.TeamShortName,
+        PrimaryColor = entry.PrimaryColor,
+        SecondaryColor = entry.SecondaryColor,
+        ManagerName = entry.ManagerName,
+        Position = entry.Position,
+        RankingPoints = entry.RankingPoints,
+        RankingBase = entry.RankingBase,
+        CupScore = entry.CupScore,
+        CurrentDivision = entry.CurrentDivision,
+        CurrentDivisionName = entry.CurrentDivisionName,
+        Strength = entry.Strength,
+        SeasonScores = entry.SeasonScores,
+        CupScores = entry.CupScores
+    };
+
+    public static IReadOnlyList<ClubRankingDto> ToDtos(this IEnumerable<Application.Services.ClubRankingEntry> entries) =>
+        entries.Select(entry => entry.ToDto()).ToList();
 }

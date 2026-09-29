@@ -28,8 +28,9 @@ public static class YouthIntakeRules
 {
     /// <summary>
     /// How many young free agents a season opens with.
+    /// 36 per division * 4 divisions = 144 total
     /// </summary>
-    public const int FreeAgentsPerSeason = 88;
+    public const int FreeAgentsPerSeason = 144;
 
     /// <summary>The youngest a player arriving in the intake is.</summary>
     public const int YoungestAge = 16;

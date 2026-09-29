@@ -33,7 +33,7 @@ import type {
     ChangePasswordRequestDto,
     UpdateTeamNameRequestDto,
     UpdateTeamColorsRequestDto,
-    LinkManagerRequestDto,
+    ClubRankingDto,
 } from '../types';
 
 /**
@@ -430,7 +430,7 @@ export const TransferApi = {
 };
 
 export const AuthApi = {
-  /** Registers a new account. If a team id and coach name are given, the career starts at once. */
+  /** Registers a new account. Club is auto-assigned by the backend. */
   register: (request: AuthRegisterRequestDto) =>
     api.post<AuthResponseDto>('/auth/register', request).then(r => r.data),
 
@@ -440,12 +440,9 @@ export const AuthApi = {
   /** Changes the authenticated user's password. */
   changePassword: (request: ChangePasswordRequestDto) =>
     api.put('/auth/password', request).then(r => r.data),
+};
 
-  /** The clubs that do not yet have a human manager, for the club-selection flow. */
-  getAvailableClubs: () =>
-    api.get<TeamDto[]>('/auth/available-clubs').then(r => r.data),
-
-  /** Links the authenticated user to a new manager, claiming a club. */
-  linkManager: (request: LinkManagerRequestDto) =>
-    api.post<ManagerDto>('/auth/link-manager', request).then(r => r.data),
+export const RankingApi = {
+  /** Gets the Ninja Ranking for all clubs. */
+  getRanking: () => api.get<ClubRankingDto[]>('/ranking').then(r => r.data),
 };

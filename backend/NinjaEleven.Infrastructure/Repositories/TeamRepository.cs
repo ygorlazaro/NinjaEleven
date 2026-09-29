@@ -1,5 +1,6 @@
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
+using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Teams;
 using NinjaEleven.Infrastructure.Persistence;
@@ -169,4 +170,108 @@ public class TeamRepository : ITeamRepository
             .Where(team => !team.Managers.Any(m => m.UserId.HasValue))
             .OrderBy(team => team.Name)
             .ToListAsync(cancellationToken);
+
+    /// <summary>
+    /// Clubs without human manager in a specific season (participating in the league).
+    /// </summary>
+    public async Task<IReadOnlyList<Team>> ListClubsWithoutManagerInSeasonAsync(
+        Guid seasonId,
+        CancellationToken cancellationToken = default)
+    {
+        // Get clubs participating in league competitions for this season
+        var participantTeamIds = await _dbContext.CompetitionParticipants
+            .AsNoTracking()
+            .Join(_dbContext.CompetitionSeasons,
+                cp => cp.CompetitionSeasonId,
+                cs => cs.Id,
+                (cp, cs) => new { cp.TeamId, cs.CompetitionId, cs.SeasonId })
+            .Where(x => x.SeasonId == seasonId)
+            .Join(_dbContext.Competitions,
+                x => x.CompetitionId,
+                c => c.Id,
+                (x, c) => new { x.TeamId, c.Type })
+            .Where(x => x.Type == NinjaEleven.Domain.Enums.CompetitionType.League)
+            .Select(x => x.TeamId)
+            .ToListAsync(cancellationToken);
+
+        return await _dbContext.Teams
+            .AsNoTracking()
+            .Include(team => team.Stadium)
+            .Where(team => participantTeamIds.Contains(team.Id))
+            .Where(team => !team.Managers.Any(m => m.UserId.HasValue))
+            .OrderBy(team => team.Name)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets a player by ID.
+    /// </summary>
+    public async Task<Player?> GetPlayerAsync(Guid playerId, CancellationToken cancellationToken = default) =>
+        await _dbContext.Players
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == playerId, cancellationToken);
+
+    /// <summary>
+    /// Gets the division tier for teams in a season from competition participants.
+    /// </summary>
+    public async Task<Dictionary<Guid, int>> GetTeamDivisionsAsync(
+        Guid seasonId,
+        IEnumerable<Guid> teamIds,
+        CancellationToken cancellationToken = default)
+    {
+        var teamIdList = teamIds.ToList();
+        
+        return await _dbContext.CompetitionParticipants
+            .AsNoTracking()
+            .Join(_dbContext.CompetitionSeasons,
+                cp => cp.CompetitionSeasonId,
+                cs => cs.Id,
+                (cp, cs) => new { cp.TeamId, cs.CompetitionId, cs.SeasonId, cs.DivisionId })
+            .Where(x => x.SeasonId == seasonId && teamIdList.Contains(x.TeamId) && x.DivisionId.HasValue)
+            .Join(_dbContext.Divisions,
+                x => x.DivisionId!.Value,
+                d => d.Id,
+                (x, d) => new { x.TeamId, d.Tier })
+            .ToDictionaryAsync(x => x.TeamId, x => x.Tier, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets squads for multiple teams in a season in a single query.
+    /// </summary>
+    public async Task<Dictionary<Guid, IReadOnlyList<TeamMembership>>> GetSquadsAsync(
+        IEnumerable<Guid> teamIds,
+        Guid seasonId,
+        CancellationToken cancellationToken = default)
+    {
+        var teamIdList = teamIds.ToList();
+        var seasonEntity = await _dbContext.Seasons
+            .AsNoTracking()
+            .FirstAsync(s => s.Id == seasonId, cancellationToken);
+
+        var memberships = await _dbContext.TeamMemberships
+            .AsNoTracking()
+            .Where(m => teamIdList.Contains(m.TeamId)
+                     && m.StartDate <= seasonEntity.EndDate
+                     && (m.EndDate == null || m.EndDate >= seasonEntity.StartDate))
+            .ToListAsync(cancellationToken);
+
+        return memberships
+            .GroupBy(m => m.TeamId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<TeamMembership>)g.OrderBy(m => m.PlayerId).ToList());
+    }
+
+    /// <summary>
+    /// Gets multiple players by their IDs in a single query.
+    /// </summary>
+    public async Task<Dictionary<Guid, Player>> GetPlayersAsync(
+        IEnumerable<Guid> playerIds,
+        CancellationToken cancellationToken = default)
+    {
+        var playerIdList = playerIds.ToList();
+        
+        return await _dbContext.Players
+            .AsNoTracking()
+            .Where(p => playerIdList.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, cancellationToken);
+    }
 }

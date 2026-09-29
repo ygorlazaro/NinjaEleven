@@ -14,36 +14,35 @@ namespace NinjaEleven.Domain.Competitions;
 public static class CompetitionRules
 {
     /// <summary>How many divisions the pyramid has. Tier 1 is the top.</summary>
-    public const int DivisionCount = 3;
+    public const int DivisionCount = 4;
 
     /// <summary>Clubs in every division.</summary>
-    public const int ClubsPerDivision = 12;
+    public const int ClubsPerDivision = 16;
 
     /// <summary>Clubs in the whole pyramid. Derived, because the two above are the rule.</summary>
     public const int TotalClubs = DivisionCount * ClubsPerDivision;
 
     /// <summary>
-    /// Clubs sent down from a division. Tier 1 sends its bottom four down; the lower
-    /// divisions send the same four down, which is what keeps the pyramid the same size.
+    /// Clubs sent down from a division. All divisions send their bottom four down (except tier 4).
     /// </summary>
     public const int RelegationSlots = 4;
 
-    /// <summary>Clubs sent up from tier 2 into tier 1.</summary>
+    /// <summary>Clubs sent up from a division. All divisions send their top four up (except tier 1).</summary>
     public const int PromotionSlots = 4;
 
     /// <summary>Positions that are given a trophy in a division.</summary>
     public const int TrophyPositions = 3;
 
-    /// <summary>Clubs in the cup.</summary>
-    public const int CupSize = 32;
+    /// <summary>Clubs in the cup. All 64 clubs participate.</summary>
+    public const int CupSize = 64;
 
     /// <summary>
     /// How many matchdays the cup's tie-rounds are spread over before the last one. It is
-    /// the gaps between them, not the count: the fifth round is the final and the final is
+    /// the gaps between them, not the count: the sixth round is the final and the final is
     /// the last match of the season, so the last gap is the one that has to land on the
     /// final matchday.
     /// </summary>
-    public const int CupRounds = 5;
+    public const int CupRounds = 6;
 
     /// <summary>
     /// Windows of football per matchday, in the order they are played: the Supercup, the
@@ -248,7 +247,7 @@ public static class CompetitionRules
     /// <summary>
     /// Which band of a division's table a position falls into.
     ///
-    /// The bands are the pyramid's, not a fixed four-and-four, because the three divisions do
+    /// The bands are the pyramid's, not a fixed four-and-four, because the four divisions do
     /// not have the same neighbours:
     ///
     /// - **The top division** promotes nobody — there is no division above it — so its first
@@ -257,11 +256,7 @@ public static class CompetitionRules
     /// - **A middle division** sends its top four up and its bottom four down, and the middle is
     ///   the only place in the pyramid where a table is a race in both directions.
     /// - **The last division** has nothing below it, so its bottom four are not relegated into a
-    ///   division that does not exist. They are the four clubs the cup leaves out: the bracket is
-    ///   thirty-two of the pyramid's thirty-six, ranked by tier and then by position, and
-    ///   <see cref="CupQualification"/> draws that line. The band says so, because a club that
-    ///   finishes last in the country should be told what happened to it rather than be left to
-    ///   work out that nothing is painted on its row.
+    ///   division that does not exist.
     ///
     /// The zones come from the same numbers <see cref="DivisionMovement"/> moves clubs with, so
     /// the band on a row and the move at the end of the season cannot disagree.
@@ -297,15 +292,16 @@ public static class CompetitionRules
     /// <remarks>
     /// It is said in the game's own words rather than in numbers because a line in a club's
     /// book is read by a manager: "eliminado nas quartas de final" is something a person can
-    /// picture and "eliminado na fase 3" is not. The numbering stays the rules' — the fifth
-    /// round is the final, and the sixth does not exist.
+    /// picture and "eliminado na fase 3" is not. The numbering stays the rules' — the sixth
+    /// round is the final, and the seventh does not exist.
     /// </remarks>
     public static string TieRoundName(int tieRound) => tieRound switch
     {
-        1 => "16 avos de final",
-        2 => "oitavas de final",
-        3 => "quartas de final",
-        4 => "semi-final",
+        1 => "32 avos de final",
+        2 => "16 avos de final",
+        3 => "oitavas de final",
+        4 => "quartas de final",
+        5 => "semi-final",
         _ => "final"
     };
 
@@ -315,6 +311,7 @@ public static class CompetitionRules
         1 => "1ª Divisão",
         2 => "2ª Divisão",
         3 => "3ª Divisão",
+        4 => "4ª Divisão",
         _ => $"{tier}ª Divisão"
     };
 

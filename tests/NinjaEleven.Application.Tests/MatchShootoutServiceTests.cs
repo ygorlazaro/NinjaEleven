@@ -554,7 +554,8 @@ public class MatchShootoutServiceTests
                 _matchDays.Object,
                 _seasons.Object,
                 _unitOfWork.Object,
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<FinanceService>.Instance)),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<FinanceService>.Instance),
+            new Random()),
         new MatchdayService(
             _matchDays.Object,
             _rounds.Object,

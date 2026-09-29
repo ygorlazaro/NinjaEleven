@@ -51,6 +51,45 @@ public class CupTieRepository : ICupTieRepository
         await _dbContext.CupTies.AddRangeAsync(ties, cancellationToken);
 
     public void Update(CupTie tie) => _dbContext.CupTies.Update(tie);
+
+    /// <summary>
+    /// Gets the club IDs that are still alive in the cup (haven't been eliminated yet).
+    /// A club is alive if it has won its latest tie or hasn't lost a tie yet.
+    /// </summary>
+    public async Task<IReadOnlyList<Guid>> GetAliveClubsInCupAsync(
+        Guid competitionSeasonId,
+        CancellationToken cancellationToken = default)
+    {
+        var ties = await _dbContext.CupTies
+            .AsNoTracking()
+            .Where(tie => tie.CompetitionSeasonId == competitionSeasonId)
+            .ToListAsync(cancellationToken);
+
+        if (ties.Count == 0)
+        {
+            return Array.Empty<Guid>();
+        }
+
+        // Find eliminated clubs: those that lost a resolved tie
+        var eliminated = new HashSet<Guid>();
+        foreach (var tie in ties)
+        {
+            if (tie.IsResolved && tie.LoserTeamId.HasValue)
+            {
+                eliminated.Add(tie.LoserTeamId.Value);
+            }
+        }
+
+        // All clubs that participated but aren't eliminated are alive
+        var allClubs = new HashSet<Guid>();
+        foreach (var tie in ties)
+        {
+            allClubs.Add(tie.HomeTeamId);
+            allClubs.Add(tie.AwayTeamId);
+        }
+
+        return allClubs.Where(c => !eliminated.Contains(c)).ToList();
+    }
 }
 
 public class TrophyRepository : ITrophyRepository

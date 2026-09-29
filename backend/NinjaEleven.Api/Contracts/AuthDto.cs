@@ -15,7 +15,6 @@ public class AuthRegisterRequestDto
     public string Email { get; init; } = string.Empty;
     public string Password { get; init; } = string.Empty;
     public string? CoachName { get; init; }
-    public Guid? TeamId { get; init; }
 }
 
 public class AuthLoginRequestDto
@@ -28,11 +27,4 @@ public class ChangePasswordRequestDto
 {
     public string CurrentPassword { get; init; } = string.Empty;
     public string NewPassword { get; init; } = string.Empty;
-}
-
-/// <summary>Links the authenticated user to a newly created manager.</summary>
-public class LinkManagerRequestDto
-{
-    public Guid TeamId { get; init; }
-    public string CoachName { get; init; } = string.Empty;
 }

@@ -623,3 +623,25 @@ public class TopScorerPrizeDto
     /// </summary>
     public decimal? Amount { get; init; }
 }
+
+/// <summary>
+/// One club's line in the Ninja Ranking.
+/// </summary>
+public class ClubRankingDto
+{
+    public Guid TeamId { get; init; }
+    public string TeamName { get; init; } = string.Empty;
+    public string TeamShortName { get; init; } = string.Empty;
+    public string PrimaryColor { get; init; } = string.Empty;
+    public string SecondaryColor { get; init; } = string.Empty;
+    public string ManagerName { get; init; } = string.Empty;
+    public int Position { get; init; }
+    public int RankingPoints { get; init; }
+    public int RankingBase { get; init; }
+    public int CupScore { get; init; }
+    public int CurrentDivision { get; init; }
+    public string CurrentDivisionName { get; init; } = string.Empty;
+    public double Strength { get; init; }
+    public Dictionary<int, int> SeasonScores { get; init; } = new();
+    public Dictionary<int, int> CupScores { get; init; } = new();
+}

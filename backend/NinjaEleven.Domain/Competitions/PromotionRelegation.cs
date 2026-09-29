@@ -43,12 +43,11 @@ public readonly record struct ClubMovement(
 /// <summary>
 /// Where every club in the pyramid ends up when a season is over.
 ///
-/// The three divisions are a closed system: four clubs go down from the top, four go up
-/// from the second and four go down from it, four go up from the third and nothing goes below
-/// it. A division therefore always finishes the season with twelve clubs in it, which is the
-/// whole point of working the movements out from the tables rather than settling each club
-/// one at a time — a club that is promoted out of the second division is a place in the
-/// first, and the club that takes it is decided by the same table.
+/// The four divisions are a closed system: four clubs go down from the top, four go up
+/// from the second and four go down from it, four go up from the third and four go down
+/// from it, four go up from the fourth and nothing goes below it. A division therefore
+/// always finishes the season with sixteen clubs in it, which is the whole point of
+/// working the movements out from the tables rather than settling each club one at a time.
 /// </summary>
 public sealed class DivisionMovement
 {
@@ -98,8 +97,8 @@ public sealed class DivisionMovement
         var relegated = standings.Count - CompetitionRules.RelegationSlots;
         var movements = new List<ClubMovement>(standings.Count);
 
-        // The bottom of the pyramid is a wall. Three divisions is the whole of the country,
-        // and a club that finishes last in the third division is not relegated to a fourth
+        // The bottom of the pyramid is a wall. Four divisions is the whole of the country,
+        // and a club that finishes last in the fourth division is not relegated to a fifth
         // tier that does not exist — it is the last club of the last division, and the rules
         // say so rather than inventing somewhere for it to go.
         var lowestTier = CompetitionRules.Tiers().Count;

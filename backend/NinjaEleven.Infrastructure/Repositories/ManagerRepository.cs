@@ -34,4 +34,7 @@ public class ManagerRepository : IManagerRepository
 
     public void Update(Manager manager) =>
         _dbContext.Managers.Update(manager);
+
+    public void Remove(Manager manager) =>
+        _dbContext.Managers.Remove(manager);
 }

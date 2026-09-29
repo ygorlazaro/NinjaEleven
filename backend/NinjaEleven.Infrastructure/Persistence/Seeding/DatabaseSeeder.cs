@@ -16,75 +16,81 @@ using Microsoft.Extensions.Options;
 namespace NinjaEleven.Infrastructure.Persistence.Seeding;
 
 /// <summary>
-/// Creates the starting world: name pools, one season, one competition with all teams
-/// enrolled, and a randomly generated squad per team. It never overwrites an existing
-/// world: seeding is skipped as soon as a team is already present.
+/// Creates the starting world: name pools, one season, four divisions with 16 clubs each,
+/// a cup with all 64 clubs, and a Supercup. Clubs are assigned to divisions by strength.
 /// </summary>
 public class DatabaseSeeder : IDataSeeder
 {
-    /// <summary>
-    /// The starting world: thirty-six clubs, twelve to a division, strongest first.
-    ///
-    /// The catalog is a rule rather than a setting because the pyramid is one. A pyramid of
-    /// three divisions of twelve is what promotion and relegation move clubs between, so a
-    /// world seeded with any other number would be a pyramid the season's own rules cannot
-    /// describe. The order of the catalog is the order of the divisions: the first twelve
-    /// clubs are the top flight, the next twelve the second, and the last twelve the third.
-    ///
-    /// Strength is seeded per tier and not per club, so a division means something before a
-    /// ball is kicked. Without that, a third-division club would be as good as a first-
-    /// division one, the table would be noise from the first matchday, and a manager would
-    /// have no reason to want promotion rather than to stay where he is.
-    /// </summary>
-    private static readonly (string Name, string ShortName, string Primary, string Secondary, int Tier)[] TeamCatalog =
+    private static readonly (string Name, string ShortName, string Primary, string Secondary)[] TeamCatalog =
     {
-        // 1ª Divisão
-        ("Rio Branco Esporte Clube", "RBE", "#B11226", "#F5F5F5", 1),
-        ("Ferroviário Atlético", "FER", "#1B3A6B", "#D4AF37", 1),
-        ("Estrela do Norte", "EDN", "#0F5132", "#FFD700", 1),
-        ("União Serrana", "UNS", "#7B2D8B", "#F0F0F0", 1),
-        ("Porto Marítimo", "PTM", "#00693E", "#1F1F1F", 1),
-        ("Clube Aurora", "CAU", "#E07B00", "#2B2B2B", 1),
-        ("Real Serrano", "RSE", "#0D6EFD", "#FFFFFF", 1),
-        ("Vila Nova do Vale", "VNV", "#8B0000", "#D9D9D9", 1),
-        ("Atlético do Planalto", "ADP", "#004B8D", "#FFD700", 1),
-        ("Grêmio Litorâneo", "GLI", "#0B6623", "#F5F5F5", 1),
-        ("Esporte Clube Serra Azul", "SAZ", "#5C2D91", "#FFFFFF", 1),
-        ("Rio Pardo Futebol Clube", "RPF", "#C8102E", "#000000", 1),
-
-        // 2ª Divisão
-        ("Nacional Serranense", "NSE", "#1E6F5C", "#F0E68C", 2),
-        ("Clube Atlético Barreiras", "CAB", "#0F4C81", "#FFD700", 2),
-        ("Esporte Clube Laranjeiras", "ECL", "#E85A0C", "#2B2B2B", 2),
-        ("Grêmio Ferroviário do Sul", "GFS", "#37474F", "#E53935", 2),
-        ("Atlético Bandeirante", "ATB", "#2E7D32", "#FFFFFF", 2),
-        ("Sociedade Esportiva Cerradão", "SEC", "#6A1B9A", "#F5F5F5", 2),
-        ("União Atlético Maravilha", "UAM", "#00838F", "#FFEB3B", 2),
-        ("Clube Náutico Ipanema", "CNI", "#0277BD", "#FFFFFF", 2),
-        ("Esporte Clube Palmeiral", "EPL", "#EF6C00", "#1B5E20", 2),
-        ("Grêmio Esportivo Andorinha", "GEA", "#455A64", "#FFCA28", 2),
-        ("Clube Atlético Santa Clara", "CSC", "#7B1FA2", "#F5F5F5", 2),
-        ("Sport Club Interface", "SCI", "#212121", "#00E5FF", 2),
-
-        // 3ª Divisão
-        ("Associação Atlética Guarani", "AAG", "#1565C0", "#FFFFFF", 3),
-        ("Clube Esportivo Tijuco", "CET", "#2E7D32", "#212121", 3),
-        ("Grêmio Operário Seridoense", "GOS", "#4527A0", "#FFD700", 3),
-        ("Esporte Clube Riachuelo", "ECR", "#AD1457", "#F5F5F5", 3),
-        ("Sociedade Recreativa Estância", "SRE", "#00695C", "#FF8F00", 3),
-        ("Clube Atlético Juazeirense", "CAJ", "#283593", "#FFFFFF", 3),
-        ("Grêmio Esportivo Várzea Nova", "GVN", "#33691E", "#F5F5F5", 3),
-        ("Sport Club Aurora Sul", "SAS", "#5D4037", "#FFD54F", 3),
-        ("Associação Esportiva Cristal", "AEC", "#00838F", "#263238", 3),
-        ("Clube Esportivo Umbuzeiro", "CEU", "#9E9D24", "#FFFFFF", 3),
-        ("Grêmio Atlético Potiguar", "GAP", "#C62828", "#FFFFFF", 3),
-        ("Esporte Clube Dourado", "ECD", "#F9A825", "#212121", 3)
+        // 16 clubs for initial generation (will be sorted by strength into 4 divisions)
+        ("Rio Branco Esporte Clube", "RBE", "#B11226", "#F5F5F5"),
+        ("Ferroviário Atlético", "FER", "#1B3A6B", "#D4AF37"),
+        ("Estrela do Norte", "EDN", "#0F5132", "#FFD700"),
+        ("União Serrana", "UNS", "#7B2D8B", "#F0F0F0"),
+        ("Porto Marítimo", "PTM", "#00693E", "#1F1F1F"),
+        ("Clube Aurora", "CAU", "#E07B00", "#2B2B2B"),
+        ("Real Serrano", "RSE", "#0D6EFD", "#FFFFFF"),
+        ("Vila Nova do Vale", "VNV", "#8B0000", "#D9D9D9"),
+        ("Atlético do Planalto", "ADP", "#004B8D", "#FFD700"),
+        ("Grêmio Litorâneo", "GLI", "#0B6623", "#F5F5F5"),
+        ("Esporte Clube Serra Azul", "SAZ", "#5C2D91", "#FFFFFF"),
+        ("Rio Pardo Futebol Clube", "RPF", "#C8102E", "#000000"),
+        ("Nacional Serranense", "NSE", "#1E6F5C", "#F0E68C"),
+        ("Clube Atlético Barreiras", "CAB", "#0F4C81", "#FFD700"),
+        ("Esporte Clube Laranjeiras", "ECL", "#E85A0C", "#2B2B2B"),
+        ("Grêmio Ferroviário do Sul", "GFS", "#37474F", "#E53935"),
+        ("Atlético Bandeirante", "ATB", "#2E7D32", "#FFFFFF"),
+        ("Sociedade Esportiva Cerradão", "SEC", "#6A1B9A", "#F5F5F5"),
+        ("União Atlético Maravilha", "UAM", "#00838F", "#FFEB3B"),
+        ("Clube Náutico Ipanema", "CNI", "#0277BD", "#FFFFFF"),
+        ("Esporte Clube Palmeiral", "EPL", "#EF6C00", "#1B5E20"),
+        ("Grêmio Esportivo Andorinha", "GEA", "#455A64", "#FFCA28"),
+        ("Clube Atlético Santa Clara", "CSC", "#7B1FA2", "#F5F5F5"),
+        ("Sport Club Interface", "SCI", "#212121", "#00E5FF"),
+        ("Associação Atlética Guarani", "AAG", "#1565C0", "#FFFFFF"),
+        ("Clube Esportivo Tijuco", "CET", "#2E7D32", "#212121"),
+        ("Grêmio Operário Seridoense", "GOS", "#4527A0", "#FFD700"),
+        ("Esporte Clube Riachuelo", "ECR", "#AD1457", "#F5F5F5"),
+        ("Sociedade Recreativa Estância", "SRE", "#00695C", "#FF8F00"),
+        ("Clube Atlético Juazeirense", "CAJ", "#283593", "#FFFFFF"),
+        ("Grêmio Esportivo Várzea Nova", "GVN", "#33691E", "#F5F5F5"),
+        ("Sport Club Aurora Sul", "SAS", "#5D4037", "#FFD54F"),
+        ("Associação Esportiva Cristal", "AEC", "#00838F", "#263238"),
+        ("Clube Esportivo Umbuzeiro", "CEU", "#9E9D24", "#FFFFFF"),
+        ("Grêmio Atlético Potiguar", "GAP", "#C62828", "#FFFFFF"),
+        ("Esporte Clube Dourado", "ECD", "#F9A825", "#212121"),
+        ("Atlético do Interior", "ADI", "#2E7D32", "#FFFFFF"),
+        ("Clube Esportivo Primavera", "CEP", "#1B5E20", "#FFD700"),
+        ("Grêmio Atlético Metrópole", "GAM", "#0D47A1", "#FFFFFF"),
+        ("Esporte Clube Horizonte", "ECH", "#00695C", "#FFB300"),
+        ("Sociedade Esportiva Alvorada", "SEA", "#E65100", "#FFFFFF"),
+        ("União Desportiva Capital", "UDC", "#37474F", "#FFEB3B"),
+        ("Clube Atlético Pioneiro", "CAP", "#1A237E", "#FFFFFF"),
+        ("Grêmio Esportivo Vitória", "GEV", "#BF360C", "#FFD700"),
+        ("Esporte Clube Independência", "ECI", "#004D40", "#FFFFFF"),
+        ("Associação Atlética Progresso", "AAP", "#4A148C", "#FFD700"),
+        ("Clube Esportivo Liberdade", "CEL", "#B71C1C", "#FFFFFF"),
+        ("Grêmio Atlético União", "GAU", "#01579B", "#FFD700"),
+        ("Esporte Clube Futuro", "ECF", "#311B92", "#FFFFFF"),
+        ("Sociedade Esportiva Renascença", "SER", "#880E4F", "#FFD700"),
+        ("União Desportiva Conquista", "UDC2", "#1B5E20", "#FFFFFF"),
+        ("Clube Atlético Tradição", "CAT", "#4E342E", "#FFD700"),
+        ("Grêmio Esportivo Esperança", "GEE", "#0D47A1", "#FFD700"),
+        ("Esporte Clube Harmonia", "ECH2", "#2E7D32", "#FFFFFF"),
+        ("Associação Atlética Glória", "AAG2", "#C62828", "#FFD700"),
+        ("Clube Esportivo União", "CEU2", "#37474F", "#FFFFFF"),
+        ("Grêmio Atlético Magnífico", "GAM2", "#4A148C", "#FFD700"),
+        ("Esporte Clube Suprema", "ECS", "#BF360C", "#FFFFFF"),
+        ("Sociedade Esportiva Diamante", "SED", "#01579B", "#FFD700"),
+        // 5 more to reach 64 clubs
+        ("Esporte Clube Aurora Boreal", "ECAB", "#1DE9B6", "#000000"),
+        ("Atlético Vale do Sol", "AVS", "#FFD600", "#000000"),
+        ("Grêmio Esportivo Lua Nova", "GELN", "#9E9E9E", "#000000"),
+        ("Clube Atlético Raio", "CAR", "#FF6D00", "#FFFFFF"),
+        ("Sociedade Esportiva Estrela", "SEE", "#FFFF00", "#000000"),
     };
 
-    /// <summary>
-    /// A pool of coach names: one per club in the catalog so every team gets a distinct
-    /// manager when the world is seeded. The names are Portuguese-sounding and varied.
-    /// </summary>
     private static readonly string[] CoachNames =
     {
         "Carlos Alberto Parreira",
@@ -122,8 +128,38 @@ public class DatabaseSeeder : IDataSeeder
         "Ranielle Ribeiro",
         "Higo Magalhães",
         "Allan Aal",
-        "Márcio Fernandes"
+        "Márcio Fernandes",
+        "Paulo Pezzolano",
+        "Eduardo Barroca",
+        "Jair Ventura",
+        "Marquinhos Santos",
+        "Gilson Kleina",
+        "Roberto Fonseca",
+        "Hemerson Maria",
+        "Wagner Lopes",
+        "Daniel Paulista",
+        "Mozart Santos",
+        "Cristóvão Borges",
+        "Gilmar Dal Pozzo",
+        "Rogério Zimmermann",
+        // Additional 15 names to reach 64
+        "Antônio Lopes",
+        "Joel Santana",
+        "Celso Roth",
+        "Sérgio Guedes",
+        "Paulo Comelli",
+        "Roberto Cavalo",
+        "Tuca Guimarães",
+        "Vica",
+        "Pintado",
+        "Sérgio Ramirez",
+        "Ricardo Severo",
+        "Alexandre Grasseli",
+        "Marcelo Veiga",
+        "Edson Gaúcho",
+        "Luiz Carlos Cruz",
     };
+
     private static readonly (string Name, string Industry, string Color)[] SponsorCatalog =
     {
         ("Cia. Energética Paulista", "Energia", "#E0A800"),
@@ -145,7 +181,17 @@ public class DatabaseSeeder : IDataSeeder
         ("Mecânica dos Campos", "Automotivo", "#455A64"),
         ("Miniaturas Fantasy", "Lazer", "#3949AB"),
         ("Pet Shop Felino", "Varejo", "#EC0000"),
-        ("Tech Solutions", "Tecnologia", "#00B0FF")
+        ("Tech Solutions", "Tecnologia", "#00B0FF"),
+        ("Construtora Ponte Alta", "Construção", "#795548"),
+        ("Laticínios Vale Verde", "Alimentos", "#8BC34A"),
+        ("Transportes União", "Transportes", "#607D8B"),
+        ("Seguros Confiança", "Financeiro", "#3F51B5"),
+        ("Energia Solar Brasil", "Energia", "#FFC107"),
+        ("Tecnologia Avançada", "Tecnologia", "#9C27B0"),
+        ("Madeira Nobre", "Manufatura", "#5D4037"),
+        ("Rede Hospitalar Vida", "Saúde", "#E91E63"),
+        ("Editora Cultura", "Mídia", "#673AB7"),
+        ("Auto Peças Central", "Automotivo", "#455A64"),
     };
 
     private readonly NinjaElevenDbContext _dbContext;
@@ -187,8 +233,9 @@ public class DatabaseSeeder : IDataSeeder
     }
 
     /// <summary>
-    /// Creates the starting world for a brand-new database: one season, three divisions, a
-    /// cup and a Supercup, thirty-six clubs with squads, and books opened for each.
+    /// Creates the starting world for a brand-new database: one season, four divisions,
+    /// a cup with all 64 clubs, a Supercup, 64 clubs with squads, and books opened for each.
+    /// Clubs are assigned to divisions by strength after squad generation.
     /// </summary>
     private async Task SeedStartingWorldAsync(Random random, CancellationToken cancellationToken)
     {
@@ -210,7 +257,6 @@ public class DatabaseSeeder : IDataSeeder
         var cupEdition = CompetitionSeason.Create(cup.Id, season.Id);
         var superCupEdition = CompetitionSeason.Create(superCup.Id, season.Id);
 
-        var participants = new List<CompetitionParticipant>();
         var teams = new List<Team>();
         var stadiums = new List<Stadium>();
         var players = new List<Player>();
@@ -218,21 +264,20 @@ public class DatabaseSeeder : IDataSeeder
         var memberships = new List<TeamMembership>();
         var movements = new List<FinanceMovement>();
         var managers = new List<Manager>();
-        var faces = DealFaces(TeamCatalog.Length * _options.PlayersPerTeam, random);
 
+        var totalPlayers = TeamCatalog.Length * _options.PlayersPerTeam;
+        var faces = DealFaces(totalPlayers, random);
         var coachPool = CoachNames.OrderBy(_ => random.Next()).ToList();
 
-        // One coach per club, and a coach is a name a club is told apart by. A pool shorter
-        // than the catalog is not something to paper over by handing two clubs the same man:
-        // it means a club in the catalog has nobody to be managed by, and the failure belongs
-        // where somebody can read it and add a name, not as an index out of range forty lines
-        // later in a loop over teams.
         if (coachPool.Count < TeamCatalog.Length)
         {
             throw new InvalidOperationException(
                 $"The coach pool has {coachPool.Count} names for {TeamCatalog.Length} clubs. " +
                 "Every club needs its own manager, so the pool has to cover the catalog.");
         }
+
+        // First, create all teams with squads and calculate their strengths
+        var teamStrengths = new List<(Team Team, double Strength, int CoachIndex)>();
 
         for (var index = 0; index < TeamCatalog.Length; index++)
         {
@@ -244,10 +289,6 @@ public class DatabaseSeeder : IDataSeeder
             stadiums.Add(stadium);
             team.SetStadium(stadium);
 
-            participants.Add(CompetitionParticipant.Create(
-                leagueEditions[definition.Tier - 1].Id,
-                team.Id));
-
             movements.Add(FinanceMovement.Seed(team.Id, season.Id, FinanceRules.StartingBalance));
 
             var coachName = coachPool[index];
@@ -258,6 +299,27 @@ public class DatabaseSeeder : IDataSeeder
             players.AddRange(squad.Players);
             seasonStates.AddRange(squad.SeasonStates);
             memberships.AddRange(squad.Memberships);
+
+            // Calculate club strength from full squad
+            var strength = PlayerRating.CalculateTeamStars(squad.Players);
+            teamStrengths.Add((team, strength, index));
+        }
+
+        // Sort clubs by strength (strongest first) and assign to divisions
+        // Top 16 -> 1st Division, 17-32 -> 2nd Division, 33-48 -> 3rd Division, 49-64 -> 4th Division
+        var sortedByStrength = teamStrengths.OrderByDescending(t => t.Strength).ToList();
+        var participants = new List<CompetitionParticipant>();
+
+        for (var i = 0; i < sortedByStrength.Count; i++)
+        {
+            var (team, strength, coachIndex) = sortedByStrength[i];
+            var tier = (i / CompetitionRules.ClubsPerDivision) + 1; // 1-4
+            var edition = leagueEditions[tier - 1];
+            
+            participants.Add(CompetitionParticipant.Create(edition.Id, team.Id));
+            
+            _logger.LogInformation("Club {ClubName} assigned to {Division} (strength: {Strength:F2})", 
+                team.Name, CompetitionRules.DivisionName(tier), strength);
         }
 
         _dbContext.Seasons.Add(season);
@@ -277,10 +339,7 @@ public class DatabaseSeeder : IDataSeeder
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         // The first season is a season like any other, and it opens with its intake: the young
-        // free agents a club signs rather than buys. They are dealt after the world is saved
-        // because the intake reads the season it is dealt into, and a world written with every
-        // one of its three hundred names under contract is a world whose market has nothing in
-        // it for a manager to sign.
+        // free agents a club signs rather than buys.
         var intake = await AddYoungFreeAgentsAsync(
             season.Id, YouthIntakeRules.FreeAgentsPerSeason, random, cancellationToken);
 
@@ -334,10 +393,6 @@ public class DatabaseSeeder : IDataSeeder
 
     /// <summary>
     /// The first season of a new world.
-    ///
-    /// It is numbered one rather than named for a year, because the number is the season's
-    /// identity: a world that started at "Temporada IX" because it happened to begin in 2026
-    /// would have to be renumbered the day somebody played nine seasons.
     /// </summary>
     private static Season CreateSeason()
     {
@@ -346,16 +401,8 @@ public class DatabaseSeeder : IDataSeeder
         return season;
     }
 
-    /// <summary>
-    /// A club, with a reputation drawn from the band its division occupies.
-    ///
-    /// The bands overlap on purpose. A top-division club and a second-division club are two
-    /// draws from adjacent ranges, so a strong second-division side can still be a promotion
-    /// candidate, which is what makes a table worth managing rather than a foregone conclusion
-    /// written down before kick-off.
-    /// </summary>
     private static Team CreateTeam(
-        (string Name, string ShortName, string Primary, string Secondary, int Tier) definition,
+        (string Name, string ShortName, string Primary, string Secondary) definition,
         Random random)
     {
         return Team.Create(
@@ -364,13 +411,6 @@ public class DatabaseSeeder : IDataSeeder
             definition.Primary,
             definition.Secondary);
     }
-
-    private static (int Low, int High) ReputationBand(int tier) => tier switch
-    {
-        1 => (62, 90),
-        2 => (52, 78),
-        _ => (42, 68)
-    };
 
     private (List<Player> Players, List<PlayerSeasonState> SeasonStates, List<TeamMembership> Memberships) CreateSquad(
         Team team,
@@ -405,44 +445,74 @@ public class DatabaseSeeder : IDataSeeder
         CreatePlayer(position, random, face, random.Next(_options.YoungestAge, _options.OldestAge + 1));
 
     /// <summary>
-    /// A player with a birth date somebody else has already decided — the young men the market
-    /// is fed with, who are sixteen to nineteen by rule rather than by the draw.
-    ///
-    /// Everything else is the seeded world's own formula, and that is the point: a prospect
-    /// arriving from the base is built by the same expression that builds a squad, so his keeper
-    /// is a keeper and his outfield men are outfield men. A generator that gave a seventeen-year-
-    /// old goalkeeper the same band as a centre back would be filling the market with players no
-    /// engine would ever pick, and a market full of players nobody can field is a market that
-    /// looks busy and is empty.
+    /// Creates a player with attributes generated from the probability distribution:
+    /// 1-10 (5%), 11-20 (10%), 21-40 (20%), 41-60 (30%), 61-80 (20%), 81-90 (10%), 91-100 (5%)
     /// </summary>
     private Player CreatePlayer(Position position, Random random, string face, int age)
     {
         var firstName = NameCatalog.AllFirstNames[random.Next(NameCatalog.AllFirstNames.Count)];
         var surname = NameCatalog.AllSurnames[random.Next(NameCatalog.AllSurnames.Count)];
 
-        // A goalkeeper is built for his job: the engine weighs reflexes and power when it
-        // picks the eleven, so a keeper with outfield attributes would never be chosen.
         var isGoalkeeper = position == Position.GK;
 
         return Player.Create(
             $"{firstName} {surname}",
             age,
             position,
-            speed: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
-            accuracy: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
-            dribbling: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
-            heading: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
-            strength: isGoalkeeper ? RandomAttribute(random) : OutfieldAttribute(random),
-            goalkeeperPower: isGoalkeeper ? StrongAttribute(random) : 0,
-            reflexes: isGoalkeeper ? StrongAttribute(random) : 0,
+            speed: GenerateAttribute(random),
+            accuracy: GenerateAttribute(random),
+            dribbling: GenerateAttribute(random),
+            heading: GenerateAttribute(random),
+            strength: GenerateAttribute(random),
+            goalkeeperPower: isGoalkeeper ? GenerateAttribute(random) : 0,
+            reflexes: isGoalkeeper ? GenerateAttribute(random) : 0,
             face: face);
     }
 
     /// <summary>
-    /// Shuffles the pool and queues as many faces as there are players to be created. It is
-    /// dealt from the front rather than drawn per player because a club of twenty-three men
-    /// with two men sharing a face reads as a copy-paste, and a shuffled queue cannot repeat
-    /// one until the pool is exhausted.
+    /// Generates an attribute value (1-100) using the probability distribution:
+    /// 1-10: 5%, 11-20: 10%, 21-40: 20%, 41-60: 30%, 61-80: 20%, 81-90: 10%, 91-100: 5%
+    /// </summary>
+    private int GenerateAttribute(Random random)
+    {
+        var roll = random.NextDouble();
+        
+        // Select range based on probability
+        int min, max;
+        if (roll < 0.05)
+        {
+            min = 1; max = 10; // 5%
+        }
+        else if (roll < 0.15)
+        {
+            min = 11; max = 20; // 10%
+        }
+        else if (roll < 0.35)
+        {
+            min = 21; max = 40; // 20%
+        }
+        else if (roll < 0.65)
+        {
+            min = 41; max = 60; // 30%
+        }
+        else if (roll < 0.85)
+        {
+            min = 61; max = 80; // 20%
+        }
+        else if (roll < 0.95)
+        {
+            min = 81; max = 90; // 10%
+        }
+        else
+        {
+            min = 91; max = 100; // 5%
+        }
+
+        return random.Next(min, max + 1);
+    }
+
+    /// <summary>
+    /// Shuffles the pool and queues as many faces as there are players to be created.
     /// </summary>
     private static Queue<string> DealFaces(int playerCount, Random random)
     {
@@ -464,19 +534,11 @@ public class DatabaseSeeder : IDataSeeder
 
     /// <summary>
     /// Gives a face to every player who does not have one yet.
-    ///
-    /// The pool of faces arrived after the world was already seeded, and the seeder skips a
-    /// world that has teams in it, so nobody would have a face. Resuming seeding is also the
-    /// honest answer to a player added later by a future feature: the identity is missing
-    /// something, and this is the place that fills it in.
     /// </summary>
     private async Task GiveFacesToTheWorldAlreadySeededAsync(
         Random random,
         CancellationToken cancellationToken)
     {
-        // Only null counts. The column is jsonb, and `''` is not a JSON document, so there is
-        // no second way for a face to be missing — and asking Postgres whether a jsonb
-        // equals an empty string is an error, not a question it will answer.
         var faceless = await _dbContext.Players
             .Where(player => player.Face == null)
             .ToListAsync(cancellationToken);
@@ -486,9 +548,6 @@ public class DatabaseSeeder : IDataSeeder
             return;
         }
 
-        // Dealt and not drawn, for the same reason a new world is dealt: a squad in which
-        // two men share a face reads as a copy-paste, and a backfill has the same problem a
-        // fresh seeding has.
         var faces = DealFaces(faceless.Count, random);
 
         foreach (var player in faceless)
@@ -503,9 +562,6 @@ public class DatabaseSeeder : IDataSeeder
 
     /// <summary>
     /// Gives a manager to every team that does not have one yet.
-    ///
-    /// Managers were added after the world was already seeded, so teams created before that
-    /// have no manager. This backfills them with names from the coach pool.
     /// </summary>
     private async Task GiveManagersToTheWorldAlreadySeededAsync(
         Random random,
@@ -536,12 +592,6 @@ public class DatabaseSeeder : IDataSeeder
 
     /// <summary>
     /// The books of a world that was seeded before clubs had one.
-    ///
-    /// Every club without a single line in its book is given the capital a new club is
-    /// founded with. A world that predates the money is not given a backdated history of gate
-    /// receipts and wage bills invented for it: the honest opening line of a book whose
-    /// earlier pages nobody kept is the capital, and everything after it is a movement the
-    /// game actually made.
     /// </summary>
     private async Task OpenTheBooksOfTheWorldAlreadySeededAsync(CancellationToken cancellationToken)
     {
@@ -576,8 +626,7 @@ public class DatabaseSeeder : IDataSeeder
 
     /// <summary>
     /// A squad needs a couple of goalkeepers, not only the one that starts, and the rest
-    /// of the slots are spread over DEF, MID and ATT as evenly as possible. Lineup rules
-    /// are domain rules, but the shape of a roster is a data concern, so it lives here.
+    /// of the slots are spread over DEF, MID and ATT as evenly as possible.
     /// </summary>
     private IEnumerable<Position> BuildPositions(int playersPerTeam, int goalkeepers)
     {
@@ -586,8 +635,6 @@ public class DatabaseSeeder : IDataSeeder
             throw new InvalidOperationException("A squad needs at least one player.");
         }
 
-        // Never more goalkeepers than players, and always at least the one the lineup
-        // rules demand.
         var keeperCount = Math.Clamp(goalkeepers, 1, playersPerTeam);
 
         for (var slot = 0; slot < keeperCount; slot++)
@@ -610,49 +657,11 @@ public class DatabaseSeeder : IDataSeeder
         }
     }
 
-    /// <summary>
-    /// Mixed into the backfill's seed so a backfill does not reproduce the exact same squad of
-    /// eighteen-year-olds the last one dealt.
-    /// </summary>
     private const int seedSalt = 7717;
-
-    private int RandomAttribute(Random random) =>
-        random.Next(_options.MinimumAttribute, _options.MaximumAttribute + 1);
-
-    /// <summary>
-    /// An outfield player, in the upper half of the attribute range: the clubs are seeded
-    /// so a starting eleven is worth watching.
-    /// </summary>
-    private int OutfieldAttribute(Random random)
-    {
-        var low = _options.MinimumAttribute + (_options.MaximumAttribute - _options.MinimumAttribute) / 2;
-        return random.Next(low, _options.MaximumAttribute + 1);
-    }
-
-    /// <summary>
-    /// A goalkeeper's own attributes, well above what an outfield player reaches, so the
-    /// best keeper of a club is recognisable.
-    /// </summary>
-    private int StrongAttribute(Random random)
-    {
-        var low = _options.MinimumAttribute + 3 * (_options.MaximumAttribute - _options.MinimumAttribute) / 4;
-        return random.Next(Math.Min(low, _options.MaximumAttribute), _options.MaximumAttribute + 1);
-    }
 
     /// <summary>
     /// Deals the season's intake: the young free agents a season opens with, unattached and
     /// waiting to be signed.
-    ///
-    /// The count is <see cref="YouthIntakeRules.FreeAgentsPerSeason"/> and it does not depend on
-    /// what happened in the season before, because the rule is a count and not a ratio: a
-    /// season's first day has no retirements to divide by, and a market fed by a ratio opens
-    /// its first season with nobody in it at all — three hundred names who all belong to
-    /// somebody, and not one signing a manager could make. Every season gets its intake, the
-    /// same size, so the market a club shops in is never empty of a player it could pick up.
-    ///
-    /// It is called once per season, when the season opens: by the world being written for the
-    /// first one and by the season close for every one after. It is not called again on a
-    /// restart, so a world never grows a second intake into the same season.
     /// </summary>
     public async Task GenerateYoungPlayersAsync(Guid seasonId, CancellationToken cancellationToken = default)
     {
@@ -678,13 +687,6 @@ public class DatabaseSeeder : IDataSeeder
 
     /// <summary>
     /// Fills the market with a given number of young free agents, aged sixteen to nineteen.
-    ///
-    /// This is the backfill the rules ask for — a market with nothing in it is a market a manager
-    /// opens, sees three hundred under contract men and no way to improve any of them, and leaves
-    /// — and it is deliberately a count rather than a ratio: a ratio needs retirements to divide
-    /// and a world being seeded has none. The men are drawn from the same pool the squads are
-    /// drawn from, dealt faces like everybody else, and given no club: a young player is somebody
-    /// a club signs, not somebody a club buys.
     /// </summary>
     public async Task<int> SeedYoungFreeAgentsAsync(
         int count = YouthIntakeRules.FreeAgentsPerSeason,
@@ -721,11 +723,6 @@ public class DatabaseSeeder : IDataSeeder
     /// <see cref="YouthIntakeRules.YoungestAge"/> and <see cref="YouthIntakeRules.OldestAge"/>
     /// on the day the season opens, each built by the seeded world's own formulas, each dealt a
     /// face from the pool, each attached to a season with no club and no contract.
-    ///
-    /// The age is drawn straight from the rule's band, because the age is now the fact the
-    /// world keeps about a player: there is no date to fall out of step with it, and the boy
-    /// who arrives in December and the boy who arrives in January are the age they are drawn
-    /// as on every screen of the game.
     /// </summary>
     private async Task<int> AddYoungFreeAgentsAsync(
         Guid seasonId,

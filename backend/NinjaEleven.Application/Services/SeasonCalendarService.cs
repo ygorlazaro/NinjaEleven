@@ -333,17 +333,17 @@ public class SeasonCalendarService
             return enrolled.Select(participant => participant.TeamId).ToList();
         }
 
-        var seeds = await SeedTheCupAsync(view, cancellationToken);
+        var seeds = await GetAllClubsForCupAsync(view, cancellationToken);
         if (seeds.Count < 2)
         {
-            return seeds.Select(seed => seed.TeamId).ToList();
+            return seeds.ToList();
         }
 
         await _competitionRepository.AddParticipantsAsync(
-            seeds.Select(seed => CompetitionParticipant.Create(view.Id, seed.TeamId)).ToList(),
+            seeds.Select(teamId => CompetitionParticipant.Create(view.Id, teamId)).ToList(),
             cancellationToken);
 
-        return seeds.Select(seed => seed.TeamId).ToList();
+        return seeds.ToList();
     }
 
     /// <summary>
@@ -465,11 +465,9 @@ public class SeasonCalendarService
             return;
         }
 
-        var seeds = entrants
-            .Select(teamId => new CupQualification.Seed(teamId, 1, 1))
-            .ToList();
-
-        var pairings = CupQualification.FirstRoundPairings(seeds);
+        // Completely random draw for the first round (no seeding)
+        var random = new Random();
+        var pairings = CupQualification.RandomPairings(entrants, random);
         var (firstLegDay, secondLegDay) = CompetitionRules.CupLegMatchDays(1);
 
         if (!matchDays.TryGetValue(firstLegDay, out var firstMatchDay)
@@ -532,19 +530,18 @@ public class SeasonCalendarService
     /// the pyramid and the squads themselves are the only things that are known: the clubs are
     /// ordered by the division they are in, and inside a division by the strength of the
     /// squad on their books. The four left out are the weakest clubs of the weakest division.
-    ///
-    /// That is a weaker rule than a table, and it is said out loud rather than pretended
-    /// away: a first cup drawn from a first season is drawn from what the world knows, and
-    /// every season after it is drawn from a table.
-    /// </summary>
-    private async Task<IReadOnlyList<CupQualification.Seed>> SeedTheCupAsync(
+///
+/// That is a weaker rule than a table, and it is said out loud rather than pretended
+/// away: a first cup drawn from a first season is drawn from what the world knows, and
+/// every season after it is drawn from a table.
+/// </summary>
+    private async Task<IReadOnlyList<Guid>> GetAllClubsForCupAsync(
         CompetitionSeasonView view,
         CancellationToken cancellationToken)
     {
         var views = await _competitionRepository.ListSeasonViewsAsync(view.SeasonId, cancellationToken);
 
         var byTier = new Dictionary<int, IReadOnlyList<StandingEntry>>();
-        var seedsByTier = new Dictionary<int, List<(Guid TeamId, double Stars)>>();
 
         foreach (var tierView in views.Where(candidate => candidate.Tier is not null))
         {
@@ -553,9 +550,6 @@ public class SeasonCalendarService
             if (collection.Seeds.Count == 0) continue;
 
             byTier[tierView.Tier!.Value] = StandingTable.Build(collection.Seeds, collection.Finished);
-            seedsByTier[tierView.Tier!.Value] = collection.Seeds
-                .Select(seed => (seed.TeamId, seed.Stars))
-                .ToList();
         }
 
         if (byTier.Count == 0)
@@ -569,40 +563,8 @@ public class SeasonCalendarService
                 "com clubes para servir de semente.");
         }
 
-        // From the second season on the tables decide, and the pyramid is not consulted.
-        if (byTier.Values.Any(standings => standings.Any(entry => entry.Played > 0)))
-        {
-            return CupQualification.Rank(byTier);
-        }
-
-        // A cup of thirty-two cannot be drawn from a pyramid of twenty, and drawing one from
-        // twenty anyway would be a competition that is quietly not the one the rules describe.
-        if (ClubsInPyramid(byTier) < CompetitionRules.CupSize)
-        {
-            throw new DomainValidationException(
-                "CupTooSmall",
-                $"A copa precisa de {CompetitionRules.CupSize} clubes e a pirâmide só tem " +
-                $"{ClubsInPyramid(byTier)}.");
-        }
-
-        var fallback = new List<CupQualification.Seed>();
-        foreach (var tier in byTier.Keys.OrderBy(tier => tier))
-        {
-            var clubs = seedsByTier[tier]
-                .OrderByDescending(seed => seed.Stars)
-                .ThenBy(seed => seed.TeamId)
-                .ToList();
-
-            for (var position = 0; position < clubs.Count; position++)
-            {
-                fallback.Add(new CupQualification.Seed(clubs[position].TeamId, tier, position + 1));
-            }
-        }
-
-        return fallback
-            .OrderBy(seed => seed.Rank)
-            .Take(CompetitionRules.CupSize)
-            .ToList();
+        // Get all 64 clubs for the cup (completely random draw, no seeding)
+        return CupQualification.GetAllClubsForCup(byTier);
     }
 
 

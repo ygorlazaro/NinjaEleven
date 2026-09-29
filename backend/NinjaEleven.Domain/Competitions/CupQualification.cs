@@ -3,77 +3,62 @@ using NinjaEleven.Domain.Common;
 namespace NinjaEleven.Domain.Competitions;
 
 /// <summary>
-/// Which thirty-two clubs are in the cup, and how they are paired in the first round.
-///
-/// The rule is one method and it takes the last season's finished tables, because a cup drawn
-/// from the season it belongs to cannot be drawn at the start of it. A club's place in the
-/// pyramid and its finish in its division are both inputs, so the best-placed club in the
-/// third division is in the cup on the same terms as the champion of the first — which is the
-/// only way a club that was promoted on the strength of one season is not immediately back
-/// where it started.
-///
-/// The pairing is seeded: the clubs are ranked, and the strongest meets the weakest. Seeding
-/// exists so the first round is not decided by the alphabet, and it is why a division's
-/// strongest club and its eleventh-placed club do not meet in the first round of a cup.
+/// Cup draw for 64 clubs: completely random draw for each round, no seeding.
+/// All 64 clubs participate from the 32nd round (round of 64).
 /// </summary>
 public static class CupQualification
 {
-    /// <summary>Where a club sits in the seed list, and therefore how it enters the bracket.</summary>
-    /// <param name="TeamId">The club.</param>
-    /// <param name="Tier">The tier it finished in. 1 is the top.</param>
-    /// <param name="DivisionPosition">Where it finished in its division, counted from one.</param>
-    public readonly record struct Seed(Guid TeamId, int Tier, int DivisionPosition)
-    {
-        /// <summary>Lower is better: the champion of the top division is the first seed.</summary>
-        public int Rank => ((Tier - 1) * 1000) + DivisionPosition;
-    }
-
     /// <summary>
-    /// Ranks every club in the pyramid and takes the best thirty-two.
+    /// Returns all 64 club IDs for the cup. No seeding, no qualification needed - all clubs enter.
     /// </summary>
-    /// <param name="standingsByTier">The finished table of each tier, best first.</param>
-    public static IReadOnlyList<Seed> Rank(IReadOnlyDictionary<int, IReadOnlyList<StandingEntry>> standingsByTier)
+    public static IReadOnlyList<Guid> GetAllClubsForCup(IReadOnlyDictionary<int, IReadOnlyList<StandingEntry>> standingsByTier)
     {
         ArgumentNullException.ThrowIfNull(standingsByTier);
 
-        if (standingsByTier.Count == 0)
+        var allClubs = new List<Guid>();
+        foreach (var entry in standingsByTier)
         {
-            throw new ArgumentException("There is nobody to seed from.", nameof(standingsByTier));
+            foreach (var standing in entry.Value)
+            {
+                allClubs.Add(standing.TeamId);
+            }
         }
 
-        return standingsByTier
-            .SelectMany(entry => entry.Value.Select((standing, index) =>
-                new Seed(standing.TeamId, entry.Key, standing.Position > 0 ? standing.Position : index + 1)))
-            .OrderBy(seed => seed.Rank)
-            .Take(CompetitionRules.CupSize)
-            .ToList();
+        if (allClubs.Count != CompetitionRules.TotalClubs)
+        {
+            throw new InvalidOperationException($"Expected {CompetitionRules.TotalClubs} clubs for the cup, got {allClubs.Count}");
+        }
+
+        return allClubs;
     }
 
     /// <summary>
-    /// Pairs the seeds for the first round: first against last, second against second-last,
-    /// and so on. The club listed first in each pair is at home in the first leg.
+    /// Randomly pairs clubs for a round. The club listed first in each pair is at home in the first leg.
     /// </summary>
-    public static IReadOnlyList<(Guid Home, Guid Away)> FirstRoundPairings(IReadOnlyList<Seed> seeds)
+    public static IReadOnlyList<(Guid Home, Guid Away)> RandomPairings(IReadOnlyList<Guid> clubs, Random random)
     {
-        ArgumentNullException.ThrowIfNull(seeds);
+        ArgumentNullException.ThrowIfNull(clubs);
 
-        if (seeds.Count < 2)
+        if (clubs.Count < 2)
         {
-            throw new ArgumentException("A cup tie needs two clubs.", nameof(seeds));
+            throw new ArgumentException("A cup tie needs two clubs.", nameof(clubs));
         }
 
-        if (seeds.Count % 2 != 0)
+        if (clubs.Count % 2 != 0)
         {
             throw new ArgumentException(
-                $"A cup is drawn with an even number of clubs, and {seeds.Count} is not one.",
-                nameof(seeds));
+                $"A cup is drawn with an even number of clubs, and {clubs.Count} is not one.",
+                nameof(clubs));
         }
 
-        var pairings = new List<(Guid, Guid)>(seeds.Count / 2);
+        // Shuffle the clubs randomly
+        var shuffled = clubs.OrderBy(_ => random.Next()).ToList();
 
-        for (var index = 0; index < seeds.Count / 2; index++)
+        var pairings = new List<(Guid, Guid)>(shuffled.Count / 2);
+
+        for (var index = 0; index < shuffled.Count / 2; index++)
         {
-            pairings.Add((seeds[index].TeamId, seeds[seeds.Count - 1 - index].TeamId));
+            pairings.Add((shuffled[index * 2], shuffled[index * 2 + 1]));
         }
 
         return pairings;
@@ -93,20 +78,16 @@ public static class CupQualification
 }
 
 /// <summary>
-/// How a finished tie turns into the next round's pairings.
-///
-/// The winner of one tie plays the winner of the tie beside it, so the bracket is a real
-/// bracket: a club that reaches a final has been through the half of the draw that put it
-/// there, and the two finalists are the winners of the two halves. Pairing by adjacency of
-/// the previous round is what makes that true, and it is why the final is two specific clubs
-/// rather than whichever two happened to win most ties.
+/// Cup bracket with random draw for each round. No fixed bracket - each round is drawn independently.
 /// </summary>
 public static class CupBracket
 {
-    /// <summary>Draws the next round's ties from the ties that were just decided.</summary>
-    /// <param name="decidedTies">The previous round's ties, in the order they were played.</param>
+    /// <summary>Draws the next round's ties from the winners of the previous round. Completely random draw.</summary>
+    /// <param name="decidedTies">The previous round's ties that have been resolved.</param>
+    /// <param name="random">Random number generator for the draw.</param>
     public static IReadOnlyList<(Guid Home, Guid Away)> NextRoundPairings(
-        IReadOnlyCollection<CupTie> decidedTies)
+        IReadOnlyCollection<CupTie> decidedTies,
+        Random random)
     {
         ArgumentNullException.ThrowIfNull(decidedTies);
 
@@ -117,25 +98,25 @@ public static class CupBracket
                 nameof(decidedTies));
         }
 
-        var ordered = decidedTies.OrderBy(tie => tie.RoundNumber).ToList();
+        var winners = decidedTies
+            .Where(t => t.IsResolved && t.WinnerTeamId.HasValue)
+            .Select(t => t.WinnerTeamId!.Value)
+            .ToList();
 
-        if (ordered.Count % 2 != 0)
+        if (winners.Count % 2 != 0)
         {
             throw new ArgumentException(
-                $"A round of {ordered.Count} ties cannot be halved into a next round.", nameof(decidedTies));
+                $"A round of {winners.Count} winners cannot be halved into a next round.", nameof(decidedTies));
         }
 
-        var pairings = new List<(Guid, Guid)>(ordered.Count / 2);
+        // Shuffle winners randomly for the next round draw
+        var shuffled = winners.OrderBy(_ => random.Next()).ToList();
 
-        for (var index = 0; index < ordered.Count / 2; index++)
+        var pairings = new List<(Guid, Guid)>(shuffled.Count / 2);
+
+        for (var index = 0; index < shuffled.Count / 2; index++)
         {
-            // The home club of the new tie is whoever was at home in the earlier tie, so the
-            // leg that decides a tie on penalties is not also the leg that decides who is at
-            // home in the next one.
-            var earlier = ordered[index * 2];
-            var later = ordered[index * 2 + 1];
-
-            pairings.Add((earlier.WinnerTeamId!.Value, later.WinnerTeamId!.Value));
+            pairings.Add((shuffled[index * 2], shuffled[index * 2 + 1]));
         }
 
         return pairings;

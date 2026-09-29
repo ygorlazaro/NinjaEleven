@@ -5,6 +5,7 @@ using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Finance;
 using NinjaEleven.Domain.Matches;
+using System;
 
 namespace NinjaEleven.Application.Services;
 
@@ -37,6 +38,7 @@ public class CupProgressionService
     private readonly ICompetitionRepository _competitionRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly FinanceService _finance;
+    private readonly Random _random;
 
     public CupProgressionService(
         ICupTieRepository cupTieRepository,
@@ -47,7 +49,8 @@ public class CupProgressionService
         IMatchDayRepository matchDayRepository,
         ICompetitionRepository competitionRepository,
         IUnitOfWork unitOfWork,
-        FinanceService finance)
+        FinanceService finance,
+        Random random)
     {
         _cupTieRepository = cupTieRepository;
         _trophyRepository = trophyRepository;
@@ -58,6 +61,7 @@ public class CupProgressionService
         _competitionRepository = competitionRepository;
         _unitOfWork = unitOfWork;
         _finance = finance;
+        _random = random;
     }
 
     /// <summary>
@@ -143,7 +147,7 @@ public class CupProgressionService
             return;
         }
 
-        await DrawNextRoundAsync(tie, roundTies, cancellationToken);
+        await DrawNextRoundAsync(tie, roundTies, _random, cancellationToken);
     }
 
     /// <summary>
@@ -194,6 +198,7 @@ public class CupProgressionService
     private async Task DrawNextRoundAsync(
         CupTie decided,
         IReadOnlyCollection<CupTie> roundTies,
+        Random random,
         CancellationToken cancellationToken)
     {
         // The round has to be the shape a cup of this size has: a round of sixteen holds
@@ -210,7 +215,7 @@ public class CupProgressionService
         }
 
         var nextRoundNumber = decided.RoundNumber + 1;
-        var pairings = CupBracket.NextRoundPairings(roundTies);
+        var pairings = CupBracket.NextRoundPairings(roundTies, random);
 
         var competitionSeason = await _competitionRepository.GetSeasonByIdAsync(
             decided.CompetitionSeasonId, cancellationToken);

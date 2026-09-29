@@ -14,4 +14,5 @@ public interface IManagerRepository
     Task<bool> AnyAsync(CancellationToken cancellationToken = default);
     Task AddAsync(Manager manager, CancellationToken cancellationToken = default);
     void Update(Manager manager);
+    void Remove(Manager manager);
 }

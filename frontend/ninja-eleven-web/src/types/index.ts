@@ -1538,7 +1538,6 @@ export interface AuthRegisterRequestDto {
   email: string;
   password: string;
   coachName?: string;
-  teamId?: Guid | null;
 }
 
 export interface AuthLoginRequestDto {
@@ -1551,11 +1550,6 @@ export interface ChangePasswordRequestDto {
   newPassword: string;
 }
 
-export interface LinkManagerRequestDto {
-  teamId: string;
-  coachName: string;
-}
-
 export interface UpdateTeamNameRequestDto {
   name: string;
 }
@@ -1563,4 +1557,22 @@ export interface UpdateTeamNameRequestDto {
 export interface UpdateTeamColorsRequestDto {
   primaryColor: string;
   secondaryColor: string;
+}
+
+export interface ClubRankingDto {
+  teamId: string;
+  teamName: string;
+  teamShortName: string;
+  primaryColor: string;
+  secondaryColor: string;
+  managerName: string;
+  position: number;
+  rankingPoints: number;
+  rankingBase: number;
+  cupScore: number;
+  currentDivision: number;
+  currentDivisionName: string;
+  strength: number;
+  seasonScores: Record<number, number>;
+  cupScores: Record<number, number>;
 }

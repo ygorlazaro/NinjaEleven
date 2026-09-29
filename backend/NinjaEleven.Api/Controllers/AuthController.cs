@@ -17,9 +17,10 @@ using NinjaEleven.Domain.Teams;
 namespace NinjaEleven.Api.Controllers;
 
 /// <summary>
-/// Account endpoints: register, login, change password, and the club selector for
-/// logged-out users. Returns a JWT bearer token that the frontend stores and sends back
+/// Account endpoints: register, login, change password.
+/// Returns a JWT bearer token that the frontend stores and sends back
 /// in subsequent requests.
+/// Club is now auto-assigned on registration.
 /// </summary>
 [ApiController]
 [Route("auth")]
@@ -36,8 +37,8 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Registers a new account. If a team id and coach name are provided, the manager row
-    /// is created as part of registration and the career starts immediately.
+    /// Registers a new account. The club is automatically assigned by the backend.
+    /// The coach name is optional; if not provided, a default will be used.
     /// </summary>
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponseDto>> Register(
@@ -48,7 +49,7 @@ public class AuthController : ControllerBase
             request.Email,
             request.Password,
             request.CoachName,
-            request.TeamId,
+            teamId: null, // Club is auto-assigned
             cancellationToken);
 
         var token = GenerateToken(result.UserId, result.Email, result.TeamId, result.CoachName);
@@ -97,35 +98,6 @@ public class AuthController : ControllerBase
         var userId = GetUserId();
         await _authService.ChangePasswordAsync(userId, request.CurrentPassword, request.NewPassword, cancellationToken);
         return Ok();
-    }
-
-    /// <summary>
-    /// The clubs without a human manager, for the club-selection flow.
-    /// </summary>
-    [HttpGet("available-clubs")]
-    public async Task<ActionResult<IReadOnlyList<TeamDto>>> GetAvailableClubs(
-        CancellationToken cancellationToken)
-    {
-        var clubs = await _authService.GetAvailableClubsAsync(cancellationToken);
-        return Ok(clubs.Select(team => team.ToDto()).ToList());
-    }
-
-    /// <summary>
-    /// Links the authenticated user to a newly created manager, claiming a club.
-    /// A user who registered without a team returns here to pick one.
-    /// </summary>
-    [HttpPost("link-manager")]
-    [Authorize]
-    public async Task<ActionResult<ManagerDto>> LinkManager(
-        [FromBody] LinkManagerRequestDto request,
-        CancellationToken cancellationToken)
-    {
-        var userId = GetUserId();
-        await _authService.LinkManagerAsync(userId, request.TeamId, request.CoachName, cancellationToken);
-
-        var manager = await _authService.GetManagerByUserIdAsync(userId, cancellationToken);
-        if (manager is null) return StatusCode(500, "Manager was not created.");
-        return Ok(manager.ToDto());
     }
 
     private string GenerateToken(Guid userId, string email, Guid? teamId, string? coachName)

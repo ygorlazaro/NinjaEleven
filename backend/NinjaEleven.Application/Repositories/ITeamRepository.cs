@@ -1,3 +1,4 @@
+using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Teams;
 
 namespace NinjaEleven.Application.Repositories;
@@ -63,6 +64,13 @@ public interface ITeamRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Clubs without human manager in a specific season.
+    /// </summary>
+    Task<IReadOnlyList<Team>> ListClubsWithoutManagerInSeasonAsync(
+        Guid seasonId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Every active membership across all clubs for a season, so a transfer search can
     /// build its listings in one query rather than one club at a time.
     /// </summary>
@@ -73,4 +81,32 @@ public interface ITeamRepository
     Task AddMembershipAsync(TeamMembership membership, CancellationToken cancellationToken = default);
 
     void UpdateMembership(TeamMembership membership);
+
+    /// <summary>
+    /// Gets a player by ID.
+    /// </summary>
+    Task<Player?> GetPlayerAsync(Guid playerId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the division tier for teams in a season from competition participants.
+    /// </summary>
+    Task<Dictionary<Guid, int>> GetTeamDivisionsAsync(
+        Guid seasonId,
+        IEnumerable<Guid> teamIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets squads for multiple teams in a season in a single query.
+    /// </summary>
+    Task<Dictionary<Guid, IReadOnlyList<TeamMembership>>> GetSquadsAsync(
+        IEnumerable<Guid> teamIds,
+        Guid seasonId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets multiple players by their IDs in a single query.
+    /// </summary>
+    Task<Dictionary<Guid, Player>> GetPlayersAsync(
+        IEnumerable<Guid> playerIds,
+        CancellationToken cancellationToken = default);
 }

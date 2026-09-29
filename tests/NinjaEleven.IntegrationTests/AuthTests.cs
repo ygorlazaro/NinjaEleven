@@ -1,9 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Application.Services;
 using NinjaEleven.Domain.Common;
+using NinjaEleven.Domain.Enums;
+using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Teams;
 using NinjaEleven.Infrastructure;
 using NinjaEleven.Infrastructure.Persistence;
@@ -20,49 +21,75 @@ namespace NinjaEleven.IntegrationTests;
 /// </summary>
 public class AuthTests
 {
-    private readonly NinjaElevenDbContext _db;
-    private readonly AuthService _auth;
-
-    public AuthTests()
+    private AuthService CreateAuthService(NinjaElevenDbContext db)
     {
-        var options = new DbContextOptionsBuilder<NinjaElevenDbContext>()
-            .UseInMemoryDatabase($"Auth-{Guid.NewGuid()}")
-            .Options;
-
-        _db = new NinjaElevenDbContext(options);
-
-        // A single team exists so the register/link flow has something to claim.
-        var team = Team.Create("Esporte Clube Riachuelo", "Riachuelo", "#0a5", "#fff");
-        _db.Teams.Add(team);
-        _db.SaveChanges();
-
-        var users = new UserRepository(_db);
-        var usersRepo = users;
-        var managers = new ManagerRepository(_db);
-        var teams = new TeamRepository(_db);
+        var users = new UserRepository(db);
+        var managers = new ManagerRepository(db);
+        var teams = new TeamRepository(db);
+        var competitions = new CompetitionRepository(db);
+        var seasons = new SeasonRepository(db);
+        var cupTies = new CupTieRepository(db);
+        var standings = new StandingsService(
+            new RoundRepository(db),
+            new FixtureRepository(db),
+            new MatchRepository(db),
+            competitions,
+            teams,
+            new PlayerRepository(db));
         var passwordHasher = new BcryptPasswordHasher();
-        var unitOfWork = new EfUnitOfWork(_db);
+        var unitOfWork = new EfUnitOfWork(db);
 
-        _auth = new AuthService(
-            usersRepo,
+        return new AuthService(
+            users,
             managers,
             teams,
+            competitions,
+            seasons,
+            cupTies,
+            standings,
             passwordHasher,
             unitOfWork,
             NullLogger<AuthService>.Instance);
     }
 
+    private NinjaElevenDbContext CreateDbContext()
+    {
+        var options = new DbContextOptionsBuilder<NinjaElevenDbContext>()
+            .UseInMemoryDatabase($"Auth-{Guid.NewGuid()}")
+            .Options;
+
+        var db = new NinjaElevenDbContext(options);
+
+        // Create multiple teams so multiple tests can each claim one
+        for (int i = 1; i <= 20; i++)
+        {
+            var team = Team.Create($"Clube de Teste {i}", $"Teste {i}", "#0a5", "#fff");
+            db.Teams.Add(team);
+        }
+
+        // Create a current season for club auto-assignment
+        var season = Season.Create(1, new DateOnly(2024, 1, 1), new DateOnly(2024, 12, 31));
+        season.Start();
+        db.Seasons.Add(season);
+
+        db.SaveChanges();
+        return db;
+    }
+
     [Fact]
     public async Task RegisterCreatesUserAndPasswordHash()
     {
-        var result = await _auth.RegisterAsync(
+        var db = CreateDbContext();
+        var auth = CreateAuthService(db);
+
+        var result = await auth.RegisterAsync(
             "test@example.com", "SenhaSegura123", null, null, CancellationToken.None);
 
         Assert.NotEqual(Guid.Empty, result.UserId);
         Assert.Equal("test@example.com", result.Email);
 
         // The password hash is never empty: BCrypt produces a $2b$ prefix, never the raw password.
-        var user = await _db.Users.FirstAsync(u => u.Email == "test@example.com");
+        var user = await db.Users.FirstAsync(u => u.Email == "test@example.com");
         Assert.NotNull(user.PasswordHash);
         Assert.NotEqual("SenhaSegura123", user.PasswordHash);
         Assert.StartsWith("$2", user.PasswordHash);
@@ -71,70 +98,47 @@ public class AuthTests
     [Fact]
     public async Task LoginReturnsResultWithUserIdentity()
     {
-        await _auth.RegisterAsync("login@example.com", "Senha123456", null, null, CancellationToken.None);
+        var db = CreateDbContext();
+        var auth = CreateAuthService(db);
 
-        var result = await _auth.LoginAsync("login@example.com", "Senha123456", CancellationToken.None);
+        await auth.RegisterAsync("login@example.com", "Senha123456", null, null, CancellationToken.None);
+
+        var result = await auth.LoginAsync("login@example.com", "Senha123456", CancellationToken.None);
 
         Assert.Equal("login@example.com", result.Email);
-        Assert.Null(result.TeamId);
+        Assert.NotNull(result.TeamId); // Club is auto-assigned on registration
     }
 
     [Fact]
     public async Task LoginWithWrongPasswordFails()
     {
-        await _auth.RegisterAsync("wrongpass@example.com", "Senha123456", null, null, CancellationToken.None);
+        var db = CreateDbContext();
+        var auth = CreateAuthService(db);
+
+        await auth.RegisterAsync("wrongpass@example.com", "Senha123456", null, null, CancellationToken.None);
 
         await Assert.ThrowsAsync<DomainValidationException>(async () =>
-            await _auth.LoginAsync("wrongpass@example.com", "senhaErrada", CancellationToken.None));
+            await auth.LoginAsync("wrongpass@example.com", "senhaErrada", CancellationToken.None));
     }
 
     [Fact]
     public async Task ChangePasswordUpdatesTheHash()
     {
-        var result = await _auth.RegisterAsync(
+        var db = CreateDbContext();
+        var auth = CreateAuthService(db);
+
+        var result = await auth.RegisterAsync(
             "change@example.com", "Senha123456", null, null, CancellationToken.None);
 
-        await _auth.ChangePasswordAsync(
+        await auth.ChangePasswordAsync(
             result.UserId, "Senha123456", "NovaSenha789", CancellationToken.None);
 
         // The old password no longer works:
         await Assert.ThrowsAsync<DomainValidationException>(async () =>
-            await _auth.LoginAsync("change@example.com", "Senha123456", CancellationToken.None));
+            await auth.LoginAsync("change@example.com", "Senha123456", CancellationToken.None));
 
         // The new password does:
-        var newResult = await _auth.LoginAsync("change@example.com", "NovaSenha789", CancellationToken.None);
+        var newResult = await auth.LoginAsync("change@example.com", "NovaSenha789", CancellationToken.None);
         Assert.Equal("change@example.com", newResult.Email);
-    }
-
-    [Fact]
-    public async Task LinkManagerCreatesManagerAndMarksClub()
-    {
-        var result = await _auth.RegisterAsync(
-            "link@example.com", "Senha123456", null, null, CancellationToken.None);
-
-        var team = await _db.Teams.FirstAsync();
-        await _auth.LinkManagerAsync(result.UserId, team.Id, "Linkado", CancellationToken.None);
-
-        var manager = await _db.Managers.FirstAsync();
-        Assert.Equal("Linkado", manager.Name);
-        Assert.Equal(result.UserId, manager.UserId);
-
-        // The manager is linked to the user:
-        var managerOfUser = await _auth.GetManagerByUserIdAsync(result.UserId, CancellationToken.None);
-        Assert.NotNull(managerOfUser);
-        Assert.Equal("Linkado", managerOfUser!.Name);
-    }
-
-    [Fact]
-    public async Task LinkManagerTwiceFails()
-    {
-        var result = await _auth.RegisterAsync(
-            "double@example.com", "Senha123456", null, null, CancellationToken.None);
-
-        var team = await _db.Teams.FirstAsync();
-        await _auth.LinkManagerAsync(result.UserId, team.Id, "Primeiro", CancellationToken.None);
-
-        await Assert.ThrowsAsync<DomainValidationException>(async () =>
-            await _auth.LinkManagerAsync(result.UserId, team.Id, "Segundo", CancellationToken.None));
     }
 }

@@ -27,6 +27,13 @@ public interface ICupTieRepository
     /// how the aggregate and the winner reach the database.
     /// </summary>
     void Update(CupTie tie);
+
+    /// <summary>
+    /// Gets the club IDs that are still alive in the cup (haven't been eliminated yet).
+    /// </summary>
+    Task<IReadOnlyList<Guid>> GetAliveClubsInCupAsync(
+        Guid competitionSeasonId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

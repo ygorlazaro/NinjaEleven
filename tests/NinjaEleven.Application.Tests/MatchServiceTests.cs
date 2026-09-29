@@ -241,7 +241,8 @@ public class MatchServiceTests
                 _matchDays.Object,
                 _seasons.Object,
                 _unitOfWork.Object,
-                NullLogger<FinanceService>.Instance)),
+                NullLogger<FinanceService>.Instance),
+            new Random()),
         new MatchdayService(
             _matchDays.Object,
             _rounds.Object,

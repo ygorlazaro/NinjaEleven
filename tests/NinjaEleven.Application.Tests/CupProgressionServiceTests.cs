@@ -87,7 +87,8 @@ public class CupProgressionServiceTests
         _matchDays.Object,
         _competitions.Object,
         _unitOfWork.Object,
-        Finance());
+        Finance(),
+        new Random());
 
     public CupProgressionServiceTests()
     {

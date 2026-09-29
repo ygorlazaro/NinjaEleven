@@ -3,24 +3,24 @@ using NinjaEleven.Domain.Enums;
 namespace NinjaEleven.Domain.Players;
 
 /// <summary>
-/// Calculates player and team strength as star ratings. The conversion lives in the
-/// domain so the same numbers are used by the match engine, the lineup suggestion and
-/// every screen that shows a player's quality. A star is never computed in the client.
-/// </summary>
-public static class PlayerRating
-{
-    /// <summary>
-    /// Converts a single attribute value (1..20) to stars (0.5..5.0).
-    /// Formula: ceil(attribute / 2) * 0.5, with a floor of 0.5 for attributes 1-2.
+    /// Calculates player and team strength as star ratings. The conversion lives in the
+    /// domain so the same numbers are used by the match engine, the lineup suggestion and
+    /// every screen that shows a player's quality. A star is never computed in the client.
     /// </summary>
-    public static double AttributeToStars(int attribute)
+    public static class PlayerRating
     {
-        if (attribute <= 0) return 0;
-        if (attribute <= 2) return 0.5;
-
-        var stars = Math.Ceiling(attribute / 2.0) * 0.5;
-        return Math.Min(stars, 5.0);
-    }
+        /// <summary>
+        /// Converts a single attribute value (1..100) to stars (0.5..5.0).
+        /// Formula: ceil(attribute / 10) * 0.5
+        /// 1-10 → 0.5, 11-20 → 1.0, ..., 91-100 → 5.0
+        /// </summary>
+        public static double AttributeToStars(int attribute)
+        {
+            if (attribute <= 0) return 0;
+            
+            var stars = Math.Ceiling(attribute / 10.0) * 0.5;
+            return Math.Min(stars, 5.0);
+        }
 
     /// <summary>
     /// Calculates stars from raw attribute values for an outfield player.

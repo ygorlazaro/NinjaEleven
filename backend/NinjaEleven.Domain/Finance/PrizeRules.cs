@@ -31,6 +31,9 @@ public static class PrizeRules
     /// <summary>What the third division's whole table is paid out of.</summary>
     public const decimal ThirdDivisionPurse = 10_000_000m;
 
+    /// <summary>What the fourth division's whole table is paid out of.</summary>
+    public const decimal FourthDivisionPurse = 5_000_000m;
+
     /// <summary>
     /// The base of the geometric weight a position carries: the champion's weight is
     /// <c>1.3^11</c> and the last club's is <c>1.3^0</c>, one.
@@ -42,6 +45,8 @@ public static class PrizeRules
     {
         1 => FirstDivisionPurse,
         2 => SecondDivisionPurse,
+        3 => ThirdDivisionPurse,
+        4 => FourthDivisionPurse,
         _ => ThirdDivisionPurse
     };
 

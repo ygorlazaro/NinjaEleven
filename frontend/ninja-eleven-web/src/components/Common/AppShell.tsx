@@ -33,7 +33,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
    * here has still not taken a club, and a manager whose club is in the store is on a path
    * of its own a moment later.
    */
-  const bare = pathname === '/';
+  const bare = pathname === '/' || pathname === '/login' || pathname === '/register';
 
   // The season being played. The sidebar's next match is a question about the calendar and
   // not about a store value, so the season is asked for rather than remembered — and the
@@ -199,19 +199,29 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           {/* Who scores for the club, over every season and every competition. It sits with
               the club's own pages because it is a page about the club: the league's scorers
               answer "who leads the division" and this one answers "who is this club's". */}
-           {selectedTeam && (
-             <NavLink
-               to="/artilheiros"
-               className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-             >
-               <span className="sidebar-link__icon">⚽</span>
-               <span className="sidebar-link__label">Artilheiros</span>
-             </NavLink>
-           )}
+{selectedTeam && (
+              <NavLink
+                to="/artilheiros"
+                className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+              >
+                <span className="sidebar-link__icon">⚽</span>
+                <span className="sidebar-link__label">Artilheiros</span>
+              </NavLink>
+            )}
 
-           {selectedTeam && (
-             <NavLink
-               to="/transfer"
+            {selectedTeam && (
+              <NavLink
+                to="/ranking"
+                className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+              >
+                <span className="sidebar-link__icon">🏆</span>
+                <span className="sidebar-link__label">Ranking Ninja</span>
+              </NavLink>
+            )}
+
+            {selectedTeam && (
+              <NavLink
+                to="/transfer"
                className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
              >
                <span className="sidebar-link__icon">🔄</span>

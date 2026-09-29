@@ -99,6 +99,9 @@ public static class DependencyInjection
         services.AddScoped<SponsorOfferService>();
         services.AddScoped<ManagerService>();
         services.AddScoped<AuthService>();
+        services.AddScoped<ClubRankingService>();
+        services.AddScoped<CupDrawService>();
+        services.AddSingleton<Random>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<TransferService>();
         services.AddScoped<RosterService>();
