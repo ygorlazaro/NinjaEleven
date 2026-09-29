@@ -76,6 +76,7 @@ public class SeasonCloseService
     private readonly IDataSeeder _seeder;
     private readonly RosterService _roster;
     private readonly TransferService _transfers;
+    private readonly InboxService _inbox;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<SeasonCloseService> _logger;
 
@@ -94,6 +95,7 @@ public class SeasonCloseService
         IDataSeeder seeder,
         RosterService roster,
         TransferService transfers,
+        InboxService inbox,
         IUnitOfWork unitOfWork,
         ILogger<SeasonCloseService> logger)
     {
@@ -111,6 +113,7 @@ public class SeasonCloseService
         _seeder = seeder;
         _roster = roster;
         _transfers = transfers;
+        _inbox = inbox;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -195,6 +198,33 @@ public class SeasonCloseService
                 if (line is not null)
                 {
                     paid++;
+                }
+
+                // The title is announced, the purse is reported by the ledger on its own, and
+                // the two together are what a manager wants to know: that his club is a
+                // champion and what the championship cost. Only first place is announced —
+                // second and third are podium, and a box that congratulated a club on being
+                // third would make a title mean nothing.
+                if (position == 1)
+                {
+                    var championClub = await _teams.GetAsync(clubId, cancellationToken);
+
+                    if (championClub is not null)
+                    {
+                        await _inbox.PostTitleAsync(
+                            new TitleFacts
+                            {
+                                RecipientTeamId = championClub.Id,
+                                ClubName = championClub.Name,
+                                Kind = InboxTitleKind.Championship,
+                                CompetitionName = CompetitionRules.DivisionName(view.Tier!.Value),
+                                SeasonName = season.Name,
+                                Position = 1,
+                                PrizeMoney = prize,
+                                Reference = $"championship:{view.Id}:1"
+                            },
+                            cancellationToken);
+                    }
                 }
             }
 

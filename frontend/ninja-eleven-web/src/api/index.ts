@@ -11,6 +11,8 @@ import type {
   PlayerProfileDto,
   SquadSuggestionDto,
   FinanceLedgerDto,
+  InboxBoxDto,
+  InboxMessageDto,
   ClubScorerDto,
   CompetitionFilter,
   ClubStandingDto,
@@ -494,4 +496,34 @@ export const AuthApi = {
 export const RankingApi = {
   /** Gets the Ninja Ranking for all clubs. */
   getRanking: () => api.get<ClubRankingDto[]>('/ranking').then(r => r.data),
+};
+
+/**
+ * The manager's box.
+ *
+ * It is read-only in the way the game is: nothing here composes a message and nothing here
+ * takes one. The only verbs are reading a page and opening a line, because the messages are
+ * written by the engine and the manager's part in the box is to read it.
+ */
+export const InboxApi = {
+  /** A page of the club's box, newest first, with the number of unread messages beside it. */
+  getBox: (teamId: string, page = 1, pageSize = 20) =>
+    api
+      .get<InboxBoxDto>(`/inbox/${teamId}`, { params: { page, pageSize } })
+      .then(r => r.data),
+
+  /** How many messages the manager has not opened. The number on the column. */
+  getUnreadCount: (teamId: string) =>
+    api.get<number>(`/inbox/${teamId}/unread`).then(r => r.data),
+
+  /**
+   * Opens a message. The club is in the route and the backend checks the line belongs to it,
+   * so a message id guessed by hand is refused rather than somebody else's mail.
+   */
+  markRead: (teamId: string, messageId: string) =>
+    api.post<InboxMessageDto>(`/inbox/${teamId}/read/${messageId}`).then(r => r.data),
+
+  /** Empties the unread badge in one go, for a manager who has caught up. */
+  markAllRead: (teamId: string) =>
+    api.post<number>(`/inbox/${teamId}/read-all`).then(r => r.data),
 };

@@ -107,6 +107,14 @@ public class MatchRepository : IMatchRepository
             .OrderByDescending(statistics => statistics.MatchId)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<MatchPlayerStatistics>> ListPlayerStatisticsByMatchIdsAsync(
+        IEnumerable<Guid> matchIds,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.MatchPlayerStatistics
+            .AsNoTracking()
+            .Where(statistics => matchIds.Contains(statistics.MatchId))
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<Domain.Competitions.MatchDay>> GetMatchDaysAsync(
         Guid seasonId,
         CancellationToken cancellationToken = default) =>

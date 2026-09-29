@@ -59,6 +59,7 @@ public class CupProgressionServiceTests
             _rounds.Object,
             _matchDays.Object,
             _seasons.Object,
+            InboxTestFactory.Create(_teams),
             _unitOfWork.Object,
             NullLogger<FinanceService>.Instance);
     }
@@ -88,6 +89,8 @@ public class CupProgressionServiceTests
         _competitions.Object,
         _unitOfWork.Object,
         Finance(),
+        InboxTestFactory.Create(_teams),
+        _teams.Object,
         new Random());
 
     public CupProgressionServiceTests()

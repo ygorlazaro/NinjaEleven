@@ -39,6 +39,7 @@ public class ScorerPrizeService
     private readonly IPlayerRepository _players;
     private readonly ITeamRepository _teams;
     private readonly FinanceService _finance;
+    private readonly InboxService _inbox;
     private readonly ILogger<ScorerPrizeService> _logger;
 
     public ScorerPrizeService(
@@ -46,12 +47,14 @@ public class ScorerPrizeService
         IPlayerRepository players,
         ITeamRepository teams,
         FinanceService finance,
+        InboxService inbox,
         ILogger<ScorerPrizeService> logger)
     {
         _competitions = competitions;
         _players = players;
         _teams = teams;
         _finance = finance;
+        _inbox = inbox;
         _logger = logger;
     }
 
@@ -97,6 +100,35 @@ public class ScorerPrizeService
             if (line is not null)
             {
                 paid++;
+            }
+
+            // The three places are announced together, because an artilharia is one table
+            // rather than three facts: a manager whose striker is third wants to know who is
+            // above him too, and a box that only carried the winner would make the second and
+            // third prizes something he had to go and look for.
+            if (winner.TeamName is { Length: > 0 } clubName)
+            {
+                await _inbox.PostTitleAsync(
+                    new TitleFacts
+                    {
+                        RecipientTeamId = winner.TeamId,
+                        ClubName = clubName,
+                        Kind = InboxTitleKind.Scorer,
+                        CompetitionName = prizes.CompetitionName,
+                        Position = winner.PrizeSlot,
+                        PrizeMoney = winner.Amount,
+                        PlayerId = winner.PlayerId,
+                        PlayerName = winner.PlayerName,
+                        PlayerGoals = winner.Goals,
+                        // The cup's artilharia is read on the cup's screen, the same way the
+                        // prize itself is priced from the cup's own title. A tier is what
+                        // makes an edition a division, so its absence is the same answer
+                        // ReadTheChampionPrizeAsync gives.
+                        LinkRoute = prizes.Tier is null ? "/copa" : "/league",
+                        LinkLabel = prizes.Tier is null ? "Ver a Copa" : "Ver o campeonato",
+                        Reference = $"artilharia:{competitionSeasonId}:{winner.PlayerId}"
+                    },
+                    cancellationToken);
             }
         }
 

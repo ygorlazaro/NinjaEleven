@@ -24,6 +24,7 @@ public class SponsorOfferService
     private readonly ITeamRepository _teams;
     private readonly IFinanceRepository _finance;
     private readonly ISeasonRepository _seasons;
+    private readonly InboxService _inbox;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<SponsorOfferService> _logger;
 
@@ -33,6 +34,7 @@ public class SponsorOfferService
         ITeamRepository teams,
         IFinanceRepository finance,
         ISeasonRepository seasons,
+        InboxService inbox,
         IUnitOfWork unitOfWork,
         ILogger<SponsorOfferService> logger)
     {
@@ -41,6 +43,7 @@ public class SponsorOfferService
         _teams = teams;
         _finance = finance;
         _seasons = seasons;
+        _inbox = inbox;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -180,7 +183,11 @@ public class SponsorOfferService
         var sponsor = await _sponsors.GetAsync(active.SponsorId, cancellationToken);
         var fee = active.PerMatchFee;
 
-        active.RecordMatchPlayed();
+        // The domain says whether this call was the one that ended the deal, and the answer is
+        // asked here rather than recomputed from the counts: a club whose last instalment has
+        // just been paid is playing the next match with nobody's name on the shirt, and nothing
+        // else in the game would ever tell it so.
+        var justExpired = active.RecordMatchPlayed();
         _contracts.Update(active);
 
         var last = await _finance.GetLastAsync(teamId, cancellationToken);
@@ -200,6 +207,29 @@ public class SponsorOfferService
 
         await _finance.AddAsync(line, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // The shirt deal is the one piece of the club's income that is not a crowd and not a
+        // result, so it is the one a manager is least likely to notice happening: it is
+        // reported here rather than left to the ledger, where a line that arrives on its own
+        // every matchday is a line nobody reads.
+        await _inbox.PostFinanceAsync(line, cancellationToken: cancellationToken);
+
+        if (justExpired)
+        {
+            await _inbox.PostSponsorExpiryAsync(
+                new SponsorExpiryFacts
+                {
+                    RecipientTeamId = teamId,
+                    ClubName = (await _teams.GetAsync(teamId, cancellationToken))?.Name
+                               ?? teamId.ToString(),
+                    SponsorId = active.SponsorId,
+                    SponsorName = sponsor?.Name ?? "o patrocinador",
+                    ContractId = active.Id,
+                    PerMatchFee = active.PerMatchFee,
+                    ContractMatches = active.ContractMatches
+                },
+                cancellationToken);
+        }
 
         _logger.LogInformation(
             "Paid {TeamId} {Fee} limos from {SponsorName} for match {MatchId}.",

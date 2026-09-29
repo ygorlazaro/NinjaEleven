@@ -132,14 +132,18 @@ button { cursor: pointer; }
 }
 .next-match__side--home { background: rgba(56, 211, 159, .18); color: var(--green); border-color: rgba(56, 211, 159, .45); }
 
+/* The opponent and the ground wrap, for the same reason the club's own name does. They are
+   the two facts a manager chooses an eleven by, and "who am I playing" answered as
+   "Esporte Clube N…" is not an answer: the same eleven is not the same eleven against a
+   team whose name he could not finish reading. */
 .next-match__opponent {
   color: var(--text); font-size: 14px; font-weight: 700; line-height: 1.25;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0; overflow-wrap: anywhere; word-break: break-word; hyphens: auto;
 }
 .next-match__where { display: grid; gap: 1px; }
 .next-match__stadium {
   font-size: 12.5px; color: var(--muted);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow-wrap: anywhere; word-break: break-word; hyphens: auto;
 }
 .next-match__competition { font-size: 12px; color: var(--accent); opacity: .85; }
 
@@ -184,17 +188,30 @@ button { cursor: pointer; }
   text-decoration: none; color: inherit; border: 1px solid transparent;
 }
 .sidebar-club-card:hover { background: #10202e; border-color: #46657d; }
-.sidebar-club-card__crest {
-  width: 34px; height: 38px; font-size: 14px; flex: 0 0 auto;
+/* The shield is the size of the one in the next-match box, and not a size of its own: the
+   two cards sit one above the other in the same column and are read as a pair, so a column
+   with a 34x38 crest at the top and a 20x20 one underneath it has no crest size at all. */
+/* Two classes, and not one, because `.club-crest` is declared further down this sheet and the
+   two rules would otherwise be a tie that the later one wins — which is exactly what happened
+   here: the crest stayed at 76x88 whatever this rule asked for. Qualifying it with the block
+   it belongs to makes the size a decision of the card rather than a coin toss. */
+.sidebar-club-card .sidebar-club-card__crest {
+  width: 20px; height: 20px; font-size: 10px; flex: 0 0 auto;
+  border-width: 1px; border-radius: 4px 4px 8px 8px;
 }
 .sidebar-club-card__body { display: flex; flex-direction: column; min-width: 0; }
+
+/* A long club name wraps rather than being cut. An ellipsis on the name of the club the
+   manager is running is the one truncation in the game that is actively harmful: he would be
+   reading "Esporte Clube Náu…" and the screen would be telling him he runs Náutico when he
+   runs Náutico de Guanabara. Two lines is a cheap price for a name he can read. */
 .sidebar-club-card__name {
   color: var(--text); font-size: 13px; font-weight: 700; line-height: 1.2;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow-wrap: anywhere; word-break: break-word; hyphens: auto;
 }
 .sidebar-club-card__coach {
   color: var(--muted); font-size: 11px; line-height: 1.2;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow-wrap: anywhere; word-break: break-word;
 }
 .coach-name {
   color: var(--muted); font-size: 12px; line-height: 1.2; margin-top: 4px;
@@ -2743,3 +2760,115 @@ button { cursor: pointer; }
   text-align: center;
 }
 .profile-offer-btn { margin-left: 10px; white-space: nowrap; }
+
+/* ============================================================================
+   The manager's box.
+
+   It is laid out as a mailbox rather than as a table, because that is what it is: a column
+   of subjects on the left and the message being read on the right. A table of forty rows of
+   subjects would make a manager open a second screen to read the thing the first screen was
+   only pointing at.
+   ============================================================================ */
+
+.inbox-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap; margin-bottom: 12px;
+}
+.inbox-head .competition { margin: 2px 0 0; }
+
+.inbox-head__unread {
+  margin-left: 10px; padding: 2px 8px; border-radius: 999px;
+  background: rgba(56, 211, 159, .16); border: 1px solid rgba(56, 211, 159, .4);
+  color: var(--green); font-size: 11px; font-weight: 700;
+}
+
+.inbox {
+  display: grid; grid-template-columns: minmax(240px, 340px) 1fr;
+  gap: 14px; align-items: start;
+}
+
+@media (max-width: 900px) {
+  .inbox { grid-template-columns: 1fr; }
+}
+
+/* The column of subjects. A row is one line of the column, and the three lines of it are
+   the three things a manager reads in a mailbox: who it is from, when it arrived, and what
+   it says. The subject is the one that is allowed to be bold, because it is the one that
+   decides whether the row is opened at all. */
+.inbox__list {
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: 70vh; overflow-y: auto; padding-right: 4px;
+}
+
+.inbox-row {
+  display: grid; gap: 3px; text-align: left; cursor: pointer;
+  padding: 9px 10px; border-radius: 8px;
+  background: #0a1520; border: 1px solid var(--line); border-left: 3px solid transparent;
+  color: var(--muted); font: inherit;
+}
+.inbox-row:hover { border-color: #46657d; }
+.inbox-row--active { background: #10202e; border-color: var(--accent); }
+
+/* The unread mark is a heavier left edge rather than a dot in the corner, and it is the only
+   difference between the two states. A manager scanning a column of forty lines is looking
+   for the one thing that has changed, and a dot is a thing he has to find while a heavier
+   edge is a thing he sees. */
+.inbox-row--unread { border-left-color: var(--accent); color: var(--text); }
+
+.inbox-row__top {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  font-size: 11.5px;
+}
+.inbox-row__sender { font-weight: 700; color: var(--accent); opacity: .9; }
+.inbox-row__date { font-variant-numeric: tabular-nums; opacity: .75; flex: 0 0 auto; }
+
+.inbox-row__subject {
+  color: var(--text); font-size: 13px; line-height: 1.3;
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.inbox-row--unread .inbox-row__subject { font-weight: 700; }
+
+.inbox-row__mark { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; }
+
+.inbox__pages {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line);
+}
+.inbox__pages .ctrl { padding: 5px 10px; font-size: 12px; }
+.inbox__pages .ctrl:disabled { opacity: .4; cursor: default; }
+.inbox__page-label { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* The reading pane. It is a column of its own rather than something that opens over the
+   list, so a manager who goes back up the column to find the message above the one he just
+   read still has the message he was reading underneath his own cursor's place. */
+.inbox__reader {
+  min-height: 320px; padding: 16px 18px; border-radius: 10px;
+  background: linear-gradient(180deg, #0f1e2b, #0a1520); border: 1px solid var(--line);
+}
+
+.inbox-message { display: grid; gap: 12px; justify-items: start; }
+
+.inbox-message__head { display: grid; gap: 4px; width: 100%; }
+.inbox-message__subject {
+  margin: 0; font-size: 20px; line-height: 1.25; letter-spacing: -.01em;
+  color: var(--club-ink, var(--text));
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.inbox-message__meta {
+  display: flex; align-items: center; gap: 8px; margin: 0;
+  font-size: 12px; color: var(--muted);
+}
+
+/* The paragraphs are the backend's, split on the blank line and nothing else. The line height
+   and the measure are the screen's, because a body set in one column edge to edge is a body
+   nobody can read to the end of the second paragraph. */
+.inbox-message__paragraph {
+  margin: 0; max-width: 68ch; font-size: 14.5px; line-height: 1.65; color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.inbox-message__link {
+  margin-top: 4px; text-decoration: none; font-weight: 700;
+  border-color: var(--accent); color: var(--accent);
+}
+.inbox-message__link:hover { color: var(--text); }

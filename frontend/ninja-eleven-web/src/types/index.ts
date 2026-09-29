@@ -1697,3 +1697,50 @@ export interface ClubTransferHistoryDto {
   seasonNumbers: number[];
   transfers: TransferHistoryLineDto[];
 }
+
+/**
+ * A message in the manager's box, as the backend wrote it.
+ *
+ * The body is plain text with its paragraphs separated by a blank line, and it is plain text
+ * on purpose: the names inside it are doors because of the `mentions` beside it, so a body
+ * that could carry markup would be a place where a club's name stopped being a name. The
+ * screen splits the body on the blank line and never rewrites a word of it.
+ */
+export interface InboxMessageDto {
+  id: Guid;
+  /** `Finance`, `MatchReport`, `TransferOffer`, `Title` or `Club`, as a name. */
+  category: string;
+  subject: string;
+  senderName: string;
+  body: string;
+  mentions: InboxPersonDto[];
+  linkLabel?: string | null;
+  linkRoute?: string | null;
+  createdAt: string;
+  isRead: boolean;
+  readAt?: string | null;
+}
+
+/** A name a message uses, and the thing it belongs to, so the screen can make it a door. */
+export interface InboxPersonDto {
+  name: string;
+  /** `player` or `team`. */
+  kind: string;
+  id: Guid;
+}
+
+/**
+ * A page of the box, newest first, and the number of messages the manager has not opened.
+ *
+ * The count travels with the page rather than beside it in a second request: the badge in the
+ * column and the page on the screen are the same fact about the same moment, and a count
+ * fetched a second later is a badge that disagrees with the mail it is counting.
+ */
+export interface InboxBoxDto {
+  messages: InboxMessageDto[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  unreadCount: number;
+}

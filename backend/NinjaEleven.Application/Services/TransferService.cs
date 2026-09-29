@@ -74,6 +74,7 @@ public class TransferService
     private readonly IRoundRepository _rounds;
     private readonly IMatchRepository _matches;
     private readonly IFinanceRepository _finance;
+    private readonly InboxService _inbox;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<TransferService> _logger;
 
@@ -86,6 +87,7 @@ public class TransferService
         IRoundRepository rounds,
         IMatchRepository matches,
         IFinanceRepository finance,
+        InboxService inbox,
         IUnitOfWork unitOfWork,
         ILogger<TransferService> logger)
     {
@@ -97,6 +99,7 @@ public class TransferService
         _rounds = rounds;
         _matches = matches;
         _finance = finance;
+        _inbox = inbox;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -245,6 +248,31 @@ window.ArrivalRoundNumber);
         await _transfers.AddAsync(transfer, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+        // A bid on one of the manager's own men is news the moment it is made, and the market
+        // screen is where he would look for it if he happened to be there. Only the club that
+        // owns the player is told, because the other thirty five have nobody to tell: a proposal
+        // the engine makes on its own is not something a computer-controlled club reads.
+        if (sellingClub.IsManagerClub)
+        {
+            await _inbox.PostTransferOfferAsync(
+                new TransferOfferFacts
+                {
+                    RecipientTeamId = sellingClub.Id,
+                    ClubName = sellingClub.Name,
+                    PlayerId = player.Id,
+                    PlayerName = player.Name,
+                    BiddingClubId = buyingClub.Id,
+                    BiddingClubName = buyingClub.Name,
+                    Fee = askingPrice,
+                    // The price the club would have asked for is not the interesting number
+                    // when the two are the same figure — what the book says the man is worth
+                    // is, and it is the one the manager compares an offer against.
+                    AskingPrice = marketValue,
+                    Reference = $"offer:{transfer.Id}"
+                },
+                cancellationToken);
+        }
+
         _logger.LogInformation(
             "Transfer proposed: {PlayerName} from {SellingClub} to {BuyingClub} for {Fee} limos, " +
             "arriving in season {Arrival} round {Round}.",
@@ -368,6 +396,7 @@ window.ArrivalRoundNumber);
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await ReportTheDecisionsAsync(pending, _ => InboxDecision.Expired, cancellationToken);
 
         _logger.LogInformation(
             "{Count} unanswered proposals expired at the end of the season.", pending.Count);
@@ -456,19 +485,21 @@ window.ArrivalRoundNumber);
         var sequence = (lastLine?.Sequence ?? 0) + 1;
         var balanceBefore = lastLine?.BalanceAfter ?? 0m;
 
-        await _finance.AddAsync(
-            FinanceMovement.Create(
-                clubId,
-                season.Id,
-                sequence,
-                matchDayNumber: null,
-                FinanceMovementKind.TransferOut,
-                $"Rescisão de contrato — {player.Name}",
-                -cost,
-                balanceBefore,
-                matchId: null,
-                $"release:{playerId}"),
-            cancellationToken);
+        var settlement = FinanceMovement.Create(
+            clubId,
+            season.Id,
+            sequence,
+            matchDayNumber: null,
+            FinanceMovementKind.TransferOut,
+            $"Rescisão de contrato — {player.Name}",
+            -cost,
+            balanceBefore,
+            matchId: null,
+            $"release:{playerId}");
+
+        await _finance.AddAsync(settlement, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await ReportTheMoneyAsync(settlement, playerId, player.Name, cancellationToken);
 
         // The player is now a free agent, and a free agent is a man on the market: his state
         // carries his goals but names no club, and the market reads that state to know he is
@@ -529,6 +560,11 @@ window.ArrivalRoundNumber);
 
         var completed = 0;
 
+        // The deals that could not be kept are collected and written once at the end rather
+        // than one inside the loop: the window settles the whole window, and a caller that
+        // awaits a message per deal is a caller that asks the world three names per deal.
+        var calledOff = new List<Transfer>();
+
         foreach (var transfer in accepted)
         {
             if (transfer.ArrivalRoundNumber is null)
@@ -560,7 +596,7 @@ window.ArrivalRoundNumber);
 
                 if (oldMembership is null)
                 {
-                    await CallOffTheDealAsync(transfer, arrivalSeason, cancellationToken);
+                    await CallOffTheDealAsync(transfer, arrivalSeason, calledOff, cancellationToken);
                     _logger.LogWarning(
                         "Transfer {TransferId}: the selling club no longer holds player {PlayerId}. The deal is off.",
                         transfer.Id, transfer.PlayerId);
@@ -577,7 +613,7 @@ window.ArrivalRoundNumber);
                 var sellerSize = await SquadSizeAsync(sellerId, cancellationToken);
                 if (!SquadSizeRules.CanRemoveOne(sellerSize))
                 {
-                    await CallOffTheDealAsync(transfer, arrivalSeason, cancellationToken);
+                    await CallOffTheDealAsync(transfer, arrivalSeason, calledOff, cancellationToken);
                     _logger.LogWarning(
                         "Transfer {TransferId}: {SellingClub} is down to {Size} players and cannot " +
                         "sell another. The deal is off.",
@@ -606,6 +642,7 @@ window.ArrivalRoundNumber);
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await ReportTheDecisionsAsync(calledOff, _ => InboxDecision.CalledOff, cancellationToken);
 
         _logger.LogInformation(
             "Completed {Completed} transfers for arrival season {SeasonNumber} at round {Round}.",
@@ -651,19 +688,21 @@ window.ArrivalRoundNumber);
                 transfer.BuyingClubId, season.Id, FinanceMovementKind.TransferOut, buyingReference, cancellationToken))
         {
             var buyingLast = await _finance.GetLastAsync(transfer.BuyingClubId, cancellationToken);
-            await _finance.AddAsync(
-                FinanceMovement.Create(
-                    transfer.BuyingClubId,
-                    season.Id,
-                    sequence: (buyingLast?.Sequence ?? 0) + 1,
-                    (await CurrentMatchDayAsync(season.Id, cancellationToken))?.Number,
-                    FinanceMovementKind.TransferOut,
-                    transfer.SellingClubId is null ? $"Contratação de {playerName}" : $"Compra de {playerName}",
-                    -transfer.Fee,
-                    balanceBefore: buyingLast?.BalanceAfter ?? 0m,
-                    matchId: null,
-                    buyingReference),
-                cancellationToken);
+            var purchase = FinanceMovement.Create(
+                transfer.BuyingClubId,
+                season.Id,
+                sequence: (buyingLast?.Sequence ?? 0) + 1,
+                (await CurrentMatchDayAsync(season.Id, cancellationToken))?.Number,
+                FinanceMovementKind.TransferOut,
+                transfer.SellingClubId is null ? $"Contratação de {playerName}" : $"Compra de {playerName}",
+                -transfer.Fee,
+                balanceBefore: buyingLast?.BalanceAfter ?? 0m,
+                matchId: null,
+                buyingReference);
+
+            await _finance.AddAsync(purchase, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await ReportTheMoneyAsync(purchase, transfer.PlayerId, playerName, cancellationToken);
         }
 
         if (transfer.SellingClubId is not { } sellerId)
@@ -677,21 +716,48 @@ window.ArrivalRoundNumber);
                 sellerId, season.Id, FinanceMovementKind.TransferIn, sellingReference, cancellationToken))
         {
             var sellingLast = await _finance.GetLastAsync(sellerId, cancellationToken);
-            await _finance.AddAsync(
-                FinanceMovement.Create(
-                    sellerId,
-                    season.Id,
-                    sequence: (sellingLast?.Sequence ?? 0) + 1,
-                    (await CurrentMatchDayAsync(season.Id, cancellationToken))?.Number,
-                    FinanceMovementKind.TransferIn,
-                    $"Venda de {playerName}",
-                    transfer.Fee,
-                    balanceBefore: sellingLast?.BalanceAfter ?? 0m,
-                    matchId: null,
-                    sellingReference),
-                cancellationToken);
+            var sale = FinanceMovement.Create(
+                sellerId,
+                season.Id,
+                sequence: (sellingLast?.Sequence ?? 0) + 1,
+                (await CurrentMatchDayAsync(season.Id, cancellationToken))?.Number,
+                FinanceMovementKind.TransferIn,
+                $"Venda de {playerName}",
+                transfer.Fee,
+                balanceBefore: sellingLast?.BalanceAfter ?? 0m,
+                matchId: null,
+                sellingReference);
+
+            await _finance.AddAsync(sale, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await ReportTheMoneyAsync(sale, transfer.PlayerId, playerName, cancellationToken);
         }
     }
+
+    /// <summary>
+    /// Reports a line of a transfer to the manager's box.
+    ///
+    /// The market writes its lines straight onto the repository rather than through
+    /// <see cref="FinanceService"/>, because a transfer moves money for two clubs at once and
+    /// a deal that dies at the window has to be able to write both halves without the ledger
+    /// deciding what a prize is. The reporting is here instead so that the seam is the same one
+    /// everywhere: a line the book knows about and the box does not is a movement the manager
+    /// hears about from a table instead of from his own mail.
+    /// </summary>
+    private Task ReportTheMoneyAsync(
+        FinanceMovement line,
+        Guid playerId,
+        string playerName,
+        CancellationToken cancellationToken) =>
+        _inbox.PostFinanceAsync(
+            line,
+            [new InboxPersonDto
+            {
+                Id = playerId,
+                Name = playerName,
+                Kind = Domain.Inbox.InboxMentionKind.Player
+            }],
+            cancellationToken);
 
     /// <summary>
     /// Gives the fee back to the club that paid it, when a deal that was already paid for falls
@@ -722,8 +788,7 @@ window.ArrivalRoundNumber);
                 transfer.BuyingClubId, season.Id, FinanceMovementKind.TransferIn, buyingReference, cancellationToken))
         {
             var buyingLast = await _finance.GetLastAsync(transfer.BuyingClubId, cancellationToken);
-            await _finance.AddAsync(
-                FinanceMovement.Create(
+            var refund = FinanceMovement.Create(
                     transfer.BuyingClubId,
                     season.Id,
                     sequence: (buyingLast?.Sequence ?? 0) + 1,
@@ -733,8 +798,11 @@ window.ArrivalRoundNumber);
                     transfer.Fee,
                     balanceBefore: buyingLast?.BalanceAfter ?? 0m,
                     matchId: null,
-                    buyingReference),
-                cancellationToken);
+                buyingReference);
+
+            await _finance.AddAsync(refund, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await ReportTheMoneyAsync(refund, transfer.PlayerId, playerName, cancellationToken);
         }
 
         if (transfer.SellingClubId is not { } sellerId)
@@ -748,8 +816,7 @@ window.ArrivalRoundNumber);
                 sellerId, season.Id, FinanceMovementKind.TransferOut, sellingReference, cancellationToken))
         {
             var sellingLast = await _finance.GetLastAsync(sellerId, cancellationToken);
-            await _finance.AddAsync(
-                FinanceMovement.Create(
+            var clawback = FinanceMovement.Create(
                     sellerId,
                     season.Id,
                     sequence: (sellingLast?.Sequence ?? 0) + 1,
@@ -759,8 +826,11 @@ window.ArrivalRoundNumber);
                     -transfer.Fee,
                     balanceBefore: sellingLast?.BalanceAfter ?? 0m,
                     matchId: null,
-                    sellingReference),
-                cancellationToken);
+                sellingReference);
+
+            await _finance.AddAsync(clawback, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await ReportTheMoneyAsync(clawback, transfer.PlayerId, playerName, cancellationToken);
         }
     }
 
@@ -770,11 +840,13 @@ window.ArrivalRoundNumber);
     private async Task CallOffTheDealAsync(
         Transfer transfer,
         Season season,
+        ICollection<Transfer> calledOff,
         CancellationToken cancellationToken)
     {
         transfer.CallOff(DateOnly.FromDateTime(DateTime.Now));
         _transfers.Update(transfer);
         await RefundTheMoneyAsync(transfer, season, cancellationToken);
+        calledOff.Add(transfer);
     }
 
     /// <summary>
@@ -1103,6 +1175,8 @@ window.ArrivalRoundNumber);
                     "sell another.",
                     offer.Id, teamsById.GetValueOrDefault(sellerId)?.Name ?? sellerId.ToString(),
                     squadByTeam.GetValueOrDefault(sellerId, 0));
+                await AnswerTheManagerAsync(
+                    offer, InboxDecision.RefusedOnTheSquad, playersById, teamsById, cancellationToken);
                 continue;
             }
 
@@ -1131,6 +1205,8 @@ window.ArrivalRoundNumber);
                     "Offer {TransferId} for {PlayerName} refused by {SellingClub}: {Fee} is under the " +
                     "asking price of {Asking}.",
                     offer.Id, player.Name, sellingClub?.Name ?? sellerId.ToString(), offer.Fee, askingPrice);
+                await AnswerTheManagerAsync(
+                    offer, InboxDecision.RefusedOnPrice, playersById, teamsById, cancellationToken);
                 continue;
             }
 
@@ -1150,6 +1226,8 @@ window.ArrivalRoundNumber);
                 _logger.LogInformation(
                     "Offer {TransferId} for {PlayerName} refused by {SellingClub} (roll {Roll} against {Threshold:F0}).",
                     offer.Id, player.Name, sellingClub?.Name ?? sellerId.ToString(), roll, threshold);
+                await AnswerTheManagerAsync(
+                    offer, InboxDecision.RefusedOnThePlayer, playersById, teamsById, cancellationToken);
                 continue;
             }
 
@@ -1164,9 +1242,57 @@ window.ArrivalRoundNumber);
             _logger.LogInformation(
                 "Offer {TransferId} for {PlayerName} accepted by {SellingClub} for {Fee} limos.",
                 offer.Id, player.Name, sellingClub?.Name ?? sellerId.ToString(), offer.Fee);
+            await AnswerTheManagerAsync(
+                offer, InboxDecision.Accepted, playersById, teamsById, cancellationToken);
         }
 
         return answered;
+    }
+
+    /// <summary>
+    /// Writes the answer to the manager's own bid, and returns without writing when the bid is
+    /// not his.
+    ///
+    /// This is the only writer of a decision, and the reason it takes the maps the run already
+    /// holds is that the run answers the whole world in one walk: by the time a proposal has
+    /// been settled, asking the database for the three names it would print is a question about
+    /// a row the walk is already carrying in its hand.
+    ///
+    /// A proposal the manager made for his own player is skipped by the walk above — his
+    /// players are answered by a person, not by a roll — so every proposal that reaches here
+    /// with him as the buyer is a bid of his own going unanswered no longer.
+    /// </summary>
+    private async Task AnswerTheManagerAsync(
+        Transfer offer,
+        InboxDecision outcome,
+        IReadOnlyDictionary<Guid, Player> playersById,
+        IReadOnlyDictionary<Guid, Team> teamsById,
+        CancellationToken cancellationToken)
+    {
+        if (offer.SellingClubId is not { } sellerId
+            || !teamsById.TryGetValue(offer.BuyingClubId, out var buyer)
+            || !buyer.IsManagerClub
+            || !teamsById.TryGetValue(sellerId, out var seller)
+            || !playersById.TryGetValue(offer.PlayerId, out var player))
+        {
+            return;
+        }
+
+        await _inbox.PostTransferDecisionAsync(
+            new TransferDecisionFacts
+            {
+                RecipientTeamId = buyer.Id,
+                ClubName = buyer.Name,
+                PlayerId = player.Id,
+                PlayerName = player.Name,
+                OtherClubId = seller.Id,
+                OtherClubName = seller.Name,
+                Fee = offer.Fee,
+                Outcome = outcome,
+                ManagerIsSeller = false,
+                Reference = $"transfer:{offer.Id}"
+            },
+            cancellationToken);
     }
 
     /// <summary>
@@ -1308,12 +1434,91 @@ window.ArrivalRoundNumber);
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await ReportTheDecisionsAsync(expired, _ => InboxDecision.Expired, cancellationToken);
 
         _logger.LogInformation(
             "Expired {Count} proposals whose selling club had no manager and whose deadline passed at round {Round}.",
             expired.Count, currentRoundNumber);
 
         return expired.Count;
+    }
+
+    /// <summary>
+    /// Writes the answer to every proposal in a batch that the manager's club is a side of.
+    ///
+    /// The sweeps expire the whole world and this writes one club's share of it, so the two
+    /// are kept apart on purpose: a proposal between two computer-controlled clubs is settled
+    /// for the ledger and for nobody's reading, and a proposal the manager is a side of is
+    /// settled for him too. The names are read once for the whole batch rather than per
+    /// proposal, which is the difference between three queries and three times the batch.
+    /// </summary>
+    private async Task ReportTheDecisionsAsync(
+        IReadOnlyList<Transfer> transfers,
+        Func<Transfer, InboxDecision> outcomeOf,
+        CancellationToken cancellationToken)
+    {
+        if (transfers.Count == 0)
+        {
+            return;
+        }
+
+        var manager = await _teams.GetManagerClubAsync(cancellationToken);
+        if (manager is null)
+        {
+            return;
+        }
+
+        var involved = transfers
+            .Where(transfer => transfer.BuyingClubId == manager.Id || transfer.SellingClubId == manager.Id)
+            .ToList();
+
+        if (involved.Count == 0)
+        {
+            return;
+        }
+
+        var clubs = (await _teams.ListByIdsAsync(
+                involved
+                    .SelectMany(transfer => new[] { transfer.BuyingClubId, transfer.SellingClubId })
+                    .Where(id => id is not null)
+                    .Select(id => id!.Value)
+                    .Distinct()
+                    .ToList(),
+                cancellationToken))
+            .ToDictionary(club => club.Id);
+
+        var players = await _teams.GetPlayersAsync(
+            involved.Select(transfer => transfer.PlayerId).Distinct().ToList(),
+            cancellationToken);
+
+        foreach (var transfer in involved)
+        {
+            var isSeller = transfer.SellingClubId == manager.Id;
+            var otherId = isSeller ? transfer.BuyingClubId : transfer.SellingClubId;
+
+            if (otherId is null
+                || !clubs.TryGetValue(otherId.Value, out var other)
+                || !players.TryGetValue(transfer.PlayerId, out var player))
+            {
+                continue;
+            }
+
+            await _inbox.PostTransferDecisionAsync(
+                new TransferDecisionFacts
+                {
+                    RecipientTeamId = manager.Id,
+                    ClubName = manager.Name,
+                    PlayerId = player.Id,
+                    PlayerName = player.Name,
+                    OtherClubId = other.Id,
+                    OtherClubName = other.Name,
+                    Fee = transfer.Fee,
+                    Outcome = outcomeOf(transfer),
+                    ManagerIsSeller = isSeller,
+                    Reference = $"transfer:{transfer.Id}"
+                },
+                cancellationToken);
+        }
     }
 
     /// <summary>

@@ -5,6 +5,7 @@ import { useGameState } from '@/state';
 import { useNextFixture } from '@/hooks/useNextFixture';
 import { usePendingOfferCount, useCurrentSeasonId } from '@/hooks/usePendingOffers';
 import { useLiveMatch } from '@/hooks/useLiveMatch';
+import { useUnreadMessageCount } from '@/hooks/useUnreadMessages';
 import NextMatchBox from '@/components/Common/NextMatchBox';
 import LiveMatchBadge from '@/components/Common/LiveMatchBadge';
 import ClubCrest from '@/components/Club/ClubCrest';
@@ -74,10 +75,11 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // none to play the link is not a broken door: it goes to the calendar, which is where a
   // manager goes to find out what there is.
   //
-  // It is the next match of the *season* and not of the competition on the filter, because the
-  // link and the box at the foot of the column are the same door: a sidebar offering two
-  // different games in two different places is a sidebar that has to be read twice to be
-  // believed.
+  // It used to be a line of the column and it is not one any more: the next-match box above
+  // already says the same four facts and goes to the same screen, and a column offering two
+  // ways into one match is a column that has to be read twice to be believed. The route is
+  // still resolved here because the box is a card and the calendar is where a manager goes
+  // when there is nothing to play.
   const { next } = useNextFixture(selectedTeam?.id, currentSeasonId);
   const lineupTarget = next ? `/match/lineup/${next.fixture.id}` : '/calendar';
 
@@ -85,6 +87,12 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // about the same world and one of them cannot be last season's answer to a question about
   // this one.
   const pendingOffers = usePendingOfferCount(selectedTeam?.id, currentSeasonId);
+
+  // How much of the manager's own mail he has not opened. It is on the column rather than
+  // inside the box for the same reason the pending offers are: a manager deciding whether to
+  // leave the market to read his mail should be able to find out from the market that there
+  // is any. The path is part of the key so that reading the box refreshes the badge.
+  const unreadMessages = useUnreadMessageCount(selectedTeam?.id, pathname);
 
   // The club is playing right now, or it is not. It is asked again on every route because a
   // match is started from the lineup screen, and a badge that appeared half a minute after
@@ -109,7 +117,11 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         {/* The club the manager is running: its crest, its name and its coach, as a card at the
             top of the column so the manager never loses track of who he is before he thinks about
             where to go. The coach's name comes from the backend — the manager entity the career
-            began with — and falls back to nothing when the career has not yet named him. */}
+            began with — and falls back to nothing when the career has not yet named him.
+
+            The shield is the size of the one in the next-match box rather than the size of a
+            badge, because this card and that box are read together and a column with two
+            different crest sizes in it has no size of its own. */}
         {selectedTeam && (
           <Link to="/club" className="sidebar-club-card">
             <ClubCrest
@@ -134,19 +146,36 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             market to watch it should not have to go looking to find out that it started. */}
         {liveMatch && <LiveMatchBadge live={liveMatch} />}
 
+        {/* The match he is about to play, said before he goes and play it, and above the list
+            of places rather than at the foot of the column.
+
+            It is read together with the two things above it — who he is, and whether his club
+            is playing — so it belongs with them rather than a scroll away at the bottom. A
+            manager choosing his eleven is answering to four things: which club he runs,
+            whether a game is on right now, who it is against, and where the season is. The
+            column says those four first, and every other place after them. */}
+          {selectedTeam && <NextMatchBox team={selectedTeam} next={next} />}
+
         <nav className="sidebar-nav">
+          {/* His own mail. It is the first of the places to go because it is the only one the
+              game writes to him: the market waits for a decision, the calendar waits for a
+              round, and the box fills itself the moment the whistle goes, a line is written in
+              the ledger, or somebody bids for one of his men. */}
           <NavLink
-            to={lineupTarget}
+            to="/caixa"
             className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
           >
-            <span className="sidebar-link__icon">📋</span>
-            <span className="sidebar-link__label">Escalação</span>
-            {/* The day, not the window's number: a cup window is numbered by how many ties
-                there have been, so "R1" on a round-of-16 leg means nothing to a manager
-                while the day it is played on means exactly how far away it is. */}
-            {next && (
-              <span className="sidebar-link__round">
-                {next.matchDayNumber ? `D${next.matchDayNumber}` : '—'}
+            <span className="sidebar-link__icon">📬</span>
+            <span className="sidebar-link__label">Caixa de Entrada</span>
+            {/* How much of it has not been opened, on the column rather than inside the screen
+                it belongs to: a manager has to be able to find out that there is news from
+                every screen, and not only from the one he remembered to open. */}
+            {unreadMessages > 0 && (
+              <span
+                className="sidebar-link__badge"
+                title={`${unreadMessages} mensagem(ns) não lida(s)`}
+              >
+                {unreadMessages}
               </span>
             )}
           </NavLink>
@@ -182,15 +211,28 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <span className="sidebar-link__label">Calendário</span>
           </NavLink>
 
-          {/* The club's books. Its own screen rather than a panel of the club's, because
-              money is a long read of many small lines and the club is a glance at a squad. */}
-          <NavLink
-            to="/financeiro"
-            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-          >
-            <span className="sidebar-link__icon">💰</span>
-            <span className="sidebar-link__label">Financeiro</span>
-          </NavLink>
+          {/* Who scores for the club, over every season and every competition. It sits with
+              the club's own pages because it is a page about the club: the league's scorers
+              answer "who leads the division" and this one answers "who is this club's". */}
+          {selectedTeam && (
+            <NavLink
+              to="/artilheiros"
+              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+            >
+              <span className="sidebar-link__icon">⚽</span>
+              <span className="sidebar-link__label">Artilheiros</span>
+            </NavLink>
+          )}
+
+          {selectedTeam && (
+            <NavLink
+              to="/ranking"
+              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+            >
+              <span className="sidebar-link__icon">🏆</span>
+              <span className="sidebar-link__label">Ranking Ninja</span>
+            </NavLink>
+          )}
 
           {/* The ground and the shirt. They are the club's, so they are doors to the manager's
               own club and not to anybody else's: a stadium is a thing a club has and not a
@@ -217,57 +259,28 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </NavLink>
           )}
 
-          {/* Who scores for the club, over every season and every competition. It sits with
-              the club's own pages because it is a page about the club: the league's scorers
-              answer "who leads the division" and this one answers "who is this club's". */}
-{selectedTeam && (
-              <NavLink
-                to="/artilheiros"
-                className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-              >
-                <span className="sidebar-link__icon">⚽</span>
-                <span className="sidebar-link__label">Artilheiros</span>
-              </NavLink>
-            )}
-
-            {selectedTeam && (
-              <NavLink
-                to="/ranking"
-                className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-              >
-                <span className="sidebar-link__icon">🏆</span>
-                <span className="sidebar-link__label">Ranking Ninja</span>
-              </NavLink>
-            )}
-
-            {selectedTeam && (
-              <NavLink
-                to="/transfer"
-               className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-             >
-               <span className="sidebar-link__icon">🔄</span>
-               <span className="sidebar-link__label">Mercado</span>
-               {/* An offer nobody answers dies at the end of the season, so the count of the
-                   ones waiting is on the column rather than inside the screen it belongs to:
-                   a manager has to be able to find out there is a decision to make without
-                   already knowing that he has one. */}
-               {pendingOffers > 0 && (
-                 <span
-                   className="sidebar-link__badge"
-                   title={`${pendingOffers} proposta(s) aguardando sua resposta`}
-                 >
-                   {pendingOffers}
-                 </span>
-               )}
-             </NavLink>
-           )}
-         </nav>
-
-        {/* The match he is about to play, said before he goes and play it, and pinned to the
-            foot of the column so it is on every screen: the eleven he picks is chosen for
-            this opponent, at this ground, and the column is the one place a manager is on
-            whatever screen he happens to be reading. */}
-          {selectedTeam && <NextMatchBox team={selectedTeam} next={next} />}
+          {selectedTeam && (
+            <NavLink
+              to="/transfer"
+              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+            >
+              <span className="sidebar-link__icon">🔄</span>
+              <span className="sidebar-link__label">Mercado</span>
+              {/* An offer nobody answers dies at the end of the season, so the count of the
+                  ones waiting is on the column rather than inside the screen it belongs to:
+                  a manager has to be able to find out there is a decision to make without
+                  already knowing that he has one. */}
+              {pendingOffers > 0 && (
+                <span
+                  className="sidebar-link__badge"
+                  title={`${pendingOffers} proposta(s) aguardando sua resposta`}
+                >
+                  {pendingOffers}
+                </span>
+              )}
+            </NavLink>
+          )}
+        </nav>
       </aside>
       )}
 

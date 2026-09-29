@@ -6,6 +6,7 @@ using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
+using NinjaEleven.Domain.Inbox;
 using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Teams;
@@ -67,6 +68,17 @@ public class MatchService
     private readonly FinanceService _financeService;
     private readonly SponsorOfferService _sponsorService;
 
+    /// <summary>
+    /// The manager's box, and the two readers a report is written with.
+    ///
+    /// A finished match is the one moment the world has something to say, and the service
+    /// that settles the books is the service that settles the news: the same call that pays
+    /// the gate and the wage bill is the call that tells the manager the result, the goals,
+    /// the eleven and where he plays next.
+    /// </summary>
+    private readonly InboxService _inbox;
+    private readonly MatchContextService _matchContext;
+
     public MatchService(
         IMatchRepository matchRepository,
         ITeamRepository teamRepository,
@@ -80,7 +92,9 @@ public class MatchService
         CupProgressionService cupProgression,
         MatchdayService matchday,
         FinanceService financeService,
-        SponsorOfferService sponsorService)
+        SponsorOfferService sponsorService,
+        InboxService inbox,
+        MatchContextService matchContext)
     {
         _matchRepository = matchRepository;
         _teamRepository = teamRepository;
@@ -95,6 +109,8 @@ public class MatchService
         _matchday = matchday;
         _financeService = financeService;
         _sponsorService = sponsorService;
+        _inbox = inbox;
+        _matchContext = matchContext;
     }
 
     public async Task<IReadOnlyList<Match>> GetAllAsync(CancellationToken cancellationToken = default) =>
@@ -1446,6 +1462,11 @@ public class MatchService
             return;
         }
 
+        // The report is written for every match, not only for a matchday of the championship.
+        // A cup tie and a Supercup settle no wages and no gate share, so the two returns below
+        // would take the manager past the news of the match he came to watch.
+        await PostTheReportAsync(match, seasonId, cancellationToken);
+
         if (await IsChampionshipMatchAsync(fixture, cancellationToken) is false)
         {
             return;
@@ -1480,6 +1501,192 @@ public class MatchService
             seasonId,
             day,
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes up the match for the club the manager is running.
+    ///
+    /// It is called from the settling of the books because that is where the match stops
+    /// being something that is happening: the books are what say it is over. It is written
+    /// here rather than in the inbox service because this is the one place that knows the
+    /// eleven, the goals and the next fixture, and a report composed by somebody who had to
+    /// go and look all of it up would be a second account of a match that only happened once.
+    ///
+    /// Only the manager's club is written to. The other side of the same fixture is a club
+    /// with no manager, so it has nobody to deliver the report to, and the engine's own
+    /// simulation of a match nobody is watching is not something a screen needs to be told.
+    /// </summary>
+    private async Task PostTheReportAsync(
+        Match match,
+        Guid seasonId,
+        CancellationToken cancellationToken)
+    {
+        // The two clubs of the fixture are read together and the one somebody is running is
+        // picked out of them. Asking the world which club has a manager would be a question
+        // about the whole world to answer one about two clubs.
+        var sides = await _teamRepository.ListByIdsAsync(
+            [match.HomeTeamId, match.AwayTeamId], cancellationToken) ?? [];
+
+        var club = sides.FirstOrDefault(side => side.IsManagerClub);
+        if (club is null)
+        {
+            return;
+        }
+
+        var fixture = await _fixtureRepository.GetAsync(match.FixtureId, cancellationToken);
+        if (fixture is null)
+        {
+            return;
+        }
+
+        var context = await _matchContext.GetAsync(match.Id, cancellationToken);
+        var isHome = match.HomeTeamId == club.Id;
+        var opponent = sides.FirstOrDefault(side => side.Id != club.Id);
+
+        if (context is null || opponent is null)
+        {
+            return;
+        }
+
+        var lines = (await _matchRepository.ListPlayerStatisticsByMatchIdsAsync(
+                [match.Id], cancellationToken))
+            .Where(line => line.TeamId == club.Id)
+            .ToList();
+
+        // The names of every man the report can name, read in one go. A report that asked the
+        // database for a name at a time would be a report about a match that had already been
+        // played asking twenty-two questions to say something that is in one table.
+        var people = await _teamRepository.GetPlayersAsync(
+            lines.Select(line => line.PlayerId), cancellationToken);
+
+        var events = (await _matchRepository.ListEventsAsync(match.Id, cancellationToken))
+            .OrderBy(goal => goal.Sequence)
+            .ToList();
+
+        var statistics = await _matchRepository.GetStatisticsAsync(match.Id, cancellationToken);
+
+        InboxPersonDto Who(Guid playerId) => people.TryGetValue(playerId, out var player)
+            ? new InboxPersonDto { Id = player.Id, Name = player.Name, Kind = InboxMentionKind.Player }
+            : new InboxPersonDto { Id = playerId, Name = string.Empty, Kind = InboxMentionKind.Player };
+
+        var eleven = lines.Where(line => line.Started).Select(line => Who(line.PlayerId)).ToList();
+        var substitutes = lines
+            .Where(line => !line.Started && !line.WasOnBenchUnused)
+            .Select(line => Who(line.PlayerId))
+            .ToList();
+        var booked = lines
+            .Where(line => line.YellowCards > 0 || line.RedCards > 0)
+            .Select(line => Who(line.PlayerId))
+            .ToList();
+        var scorers = lines
+            .Where(line => line.Goals > 0 || line.OwnGoals > 0)
+            .Select(line => Who(line.PlayerId))
+            .ToList();
+
+        var next = await ReadTheNextCommitmentAsync(club.Id, seasonId, cancellationToken);
+
+        var facts = new MatchReportFacts
+        {
+            MatchId = match.Id,
+            RecipientTeamId = club.Id,
+            ClubId = club.Id,
+            ClubName = club.Name,
+            OpponentId = opponent.Id,
+            OpponentName = opponent.Name,
+            IsHome = isHome,
+            CompetitionName = context.CompetitionName,
+            PhaseName = context.PhaseName,
+            LegLabel = context.LegLabel,
+            MatchDayNumber = context.MatchDayNumber > 0 ? context.MatchDayNumber : null,
+            ClubGoals = isHome ? match.HomeScore : match.AwayScore,
+            OpponentGoals = isHome ? match.AwayScore : match.HomeScore,
+            ClubFormation = isHome
+                ? statistics?.HomeFormation ?? string.Empty
+                : statistics?.AwayFormation ?? string.Empty,
+            Lineup = eleven,
+            Substitutes = substitutes,
+            GoalLines = events
+                .Where(IsGoal)
+                .Select(NarrationOf)
+                .Where(description => !string.IsNullOrWhiteSpace(description))
+                .Select(description => description!)
+                .ToList(),
+            GoalScorers = scorers,
+            Booked = booked,
+            NextFixtureId = next?.FixtureId,
+            NextOpponentId = next?.OpponentId,
+            NextOpponentName = next?.OpponentName,
+            NextMatchDayNumber = next?.MatchDayNumber,
+            NextCompetitionName = next?.CompetitionName,
+            NextStadiumName = next?.StadiumName,
+            NextIsHome = next?.IsHome ?? false
+        };
+
+        await _inbox.PostMatchReportAsync(facts, cancellationToken);
+    }
+
+    /// <summary>
+    /// The club's next commitment, resolved down to the ground it is played on.
+    ///
+    /// The matchday service knows which fixture is next and when — it is the reader of the
+    /// calendar's waves — and the fixture knows the other club, so the three are put together
+    /// here. The ground is the host's and the host is whoever is at home, because an away match
+    /// is played on somebody else's pitch and a report that printed the manager's own stadium
+    /// for it would be telling him the one thing he already knows is wrong.
+    /// </summary>
+    private async Task<NextCommitment?> ReadTheNextCommitmentAsync(
+        Guid teamId,
+        Guid seasonId,
+        CancellationToken cancellationToken)
+    {
+        var window = await _matchday.GetNextFixtureWindowAsync(teamId, seasonId, cancellationToken);
+        if (window is null)
+        {
+            return null;
+        }
+
+        var fixture = await _fixtureRepository.GetAsync(window.FixtureId, cancellationToken);
+        if (fixture is null)
+        {
+            return null;
+        }
+
+        var isHome = fixture.HomeTeamId == teamId;
+        var sides = await _teamRepository.ListByIdsAsync(
+            [fixture.HomeTeamId, fixture.AwayTeamId], cancellationToken);
+
+        var host = sides.FirstOrDefault(side => side.Id == fixture.HomeTeamId);
+        var opponent = sides.FirstOrDefault(side => side.Id != teamId);
+
+        if (opponent is null)
+        {
+            return null;
+        }
+
+        return new NextCommitment
+        {
+            FixtureId = fixture.Id,
+            OpponentId = opponent.Id,
+            OpponentName = opponent.Name,
+            MatchDayNumber = window.MatchDayNumber,
+            CompetitionName = window.CompetitionName,
+            StadiumName = host?.Stadium?.Name,
+            IsHome = isHome
+        };
+    }
+
+    /// <summary>
+    /// Everything a report says about the match after this one, resolved.
+    /// </summary>
+    private sealed class NextCommitment
+    {
+        public Guid FixtureId { get; init; }
+        public Guid OpponentId { get; init; }
+        public string OpponentName { get; init; } = string.Empty;
+        public int? MatchDayNumber { get; init; }
+        public string? CompetitionName { get; init; }
+        public string? StadiumName { get; init; }
+        public bool IsHome { get; init; }
     }
 
     private async Task ApplySeasonProgressAsync(

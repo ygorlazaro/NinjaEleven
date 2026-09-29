@@ -17,6 +17,7 @@ import TeamViewScreen from '@/pages/TeamViewScreen';
 import MatchScreen from '@/pages/MatchScreen';
 import CalendarScreen from '@/pages/CalendarScreen';
 import FinanceiroScreen from '@/pages/FinanceiroScreen';
+import InboxScreen from '@/pages/InboxScreen';
 import ClubScreen from '@/pages/ClubScreen';
 import StadiumScreen from '@/pages/StadiumScreen';
 import SponsorsScreen from '@/pages/SponsorsScreen';
@@ -67,6 +68,14 @@ function App() {
         <Route
           path="/financeiro"
           element={<RequireAuth><FinanceiroScreen /></RequireAuth>}
+        />
+        {/* The manager's box. It is a route of its own rather than a panel of the club's,
+            because a season of messages is a long read of many lines and the club is a
+            glance at a squad — and because the column's badge has to point somewhere that
+            is not the club, or a manager checking his mail would be reading his squad. */}
+        <Route
+          path="/caixa"
+          element={<RequireAuth><InboxScreen /></RequireAuth>}
         />
         <Route
           path="/club"

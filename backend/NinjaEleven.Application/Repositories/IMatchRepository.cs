@@ -76,6 +76,18 @@ public interface IMatchRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The match lines of a set of matches, keyed by match.
+    ///
+    /// A report is written about a whole match at once: the eleven that started, the men who
+    /// came on, who was booked, who scored. Reading those lines a player at a time is
+    /// twenty-two questions asked of the database to answer one about a match, and the answer
+    /// is about a match that has already been played and will not need asking again.
+    /// </summary>
+    Task<IReadOnlyList<MatchPlayerStatistics>> ListPlayerStatisticsByMatchIdsAsync(
+        IEnumerable<Guid> matchIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// A player's match lines, newest first. The season is optional: without it the whole
     /// career comes back, which is what a "total" row on a history is made of.
     /// </summary>

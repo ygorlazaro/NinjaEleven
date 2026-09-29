@@ -258,8 +258,11 @@ public class MatchServiceTests
                 _rounds.Object,
                 _matchDays.Object,
                 _seasons.Object,
+                InboxTestFactory.Create(_teams),
                 _unitOfWork.Object,
                 NullLogger<FinanceService>.Instance),
+            InboxTestFactory.Create(_teams),
+            _teams.Object,
             new Random()),
         new MatchdayService(
             _matchDays.Object,
@@ -272,6 +275,7 @@ public class MatchServiceTests
                 _players.Object,
                 _teams.Object,
                 CreateFinance(),
+                InboxTestFactory.Create(_teams),
                 NullLogger<ScorerPrizeService>.Instance),
             new TransferService(
                 Mock.Of<ITransferRepository>(),
@@ -282,6 +286,7 @@ public class MatchServiceTests
                 _rounds.Object,
                 _matches.Object,
                 _finance.Object,
+                InboxTestFactory.Create(_teams),
                 _unitOfWork.Object,
                 NullLogger<TransferService>.Instance),
             _unitOfWork.Object,
@@ -294,6 +299,7 @@ public class MatchServiceTests
             _rounds.Object,
             _matchDays.Object,
             _seasons.Object,
+            InboxTestFactory.Create(_teams),
             _unitOfWork.Object,
             NullLogger<FinanceService>.Instance),
         new SponsorOfferService(
@@ -302,8 +308,19 @@ public class MatchServiceTests
             _teams.Object,
             _finance.Object,
             _seasons.Object,
+            InboxTestFactory.Create(_teams),
             _unitOfWork.Object,
-            NullLogger<SponsorOfferService>.Instance));
+            NullLogger<SponsorOfferService>.Instance),
+        InboxTestFactory.Create(_teams),
+        new MatchContextService(
+            _matches.Object,
+            _fixtures.Object,
+            _rounds.Object,
+            _competitions.Object,
+            _matchDays.Object,
+            _seasons.Object,
+            _cupTies.Object,
+            _teams.Object));
 
     private FinanceService CreateFinance() => new(
         _finance.Object,
@@ -313,6 +330,7 @@ public class MatchServiceTests
         _rounds.Object,
         _matchDays.Object,
         _seasons.Object,
+        InboxTestFactory.Create(_teams),
         _unitOfWork.Object,
         NullLogger<FinanceService>.Instance);
 

@@ -570,8 +570,11 @@ public class MatchShootoutServiceTests
                 _rounds.Object,
                 _matchDays.Object,
                 _seasons.Object,
+                InboxTestFactory.Create(_teams),
                 _unitOfWork.Object,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<FinanceService>.Instance),
+            InboxTestFactory.Create(_teams),
+            _teams.Object,
             new Random()),
         new MatchdayService(
             _matchDays.Object,
@@ -591,8 +594,10 @@ public class MatchShootoutServiceTests
                     _rounds.Object,
                     _matchDays.Object,
                     _seasons.Object,
+                    InboxTestFactory.Create(_teams),
                     _unitOfWork.Object,
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<FinanceService>.Instance),
+                InboxTestFactory.Create(_teams),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<ScorerPrizeService>.Instance),
             new TransferService(
                 Mock.Of<NinjaEleven.Application.Repositories.ITransferRepository>(),
@@ -603,6 +608,7 @@ public class MatchShootoutServiceTests
                 _rounds.Object,
                 _matches.Object,
                 _finance.Object,
+                InboxTestFactory.Create(_teams),
                 _unitOfWork.Object,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<TransferService>.Instance),
             _unitOfWork.Object,
@@ -615,6 +621,7 @@ public class MatchShootoutServiceTests
             _rounds.Object,
             _matchDays.Object,
             _seasons.Object,
+            InboxTestFactory.Create(_teams),
             _unitOfWork.Object,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<FinanceService>.Instance),
         new SponsorOfferService(
@@ -623,6 +630,17 @@ public class MatchShootoutServiceTests
             _teams.Object,
             _finance.Object,
             _seasons.Object,
+            InboxTestFactory.Create(_teams),
             _unitOfWork.Object,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<SponsorOfferService>.Instance));
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<SponsorOfferService>.Instance),
+        InboxTestFactory.Create(_teams),
+        new MatchContextService(
+            _matches.Object,
+            _fixtures.Object,
+            _rounds.Object,
+            _competitions.Object,
+            _matchDays.Object,
+            _seasons.Object,
+            _cupTies.Object,
+            _teams.Object));
 }

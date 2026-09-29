@@ -72,8 +72,10 @@ public class ScorerPrizeServiceTests
             _rounds.Object,
             _matchDays.Object,
             _seasons.Object,
+            InboxTestFactory.Create(_teams),
             _unitOfWork.Object,
             NullLogger<FinanceService>.Instance),
+        InboxTestFactory.Create(_teams),
         NullLogger<ScorerPrizeService>.Instance);
 
     private void GivenTheBookRefusesAPrizeItAlreadyHolds()

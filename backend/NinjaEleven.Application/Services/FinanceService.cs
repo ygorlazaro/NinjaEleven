@@ -4,6 +4,7 @@ using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Finance;
+using NinjaEleven.Domain.Inbox;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Teams;
 
@@ -26,6 +27,7 @@ public class FinanceService
     private readonly IRoundRepository _rounds;
     private readonly IMatchDayRepository _matchDays;
     private readonly ISeasonRepository _seasons;
+    private readonly InboxService _inbox;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<FinanceService> _logger;
 
@@ -37,6 +39,7 @@ public class FinanceService
         IRoundRepository rounds,
         IMatchDayRepository matchDays,
         ISeasonRepository seasons,
+        InboxService inbox,
         IUnitOfWork unitOfWork,
         ILogger<FinanceService> logger)
     {
@@ -47,6 +50,7 @@ public class FinanceService
         _rounds = rounds;
         _matchDays = matchDays;
         _seasons = seasons;
+        _inbox = inbox;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -171,7 +175,10 @@ public class FinanceService
                 $"Bilheteria contra {away.Name}",
                 homeRevenue,
                 matchId,
-                cancellationToken);
+                cancellationToken,
+                // The club across the counterparty's touchline is a name the manager can
+                // follow: the gate receipt says who filled the seats.
+                mentions: [TeamMention(away)]);
         }
 
         if (awayRevenue != 0m)
@@ -184,9 +191,18 @@ public class FinanceService
                 $"Bilheteria contra {home.Name}",
                 awayRevenue,
                 matchId,
-                cancellationToken);
+                cancellationToken,
+                mentions: [TeamMention(home)]);
         }
     }
+
+    /// <summary>A club the message can link to, rather than only name.</summary>
+    private static InboxPersonDto TeamMention(Team team) => new()
+    {
+        Id = team.Id,
+        Name = team.Name,
+        Kind = InboxMentionKind.Team
+    };
 
     /// <summary>
     /// Pays a club its squad's wages for one matchday of the league.
@@ -400,6 +416,13 @@ public class FinanceService
     /// written against the state the book was really in. A club plays one match at a time, so
     /// two lines can never be written from the same balance, which is the only way the running
     /// balance in a book could be wrong.
+    ///
+    /// **Every line the engine writes is reported to the manager's box from here.** The seam
+    /// is this one method rather than the four callers, because a line that was written and
+    /// not reported is a club whose manager hears about the money from a spreadsheet — and a
+    /// fifth writer added later would then be a fifth thing the box does not know about. The
+    /// message is built from the line itself, so the numbers in it cannot disagree with the
+    /// numbers in the book.
     /// </summary>
     private async Task<FinanceMovement> AppendAsync(
         Guid teamId,
@@ -410,7 +433,8 @@ public class FinanceService
         decimal amount,
         Guid? matchId,
         CancellationToken cancellationToken,
-        string? reference = null)
+        string? reference = null,
+        IEnumerable<InboxPersonDto>? mentions = null)
     {
         var last = await _finance.GetLastAsync(teamId, cancellationToken);
 
@@ -428,6 +452,8 @@ public class FinanceService
 
         await _finance.AddAsync(line, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        await _inbox.PostFinanceAsync(line, mentions, cancellationToken);
 
         return line;
     }

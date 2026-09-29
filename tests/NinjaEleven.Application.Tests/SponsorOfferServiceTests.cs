@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
+using NinjaEleven.Domain.Inbox;
 using NinjaEleven.Application.Services;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Finance;
@@ -94,12 +95,34 @@ public class SponsorOfferServiceTests
             .Returns(Task.CompletedTask);
     }
 
-    private SponsorOfferService CreateService() => new(
+    /// <summary>
+    /// Starts keeping the messages the service under test writes.
+    ///
+    /// It has to run *after* the service is built: the factory sets its own <c>AddAsync</c> on
+    /// the mock, and Moq answers a call with the last setup registered for it — so a callback
+    /// set up first is silently dropped and the test would read an empty list and conclude
+    /// that nothing was written.
+    /// </summary>
+    private static List<InboxMessage> CollectTheMessages(Mock<IInboxMessageRepository> messages)
+    {
+        var written = new List<InboxMessage>();
+
+        messages.Setup(repo => repo.AddAsync(It.IsAny<InboxMessage>(), It.IsAny<CancellationToken>()))
+            .Callback((InboxMessage message, CancellationToken _) => written.Add(message))
+            .Returns(Task.CompletedTask);
+
+        return written;
+    }
+
+    private SponsorOfferService CreateService() => CreateService(null);
+
+    private SponsorOfferService CreateService(Mock<IInboxMessageRepository>? messages) => new(
         _sponsors.Object,
         _contracts.Object,
         _teams.Object,
         _finance.Object,
         _seasons.Object,
+        InboxTestFactory.Create(_teams, messages ?? new Mock<IInboxMessageRepository>(MockBehavior.Loose)),
         _unitOfWork.Object,
         NullLogger<SponsorOfferService>.Instance);
 
@@ -220,9 +243,61 @@ public class SponsorOfferServiceTests
         Assert.Equal(sponsor2.Name, book.Current!.SponsorName);
     }
 
+    /// <summary>
+    /// A deal that runs out is a shirt with nobody's name on it, and nothing else in the game
+    /// says so: the last instalment is in the ledger and the contract simply stops coming
+    /// back. The manager is told on the match that ends it, and not one match before.
+    /// </summary>
     [Fact]
-    public async Task PayPerMatch_AfterDealExpires_PaysNothing()
+    public async Task PayPerMatch_TellsTheManagerWhenTheDealRunsOut()
     {
+        _team.MarkAsManagerClub();
+
+        var messages = new Mock<IInboxMessageRepository>(MockBehavior.Loose);
+        var service = CreateService(messages);
+        var written = CollectTheMessages(messages);
+
+        var sponsor = _sponsorCatalog.First();
+        const int length = 3;
+
+        await service.SignAsync(_teamId, _seasonId, sponsor.Id, contractMatches: length);
+
+        for (var match = 1; match < length; match++)
+        {
+            await service.PayPerMatchAsync(_teamId, Guid.NewGuid(), _seasonId, match);
+        }
+
+        // Only the payments so far: the deal has not run out yet.
+        Assert.DoesNotContain(written, message => message.Category == InboxCategory.Club);
+
+        await service.PayPerMatchAsync(_teamId, Guid.NewGuid(), _seasonId, length);
+
+        var expiry = Assert.Single(written.Where(message => message.Category == InboxCategory.Club));
+        Assert.Contains(sponsor.Name, expiry.Subject);
+        Assert.Equal($"sponsor:{_contractsInDb.First().Id}:expired", expiry.Reference);
+    }
+
+    /// <summary>
+    /// A club nobody is running has nobody to deliver the news to, so the deal still expires
+    /// in the book and the box still has nothing in it.
+    /// </summary>
+    [Fact]
+    public async Task PayPerMatch_SaysNothingWhenNobodyIsRunningTheClub()
+    {
+        var messages = new Mock<IInboxMessageRepository>(MockBehavior.Loose);
+        var service = CreateService(messages);
+        var written = CollectTheMessages(messages);
+
+        const int length = 1;
+
+        await service.SignAsync(_teamId, _seasonId, _sponsorCatalog.First().Id, contractMatches: length);
+        await service.PayPerMatchAsync(_teamId, Guid.NewGuid(), _seasonId, 1);
+
+        Assert.Empty(written);
+    }
+
+    [Fact]
+    public async Task PayPerMatch_AfterDealExpires_PaysNothing()    {
         var service = CreateService();
         var sponsor = _sponsorCatalog.First();
         var length = 3;

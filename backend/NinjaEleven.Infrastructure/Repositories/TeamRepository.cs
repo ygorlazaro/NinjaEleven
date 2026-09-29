@@ -33,6 +33,18 @@ public class TeamRepository : ITeamRepository
             .FirstOrDefaultAsync(team => team.Id == id, cancellationToken);
 
     /// <summary>
+    /// The one club a person is playing. It is read tracked like <see cref="GetAsync"/> is not,
+    /// because the market sweeps only ever read it and a tracked entity nobody saves is a
+    /// needless attach — but the flag is a column, not a navigation, so nothing here can be
+    /// lazily loaded away underneath a caller that expected a whole club.
+    /// </summary>
+    public async Task<Team?> GetManagerClubAsync(CancellationToken cancellationToken = default) =>
+        await _dbContext.Teams
+            .AsNoTracking()
+            .Include(team => team.Stadium)
+            .FirstOrDefaultAsync(team => team.IsManagerClub, cancellationToken);
+
+    /// <summary>
     /// Marks the club as the manager's, tracked so the flag can be written, and unmarks the one
     /// that held it. The rows come back tracked rather than through <see cref="GetAsync"/>,
     /// which reads without tracking and would leave the change unattached to the context.

@@ -50,6 +50,7 @@ public static class DependencyInjection
     services.AddScoped<ISponsorContractRepository, SponsorContractRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IManagerRepository, ManagerRepository>();
+        services.AddScoped<IInboxMessageRepository, InboxMessageRepository>();
 
         return services;
     }
@@ -106,6 +107,11 @@ public static class DependencyInjection
         services.AddScoped<TransferService>();
         services.AddScoped<RosterService>();
         services.AddScoped<AttendanceContextFactory>();
+        // The box is written by the engine, so it is a service the other services call rather
+        // than a screen that composes its own news. It depends on no other service, which is
+        // what lets the ledger, the market and the match all tell the manager something without
+        // any of them having to know who else does.
+        services.AddScoped<InboxService>();
 
         services.AddSingleton<IMatchSessionRegistry, MatchSessionRegistry>();
 

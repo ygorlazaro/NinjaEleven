@@ -1,6 +1,7 @@
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Finance;
+using NinjaEleven.Domain.Inbox;
 using NinjaEleven.Domain.Managers;
 using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Players;
@@ -33,6 +34,7 @@ public class NinjaElevenDbContext : DbContext
     public DbSet<SponsorContract> SponsorContracts => Set<SponsorContract>();
     public DbSet<Manager> Managers => Set<Manager>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
 
     public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Division> Divisions => Set<Division>();

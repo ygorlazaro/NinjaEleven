@@ -71,6 +71,16 @@ public interface ITeamRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The one club a person is playing, when there is one.
+    ///
+    /// It is a question about the whole world answered in a single row rather than a list of
+    /// thirty six clubs filtered in C#: the sweeps that settle the market have to know which
+    /// club is the manager's on every round, and a reader that returns one team is the honest
+    /// shape for that question. Null is an answer — a world nobody is managing yet.
+    /// </summary>
+    Task<Team?> GetManagerClubAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Every active membership across all clubs for a season, so a transfer search can
     /// build its listings in one query rather than one club at a time.
     /// </summary>

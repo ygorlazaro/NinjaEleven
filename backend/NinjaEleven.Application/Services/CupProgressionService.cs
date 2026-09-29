@@ -38,6 +38,8 @@ public class CupProgressionService
     private readonly ICompetitionRepository _competitionRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly FinanceService _finance;
+    private readonly InboxService _inbox;
+    private readonly ITeamRepository _teams;
     private readonly Random _random;
 
     public CupProgressionService(
@@ -50,6 +52,8 @@ public class CupProgressionService
         ICompetitionRepository competitionRepository,
         IUnitOfWork unitOfWork,
         FinanceService finance,
+        InboxService inbox,
+        ITeamRepository teams,
         Random random)
     {
         _cupTieRepository = cupTieRepository;
@@ -61,6 +65,8 @@ public class CupProgressionService
         _competitionRepository = competitionRepository;
         _unitOfWork = unitOfWork;
         _finance = finance;
+        _inbox = inbox;
+        _teams = teams;
         _random = random;
     }
 
@@ -336,6 +342,30 @@ public class CupProgressionService
             $"Campeão da copa",
             $"cup:{final.RoundNumber}:champion",
             cancellationToken);
+
+        // The cup is announced the moment the final is settled, which is the only moment the
+        // world knows there is a winner: a bracket is still being played, and a final that went
+        // to penalties is decided in the same breath as the whistle. The runner-up is not
+        // announced, because losing a final is a fact the ledger reports and not a title.
+        var champion = await _teams.GetAsync(championId, cancellationToken);
+        var edition = await _competitionRepository.GetSeasonViewByIdAsync(
+            final.CompetitionSeasonId, cancellationToken);
+
+        if (champion is not null)
+        {
+            await _inbox.PostTitleAsync(
+                new TitleFacts
+                {
+                    RecipientTeamId = champion.Id,
+                    ClubName = champion.Name,
+                    Kind = InboxTitleKind.Cup,
+                    CompetitionName = edition?.CompetitionName ?? "Copa",
+                    Position = 1,
+                    PrizeMoney = PrizeRules.CupChampionPrize,
+                    Reference = $"cup:{final.RoundNumber}:champion"
+                },
+                cancellationToken);
+        }
 
         if (final.LoserTeamId is { } runnerUpId)
         {
