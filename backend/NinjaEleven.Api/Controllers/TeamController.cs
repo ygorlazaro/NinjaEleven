@@ -103,13 +103,13 @@ public class TeamController : ControllerBase
         return Ok(matches.Select(match => match.ToDto()).ToList());
     }
 
-    /// <summary>
+/// <summary>
     /// The club's book: a page of its movements, newest first, and the totals of whatever the
     /// page was narrowed to. No season filter means the whole career, which is the only
     /// reading in which the lines of two seasons sit in one list in the order they happened.
     /// </summary>
     [HttpGet("{teamId:guid}/finance")]
-    public async Task<ActionResult<FinanceLedgerDto>> GetFinance(
+    public async Task<IActionResult> GetFinance(
         Guid teamId,
         [FromQuery] Guid? seasonId = null,
         [FromQuery] int page = 1,
@@ -119,6 +119,21 @@ public class TeamController : ControllerBase
         var ledger = await _financeService.GetLedgerAsync(teamId, seasonId, page, pageSize, cancellationToken);
 
         return Ok(ledger.ToDto());
+    }
+
+    /// <summary>
+    /// The club's balance, read from the last line written in its whole book. The market shows
+    /// this above everything else — a manager bidding on a man needs to know whether his club
+    /// can pay — and it is not narrowed by a season, because a balance that followed a filter
+    /// would tell a manager his club had as much as it had spent.
+    /// </summary>
+    [HttpGet("{teamId:guid}/balance")]
+    public async Task<IActionResult> GetBalance(
+        Guid teamId,
+        CancellationToken cancellationToken = default)
+    {
+        var balance = await _financeService.GetBalanceAsync(teamId, cancellationToken);
+        return Ok(balance.ToDto());
     }
 
     /// <summary>

@@ -145,6 +145,42 @@ public class MatchStateView
 }
 
 /// <summary>
+/// The match a club is playing right now, as a badge in a navigation column can show it.
+/// Null is the answer "not at the moment", and it is the answer most of a season's hours.
+/// </summary>
+public class LiveMatchSummary
+{
+    public required Guid MatchId { get; init; }
+    public required Guid RoundId { get; init; }
+    public required Guid HomeTeamId { get; init; }
+    public required string HomeTeamName { get; init; }
+    public required string HomeShortName { get; init; }
+    public required string HomePrimaryColor { get; init; }
+    public required string HomeSecondaryColor { get; init; }
+    public required Guid AwayTeamId { get; init; }
+    public required string AwayTeamName { get; init; }
+    public required string AwayShortName { get; init; }
+    public required string AwayPrimaryColor { get; init; }
+    public required string AwaySecondaryColor { get; init; }
+    public required int HomeGoals { get; init; }
+    public required int AwayGoals { get; init; }
+    public required int Minute { get; init; }
+
+    /// <summary>
+    /// Whether the club asked about is the home one. A badge shows the opponent first and
+    /// this is what says which of the two is the other one.
+    /// </summary>
+    public required bool IsHome { get; init; }
+
+    /// <summary>
+    /// Whether the match is standing at the interval, where it is not late — it is stopped.
+    /// A badge that said "45'" while the clock waits for a manager would read as a game
+    /// dragging on, and the manager would come back to a half he had already decided.
+    /// </summary>
+    public required bool AtHalfTime { get; init; }
+}
+
+/// <summary>
 /// The score of a match as the rest of the matchday sees it. It is built from the live
 /// session when there is one and from the persisted row after the match ends, so the
 /// scoreboard never shows a match that stopped updating.
@@ -160,6 +196,21 @@ public class MatchScoreRow
     public required Guid AwayTeamId { get; init; }
     public required string AwayTeamName { get; init; }
     public required string AwayShortName { get; init; }
+
+    /// <summary>
+    /// The two colours of each club, so a scoreboard can draw a shield next to the name.
+    ///
+    /// A matchday is a column of small rows and the name is what identifies a club in it;
+    /// the shield is what lets a manager recognise one before he has finished reading it,
+    /// and it is the same shield he sees on the club screen and beside his own eleven. They
+    /// travel with the score rather than being asked for per row, because a round is
+    /// published once a tick to every screen following it and a second read of the clubs
+    /// would be a read per row of a list the backend already holds whole.
+    /// </summary>
+    public required string HomePrimaryColor { get; init; }
+    public required string HomeSecondaryColor { get; init; }
+    public required string AwayPrimaryColor { get; init; }
+    public required string AwaySecondaryColor { get; init; }
     public required int HomeGoals { get; init; }
     public required int AwayGoals { get; init; }
     public required int Minute { get; init; }

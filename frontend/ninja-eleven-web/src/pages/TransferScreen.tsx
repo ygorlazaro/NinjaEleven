@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { SeasonApi, TransferApi } from '@/api';
+import { SeasonApi, TransferApi, TeamApi } from '@/api';
 import { useGameState } from '@/state';
 import { useOffer } from '@/state/OfferProvider';
 import { formatLimo } from '@/services/limo';
@@ -16,7 +16,9 @@ import type {
   TransferProposalDto,
   TransferHistoryLineDto,
   Position,
-  TransferStatus
+  TransferStatus,
+  ClubBalanceDto,
+  DivisionRecentTransfersDto,
 } from '@/types';
 
 const POSITIONS: Position[] = ['GK', 'DEF', 'MID', 'ATT'];
@@ -415,6 +417,9 @@ const TransferScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [balance, setBalance] = useState<ClubBalanceDto | null>(null);
+  const [recentTransfers, setRecentTransfers] = useState<DivisionRecentTransfersDto | null>(null);
+
   /**
    * Every filter the manager can set, and none of them set by default. An unset filter narrows
    * nothing, which is what makes several of them at once mean "these and these" rather than
@@ -529,6 +534,35 @@ const TransferScreen: React.FC = () => {
       .catch(() => setInbox(null));
   }, [selectedTeam?.id, seasonId, answering, proposalNonce]);
 
+  useEffect(() => {
+    if (!selectedTeam?.id || !seasonId) {
+      setBalance(null);
+      setRecentTransfers(null);
+      return;
+    }
+
+    let alive = true;
+
+    Promise.all([
+      TeamApi.getBalance(selectedTeam.id),
+      TransferApi.getRecent(selectedTeam.id, 3)
+    ])
+      .then(([balanceData, recentData]) => {
+        if (alive) {
+          setBalance(balanceData);
+          setRecentTransfers(recentData);
+        }
+      })
+      .catch(() => {
+        if (alive) {
+          setBalance(null);
+          setRecentTransfers(null);
+        }
+      });
+
+    return () => { alive = false; };
+  }, [selectedTeam?.id, seasonId, searchNonce]);
+
   /**
    * The card opens on the row the manager clicked and is filled in from the backend: the row is
    * the market's summary and the card is the same player whole, with his career by club and his
@@ -626,6 +660,80 @@ const TransferScreen: React.FC = () => {
           </p>
         )}
       </header>
+
+      {/*
+        The club's balance, shown prominently at the top of the market so a manager
+        knows what he can spend before he starts bidding. Matches the club page's
+        figures layout.
+      */}
+      {balance && (
+        <section className="transfer-balance-section">
+          <div className="club-figures">
+            <div className="club-figure club-figure--accent">
+              <span className="club-figure__icon">💰</span>
+              <span className="club-figure__value">{formatLimo(balance.balance)}</span>
+              <span className="club-figure__label">Saldo do clube</span>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/*
+        Recent transfers in the division — what happened in the last three rounds
+        across every club in the manager's division. The section is drawn even when the
+        list is empty: a heading that vanishes says nothing, and "nobody moved" is a
+        different fact from "this screen is broken".
+      */}
+      {recentTransfers && (
+        <section className="transfer-recent-section">
+          <h3>Transferências recentes na divisão (últimas {recentTransfers.windowRounds} rodadas)</h3>
+          {recentTransfers.transfers.length === 0 ? (
+            <p className="transfer-empty">
+              Nenhum clube da divisão contratou ou liberou jogador nas últimas {recentTransfers.windowRounds} rodadas.
+            </p>
+          ) : (
+            <table className="transfer-table club-squad-table">
+              <thead>
+                <tr>
+                  <th className="squad-name">Jogador</th>
+                  <th>De</th>
+                  <th>Para</th>
+                  <th className="num money">Valor</th>
+                  <th className="num">Rodada</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentTransfers.transfers.map((line, i) => (
+                  <tr key={`${line.sellingClubId ?? 'livre'}-${line.buyingClubId}-${i}`} className={`history-row status-${STATUS_COLOR[line.status]}`}>
+                    <td className="squad-name">
+                      <PlayerName playerId={line.playerId}>{line.playerName}</PlayerName>
+                    </td>
+                    <td>
+                      {line.sellingClubId ? (
+                        <ClubName teamId={line.sellingClubId}>{line.sellingClubName}</ClubName>
+                      ) : (
+                        <span className="free-agent">{line.sellingClubName}</span>
+                      )}
+                    </td>
+                    <td>
+                      <ClubName teamId={line.buyingClubId}>{line.buyingClubName}</ClubName>
+                    </td>
+                    <td className="num money">{line.fee ? formatLimo(line.fee) : '—'}</td>
+                    <td className="num">{line.arrivalRoundNumber ? `${line.arrivalRoundNumber}ª` : '—'}</td>
+                    <td>
+                      <span className={`status-badge status-${STATUS_COLOR[line.status]}`}>
+                        {STATUS_LABELS[line.status]}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            )}
+        </section>
+      )}
+
       {/*
         The offers addressed to this club are the first thing on the screen, above the search
         that finds new men. A manager opening "Mercado" is asking one of two questions — what

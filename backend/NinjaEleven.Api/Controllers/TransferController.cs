@@ -102,7 +102,7 @@ public class TransferController : ControllerBase
         return Ok(inbox.ToDto());
     }
 
-    /// <summary>
+/// <summary>
     /// A player's transfer history, newest first.
     /// </summary>
     [HttpGet("history/{playerId:guid}")]
@@ -111,7 +111,39 @@ public class TransferController : ControllerBase
         CancellationToken cancellationToken)
     {
         var history = await _transferService.GetPlayerHistoryAsync(playerId, cancellationToken);
-        return Ok(history.ToDtos());
+        return Ok(history.Select(h => h.ToDto()).ToList());
+    }
+
+    /// <summary>
+    /// The transfers that finished in the last three rounds, across every club of the division
+    /// the manager's own club plays in. A market that shows what happened recently is a market
+    /// a manager can read without opening a second screen.
+    /// </summary>
+    [HttpGet("recent")]
+    public async Task<ActionResult<DivisionRecentTransfersDto>> GetRecent(
+        [FromQuery] Guid clubId,
+        [FromQuery] int windowRounds = 3,
+        CancellationToken cancellationToken = default)
+    {
+        var recent = await _transferService.GetDivisionRecentTransfersAsync(
+            clubId, windowRounds, cancellationToken);
+        return Ok(recent.ToDto());
+    }
+
+    /// <summary>
+    /// Every transfer involving one club, across the seasons given, newest first. Pending and
+    /// accepted sit in the same table as completed ones, because a proposal is a fact about
+    /// the club's season whether or not the selling club has answered it yet.
+    /// </summary>
+    [HttpGet("club/{teamId:guid}/history")]
+    public async Task<ActionResult<ClubTransferHistoryDto>> GetClubHistory(
+        Guid teamId,
+        [FromQuery] int[] seasonNumbers,
+        CancellationToken cancellationToken)
+    {
+        var history = await _transferService.GetClubTransferHistoryAsync(
+            teamId, seasonNumbers ?? Array.Empty<int>(), cancellationToken);
+        return Ok(history.ToDto());
     }
 
     /// <summary>

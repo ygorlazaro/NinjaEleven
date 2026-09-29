@@ -5,8 +5,8 @@ import type {
   TeamMatchRecordDto,
   PlayerSeasonStateDto,
   PlayerDto, CompetitionDto, CompetitionEditionDto, SeasonDto, TeamDto,
-  FixtureDto, RoundDto, StandingDto, CompetitionStandingsDto, ScorerDto, LeagueSetupResult,
-  MatchDto, MatchEventDto, MatchLineupDto, MatchStateDto, MatchContextDto,
+  FixtureDto, NextFixtureDto, RoundDto, StandingDto, CompetitionStandingsDto, ScorerDto, LeagueSetupResult,
+  MatchDto, MatchEventDto, MatchLineupDto, MatchStateDto, MatchContextDto, LiveMatchDto,
   MatchCommandResult, MatchEngineEventDto, MatchResult, RoundSimulationResult, TacticDto, Guid, MatchdayReportDto,
   PlayerProfileDto,
   SquadSuggestionDto,
@@ -35,6 +35,9 @@ import type {
     UpdateTeamNameRequestDto,
     UpdateTeamColorsRequestDto,
     ClubRankingDto,
+    ClubBalanceDto,
+    DivisionRecentTransfersDto,
+    ClubTransferHistoryDto,
 } from '../types';
 
 /**
@@ -109,6 +112,14 @@ export const TeamApi = {
           (seasonId ? `&seasonId=${seasonId}` : '')
       )
       .then(r => r.data),
+
+  /**
+   * The club's balance, read from the last line written in its whole book.
+   * The market shows this above everything else — a manager bidding on a man
+   * needs to know whether his club can pay.
+   */
+  getBalance: (teamId: string) =>
+    api.get<ClubBalanceDto>(`/team/${teamId}/balance`).then(r => r.data),
 
   /** Changes the display name of the club the manager has taken charge of. */
   updateName: (id: string, name: string) =>
@@ -217,6 +228,14 @@ export const FixtureApi = {
   listByRound: (roundId: string) =>
     api.get<FixtureDto[]>(`/fixture/by-round/${roundId}`).then(r => r.data),
   get: (id: string) => api.get<FixtureDto>(`/fixture/${id}`).then(r => r.data),
+  // The club's next match in the order football is played. It is a backend question because
+  // the order is a rule: a matchday runs Supercup, championship, cup, while a window's number
+  // is only an identifier, and sorting a season's windows by it put a cup leg ahead of the
+  // championship of the same day — a next match the server then refused to start.
+  getNext: (teamId: string, seasonId: string) =>
+    api
+      .get<NextFixtureDto | null>(`/fixture/next?teamId=${teamId}&seasonId=${seasonId}`)
+      .then(r => r.data ?? null),
 };
 
 export const LeagueApi = {
@@ -278,6 +297,11 @@ export const MatchApi = {
   // them. Both come from the backend so the screen is not the place the shape is
   // worked out twice.
   getTactics: () => api.get<TacticDto[]>('/match/tactics').then(r => r.data),
+  // The match a club is playing right now, or null when it is not playing one. It is what
+  // a navigation badge is drawn from, so a manager finds out his club is mid-game from
+  // every screen and not only from the one he remembered to open.
+  getLiveForTeam: (teamId: string) =>
+    api.get<LiveMatchDto | null>(`/match/live/${teamId}`).then(r => r.data ?? null),
   // The round told back: scorelines and, for each match, the account the match gave of
   // itself. The league screen reads it rather than inventing one.
   getRoundReport: (roundId: string) =>
@@ -415,6 +439,20 @@ export const TransferApi = {
 
   getHistory: (playerId: string) =>
     api.get<TransferHistoryLineDto[]>(`/transfer/history/${playerId}`).then(r => r.data),
+
+  /**
+   * The transfers that finished in the last few rounds, across every club of the division
+   * the manager's own club plays in.
+   */
+  getRecent: (clubId: string, windowRounds = 3) =>
+    api.get<DivisionRecentTransfersDto>(`/transfer/recent?clubId=${clubId}&windowRounds=${windowRounds}`).then(r => r.data),
+
+  /**
+   * Every transfer involving one club, across the seasons given, newest first.
+   * Pending and accepted sit in the same table as completed ones.
+   */
+  getClubHistory: (teamId: string, seasonNumbers: number[]) =>
+    api.get<ClubTransferHistoryDto>(`/transfer/club/${teamId}/history`, { params: { seasonNumbers } }).then(r => r.data),
 
   /**
    * Offers a player to a club. The fee is optional: without it the asking price is offered, and

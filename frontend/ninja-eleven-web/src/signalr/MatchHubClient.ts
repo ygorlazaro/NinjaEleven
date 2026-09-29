@@ -298,6 +298,23 @@ class MatchHubClient {
   }
 
   /**
+   * Claims a headless match of the manager's own club: the cup window starts every fixture
+   * at once, so a manager who reaches his club's match while it is already being played
+   * finds a session with no manager behind it. The manager shows up with his club's id and
+   * the keyboard is handed over without restarting the match.
+   *
+   * The server refuses anything that is not the manager's own club, so a match of two other
+   * clubs — opened from the scoreboard or the calendar — is simply left to the engine.
+   */
+  async attachManager(matchId: string, userTeamId: string): Promise<void> {
+    if (!this.connection || this.connection.state !== signalR.HubConnectionState.Connected) {
+      return;
+    }
+
+    await this.connection.invoke('AttachManager', matchId, userTeamId);
+  }
+
+  /**
    * Explicitly leave the round group (call when truly navigating away).
    *
    * It goes through the same queue as {@link subscribeMatchday}, and that is the whole

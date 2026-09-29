@@ -184,6 +184,47 @@ public class FixtureDto
     public TeamDto? AwayTeam { get; init; }
 }
 
+/// <summary>
+/// A club's next match, and enough about the day it is on to tell the manager whether he
+/// can play it yet.
+/// </summary>
+public class NextFixtureDto
+{
+    public FixtureDto Fixture { get; init; } = new();
+
+    /// <summary>The window the fixture is in.</summary>
+    public Guid RoundId { get; init; }
+
+    /// <summary>
+    /// The window's number, which is an identifier and not an order of play: a championship
+    /// window is numbered after its matchday and a cup window by how many ties there have
+    /// been. A screen that sorts by it puts a cup leg before the championship of the same day.
+    /// </summary>
+    public int RoundNumber { get; init; }
+
+    public Guid? MatchDayId { get; init; }
+    public int? MatchDayNumber { get; init; }
+
+    /// <summary>
+    /// Whether this window is the one playing. False is a real answer and not a failure: the
+    /// club's next match is a cup leg behind a championship of the same day that has not been
+    /// played yet, and a manager told that is not a manager who has been refused.
+    /// </summary>
+    public bool WaveOpen { get; init; }
+
+    /// <summary>The wave the day is in, when this fixture is not it. Empty when it is.</summary>
+    public string WaitingFor { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The edition the window belongs to, which is what a box reads: a fixture of the first
+    /// division and one of the third are the same championship and different competitions.
+    /// </summary>
+    public string CompetitionName { get; init; } = string.Empty;
+
+    /// <summary>The kind of competition, which is what orders a matchday's windows.</summary>
+    public string CompetitionType { get; init; } = string.Empty;
+}
+
 public class MatchDto
 {
     public Guid Id { get; init; }

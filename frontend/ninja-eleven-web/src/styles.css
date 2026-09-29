@@ -143,6 +143,21 @@ button { cursor: pointer; }
 }
 .next-match__competition { font-size: 12px; color: var(--accent); opacity: .85; }
 
+/* The match is next and is not kick-off time yet. It is said in the muted colour and small,
+   because it is a fact about the day rather than about the match, and a card whose loudest
+   line were a caveat would be a card a manager learns to skim. */
+.next-match__waiting { font-size: 11.5px; color: var(--muted); font-style: italic; }
+
+/* The run sits under the club it belongs to, so the form is never mistaken for the
+   opponent's. The shield is `.mini-crest` — the project's own table-size crest — rather than
+   a size of its own: `.club-crest` is declared further down the sheet, so a rule here would
+   lose to it and the badge would keep its 76x88 whatever width this column asked for. */
+.next-match__form { display: flex; align-items: center; }
+.next-match__form .form-run { gap: 3px; }
+.next-match__form .form-run__letter {
+  width: 15px; height: 15px; font-size: 9px; border-radius: 4px;
+}
+
 .next-match--empty { border-left-color: var(--line); }
 .next-match__none { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
 .sidebar-back {
@@ -541,9 +556,15 @@ button { cursor: pointer; }
 .match-attendance b { color: var(--text); }
 .competition { font-size: 13px; color: var(--muted); letter-spacing: .13em; text-transform: uppercase; }
 .scoreline { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 18px; margin-top: 10px; }
-.team-name { font-size: 27px; font-weight: 850; }
+.team-name { font-size: 27px; font-weight: 850; display: flex; align-items: center; gap: 10px; }
+.team-name.away { justify-content: flex-end; }
 .team-name.user-team { color: var(--accent); }
 .team-name.team-colored { color: var(--team-primary); }
+
+/* The shield beside each name on the scoreboard. It is the same crest the club screen and
+   the matchday draw, sized for a row whose loudest thing is the score in the middle — the
+   name is 27px and the shield is not, so the score still reads first. */
+.club-crest.match-crest { width: 34px; height: 38px; font-size: 15px; flex: 0 0 auto; }
 
 /* The share of the ball, under the score and across both names.
    The thickness is a variable so it can be made thicker in one place instead of in a rule
@@ -588,6 +609,24 @@ button { cursor: pointer; }
 }
 .away { text-align: right; }
 .score { font-size: 50px; font-weight: 950; letter-spacing: .06em; line-height: 1; }
+
+/* The score blinks and glows for a few seconds after a goal, so a goal that
+   landed while the manager was looking at the other tab still catches the eye. */
+@keyframes score-flash {
+  0% { opacity: 1; color: var(--accent); text-shadow: 0 0 0 rgba(0, 0, 0, 0); }
+  6% { opacity: 0; text-shadow: 0 0 14px rgba(242, 211, 79, .9); }
+  12% { opacity: 1; }
+  24% { opacity: 0; }
+  36% { opacity: 1; }
+  48% { opacity: 0; }
+  60% { opacity: 1; }
+  72% { opacity: 0; }
+  84% { opacity: 1; text-shadow: 0 0 0 rgba(0, 0, 0, 0); }
+  100% { opacity: 1; }
+}
+.score--flash {
+  animation: score-flash 3s ease-in-out forwards;
+}
 /* The clock is the one number in the header that keeps moving, so it is given the size of
    a number rather than the size of a caption: 26px, under a 48px score, with the half in a
    smaller weight so it does not compete with the minutes. */
@@ -762,6 +801,12 @@ button { cursor: pointer; }
 .matchday-teams .name { color: #d8e2e8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .matchday-teams .name.right { text-align: right; }
 
+/* The shield inside a row of the matchday, beside the name it belongs to. It is aligned by
+   the row, not by the name: two names of different lengths, and the away one is right-set,
+   so each shield sits on the outside edge of its own half and the pair reads symmetrically. */
+.matchday-teams .name { display: flex; align-items: center; gap: 6px; }
+.matchday-teams .name.right { justify-content: flex-end; }
+
 .matchday-score {
   margin: 6px 0 4px;
   text-align: center;
@@ -788,6 +833,84 @@ button { cursor: pointer; }
 .bar.right div { background: var(--red); margin-left: auto; }
 
 .lineup { font-size: 14px; }
+
+/* The club is playing *now*. The badge is the one item in the column that is not a place to
+   go but a thing that is happening, so it is drawn like an alert rather than like a link: a
+   pulsing dot, the accent, and the score in the middle with the opponent's shield on the
+   outside. A manager glancing at the column learns who he is against and at what score
+   without clicking anything, which is the whole reason it is in the column. */
+.live-badge {
+  display: grid; gap: 5px; margin: 0 0 12px; padding: 9px 10px;
+  border: 1px solid rgba(255, 207, 73, .45); border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #1a1608, #120f06);
+  color: inherit; text-decoration: none;
+  transition: border-color .15s ease;
+}
+.live-badge:hover { border-color: var(--accent); }
+
+.live-badge__head { display: flex; align-items: center; gap: 6px; }
+.live-badge__pulse {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: 0 0 auto;
+  box-shadow: 0 0 0 0 rgba(255, 207, 73, .6);
+  animation: live-pulse 1.6s ease-out infinite;
+}
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 207, 73, .55); }
+  70%  { box-shadow: 0 0 0 7px rgba(255, 207, 73, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 207, 73, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-badge__pulse { animation: none; }
+}
+
+/* The word and the minute are the same thing said twice in different weights: "ao vivo" says
+   the match is being played, the minute says where it is. Both are small, and the score in
+   the middle is the loudest thing in the box, because it is what a manager is deciding on. */
+.live-badge__label {
+  color: var(--accent); font-size: 11px; font-weight: 900;
+  letter-spacing: .12em; text-transform: uppercase;
+}
+
+.live-badge__match {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px;
+  font-size: 12.5px;
+}
+.live-badge__side { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.live-badge__side.right { justify-content: flex-end; }
+.live-badge__name {
+  color: var(--text); font-weight: 700;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.live-badge__score {
+  color: var(--accent); font-size: 15px; font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+.live-badge__minute {
+  color: var(--muted); font-size: 11px; font-weight: 800;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+
+/* Casa and Fora: one club's sheet at a time, because the two elevens are on the pitch
+   together and a manager reads the man in front of his striker, not a list with the other
+   club's men under his own. Each tab carries the shield of the club it shows, so the tab
+   is recognisable without reading it, and the manager's own side is marked in the accent —
+   it is the one with a change panel on it, and a tab that looks different is a tab whose
+   difference is visible before it is clicked. */
+.side-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.side-tab {
+  flex: 1 1 0; min-width: 0;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px;
+  background: #0d1a26; color: var(--muted);
+  font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  cursor: pointer;
+}
+.side-tab:hover { color: var(--text); border-color: #46657d; }
+.side-tab.active { color: var(--text); border-color: var(--accent); background: #14263a; }
+.side-tab.his-team { color: var(--accent); }
+.side-tab.his-team.active { background: #16283c; }
+.side-tab .club-crest { flex: 0 0 auto; }
 .player-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-top: 8px; }
 .player-card {
   padding: 10px; background: #0a1520; border: 1px solid var(--line); border-radius: 9px;
@@ -1234,6 +1357,16 @@ button { cursor: pointer; }
 }
 .cup-tie__penalties { color: var(--accent); }
 .cup-tie__pending { color: var(--muted); font-style: italic; }
+.cup-tie__watch {
+  display: flex; gap: 4px; margin-top: 2px; flex-wrap: wrap;
+}
+.cup-tie__watch-btn {
+  background: var(--accent); color: var(--bg); border: none; border-radius: 3px;
+  padding: 1px 6px; font-size: 10px; cursor: pointer; font-weight: 600;
+  transition: background 0.15s, transform 0.05s;
+}
+.cup-tie__watch-btn:hover { background: color-mix(in srgb, var(--accent) 80%, white); }
+.cup-tie__watch-btn:active { transform: scale(0.97); }
 .cup-champion {
   display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 8px 12px;
   border: 1px solid var(--accent); border-radius: 8px; color: var(--accent); font-size: 14px;
@@ -1473,6 +1606,14 @@ button { cursor: pointer; }
 .form-venue { text-align: center; white-space: nowrap; }
 .form-opponent { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .form-score { font-weight: 900; font-variant-numeric: tabular-nums; color: var(--accent); white-space: nowrap; }
+.form-score__btn {
+  background: none; border: none; color: inherit; font: inherit;
+  font-weight: 900; font-variant-numeric: tabular-nums; color: var(--accent);
+  cursor: pointer; padding: 0; text-decoration: underline;
+  text-decoration-color: var(--accent); text-underline-offset: 2px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+.form-score__btn:hover { color: var(--text); text-decoration-color: var(--text); }
 .form-attendance { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 12px; }
 
 .profile-footer { display: flex; justify-content: flex-end; margin-top: 16px; }

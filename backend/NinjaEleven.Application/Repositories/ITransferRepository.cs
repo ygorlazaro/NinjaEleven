@@ -72,13 +72,60 @@ public interface ITransferRepository
     Task<IReadOnlyList<Transfer>> ListLiveAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Whether a proposal involving this player is still pending or accepted, so a second offer
-    /// for the same man is refused rather than piling up. Not scoped to a season: a man with an
-    /// offer on the table is spoken for, and a deal stops being live only when it is rejected,
-    /// completed or expired.
+    /// Every accepted deal in the world, across every season. The market reads this to know
+    /// which men are spoken for — a player with an accepted deal on him may not be offered to,
+    /// because a promise is a promise — while a proposal that is still waiting for the selling
+    /// club to answer is a bid, and a bid is a thing two clubs can make for the same man.
     /// </summary>
-    Task<bool> ExistsActiveAsync(
+    Task<IReadOnlyList<Transfer>> ListAcceptedAllAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether an accepted proposal involves this player, so a second offer is refused rather
+    /// than piling up. Only an accepted deal blocks a new one: a proposal that is still
+    /// waiting for the selling club to answer is a bid, and a bid is a thing two clubs can
+    /// make for the same man. The moment it is accepted it stops being a bid and becomes a
+    /// promise, and a man with a promise on him is spoken for.
+    ///
+    /// Not scoped to a season: a man with an accepted deal is spoken for, and a deal stops
+    /// being accepted only when it is completed, called off or the player leaves anyway.
+    /// </summary>
+    Task<bool> ExistsAcceptedAsync(
         Guid playerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every pending proposal whose selling club has no manager and whose deadline has passed,
+    /// oldest first. A club without a manager is not a club that forgets — it is a club that
+    /// has to be told when to decide — and this is the sweep that tells it: a bid left on its
+    /// desk past the round it was given expires, the player is free again, and the market
+    /// keeps moving.
+    /// </summary>
+    Task<IReadOnlyList<Transfer>> ListExpiredAsync(
+        int currentRoundNumber,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every transfer that finished in the last three rounds, across every club of the
+    /// division given, newest first. A market that shows what happened recently is a market
+    /// a manager can read without opening a second screen, and the three rounds are counted
+    /// from the round being played rather than from a date, because that is the only thing
+    /// a round is.
+    /// </summary>
+    Task<IReadOnlyList<Transfer>> ListRecentCompletedAsync(
+        Guid competitionSeasonId,
+        int currentRoundNumber,
+        int windowRounds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every transfer involving one club, across the seasons given, newest first, with the
+    /// season each one was made in. A club's transfer history is the list of men who came
+    /// and men who went, and the season is what separates this season's business from last
+    /// season's when the two sit in one table.
+    /// </summary>
+    Task<IReadOnlyList<Transfer>> ListByClubAsync(
+        Guid teamId,
+        IEnumerable<int> seasonNumbers,
         CancellationToken cancellationToken = default);
 
     /// <summary>

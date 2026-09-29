@@ -1,4 +1,5 @@
 using NinjaEleven.Domain.Finance;
+using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Teams;
 
@@ -78,6 +79,30 @@ public class Transfer
     /// </summary>
     public int? ArrivalRoundNumber { get; private set; }
 
+    /// <summary>
+    /// The championship round the world was playing when the proposal was made. It is the only
+    /// way to ask how long a proposal has been waiting without reading a date, and it is the
+    /// thing a deadline is measured against.
+    /// </summary>
+    public int? ProposalRoundNumber { get; private set; }
+
+    /// <summary>
+    /// The round by which the selling club must answer this proposal, or null when the club has
+    /// a person behind it and answers on its own schedule. A club without a manager is not a
+    /// club that forgets: it is a club that has to be told when to decide, and a proposal left
+    /// on its desk forever is a market that stops moving.
+    /// </summary>
+    public int? AnswerByRound { get; private set; }
+
+    /// <summary>The player this proposal is about, loaded when the deal is read with its names.</summary>
+    public Player? Player { get; set; }
+
+    /// <summary>The club buying the player, loaded when the deal is read with its names.</summary>
+    public Team? BuyingClub { get; set; }
+
+    /// <summary>The club selling the player, loaded when the deal is read with its names.</summary>
+    public Team? SellingClub { get; set; }
+
     private Transfer() { }
 
     public static Transfer Propose(
@@ -89,7 +114,9 @@ public class Transfer
         Guid? arrivalSeasonId,
         decimal fee,
         DateOnly proposedAt,
-        int? arrivalRoundNumber = null)
+        int? arrivalRoundNumber = null,
+        int? proposalRoundNumber = null,
+        int? answerByRound = null)
     {
         if (fee < 0m)
         {
@@ -121,6 +148,18 @@ public class Transfer
                 nameof(arrivalRoundNumber), arrivalRoundNumber, "A round is counted from one.");
         }
 
+        if (proposalRoundNumber.HasValue && proposalRoundNumber.Value < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(proposalRoundNumber), proposalRoundNumber, "A round is counted from one.");
+        }
+
+        if (answerByRound.HasValue && answerByRound.Value < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(answerByRound), answerByRound, "A round is counted from one.");
+        }
+
         return new Transfer
         {
             Id = Guid.NewGuid(),
@@ -133,7 +172,9 @@ public class Transfer
             Fee = fee,
             Status = TransferStatus.Pending,
             ProposedAt = proposedAt,
-            ArrivalRoundNumber = arrivalRoundNumber
+            ArrivalRoundNumber = arrivalRoundNumber,
+            ProposalRoundNumber = proposalRoundNumber,
+            AnswerByRound = answerByRound
         };
     }
 
@@ -160,6 +201,31 @@ public class Transfer
         }
 
         ArrivalRoundNumber = roundNumber;
+    }
+
+    /// <summary>
+    /// Names the round by which the selling club must answer, and the round the proposal was
+    /// made in. A club without a manager is not a club that forgets — it is a club that has to
+    /// be told when to decide — so the deadline is written when the proposal is made and it is
+    /// the sweep that honours it.
+    /// </summary>
+    public void SetDecisionDeadline(int proposalRoundNumber, int answerByRound)
+    {
+        if (proposalRoundNumber < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(proposalRoundNumber), proposalRoundNumber, "A round is counted from one.");
+        }
+
+        if (answerByRound < proposalRoundNumber)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(answerByRound),
+                answerByRound,
+                "A deadline is not before the round the proposal was made in.");
+        }
+
+        ProposalRoundNumber = proposalRoundNumber;
+        AnswerByRound = answerByRound;
     }
 
     /// <summary>The selling club accepted the proposal.</summary>
@@ -211,7 +277,12 @@ public class Transfer
         ResolvedAt = calledOffAt;
     }
 
-    /// <summary>The proposal was never answered and the window for answering it has passed.</summary>
+    /// <summary>
+    /// The proposal was never answered and the window for answering it has passed. A club
+    /// without a manager answers on a deadline rather than on its own schedule, and this is
+    /// the moment that deadline is honoured: a proposal left on an NPC club's desk past the
+    /// round it was given expires, so the player is free again and the market keeps moving.
+    /// </summary>
     public void Expire(DateOnly expiredAt)
     {
         if (Status != TransferStatus.Pending)
@@ -223,6 +294,10 @@ public class Transfer
         Status = TransferStatus.Expired;
         ResolvedAt = expiredAt;
     }
+
+    /// <summary>Whether the round given is past the round by which this club must answer.</summary>
+    public bool IsPastDeadline(int currentRoundNumber) =>
+        AnswerByRound.HasValue && currentRoundNumber > AnswerByRound.Value;
 
     /// <summary>
     /// The player has arrived at his new club and the deal is complete. The money has moved

@@ -86,6 +86,12 @@ public class TransferListing
     /// </summary>
     public bool HasActiveProposal { get; set; }
 
+    /// <summary>
+    /// Whether there is an accepted proposal on him. A player with an accepted proposal cannot
+    /// receive new offers. Pending proposals do not block other clubs from making offers.
+    /// </summary>
+    public bool HasAcceptedProposal { get; set; }
+
     public int Energy { get; set; }
     public string Injury { get; set; } = string.Empty;
     public int InjuryMatchesRemaining { get; set; }
@@ -251,6 +257,19 @@ public class TransferSearchResult
 }
 
 /// <summary>
+/// A club's balance, as the market reads it: the money the club has, and nothing else. It is
+/// read from the last line written in the club's whole book, so a balance that followed a
+/// filter would tell a manager his club had as much as it had spent, which is the one number
+/// in the game that would be plainly wrong.
+/// </summary>
+public class ClubBalance
+{
+    public Guid TeamId { get; set; }
+    public string TeamName { get; set; } = string.Empty;
+    public decimal Balance { get; set; }
+}
+
+/// <summary>
 /// A club's end-of-round transfer business: what it put on the table, what the market made of
 /// it, and how many free agents it picked up while short of the minimum.
 /// </summary>
@@ -268,4 +287,68 @@ public class NpcTransferRoundResult
     /// club going shopping, and a club deciding whether to sell.
     /// </summary>
     public int Answered { get; set; }
+}
+
+/// <summary>
+/// A transfer that finished, as the market's recent business reads it: who moved, which way,
+/// for how much, and when. The two clubs are named because a row without a name is a row a
+/// manager has to open a second screen to understand.
+/// </summary>
+public class TransferHistoryLine
+{
+    public Guid TransferId { get; set; }
+    public Guid PlayerId { get; set; }
+    public string PlayerName { get; set; } = string.Empty;
+    public string PlayerPosition { get; set; } = string.Empty;
+
+    public Guid? SellingClubId { get; set; }
+    public string? SellingClubName { get; set; }
+
+    public Guid BuyingClubId { get; set; }
+    public string BuyingClubName { get; set; } = string.Empty;
+
+    /// <summary>The season the deal was made in, which is not always the one the player arrived in.</summary>
+    public int ProposalSeasonNumber { get; set; }
+
+    /// <summary>The season the player arrived in, which is what separates this season's business
+    /// from last season's when the two sit in one table.</summary>
+    public int ArrivalSeasonNumber { get; set; }
+
+    /// <summary>The round he walked in on, when the deal completed.</summary>
+    public int? ArrivalRoundNumber { get; set; }
+
+    public decimal Fee { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public DateOnly ProposedAt { get; set; }
+    public DateOnly? ResolvedAt { get; set; }
+    public DateOnly? CompletedAt { get; set; }
+}
+
+/// <summary>
+/// The recent business of a division, as the market reads it: the transfers that finished in
+/// the last few rounds, across every club in it. A market that shows what happened recently is
+/// a market a manager can read without opening a second screen, and the rounds are counted
+/// from the round being played rather than from a date, because that is the only thing a
+/// round is.
+/// </summary>
+public class DivisionRecentTransfers
+{
+    public Guid CompetitionSeasonId { get; set; }
+    public int CurrentRound { get; set; }
+    public int WindowRounds { get; set; }
+    public IReadOnlyList<TransferHistoryLine> Transfers { get; set; } = Array.Empty<TransferHistoryLine>();
+}
+
+/// <summary>
+/// A club's transfer history, as the club screen reads it: every deal the club was involved
+/// in, across the seasons asked for, newest first. Pending and accepted sit in the same table
+/// as completed ones, because a proposal is a fact about the club's season whether or not the
+/// selling club has answered it yet.
+/// </summary>
+public class ClubTransferHistory
+{
+    public Guid TeamId { get; set; }
+    public string TeamName { get; set; } = string.Empty;
+    public IReadOnlyList<int> SeasonNumbers { get; set; } = Array.Empty<int>();
+    public IReadOnlyList<TransferHistoryLine> Transfers { get; set; } = Array.Empty<TransferHistoryLine>();
 }

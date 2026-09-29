@@ -2,15 +2,31 @@ import { SeasonApi, TeamApi, ManagerApi, TransferApi } from '@/api';
 import ClubCrest from '@/components/Club/ClubCrest';
 import ClubSquadTable from '@/components/Club/ClubSquadTable';
 import FormRun, { formOf } from '@/components/Club/FormRun';
-import { ClubName } from '@/components/Common/Names';
+import { ClubName, PlayerName } from '@/components/Common/Names';
 import DivisionTrophy from '@/components/League/DivisionTrophy';
 import { useClubWindow } from '@/services/clubColors';
 import { formatLimo } from '@/services/limo';
 import { starsToString } from '@/services/formatters';
 import { useGameState } from '@/state';
-import type { ClubStandingDto, SquadPlayerDto, TeamDto, TeamMatchRecordDto } from '@/types';
+import type { ClubStandingDto, SquadPlayerDto, TeamDto, TeamMatchRecordDto, ClubTransferHistoryDto, TransferHistoryLineDto, TransferStatus } from '@/types';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+
+const STATUS_COLOR: Record<TransferStatus, string> = {
+  Pending: 'pending',
+  Accepted: 'accepted',
+  Rejected: 'rejected',
+  Completed: 'completed',
+  Expired: 'expired'
+};
+
+const STATUS_LABELS: Record<TransferStatus, string> = {
+  Pending: 'Pendente',
+  Accepted: 'Aceita',
+  Rejected: 'Recusada',
+  Completed: 'Concluída',
+  Expired: 'Expirada'
+};
 
 const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) => {
   const teams = useGameState((s) => s.leagueTeams);
@@ -28,6 +44,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busyPlayerId, setBusyPlayerId] = useState<string | null>(null);
+  const [transferHistory, setTransferHistory] = useState<ClubTransferHistoryDto | null>(null);
 
   const FORM_GUIDE_LENGTH = 10;
   const H2H_LENGTH = 5;
@@ -111,6 +128,43 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
       cancelled = true;
     };
   }, [urlTeamId, seasonId, selectedTeam?.id]);
+
+  /**
+   * Loads the club's transfer history for the current and previous season.
+   * The backend returns pending, accepted and completed transfers.
+   */
+  useEffect(() => {
+    if (!urlTeamId || !seasonId) {
+      setTransferHistory(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    SeasonApi.list()
+      .then(seasons => {
+        const currentSeason = seasons.find(s => s.id === seasonId);
+        if (!currentSeason) return;
+
+        // Get current and previous season numbers
+        const seasonNumbers = [currentSeason.number];
+        const previousSeason = seasons.find(s => s.number === currentSeason.number - 1);
+        if (previousSeason) {
+          seasonNumbers.push(previousSeason.number);
+        }
+
+        TransferApi.getClubHistory(urlTeamId, seasonNumbers)
+          .then(history => {
+            if (!cancelled) setTransferHistory(history);
+          })
+          .catch(() => {
+            if (!cancelled) setTransferHistory(null);
+          });
+      })
+      .catch(() => {});
+
+    return () => { cancelled = true; };
+  }, [urlTeamId, seasonId]);
 
   /**
    * Rereads the squad after a decision the manager just took.
@@ -319,7 +373,16 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
                           record.opponentName
                         )}
                       </td>
-                      <td className="form-score">{record.goalsFor} x {record.goalsAgainst}</td>
+                      <td className="form-score">
+                        <button
+                          type="button"
+                          className="form-score__btn"
+                          onClick={() => navigate(`/match/${record.matchId}`)}
+                          title="Assistir à partida"
+                        >
+                          {record.goalsFor} x {record.goalsAgainst}
+                        </button>
+                      </td>
                       <td className="form-attendance">{record.attendance ? record.attendance.toLocaleString('pt-BR') : '—'}</td>
                     </tr>
                   );
@@ -358,8 +421,15 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
                         <td className="round-context__h2h-venue">{m.isHome ? '🏠' : '✈️'}</td>
                         <td className="round-context__h2h-stadium">{m.stadiumName || '—'}</td>
                         <td className={`round-context__h2h-score h2h-${result}`}>
+                        <button
+                          type="button"
+                          className="form-score__btn"
+                          onClick={() => navigate(`/match/${m.matchId}`)}
+                          title="Assistir à partida"
+                        >
                           {m.isHome ? m.goalsFor : m.goalsAgainst} x {m.isHome ? m.goalsAgainst : m.goalsFor}
-                        </td>
+                        </button>
+                      </td>
                         <td className="round-context__h2h-attendance">{m.attendance ? m.attendance.toLocaleString('pt-BR') : '—'}</td>
                       </tr>
                     );
@@ -367,6 +437,64 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
                 </tbody>
               </table>
             )}
+          </section>
+        )}
+
+        {/*
+          The club's live transfer business for this season and the one before it: a bid still
+          on the table, a bid agreed and a player who arrived. A refused or expired offer is not
+          on it — neither moves a player, and a season of three rejected bids for one man is
+          not a season of the club's business. The section is drawn even when the list is
+          empty, so "this club did not do business" is a fact on the page and not a missing
+          table.
+        */}
+        {transferHistory && (
+          <section className="club-form">
+            <h4 className="club-form__title">Transferências das temporadas {transferHistory.seasonNumbers.join(' e ')}</h4>
+            {transferHistory.transfers.length === 0 ? (
+              <p className="league-empty">Nenhuma transferência nestas temporadas.</p>
+            ) : (
+              <table className="form-table">
+                <thead>
+                  <tr>
+                    <th>Jogador</th>
+                    <th>De</th>
+                    <th>Para</th>
+                    <th className="num money">Valor</th>
+                    <th className="num">Temp.</th>
+                    <th>Status</th>
+                    <th>Data</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transferHistory.transfers.map((line, i) => (
+                    <tr key={`${line.sellingClubId ?? 'livre'}-${line.buyingClubId}-${i}`} className={`history-row status-${STATUS_COLOR[line.status]}`}>
+                      <td>
+                        <PlayerName playerId={line.playerId}>{line.playerName}</PlayerName>
+                      </td>
+                      <td>
+                        {line.sellingClubId ? (
+                          <ClubName teamId={line.sellingClubId}>{line.sellingClubName}</ClubName>
+                        ) : (
+                          <span className="free-agent">{line.sellingClubName}</span>
+                        )}
+                      </td>
+                      <td>
+                        <ClubName teamId={line.buyingClubId}>{line.buyingClubName}</ClubName>
+                      </td>
+                      <td className="num money">{line.fee ? formatLimo(line.fee) : '—'}</td>
+                      <td className="num">{line.proposalSeasonNumber} → {line.arrivalSeasonNumber}</td>
+                      <td>
+                        <span className={`status-badge status-${STATUS_COLOR[line.status]}`}>
+                          {STATUS_LABELS[line.status]}
+                        </span>
+                      </td>
+                      <td className="num">{line.proposedAt ? new Date(line.proposedAt).toLocaleDateString('pt-BR') : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              )}
           </section>
         )}
       </div>

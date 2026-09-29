@@ -146,10 +146,10 @@ public class TransferService
                 $"O elenco do {buyingClub.Name} já tem {size} jogadores, e o limite é {SquadSizeRules.MaxSquadSize}.");
         }
 
-        if (await _transfers.ExistsActiveAsync(playerId, cancellationToken))
+        if (await _transfers.ExistsAcceptedAsync(playerId, cancellationToken))
         {
             throw new DomainValidationException(
-                "TransferInProgress", "O jogador já tem uma proposta pendente ou aceita.");
+                "TransferAccepted", "O jogador já tem uma proposta aceita.");
         }
 
         var window = await ReadTheWindowAsync(season, cancellationToken);
@@ -224,7 +224,23 @@ public class TransferService
             arrivalSeason?.Id,
             askingPrice,
             today,
-            window.ArrivalRoundNumber);
+window.ArrivalRoundNumber);
+
+        // A club without a manager is not a club that forgets: it is a club that has to be told
+        // when to decide. The deadline is between one and five rounds ahead of the round the
+        // proposal was made in, so a bid left on an NPC club desk does not sit there until the
+        // season closes — the sweep answers it, the player is free again, and the market keeps
+        // moving. A club with a manager answers on its own schedule and carries no deadline.
+        //
+        // The seed is the player and the season, so a replayed proposal is given the same
+        // deadline: the deadline is a fact about this deal, and a deal that replays the same has
+        // to answer by the same round.
+        if (!sellingClub.IsManagerClub)
+        {
+            var proposalRound = await CurrentChampionshipRoundAsync(season, cancellationToken);
+            var deadline = proposalRound + new Random(SeedFor(playerId, season.Id)).Next(1, 6);
+            transfer.SetDecisionDeadline(proposalRound, deadline);
+        }
 
         await _transfers.AddAsync(transfer, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -1267,6 +1283,40 @@ public class TransferService
     }
 
     /// <summary>
+    /// Answers every proposal whose selling club has no manager and whose deadline has passed,
+    /// by letting it expire. A club without a manager is not a club that forgets — it is a club
+    /// that has to be told when to decide — and this is the sweep that tells it: a bid left on
+    /// its desk past the round it was given expires, the player is free again, and the market
+    /// keeps moving. It is safe to call twice, and a proposal that has already expired is not
+    /// expired again.
+    /// </summary>
+    public async Task<int> ExpirePendingProposalsAsync(
+        int currentRoundNumber,
+        CancellationToken cancellationToken = default)
+    {
+        var expired = await _transfers.ListExpiredAsync(currentRoundNumber, cancellationToken);
+        if (expired.Count == 0)
+        {
+            return 0;
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.Now);
+
+        foreach (var transfer in expired)
+        {
+            transfer.Expire(today);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Expired {Count} proposals whose selling club had no manager and whose deadline passed at round {Round}.",
+            expired.Count, currentRoundNumber);
+
+        return expired.Count;
+    }
+
+    /// <summary>
     /// The men a club goes after, best score first, scored against what the club already has.
     ///
     /// The sample is drawn from every other club's squad and then judged by need: a club thin at
@@ -1340,6 +1390,14 @@ public class TransferService
     private static int SeedFor(Season season, int round) =>
         unchecked(season.Number * 7919 + round * 104729 + season.Id.GetHashCode());
 
+    /// <summary>
+    /// A deadline is a fact about a deal, and a deal that replays the same has to answer by the
+    /// same round. The seed is the player and the season, so a proposal made twice — by a
+    /// manager and by a sweep that redrew it — is given the same deadline either time.
+    /// </summary>
+    private static int SeedFor(Guid playerId, Guid seasonId) =>
+        unchecked(playerId.GetHashCode() ^ seasonId.GetHashCode());
+
     #endregion
 
     #region Searching
@@ -1376,10 +1434,18 @@ public class TransferService
             .GroupBy(state => state.PlayerId)
             .ToDictionary(group => group.Key, group => group.First());
 
-        // The men somebody is already negotiating for. A player with a live deal on him is
+        // The men somebody has already agreed to buy. A player with an accepted deal on him is
         // spoken for, and the market refuses a second offer on him — so the row has to say so
         // rather than letting a manager find out by being refused.
-        var spokenFor = (await _transfers.ListLiveAsync(cancellationToken))
+        var spokenFor = (await _transfers.ListAcceptedAllAsync(cancellationToken))
+            .Select(deal => deal.PlayerId)
+            .ToHashSet();
+
+        // The men who have a pending proposal on them. A proposal waiting for an answer is a
+        // bid, and a bid is a thing two clubs can make for the same man — so the row shows a
+        // mark but does not block the offer button.
+        var pendingOn = (await _transfers.ListLiveAsync(cancellationToken))
+            .Where(deal => deal.Status == TransferStatus.Pending)
             .Select(deal => deal.PlayerId)
             .ToHashSet();
 
@@ -1412,7 +1478,8 @@ public class TransferService
                 teams,
                 season,
                 careers.GetValueOrDefault(player.Id) ?? new PlayerCareerLine(),
-                spokenFor.Contains(player.Id));
+                hasActiveProposal: spokenFor.Contains(player.Id) || pendingOn.Contains(player.Id),
+                hasAcceptedProposal: spokenFor.Contains(player.Id));
 
             listings.Add(listing);
         }
@@ -1518,7 +1585,7 @@ public class TransferService
             teams.GetValueOrDefault(transfer.BuyingClubId),
             season.Number);
 
-        return new TransferInbox
+return new TransferInbox
         {
             ClubId = clubId,
             ClubName = club.Name,
@@ -1527,6 +1594,111 @@ public class TransferService
             Outgoing = outgoing.Select(Build).ToList()
         };
     }
+
+    /// <summary>
+    /// The transfers that finished in the last three rounds, across every club of the division
+    /// the manager's own club plays in. A market that shows what happened recently is a market
+    /// a manager can read without opening a second screen, and the three rounds are counted
+    /// from the round being played rather than from a date, because that is the only thing a
+    /// round is.
+    /// </summary>
+    public async Task<DivisionRecentTransfers> GetDivisionRecentTransfersAsync(
+        Guid clubId,
+        int windowRounds = 3,
+        CancellationToken cancellationToken = default)
+    {
+        var season = await GetCurrentSeasonAsync(cancellationToken);
+
+        // The division the manager's own club is in this season. A club has no division of its
+        // own — it is enrolled in one for the season, and a club that changes tier is the same
+        // club in another edition — so the question is asked of the enrolment, and the recent
+        // business of that division is the business of every club in it.
+        var division = await _competitions.GetDivisionSeasonForTeamAsync(
+            clubId, season.Id, cancellationToken);
+
+        if (division is null)
+        {
+            return new DivisionRecentTransfers
+            {
+                CompetitionSeasonId = Guid.Empty,
+                CurrentRound = 0,
+                WindowRounds = windowRounds,
+                Transfers = Array.Empty<TransferHistoryLine>()
+            };
+        }
+
+        var currentRound = await CurrentChampionshipRoundAsync(season, cancellationToken);
+        var transfers = await _transfers.ListRecentCompletedAsync(
+            division.Id, currentRound, windowRounds, cancellationToken);
+
+        var teams = (await _teams.ListAsync(cancellationToken)).ToDictionary(t => t.Id, t => t);
+        var seasonNumbers = (await _seasons.ListAsync(cancellationToken)).ToDictionary(s => s.Id, s => s.Number);
+
+        return new DivisionRecentTransfers
+        {
+            CompetitionSeasonId = division.Id,
+            CurrentRound = currentRound,
+            WindowRounds = windowRounds,
+            Transfers = transfers.Select(t => BuildHistoryLine(t, teams, seasonNumbers)).ToList()
+        };
+    }
+
+    /// <summary>
+    /// Every live transfer involving one club, across the seasons given, newest first. Pending
+    /// and accepted sit in the same table as completed ones, because a proposal is a fact about
+    /// the club's season whether or not the selling club has answered it yet — and a table
+    /// that only showed finished deals would read as a club that did nothing. Rejected and
+    /// expired are the two that never move a player, and they are left out: a bid that was
+    /// turned down is not a season of the club's business.
+    /// </summary>
+    public async Task<ClubTransferHistory> GetClubTransferHistoryAsync(
+        Guid teamId,
+        IEnumerable<int> seasonNumbers,
+        CancellationToken cancellationToken = default)
+    {
+        var team = await _teams.GetAsync(teamId, cancellationToken)
+            ?? throw new EntityNotFoundException("Team", teamId);
+
+        var transfers = await _transfers.ListByClubAsync(teamId, seasonNumbers, cancellationToken);
+
+        var teams = (await _teams.ListAsync(cancellationToken)).ToDictionary(t => t.Id, t => t);
+        var seasonNumbersById = (await _seasons.ListAsync(cancellationToken)).ToDictionary(s => s.Id, s => s.Number);
+
+        return new ClubTransferHistory
+        {
+            TeamId = teamId,
+            TeamName = team.Name,
+            SeasonNumbers = seasonNumbers.ToHashSet().ToList(),
+            Transfers = transfers.Select(t => BuildHistoryLine(t, teams, seasonNumbersById)).ToList()
+        };
+    }
+
+    private static TransferHistoryLine BuildHistoryLine(
+        Transfer transfer,
+        Dictionary<Guid, Team> teams,
+        Dictionary<Guid, int> seasonNumbers) =>
+        new()
+        {
+            TransferId = transfer.Id,
+            PlayerId = transfer.PlayerId,
+            PlayerName = transfer.Player?.Name ?? transfer.PlayerId.ToString(),
+            PlayerPosition = transfer.Player?.Position.ToString() ?? string.Empty,
+            SellingClubId = transfer.SellingClubId,
+            SellingClubName = transfer.SellingClubId is { } seller
+                ? transfer.SellingClub?.Name ?? teams.GetValueOrDefault(seller)?.Name ?? string.Empty
+                : null,
+            BuyingClubId = transfer.BuyingClubId,
+            BuyingClubName = transfer.BuyingClub?.Name
+                ?? teams.GetValueOrDefault(transfer.BuyingClubId)?.Name ?? string.Empty,
+            ProposalSeasonNumber = seasonNumbers.GetValueOrDefault(transfer.ProposalSeasonId),
+            ArrivalSeasonNumber = transfer.ArrivalSeasonNumber,
+            ArrivalRoundNumber = transfer.ArrivalRoundNumber,
+            Fee = transfer.Fee,
+            Status = transfer.Status.ToString(),
+            ProposedAt = transfer.ProposedAt,
+            ResolvedAt = transfer.ResolvedAt,
+            CompletedAt = transfer.CompletedAt
+        };
 
     /// <summary>
     /// Every transfer a player has been involved in, newest first — the list of clubs he has
@@ -1733,7 +1905,8 @@ public class TransferService
         IReadOnlyDictionary<Guid, Team> teams,
         Season season,
         PlayerCareerLine career,
-        bool hasActiveProposal = false)
+        bool hasActiveProposal = false,
+        bool hasAcceptedProposal = false)
     {
         var teamId = state?.TeamId;
         var team = teamId.HasValue && teams.TryGetValue(teamId.Value, out var found) ? found : null;
@@ -1787,6 +1960,7 @@ public class TransferService
             IsInLastSeason = contract is not null && contract.IsInHisLastSeason(season.Number),
             IsFreeAgent = teamId is null,
             HasActiveProposal = hasActiveProposal,
+            HasAcceptedProposal = hasAcceptedProposal,
             AskingPrice = askingPrice,
             Retiring = state?.Retiring ?? false,
             Season = new PlayerCareerLine

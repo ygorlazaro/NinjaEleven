@@ -19,11 +19,18 @@ interface ScorersListProps {
    * wrong competition.
    */
   allLabel?: string;
+  /**
+   * How many names the table shows. Ten is a chart a manager reads whole — the top of a league
+   * table, ten names — and a longer list is a league's whole season, which is a different page
+   * with a different purpose. The cup keeps the longer default because a cup's scorers are
+   * spread thin and a top of ten is often only a handful of men.
+   */
+  limit?: number;
 }
 
 type Scope = 'mine' | 'all';
 
-/** How many names each view shows. The league list is a digest, not the whole season. */
+/** How many names each view shows when the screen does not say. */
 const LIMIT = 15;
 
 /**
@@ -47,7 +54,8 @@ const ScorersList: React.FC<ScorersListProps> = ({
   userTeamId,
   userTeamName,
   emptyMessage = 'Ainda não há gols no campeonato.',
-  allLabel = 'Campeonato'
+  allLabel = 'Campeonato',
+  limit = LIMIT
 }) => {
   const [scope, setScope] = useState<Scope>('mine');
 
@@ -56,10 +64,14 @@ const ScorersList: React.FC<ScorersListProps> = ({
     [scorers, userTeamId]
   );
 
-  // The rows are the rows, in the order they came. The two numbers a client would have sorted
-  // by are the ones the backend settled on, and a tie it could not break is carried on the line
-  // rather than invented here.
-  const rows = useMemo(() => (scope === 'mine' ? mine : scorers).slice(0, LIMIT), [scope, mine, scorers]);
+  // The rows are the rows, in the order they came, cut to the number of names the chart
+  // shows. The two numbers a client would have sorted by are the ones the backend settled on,
+  // and a tie it could not break is carried on the line rather than invented here — so the cut
+  // is a slice of a ranked list, never a re-ranking of the part that is left.
+  const rows = useMemo(
+    () => (scope === 'mine' ? mine : scorers).slice(0, limit),
+    [scope, mine, scorers, limit]
+  );
 
   const hasClub = !!userTeamId;
 

@@ -382,6 +382,31 @@ public class MatchdayEventDto
 /// how a client shows the other matches of the matchday while it watches its own in
 /// full, without asking for anything.
 /// </summary>
+/// <summary>
+/// The match a club is playing right now, as a navigation badge shows it. Null is "not at
+/// the moment", and it is the answer most of a season's hours.
+/// </summary>
+public class LiveMatchDto
+{
+    public Guid MatchId { get; init; }
+    public Guid RoundId { get; init; }
+    public Guid HomeTeamId { get; init; }
+    public string HomeTeamName { get; init; } = string.Empty;
+    public string HomeShortName { get; init; } = string.Empty;
+    public string HomePrimaryColor { get; init; } = string.Empty;
+    public string HomeSecondaryColor { get; init; } = string.Empty;
+    public Guid AwayTeamId { get; init; }
+    public string AwayTeamName { get; init; } = string.Empty;
+    public string AwayShortName { get; init; } = string.Empty;
+    public string AwayPrimaryColor { get; init; } = string.Empty;
+    public string AwaySecondaryColor { get; init; } = string.Empty;
+    public int HomeGoals { get; init; }
+    public int AwayGoals { get; init; }
+    public int Minute { get; init; }
+    public bool IsHome { get; init; }
+    public bool AtHalfTime { get; init; }
+}
+
 public class MatchScoreDto
 {
     public Guid RoundId { get; init; }
@@ -390,9 +415,20 @@ public class MatchScoreDto
     public Guid HomeTeamId { get; init; }
     public string HomeTeamName { get; init; } = string.Empty;
     public string HomeShortName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The two colours of each club, so a matchday can draw a shield beside the name rather
+    /// than leave a manager to recognise a club by reading it. They travel with the score
+    /// because a round is published once a tick to every screen following it, and reading
+    /// the clubs again per row would be a read per row of a list the backend holds whole.
+    /// </summary>
+    public string HomePrimaryColor { get; init; } = string.Empty;
+    public string HomeSecondaryColor { get; init; } = string.Empty;
     public Guid AwayTeamId { get; init; }
     public string AwayTeamName { get; init; } = string.Empty;
     public string AwayShortName { get; init; } = string.Empty;
+    public string AwayPrimaryColor { get; init; } = string.Empty;
+    public string AwaySecondaryColor { get; init; } = string.Empty;
     public int HomeGoals { get; init; }
     public int AwayGoals { get; init; }
     public int Minute { get; init; }

@@ -23,6 +23,37 @@ namespace NinjaEleven.Application.Services;
 public record MatchdayProgress(Guid MatchDayId, int Number, CompetitionType? OpenWave, bool Complete);
 
 /// <summary>
+/// The window a club's next unplayed fixture is in, and whether that window may be started.
+/// </summary>
+/// <param name="FixtureId">The fixture itself, for the client to read as a fixture.</param>
+/// <param name="RoundId">The window the fixture is in.</param>
+/// <param name="RoundNumber">The window's own number, which is not its order of play.</param>
+/// <param name="MatchDayId">The day the fixture is on, or null for a fixture outside one.</param>
+/// <param name="MatchDayNumber">Which day of the season it is.</param>
+/// <param name="WaveOpen">
+/// Whether the fixture's window is the one playing. False means the fixture is the club's next
+/// one and cannot be started yet, because an earlier wave of the same day is still in
+/// progress — a cup leg of a day whose championship has not been played yet.
+/// </param>
+/// <param name="WaitingFor">The wave the day is in, when this fixture is not it.</param>
+/// <param name="CompetitionName">
+/// The edition the window belongs to, as the box reads it. A 1ª Divisão fixture and a third
+/// division one are the same championship and different competitions to a manager, and the
+/// name that says which is the edition's own rather than the competition's.
+/// </param>
+/// <param name="CompetitionType">The kind of competition, which is what orders a matchday.</param>
+public record NextFixtureWindow(
+    Guid FixtureId,
+    Guid RoundId,
+    int RoundNumber,
+    Guid? MatchDayId,
+    int? MatchDayNumber,
+    bool WaveOpen,
+    CompetitionType? WaitingFor,
+    string CompetitionName,
+    CompetitionType CompetitionType);
+
+/// <summary>
 /// A matchday is a sequence of waves, and this is the service that knows which one is playing.
 ///
 /// **A matchday is the unit of football, not a round.** The bug this exists to fix is that a
@@ -94,6 +125,115 @@ public class MatchdayService
         _transfers = transfers;
         _unitOfWork = unitOfWork;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// The window a club's next unplayed fixture is in.
+    ///
+    /// **The windows of a day are ordered by the wave they are played in, never by their
+    /// number.** A window's number is an identifier and not an order: a championship window
+    /// is numbered after its matchday, a cup window by how many cup ties there have been
+    /// (`CupWindowNumber`), and the Supercup is window one of the first day. Sorting by that
+    /// number puts the round of sixteen — window one of the cup, on day five — before the
+    /// championship of day five — window five — and a sidebar that ordered its next match
+    /// that way offered a manager a cup leg the backend then refused to start, because a
+    /// matchday is played in waves: Supercup, championship, cup. The order is
+    /// <see cref="CompetitionRules.MatchdayWaves"/>, and it is read here rather than worked
+    /// out in a client, because a client that re-derives it re-derives it wrongly.
+    ///
+    /// Everything is read as a set — the days, the windows, the season's fixtures — and the
+    /// walk is done on what came back, because a calendar of thirty days and a hundred and
+    /// twenty windows answered one window at a time is a hundred and twenty requests to find
+    /// a single fixture.
+    ///
+    /// Whether the window may be started is asked of the same progress the day itself uses,
+    /// so the answer a sidebar gets and the answer a start command gets are the same rule
+    /// read twice and not two rules that can disagree.
+    /// </summary>
+    public async Task<NextFixtureWindow?> GetNextFixtureWindowAsync(
+        Guid teamId,
+        Guid seasonId,
+        CancellationToken cancellationToken = default)
+    {
+        var days = await _matchDayRepository.ListBySeasonAsync(seasonId, cancellationToken);
+        if (days.Count == 0)
+        {
+            return null;
+        }
+
+        var dayById = days.ToDictionary(day => day.Id);
+        var dayOrder = days.ToDictionary(day => day.Id, day => day.Number);
+
+        var views = await _competitionRepository.ListSeasonViewsAsync(seasonId, cancellationToken);
+        var viewById = views.ToDictionary(view => view.Id);
+        var typeByView = views.ToDictionary(view => view.Id, view => view.Type);
+
+        var rounds = await _roundRepository.ListByCompetitionSeasonIdsAsync(
+            typeByView.Keys.ToList(),
+            cancellationToken);
+
+        if (rounds.Count == 0)
+        {
+            return null;
+        }
+
+        var roundById = rounds.ToDictionary(round => round.Id);
+
+        var fixtures = await _fixtureRepository.ListByRoundIdsAsync(
+            rounds.Select(round => round.Id).ToList(),
+            cancellationToken);
+
+        // Every fixture of the season, grouped by the window it is in. The grouping is what
+        // turns one read of the calendar into the walk below.
+        var byRound = fixtures
+            .GroupBy(fixture => fixture.RoundId)
+            .ToDictionary(group => group.Key, group => group.ToList());
+
+        // The order football is played in: the day first, and the wave inside it.
+        var windows = rounds
+            .Where(round => round.MatchDayId is not null && typeByView.ContainsKey(round.CompetitionSeasonId))
+            .OrderBy(round => dayOrder.GetValueOrDefault(round.MatchDayId!.Value, 0))
+            .ThenBy(round => CompetitionRules.WaveOf(typeByView[round.CompetitionSeasonId]))
+            .ThenBy(round => round.Id);
+
+        foreach (var round in windows)
+        {
+            // A fixture is still to be played until it is finished — including one that is in
+            // progress right now, which is the one a manager most wants to be told about, and
+            // one that was postponed, which is a fixture that needs playing more than most.
+            var candidate = (byRound.GetValueOrDefault(round.Id) ?? new List<Fixture>())
+                .FirstOrDefault(fixture =>
+                    (fixture.HomeTeamId == teamId || fixture.AwayTeamId == teamId)
+                    && fixture.Status is not FixtureStatus.Finished);
+
+            if (candidate is null)
+            {
+                continue;
+            }
+
+            var type = typeByView[round.CompetitionSeasonId];
+            var progress = await GetProgressAsync(round.MatchDayId!.Value, cancellationToken);
+
+            // The wave the day is waiting on, which is only a thing when this window is not
+            // it. Carrying the day’s own wave alongside `WaveOpen: true` would be an answer
+            // that says the same two things at once and leaves a client to work out which of
+            // them it is meant to believe.
+            var open = progress.OpenWave;
+            var playable = open is null || open == type;
+
+            return new NextFixtureWindow(
+                candidate.Id,
+                round.Id,
+                round.Number,
+                round.MatchDayId,
+                dayById[round.MatchDayId.Value].Number,
+                playable,
+                playable ? null : open,
+                viewById[round.CompetitionSeasonId].Name,
+                type);
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -495,6 +635,14 @@ public class MatchdayService
                 {
                     continue;
                 }
+
+                // A club without a manager is not a club that forgets: it is a club that has to be told
+                // when to decide. The sweep answers the bids that have been waiting past the round
+                // they were given, so a proposal left on an NPC club's desk does not sit there
+                // until the season closes — the player is free again, and the market keeps
+                // moving. It runs after the clubs nobody is watching have shopped, so a bid made
+                // this round and given until next round is answered next round and not before.
+                await _transfers.ExpirePendingProposalsAsync(closedRound, cancellationToken);
 
                 var arrivalRound = Math.Min(
                     CompetitionRules.LeagueMatchDays, closedRound + 1);

@@ -33,8 +33,14 @@ public sealed class LiveMatch
     /// True for the matches nobody is watching: the ones of the other clubs in the
     /// round. They are simulated by the same loop, but nobody is there to leave the
     /// half-time pause, so the loop does it for them.
+    ///
+    /// Set to false the moment a manager lays claim to a match: the match keeps on the
+    /// clock it already had, but the interval becomes the manager's and the engine stops
+    /// substituting for his side. It is never flipped back — a manager who leaves mid
+    /// match is expected to come back to the screen he left, the same as a match he
+    /// started himself.
     /// </summary>
-    public bool AutoContinue { get; }
+    public bool AutoContinue { get; set; }
 
     public MatchEngine Engine { get; }
     public MatchState State { get; }

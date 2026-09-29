@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Teams;
 using NinjaEleven.Domain.Transfers;
@@ -17,7 +18,7 @@ public class TransferConfiguration : IEntityTypeConfiguration<Transfer>
 
         builder.Property(t => t.Id).ValueGeneratedNever();
 
-        builder.HasOne<Domain.Players.Player>()
+        builder.HasOne(t => t.Player)
             .WithMany()
             .HasForeignKey(t => t.PlayerId)
             .OnDelete(DeleteBehavior.Restrict);
@@ -25,12 +26,12 @@ public class TransferConfiguration : IEntityTypeConfiguration<Transfer>
         // The seller is optional because a player with no club can be signed, and a signing is
         // a transfer whose seller is nobody. The buyer is never optional: a transfer without one
         // is not a transfer.
-        builder.HasOne<Team>()
+        builder.HasOne(t => t.SellingClub)
             .WithMany()
             .HasForeignKey(t => t.SellingClubId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        builder.HasOne<Team>()
+        builder.HasOne(t => t.BuyingClub)
             .WithMany()
             .HasForeignKey(t => t.BuyingClubId)
             .OnDelete(DeleteBehavior.Restrict);
@@ -57,7 +58,6 @@ public class TransferConfiguration : IEntityTypeConfiguration<Transfer>
             .ValueGeneratedNever();
 
         builder.Property(t => t.ProposedAt)
-            .HasPrecision(14, 2)
             .ValueGeneratedNever();
 
         // The column keeps the name it was born with: it holds a round number and has held one
@@ -65,6 +65,17 @@ public class TransferConfiguration : IEntityTypeConfiguration<Transfer>
         // migration spent on a word rather than on a rule.
         builder.Property(t => t.ArrivalRoundNumber)
             .HasColumnName("arrival_round_id")
+            .ValueGeneratedNever();
+
+        // The round the proposal was made in and the round by which the selling club must
+        // answer. The deadline is null for a club with a manager, which answers on its own
+        // schedule; it is set for a club without one, which has to be told when to decide.
+        builder.Property(t => t.ProposalRoundNumber)
+            .HasColumnName("proposal_round_number")
+            .ValueGeneratedNever();
+
+        builder.Property(t => t.AnswerByRound)
+            .HasColumnName("answer_by_round")
             .ValueGeneratedNever();
 
         builder.HasIndex(t => new { t.SellingClubId, t.BuyingClubId, t.PlayerId });

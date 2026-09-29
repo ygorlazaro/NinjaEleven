@@ -1,6 +1,7 @@
 import React from 'react';
 import type { FeedEvent } from '@/state';
 import { ClubName } from '@/components/Common/Names';
+import ClubCrest from '@/components/Club/ClubCrest';
 import { useNavigate } from 'react-router-dom';
 
 /** Live score of one match of the round, as pushed by the backend. */
@@ -11,9 +12,14 @@ export interface MatchScore {
   homeTeamId: string;
   homeTeamName: string;
   homeShortName: string;
+  /** The club's two colours, so a row can carry the same shield as everywhere else. */
+  homePrimaryColor: string;
+  homeSecondaryColor: string;
   awayTeamId: string;
   awayTeamName: string;
   awayShortName: string;
+  awayPrimaryColor: string;
+  awaySecondaryColor: string;
   homeGoals: number;
   awayGoals: number;
   minute: number;
@@ -104,9 +110,21 @@ const MatchdayScoreboard: React.FC<MatchdayScoreboardProps> = ({
             <div className="matchday-teams">
               <span className="dot" aria-hidden="true" />
               <span className="name" title={score.homeTeamName}>
+                <ClubCrest
+                  primary={score.homePrimaryColor}
+                  secondary={score.homeSecondaryColor}
+                  name={score.homeTeamName}
+                  className="mini-crest"
+                />
                 <ClubName teamId={score.homeTeamId}>{score.homeTeamName}</ClubName>
               </span>
               <span className="name right" title={score.awayTeamName}>
+                <ClubCrest
+                  primary={score.awayPrimaryColor}
+                  secondary={score.awaySecondaryColor}
+                  name={score.awayTeamName}
+                  className="mini-crest"
+                />
                 <ClubName teamId={score.awayTeamId}>{score.awayTeamName}</ClubName>
               </span>
             </div>

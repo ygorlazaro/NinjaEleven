@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
+using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Finance;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Teams;
@@ -472,5 +473,28 @@ public class FinanceService
         var seasons = await _seasons.ListAsync(cancellationToken);
 
         return seasons.ToDictionary(season => season.Id, season => season.Number);
+    }
+
+    /// <summary>
+    /// The money a club has, read from the last line written in its whole book. It is the one
+    /// number the market shows above everything else — a manager bidding on a man needs to
+    /// know whether his club can pay — and it is not narrowed by a season, because a balance
+    /// that followed a filter would tell a manager his club had as much as it had spent.
+    /// </summary>
+    public async Task<ClubBalance> GetBalanceAsync(
+        Guid teamId,
+        CancellationToken cancellationToken = default)
+    {
+        var team = await _teams.GetAsync(teamId, cancellationToken)
+            ?? throw new EntityNotFoundException("Team", teamId);
+
+        var last = await _finance.GetLastAsync(teamId, cancellationToken);
+
+        return new ClubBalance
+        {
+            TeamId = teamId,
+            TeamName = team.Name,
+            Balance = last?.BalanceAfter ?? 0m
+        };
     }
 }

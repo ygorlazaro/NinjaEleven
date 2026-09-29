@@ -206,6 +206,26 @@ public class MatchState
     public bool ManagerSelectsInjuryReplacement(Guid teamId) => ManagerTeamId == teamId;
 
     /// <summary>
+    /// Whether a substitution for <paramref name="teamId"/> is the manager's to make.
+    ///
+    /// A manager commands his own club and no other. He can watch a matchday — the round
+    /// group carries the other clubs' scorelines and their goals to the screen he is on —
+    /// and a match he is not playing in is a match he has no eleven of: naming who comes off
+    /// the pitch of a club he does not manage is not a decision anybody gave him the right to
+    /// make, however the command reached the service.
+    ///
+    /// The engine makes the other side's own substitutions and does not come through here,
+    /// so nothing about the football changes: a match still runs to full time with eleven men
+    /// a side and the engine's own choices intact. What is refused is a command, which is a
+    /// different thing from a match.
+    ///
+    /// A match with no manager attached — a headless one, simulated from the calendar — has
+    /// nobody to take a command from, so every club in it is refused: a substitution with no
+    /// manager behind it is a substitution with no author.
+    /// </summary>
+    public bool ManagerCommandsTeam(Guid teamId) => ManagerTeamId is { } managed && managed == teamId;
+
+    /// <summary>
     /// Settles an injury the manager was asked about, once he has named the replacement.
     /// The knock is applied here rather than when it happened, because the man was still
     /// playing until the change was made; a player who is not marked hurt stays off the

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { CupBracketClubDto, CupBracketDto, CupBracketTieDto } from '@/types';
 import { ClubName } from '@/components/Common/Names';
 import ClubCrest from '@/components/Club/ClubCrest';
@@ -26,6 +27,8 @@ const legScore = (goals?: number | null, conceded?: number | null) =>
  * knockout, and the reason the columns get wider as they go.
  */
 const CupBracket: React.FC<{ bracket: CupBracketDto }> = ({ bracket }) => {
+  const navigate = useNavigate();
+
   if (bracket.rounds.length === 0) {
     return (
       <div className="cup-bracket-empty">
@@ -42,7 +45,7 @@ const CupBracket: React.FC<{ bracket: CupBracketDto }> = ({ bracket }) => {
             <h3 className="cup-bracket__title">{round.name}</h3>
             <div className="cup-bracket__ties">
               {round.ties.map(tie => (
-                <TieCard key={tie.tieId} tie={tie} />
+                <TieCard key={tie.tieId} tie={tie} onNavigate={navigate} />
               ))}
             </div>
           </section>
@@ -63,8 +66,12 @@ const CupBracket: React.FC<{ bracket: CupBracketDto }> = ({ bracket }) => {
 };
 
 /** One tie: the two clubs, the two legs, and the aggregate. */
-const TieCard: React.FC<{ tie: CupBracketTieDto }> = ({ tie }) => {
+const TieCard: React.FC<{ tie: CupBracketTieDto; onNavigate: (path: string) => void }> = ({ tie, onNavigate }) => {
   const [home, away] = tie.clubs;
+
+  const goToMatch = (matchId?: string | null) => {
+    if (matchId) onNavigate(`/match/${matchId}`);
+  };
 
   return (
     <div className={`cup-tie ${tie.clubs.some(club => club.isWinner) ? 'cup-tie--decided' : ''}`}>
@@ -83,6 +90,28 @@ const TieCard: React.FC<{ tie: CupBracketTieDto }> = ({ tie }) => {
         ) : (
           <span className="cup-tie__pending">Em andamento</span>
         )}
+        <div className="cup-tie__watch">
+          {tie.firstLegMatchId && (
+            <button
+              type="button"
+              className="cup-tie__watch-btn"
+              onClick={() => goToMatch(tie.firstLegMatchId)}
+              title="Assistir ao 1º jogo"
+            >
+              1º jogo
+            </button>
+          )}
+          {tie.secondLegMatchId && (
+            <button
+              type="button"
+              className="cup-tie__watch-btn"
+              onClick={() => goToMatch(tie.secondLegMatchId)}
+              title="Assistir ao 2º jogo"
+            >
+              2º jogo
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

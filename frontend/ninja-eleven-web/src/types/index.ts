@@ -246,6 +246,8 @@ export interface TransferSearchFilters {
 
 export interface TransferHistoryLineDto {
   playerId: Guid;
+  playerName: string;
+  playerPosition: string;
   /** Null when nobody sold him: a free agent who was signed has a history line too. */
   sellingClubId?: Guid | null;
   sellingClubName: string;
@@ -258,6 +260,7 @@ export interface TransferHistoryLineDto {
   completedAt?: string | null;
   proposalSeasonNumber: number;
   arrivalSeasonNumber: number;
+  arrivalRoundNumber?: number | null;
 }
 
 export interface ReleaseResultDto {
@@ -392,6 +395,32 @@ export interface FixtureDto {
   awayTeam?: TeamDto | null;
 }
 
+/**
+ * A club's next match, and whether it can be played right now.
+ *
+ * `waveOpen` is false when the fixture is a cup leg behind a championship of the same day
+ * that has not been played yet. That is an answer, not an error, and a screen that offered
+ * such a fixture as kick-off time sent the manager to a refusal.
+ */
+export interface NextFixtureDto {
+  fixture: FixtureDto;
+  roundId: Guid;
+  /**
+   * The window's number, which is an identifier and not an order of play: a championship
+   * window is numbered after its matchday and a cup window by how many ties there have been.
+   */
+  roundNumber: number;
+  matchDayId?: Guid | null;
+  matchDayNumber?: number | null;
+  waveOpen: boolean;
+  /** The wave the day is in while this fixture is not it. Empty when it is. */
+  waitingFor: string;
+  /** The edition the window belongs to, which is what a box reads out. */
+  competitionName: string;
+  /** The kind of competition, which is what orders a matchday's windows. */
+  competitionType: string;
+}
+
 /** Snapshot served by GET /match/{id}: state plus the ordered event log. */
 export interface MatchDto {
   id: Guid;
@@ -429,6 +458,32 @@ export interface MatchEventDto {
 }
 
 export type MatchHalf = 'First' | 'Second' | 'ExtraTime' | 'PenaltyShootout';
+
+/**
+ * The match a club is playing right now, as a navigation badge shows it. Null is "not at the
+ * moment", and it is the answer most of a season's hours.
+ */
+export interface LiveMatchDto {
+  matchId: Guid;
+  roundId: Guid;
+  homeTeamId: Guid;
+  homeTeamName: string;
+  homeShortName: string;
+  homePrimaryColor: string;
+  homeSecondaryColor: string;
+  awayTeamId: Guid;
+  awayTeamName: string;
+  awayShortName: string;
+  awayPrimaryColor: string;
+  awaySecondaryColor: string;
+  homeGoals: number;
+  awayGoals: number;
+  minute: number;
+  /** Whether the club the badge was asked about is the home one. */
+  isHome: boolean;
+  /** The match is standing at the interval, where the clock is stopped rather than late. */
+  atHalfTime: boolean;
+}
 
 export interface MatchStateDto {
   matchId: Guid;
@@ -1609,4 +1664,36 @@ export interface ClubRankingDto {
   strength: number;
   seasonScores: Record<number, number>;
   cupScores: Record<number, number>;
+}
+
+/**
+ * The club's balance, as the market reads it: the money the club has, and nothing else.
+ * It is read from the last line written in the club's whole book.
+ */
+export interface ClubBalanceDto {
+  teamId: Guid;
+  teamName: string;
+  balance: number;
+}
+
+/**
+ * The recent business of a division: the transfers that finished in the last few rounds,
+ * across every club in it.
+ */
+export interface DivisionRecentTransfersDto {
+  competitionSeasonId: Guid;
+  currentRound: number;
+  windowRounds: number;
+  transfers: TransferHistoryLineDto[];
+}
+
+/**
+ * A club's transfer history: every deal the club was involved in, across the seasons asked
+ * for, newest first. Pending and accepted sit in the same table as completed ones.
+ */
+export interface ClubTransferHistoryDto {
+  teamId: Guid;
+  teamName: string;
+  seasonNumbers: number[];
+  transfers: TransferHistoryLineDto[];
 }

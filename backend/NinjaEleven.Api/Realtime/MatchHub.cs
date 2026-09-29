@@ -143,13 +143,46 @@ public class MatchHub : Hub
 
     /// <summary>
     /// Leaves the half-time pause. The client decides when, because it is the one that
-    /// shows the interval to the user.
+      /// shows the interval to the user.
     /// </summary>
     public Task<MatchCommandResultDto> ContinueSecondHalf(MatchCommandDto request) =>
         ExecuteAsync(
             request.MatchId,
             "continue-second-half",
             matchId => _matchService.ContinueSecondHalfAsync(matchId, Context.ConnectionAborted));
+
+    /// <summary>
+    /// Claims a headless match of the manager's own club, handing the keyboard over from the
+    /// engine to the manager.
+    ///
+    /// A cup window starts every fixture at once, so a manager who opens his club's match
+    /// while it is already being played finds a session with no manager: the engine is
+    /// playing both sides, the interval passes on its own and a substitution is refused.
+    /// This hands control back without restarting a match the matchday has already seen
+    /// kick off — the score and the eleven are kept, and only the control plane flips. The
+    /// server answers for the manager's own club: a claim for any other side is refused,
+    /// so a screen that followed a link to another club's match simply leaves the engine
+    /// playing it.
+    ///
+    /// The claimed state is pushed straight away, so the substitution buttons and the
+    /// half-time prompt appear without waiting for the next tick.
+    /// </summary>
+    public async Task<Guid> AttachManager(Guid matchId, Guid userTeamId)
+    {
+        var attached = _matchService.AttachManager(matchId, userTeamId);
+
+        if (attached)
+        {
+            await _publisher.PublishAsync(matchId, new MatchCommandResultDto
+            {
+                Accepted = true,
+                MatchId = matchId,
+                Events = Array.Empty<MatchEngineEventDto>()
+            }, Context.ConnectionAborted);
+        }
+
+        return matchId;
+    }
 
     /// <summary>
     /// Runs one command and republishes whatever it produced, so every follower of the

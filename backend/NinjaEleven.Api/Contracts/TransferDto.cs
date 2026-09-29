@@ -155,18 +155,65 @@ public class TransferSearchResultDto
 
 public class TransferHistoryLineDto
 {
+    public Guid TransferId { get; init; }
     public Guid PlayerId { get; init; }
+    public string PlayerName { get; init; } = string.Empty;
+    public string PlayerPosition { get; init; } = string.Empty;
+
     public Guid? SellingClubId { get; init; }
-    public string SellingClubName { get; init; } = string.Empty;
+    public string? SellingClubName { get; init; }
+
     public Guid BuyingClubId { get; init; }
     public string BuyingClubName { get; init; } = string.Empty;
+
+    public int ProposalSeasonNumber { get; init; }
+    public int ArrivalSeasonNumber { get; init; }
+    public int? ArrivalRoundNumber { get; init; }
+
     public decimal Fee { get; init; }
     public TransferStatus Status { get; init; }
     public DateOnly ProposedAt { get; init; }
     public DateOnly? ResolvedAt { get; init; }
     public DateOnly? CompletedAt { get; init; }
-    public int ProposalSeasonNumber { get; init; }
-    public int ArrivalSeasonNumber { get; init; }
+}
+
+/// <summary>
+/// The recent business of a division: the transfers that finished in the last few rounds,
+/// across every club in it. A market that shows what happened recently is a market a manager
+/// can read without opening a second screen.
+/// </summary>
+public class DivisionRecentTransfersDto
+{
+    public Guid CompetitionSeasonId { get; init; }
+    public int CurrentRound { get; init; }
+    public int WindowRounds { get; init; }
+    public IReadOnlyList<TransferHistoryLineDto> Transfers { get; init; } = Array.Empty<TransferHistoryLineDto>();
+}
+
+/// <summary>
+/// A club's transfer history: every deal the club was involved in, across the seasons asked
+/// for, newest first. Pending and accepted sit in the same table as completed ones, because a
+/// proposal is a fact about the club's season whether or not the selling club has answered it.
+/// </summary>
+public class ClubTransferHistoryDto
+{
+    public Guid TeamId { get; init; }
+    public string TeamName { get; init; } = string.Empty;
+    public IReadOnlyList<int> SeasonNumbers { get; init; } = Array.Empty<int>();
+    public IReadOnlyList<TransferHistoryLineDto> Transfers { get; init; } = Array.Empty<TransferHistoryLineDto>();
+}
+
+/// <summary>
+/// A club's balance, as the market reads it: the money the club has, and nothing else. It is
+/// read from the last line written in the club's whole book, so a balance that followed a
+/// filter would tell a manager his club had as much as it had spent, which is the one number
+/// in the game that would be plainly wrong.
+/// </summary>
+public class ClubBalanceDto
+{
+    public Guid TeamId { get; init; }
+    public string TeamName { get; init; } = string.Empty;
+    public decimal Balance { get; init; }
 }
 
 public class NpcTransferResultDto

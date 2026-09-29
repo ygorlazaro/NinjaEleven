@@ -164,7 +164,7 @@ public class TransferServiceMoneyTests
         _players.Setup(repo => repo.GetSeasonStateForUpdateAsync(
                 player.Id, _season.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(PlayerSeasonState.CreateFreeAgent(player.Id, _season.Id, 100));
-        _transfers.Setup(repo => repo.ExistsActiveAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _transfers.Setup(repo => repo.ExistsAcceptedAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         Transfer? signed = null;

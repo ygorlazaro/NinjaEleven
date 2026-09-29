@@ -1177,18 +1177,86 @@ public class MatchServiceTests
         var view = await service.GetStateAsync(matchId);
         Assert.True(view.Penalty.AwaitingSelection);
 
-        // The home club is not the one being penalised.
+        // The home club is not the manager's, and a manager commands his own club only. He
+        // gets that answer first, and it is the honest one: he has no eleven in that side of
+        // the fixture, so there is nobody for him to name a taker out of.
         var wrong = await ThrowsDomainAsync(() => service.SelectPenaltyTakerAsync(
             matchId, _home.Id, view.Penalty.Candidates[0].PlayerId));
 
-        Assert.Equal("PenaltyNotForTeam", wrong.Code);
+        Assert.Equal("NotYourTeam", wrong.Code);
 
+        // And his own club, asked to take a penalty awarded to the other one, is refused for
+        // the other reason: the penalty is not his. A manager may not hand his taker to the
+        // opposition, so the two refusals stay two and neither answers for the other.
+        live.PenaltyTeam = 1;
+        var viewForHome = await service.GetStateAsync(matchId);
+        Assert.False(viewForHome.Penalty.AwaitingSelection);
+
+        var notMine = await ThrowsDomainAsync(() => service.SelectPenaltyTakerAsync(
+            matchId, _away.Id, view.Penalty.Candidates[0].PlayerId));
+
+        Assert.Equal("PenaltyNotForTeam", notMine.Code);
+
+        live.PenaltyTeam = 2;
         var taken = await service.SelectPenaltyTakerAsync(
             matchId, _away.Id, view.Penalty.Candidates[0].PlayerId);
 
         Assert.True(taken.Accepted);
         Assert.Contains(taken.Events, e => e.Type == MatchEventType.PenaltyTaken);
         Assert.False(serviceState(matchId).PenaltyAwaitingSelection);
+    }
+
+    [Fact]
+    public async Task A_manager_cannot_substitute_for_a_club_of_another_match()
+    {
+        // The manager's own club is in this match, and a matchday carries the other clubs'
+        // games to his screen, so a command naming the opposition is one a client can send
+        // without meaning to. It is refused: he commands his own club, and only his own.
+        var service = CreateService();
+        var result = await service.StartAsync(_fixture.Id, 7, _home.Id, HomeSquadIds().Take(SquadSize).ToList());
+        Assert.True(result.Accepted);
+        var matchId = result.MatchId;
+
+        var state = serviceState(matchId);
+        var opponentOnPitch = state.AwayLineup.First(player => player.IsOnPitch);
+        var opponentOnBench = state.AwayBench.First(player => !player.SubbedOff);
+
+        var refused = await ThrowsDomainAsync(() => service.SubstituteAsync(
+            matchId, _away.Id, opponentOnPitch.PlayerId, opponentOnBench.PlayerId));
+
+        Assert.Equal("NotYourTeam", refused.Code);
+
+        // The refusal changed nothing: the side he is not managing still has eleven out there
+        // and the man he named is still the one playing, because a refused command is not a
+        // change that happened and then was undone.
+        var after = serviceState(matchId);
+        Assert.Contains(after.AwayLineup, player => player.PlayerId == opponentOnPitch.PlayerId);
+        Assert.DoesNotContain(after.AwayLineup, player => player.PlayerId == opponentOnBench.PlayerId);
+        Assert.Equal(0, after.SubstitutionsAway);
+    }
+
+    [Fact]
+    public async Task A_manager_may_still_substitute_for_his_own_club()
+    {
+        // The other side of the rule above: a refusal that refused everything would be a
+        // match the manager cannot manage, which is the worse bug of the two.
+        var service = CreateService();
+        var result = await service.StartAsync(_fixture.Id, 7, _home.Id, HomeSquadIds().Take(SquadSize).ToList());
+        Assert.True(result.Accepted);
+        var matchId = result.MatchId;
+
+        var state = serviceState(matchId);
+        var ownOnPitch = state.HomeLineup.First(player => player.IsOnPitch && player.Position != Domain.Enums.Position.GK);
+        var ownOnBench = state.HomeBench.First(player => !player.SubbedOff);
+
+        var swapped = await service.SubstituteAsync(
+            matchId, _home.Id, ownOnPitch.PlayerId, ownOnBench.PlayerId);
+
+        Assert.True(swapped.Accepted);
+
+        var after = serviceState(matchId);
+        Assert.Contains(after.HomeLineup, player => player.PlayerId == ownOnBench.PlayerId);
+        Assert.Equal(1, after.SubstitutionsHome);
     }
 
     [Fact]

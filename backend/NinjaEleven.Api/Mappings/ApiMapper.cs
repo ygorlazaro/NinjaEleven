@@ -710,6 +710,27 @@ public static MatchContextDto ToDto(this Application.Models.MatchContextView con
 
 public static class MatchScoreMapper
 {
+    public static LiveMatchDto ToDto(this LiveMatchSummary summary) => new()
+    {
+        MatchId = summary.MatchId,
+        RoundId = summary.RoundId,
+        HomeTeamId = summary.HomeTeamId,
+        HomeTeamName = summary.HomeTeamName,
+        HomeShortName = summary.HomeShortName,
+        HomePrimaryColor = summary.HomePrimaryColor,
+        HomeSecondaryColor = summary.HomeSecondaryColor,
+        AwayTeamId = summary.AwayTeamId,
+        AwayTeamName = summary.AwayTeamName,
+        AwayShortName = summary.AwayShortName,
+        AwayPrimaryColor = summary.AwayPrimaryColor,
+        AwaySecondaryColor = summary.AwaySecondaryColor,
+        HomeGoals = summary.HomeGoals,
+        AwayGoals = summary.AwayGoals,
+        Minute = summary.Minute,
+        IsHome = summary.IsHome,
+        AtHalfTime = summary.AtHalfTime
+    };
+
     public static MatchScoreDto ToDto(this MatchScoreRow row) => new()
     {
         RoundId = row.RoundId,
@@ -718,9 +739,13 @@ public static class MatchScoreMapper
         HomeTeamId = row.HomeTeamId,
         HomeTeamName = row.HomeTeamName,
         HomeShortName = row.HomeShortName,
+        HomePrimaryColor = row.HomePrimaryColor,
+        HomeSecondaryColor = row.HomeSecondaryColor,
         AwayTeamId = row.AwayTeamId,
         AwayTeamName = row.AwayTeamName,
         AwayShortName = row.AwayShortName,
+        AwayPrimaryColor = row.AwayPrimaryColor,
+        AwaySecondaryColor = row.AwaySecondaryColor,
         HomeGoals = row.HomeGoals,
         AwayGoals = row.AwayGoals,
         Minute = row.Minute,
@@ -1036,25 +1061,68 @@ public static class TeamMatchRecordMapping
         }
     };
 
-    public static TransferHistoryLineDto ToDto(this Application.Models.PlayerTransferHistoryLine line) => new()
+    public static TransferHistoryLineDto ToDto(this Application.Models.TransferHistoryLine line) => new()
     {
+        TransferId = line.TransferId,
         PlayerId = line.PlayerId,
+        PlayerName = line.PlayerName,
+        PlayerPosition = line.PlayerPosition,
         SellingClubId = line.SellingClubId,
         SellingClubName = line.SellingClubName,
         BuyingClubId = line.BuyingClubId,
         BuyingClubName = line.BuyingClubName,
+        ProposalSeasonNumber = line.ProposalSeasonNumber,
+        ArrivalSeasonNumber = line.ArrivalSeasonNumber,
+        ArrivalRoundNumber = line.ArrivalRoundNumber,
+        Fee = line.Fee,
+        Status = Enum.Parse<Domain.Transfers.TransferStatus>(line.Status),
+        ProposedAt = line.ProposedAt,
+        ResolvedAt = line.ResolvedAt,
+        CompletedAt = line.CompletedAt
+    };
+
+    public static TransferHistoryLineDto ToDto(this Application.Models.PlayerTransferHistoryLine line) => new()
+    {
+        TransferId = Guid.Empty,
+        PlayerId = line.PlayerId,
+        PlayerName = string.Empty,
+        PlayerPosition = string.Empty,
+        SellingClubId = line.SellingClubId,
+        SellingClubName = line.SellingClubName,
+        BuyingClubId = line.BuyingClubId,
+        BuyingClubName = line.BuyingClubName,
+        ProposalSeasonNumber = line.ProposalSeasonNumber,
+        ArrivalSeasonNumber = line.ArrivalSeasonNumber,
+        ArrivalRoundNumber = null,
         Fee = line.Fee,
         Status = line.Status,
         ProposedAt = line.ProposedAt,
         ResolvedAt = line.ResolvedAt,
-        CompletedAt = line.CompletedAt,
-        ProposalSeasonNumber = line.ProposalSeasonNumber,
-        ArrivalSeasonNumber = line.ArrivalSeasonNumber
+        CompletedAt = line.CompletedAt
     };
 
-    public static IReadOnlyList<TransferHistoryLineDto> ToDtos(
-        this IEnumerable<Application.Models.PlayerTransferHistoryLine> lines) =>
-        lines.Select(line => line.ToDto()).ToList();
+    public static DivisionRecentTransfersDto ToDto(this Application.Models.DivisionRecentTransfers recent) => new()
+    {
+        CompetitionSeasonId = recent.CompetitionSeasonId,
+        CurrentRound = recent.CurrentRound,
+        WindowRounds = recent.WindowRounds,
+        Transfers = recent.Transfers.Select(line => line.ToDto()).ToArray()
+    };
+
+    public static ClubTransferHistoryDto ToDto(this Application.Models.ClubTransferHistory history) => new()
+    {
+        TeamId = history.TeamId,
+        TeamName = history.TeamName,
+        SeasonNumbers = history.SeasonNumbers,
+        Transfers = history.Transfers.Select(line => line.ToDto()).ToArray()
+    };
+
+    public static ClubBalanceDto ToDto(this Application.Models.ClubBalance balance) => new()
+    {
+        TeamId = balance.TeamId,
+        TeamName = balance.TeamName,
+        Balance = balance.Balance
+    };
 
     public static ClubRankingDto ToDto(this Application.Services.ClubRankingEntry entry) => new()
     {

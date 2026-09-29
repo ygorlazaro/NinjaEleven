@@ -4,7 +4,9 @@ import { SeasonApi, ManagerApi } from '@/api';
 import { useGameState } from '@/state';
 import { useNextFixture } from '@/hooks/useNextFixture';
 import { usePendingOfferCount, useCurrentSeasonId } from '@/hooks/usePendingOffers';
+import { useLiveMatch } from '@/hooks/useLiveMatch';
 import NextMatchBox from '@/components/Common/NextMatchBox';
+import LiveMatchBadge from '@/components/Common/LiveMatchBadge';
 import ClubCrest from '@/components/Club/ClubCrest';
 
 /**
@@ -84,6 +86,11 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // this one.
   const pendingOffers = usePendingOfferCount(selectedTeam?.id, currentSeasonId);
 
+  // The club is playing right now, or it is not. It is asked again on every route because a
+  // match is started from the lineup screen, and a badge that appeared half a minute after
+  // the whistle would be a badge nobody could rely on to mean "go now".
+  const liveMatch = useLiveMatch(selectedTeam?.id, pathname);
+
   return (
     <div className={`shell${bare ? ' shell--bare' : ''}`}>
       {!bare && (
@@ -120,6 +127,13 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </Link>
         )}
 
+        {/* The club is playing *now*, and the column says so from every screen.
+            It sits above the club's card rather than in the list of places to go, because it
+            is not a place: it is the one thing in the game that is happening while the
+            manager is somewhere else, and a manager who is deciding whether to leave the
+            market to watch it should not have to go looking to find out that it started. */}
+        {liveMatch && <LiveMatchBadge live={liveMatch} />}
+
         <nav className="sidebar-nav">
           <NavLink
             to={lineupTarget}
@@ -127,7 +141,14 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           >
             <span className="sidebar-link__icon">📋</span>
             <span className="sidebar-link__label">Escalação</span>
-            {next && <span className="sidebar-link__round">R{next.round.number}</span>}
+            {/* The day, not the window's number: a cup window is numbered by how many ties
+                there have been, so "R1" on a round-of-16 leg means nothing to a manager
+                while the day it is played on means exactly how far away it is. */}
+            {next && (
+              <span className="sidebar-link__round">
+                {next.matchDayNumber ? `D${next.matchDayNumber}` : '—'}
+              </span>
+            )}
           </NavLink>
 
           <NavLink

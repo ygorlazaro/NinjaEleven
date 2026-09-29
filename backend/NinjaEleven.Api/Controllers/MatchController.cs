@@ -42,6 +42,24 @@ public class MatchController : ControllerBase
     }
 
     /// <summary>
+    /// The match a club is playing right now, or nothing when it is not playing one.
+    ///
+    /// A navigation column asks this because a manager managing a club is somewhere else
+    /// most of the time, and a club that is mid-game needs to be one click away rather than
+    /// something he has to go and look for. It is asked of the club and not of the manager,
+    /// because a club is what is playing.
+    /// </summary>
+    [HttpGet("live/{teamId:guid}")]
+    public async Task<ActionResult<LiveMatchDto?>> GetLiveForTeam(
+        Guid teamId,
+        CancellationToken cancellationToken)
+    {
+        var live = await _matchService.GetLiveMatchForTeamAsync(teamId, cancellationToken);
+
+        return live is null ? Ok() : Ok(live.ToDto());
+    }
+
+    /// <summary>
     /// The tactics a manager can order his eleven to be built in. Sent to the client
     /// rather than hard-coded there, so a tactic added to the catalogue shows up in the
     /// lineup screen without a frontend release.

@@ -1,15 +1,21 @@
-import React from 'react';
-import type { MatchLineupDto, MatchPlayerDto } from '@/types';
+import React, { useEffect, useState } from 'react';
+import type { MatchLineupDto, MatchPlayerDto, TeamDto } from '@/types';
 import { positionLabel, sortByPosition, starsToString } from '@/services/formatters';
 import EnergyBar from '@/components/Match/EnergyBar';
 import SubstitutionPanel from '@/components/Match/SubstitutionPanel';
 import { ClubName, PlayerName } from '@/components/Common/Names';
+import ClubCrest from '@/components/Club/ClubCrest';
 import HurtBadge from '@/components/Match/HurtBadge';
 
 interface TeamSheetProps {
   lineup: MatchLineupDto;
-  /** Which side of the team sheet belongs to the manager: 0 is home, 1 is away. */
-  userTeamIndex: number;
+  /**
+   * Which side of the team sheet belongs to the manager: 0 is home, 1 is away — and null
+   * when his club is in neither, which is a match he is watching rather than playing. Both
+   * sheets are then documents: neither carries a change panel, because a manager has no
+   * eleven in a game of two other clubs and the backend refuses a change for either.
+   */
+  userTeamIndex: number | null;
   /** False once the match is over, so a finished match is a document and not a decision. */
   canSubstitute: boolean;
   substitutionsUsed: number;
@@ -17,10 +23,35 @@ interface TeamSheetProps {
   onSubstitute: (playerOutId: string, playerInId: string) => void;
 }
 
+/** One side of the fixture: which club it is and the eleven and bench of that club. */
+type Side = {
+  team: TeamDto;
+  onPitch: MatchPlayerDto[];
+  bench: MatchPlayerDto[];
+  /** True for the club the manager commands, and the only side a change can be made on. */
+  isHis: boolean;
+  substitutionsUsed: number;
+};
+
 /**
- * The Escalação tab: both team sheets, and the manager's own bench with the substitutions
- * on top of it. It is the same screen the interval offers, so a manager who learns one does
+ * The Escalação tab: the two team sheets, one at a time.
+ *
+ * **Casa and Fora, because a manager reads a match as two clubs and not as one sheet with
+ * the other club's men at the bottom of it.** The two elevens are on the pitch at the same
+ * time and they are not the same list, so they get a tab each and a manager looking at the
+ * man in front of his striker does not have to read past a goalkeeper he does not manage to
+ * reach him. It is the same screen the interval offers, so a manager who learns one does
  * not have to learn two.
+ *
+ * **The tab opens on the manager's own club.** A screen that opened on the opposition would
+ * be answering a question nobody asked, and the tab the manager came back to is the one he
+ * is making decisions in.
+ *
+ * **The other club's sheet is a document, not a decision.** The eleven and the bench are
+ * there to be read — the shape of the man about to come against him is a fact about the
+ * match — but the change panel is only on his own side. The backend refuses a substitution
+ * for a club the manager does not command, so a panel there would offer a decision the
+ * server has already refused; the honest thing is not to draw one.
  */
 const TeamSheet: React.FC<TeamSheetProps> = ({
   lineup,
@@ -30,72 +61,101 @@ const TeamSheet: React.FC<TeamSheetProps> = ({
   busy = false,
   onSubstitute,
 }) => {
-  const isUserHome = userTeamIndex === 0;
+  const [side, setSide] = useState<'home' | 'away'>(
+    userTeamIndex === null ? 'home' : userTeamIndex === 0 ? 'home' : 'away'
+  );
 
-  const onPitch = isUserHome ? lineup.homeLineup : lineup.awayLineup;
-  const bench = isUserHome ? lineup.homeBench : lineup.awayBench;
-  const opponentOnPitch = isUserHome ? lineup.awayLineup : lineup.homeLineup;
+  // The club he commands is the club the tab opens on. A match of two other clubs has no
+  // side of his to default to, and the home side is the one a manager watching a game he is
+  // not in looks at first.
+  useEffect(() => {
+    setSide(userTeamIndex === null ? 'home' : userTeamIndex === 0 ? 'home' : 'away');
+  }, [userTeamIndex]);
+
+  const sides: Record<'home' | 'away', Side> = {
+    home: {
+      team: lineup.homeTeam,
+      onPitch: lineup.homeLineup,
+      bench: lineup.homeBench,
+      isHis: userTeamIndex === 0,
+      substitutionsUsed,
+    },
+    away: {
+      team: lineup.awayTeam,
+      onPitch: lineup.awayLineup,
+      bench: lineup.awayBench,
+      isHis: userTeamIndex === 1,
+      substitutionsUsed,
+    },
+  };
+
+  const current = sides[side];
 
   return (
     <div className="lineup">
-      {canSubstitute && (
+      <div className="side-tabs" role="tablist" aria-label="Escalação de cada time">
+        {(['home', 'away'] as const).map(which => {
+          const tab = sides[which];
+
+          return (
+            <button
+              key={which}
+              type="button"
+              role="tab"
+              aria-selected={side === which}
+              className={`side-tab${side === which ? ' active' : ''}${tab.isHis ? ' his-team' : ''}`}
+              onClick={() => setSide(which)}
+              title={tab.isHis ? 'Seu time' : 'Adversário'}
+            >
+              <ClubCrest
+                primary={tab.team.primaryColor}
+                secondary={tab.team.secondaryColor}
+                name={tab.team.name}
+                className="mini-crest"
+              />
+              {which === 'home' ? 'Casa' : 'Fora'}
+            </button>
+          );
+        })}
+      </div>
+
+      {current.isHis && canSubstitute && (
         <SubstitutionPanel
-          lineup={onPitch}
-          bench={bench}
-          used={substitutionsUsed}
+          lineup={current.onPitch}
+          bench={current.bench}
+          used={current.substitutionsUsed}
           busy={busy}
           onSubstitute={onSubstitute}
         />
       )}
 
       <div className="half-sub-area" style={{ marginTop: '14px' }}>
-        <div className="half-sub-help">Em campo — {isUserHome ? (
-          <>
-            <ClubName teamId={lineup.homeTeam.id}>{lineup.homeTeam.name}</ClubName>
-            <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(lineup.homeTeam.stars)}</span>
-          </>
-        ) : (
-          <>
-            <ClubName teamId={lineup.awayTeam.id}>{lineup.awayTeam.name}</ClubName>
-            <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(lineup.awayTeam.stars)}</span>
-          </>
-        )}</div>
+        <div className="half-sub-help">
+          Em campo —{' '}
+          <ClubName teamId={current.team.id}>{current.team.name}</ClubName>
+          <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>
+            {starsToString(current.team.stars)}
+          </span>
+        </div>
         <div className="player-grid">
-          {sortByPosition(onPitch).map(p => <SheetCard key={p.playerId} player={p} />)}
+          {sortByPosition(current.onPitch).map(p => (
+            <SheetCard key={p.playerId} player={p} opponent={!current.isHis} />
+          ))}
         </div>
       </div>
 
       <div className="half-sub-area" style={{ marginTop: '14px' }}>
-        <div className="half-sub-help">Banco — {isUserHome ? (
-          <>
-            <ClubName teamId={lineup.homeTeam.id}>{lineup.homeTeam.name}</ClubName>
-            <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(lineup.homeTeam.stars)}</span>
-          </>
-        ) : (
-          <>
-            <ClubName teamId={lineup.awayTeam.id}>{lineup.awayTeam.name}</ClubName>
-            <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(lineup.awayTeam.stars)}</span>
-          </>
-        )}</div>
+        <div className="half-sub-help">
+          Banco —{' '}
+          <ClubName teamId={current.team.id}>{current.team.name}</ClubName>
+          <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>
+            {starsToString(current.team.stars)}
+          </span>
+        </div>
         <div className="bench-grid">
-          {sortByPosition(bench).map(p => <SheetCard key={p.playerId} player={p} isBench />)}
-        </div>
-      </div>
-
-      <div className="half-sub-area" style={{ marginTop: '14px' }}>
-        <div className="half-sub-help">Em campo — {isUserHome ? (
-          <>
-            <ClubName teamId={lineup.awayTeam.id}>{lineup.awayTeam.name}</ClubName>
-            <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(lineup.awayTeam.stars)}</span>
-          </>
-        ) : (
-          <>
-            <ClubName teamId={lineup.homeTeam.id}>{lineup.homeTeam.name}</ClubName>
-            <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(lineup.homeTeam.stars)}</span>
-          </>
-        )}</div>
-        <div className="player-grid">
-          {sortByPosition(opponentOnPitch).map(p => <SheetCard key={p.playerId} player={p} opponent />)}
+          {sortByPosition(current.bench).map(p => (
+            <SheetCard key={p.playerId} player={p} isBench opponent={!current.isHis} />
+          ))}
         </div>
       </div>
     </div>

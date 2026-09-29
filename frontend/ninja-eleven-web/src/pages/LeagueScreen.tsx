@@ -417,7 +417,14 @@ const LeagueScreen: React.FC = () => {
           <div className="league-panel">
             <h3>🥅 Artilheiros</h3>
             <div id="scorersWrap">
-              <ScorersList scorers={scorers} userTeamId={selectedTeam?.id} userTeamName={selectedTeam?.name} />
+              {/* Ten names: the artilharia of a championship is a top ten a manager reads whole,
+                  and a table of fifteen is the season's list rather than its chart. */}
+              <ScorersList
+                scorers={scorers}
+                userTeamId={selectedTeam?.id}
+                userTeamName={selectedTeam?.name}
+                limit={10}
+              />
             </div>
           </div>
         </div>

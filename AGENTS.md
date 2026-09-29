@@ -91,6 +91,7 @@ GET  /competition/{editionId}/club          POST /match
 POST /competition                           GET  /match/tactics
                                           GET  /match/round-report/{roundId}
                                           GET  /match/squad-suggestion?teamId=&seasonId=&tacticCode=
+                                          GET  /match/live/{teamId}
 
 GET  /season                                POST /league/setup
 GET  /season/{id}                           GET  /league/standing/{competitionSeasonId}
@@ -116,6 +117,15 @@ each club's own history, and each club's own history was three seasons of tables
 table read a squad man by man, so a page of sixty-four clubs was a quarter of a million round
 trips and answered in half a minute. The same rule is what keeps `GET /fixture`,
 `GET /league/standing/{id}` and `GET /team/{id}/standing` under a tenth of a second.
+
+**Is this club playing right now? is asked of the registry, not of the fixtures.** A club
+plays at most one match at a time, so `GET /match/live/{teamId}` is a walk of the matches
+being played — a handful on a matchday, none at all between them — rather than a read of
+every fixture of the season to find one that happens to be in progress. The registry holds
+the live working memory and nothing else, so a match that is not in it is not being played,
+whatever the persisted row still says. The answer carries the score, the minute and the
+interval, because a navigation badge that says "ao vivo" and nothing else is a badge the
+manager has to click to learn whether the game is worth leaving the screen for.
 
 The shape of the fix is always the same: a reader that takes a set (`GetSquadsAsync`,
 `GetPlayersAsync`, `ListSeasonViewsAsync(seasonIds)`, `ListByCompetitionSeasonsAsync`,
@@ -351,6 +361,22 @@ is not allowed to make.
 **The swap rules live in one place.** `MatchSubstitution` is used by `MatchService` for a
 manager's command and by the engine for its own, so what a manager may do by hand and what
 the engine does on its own cannot drift apart.
+
+**A manager commands his own club and no other.** `MatchState.ManagerCommandsTeam` is the
+one test, and it guards the substitution and the penalty taker: a client sends the team id
+it is acting for, and a manager follows a whole matchday, so a command naming the opposition
+is one a screen can send without meaning to. A match with no manager attached — a headless
+one, simulated from the calendar — has no author for a command and refuses every club. The
+engine's own changes do not come through here, so this refuses a *command* and not football:
+the match still runs to full time with the engine choosing for the side nobody is watching.
+
+**A substitution moves nobody's energy.** Energy is what the ninety minutes cost, and the
+ninety minutes are the ticks: `MatchEngine.DrainEnergy` is the only thing in a match that
+lowers it. A change of shape is not a tick, so the two men who swap places arrive and leave
+with the numbers they had, and the man who comes on does not appear fitter than the eleven he
+is joining. `ASubstitutionMovesNobodyEnergy` reads all four lists before and after a swap and
+holds every one of them still; without it a change is the one moment in a match where a
+player is suddenly not the man he was a second ago.
 
 **A substitute is spent.** A player who has left the pitch carries `SubbedOff`, and naming
 him again is refused with `PlayerAlreadySubstituted`. The bench is not a queue of men
@@ -615,6 +641,17 @@ Two rules the sound depends on:
    so no screen can be the one where a name is not a link. It renders as the text around it
    until the pointer goes over, so a screen of names does not become a screen of buttons.
    Somebody else's club is a modal; the manager's own club is the screen the game starts on.
+
+7. **A club carries its shield where its name is read** — `ClubCrest` in the sidebar, the
+   scoreboard, the matchday, the next-match box and the live badge. A name identifies a club
+   to someone reading it; a shield identifies it to someone glancing at a column of sixteen
+   clubs, which is what a scoreboard and a matchday both are.
+
+8. **A screen offers a decision only where the manager is entitled to one.** A match of two
+   other clubs is a document everywhere in it: the eleven and the bench are read, the
+   substitution panel and the interval button are not drawn, and the half-time dialog follows
+   the server's `userTeamId` rather than the clock. The backend refuses a command for either
+   club, so a control that appears anyway is a control the server has already said no to.
 
 ## Reading a Player
 

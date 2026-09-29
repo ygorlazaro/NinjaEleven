@@ -426,6 +426,10 @@ public class MatchService
                 AwayTeamId = awayTeam.Id,
                 AwayTeamName = awayTeam.Name,
                 AwayShortName = awayTeam.ShortName,
+                HomePrimaryColor = homeTeam.PrimaryColor,
+                HomeSecondaryColor = homeTeam.SecondaryColor,
+                AwayPrimaryColor = awayTeam.PrimaryColor,
+                AwaySecondaryColor = awayTeam.SecondaryColor,
                 HomeGoals = session.State.HomeScore,
                 AwayGoals = session.State.AwayScore,
                 Minute = session.State.Minute,
@@ -459,6 +463,10 @@ public class MatchService
             AwayTeamId = awayInfo.Id,
             AwayTeamName = awayInfo.Name,
             AwayShortName = awayInfo.ShortName,
+            HomePrimaryColor = homeInfo.PrimaryColor,
+            HomeSecondaryColor = homeInfo.SecondaryColor,
+            AwayPrimaryColor = awayInfo.PrimaryColor,
+            AwaySecondaryColor = awayInfo.SecondaryColor,
             HomeGoals = match.HomeScore,
             AwayGoals = match.AwayScore,
             Minute = match.CurrentMinute,
@@ -474,6 +482,68 @@ public class MatchService
             HomeInjuries = played?.HomeInjuries ?? 0,
             AwayInjuries = played?.AwayInjuries ?? 0
         };
+    }
+
+    /// <summary>
+    /// The live match a club is playing right now, if there is one.
+    ///
+    /// **The answer comes off the registry, not out of the fixtures.** A club plays at most
+    /// one match at a time, so the whole question is a walk of the matches being played —
+    /// a handful on a matchday and none at all between them — rather than a read of every
+    /// fixture of the season to find one that happens to be in progress. The registry holds
+    /// the live working memory and nothing else, so a match that is not in it is not being
+    /// played, whatever the persisted row still says.
+    ///
+    /// The answer carries enough to draw a badge: which match it is, who it is against, the
+    /// score and the minute. A navbar that says "ao vivo" without saying against whom and at
+    /// what score is a badge the manager has to click to learn anything.
+    /// </summary>
+    public async Task<LiveMatchSummary?> GetLiveMatchForTeamAsync(
+        Guid teamId,
+        CancellationToken cancellationToken = default)
+    {
+        foreach (var matchId in _sessions.ActiveMatchIds)
+        {
+            if (!_sessions.TryGet(matchId, out var session))
+            {
+                continue;
+            }
+
+            var state = session.State;
+            var isHome = state.HomeTeam.Id == teamId;
+            if (!isHome && state.AwayTeam.Id != teamId)
+            {
+                continue;
+            }
+
+            if (state.MatchFinished)
+            {
+                continue;
+            }
+
+            return new LiveMatchSummary
+            {
+                MatchId = matchId,
+                RoundId = session.RoundId,
+                HomeTeamId = state.HomeTeam.Id,
+                HomeTeamName = state.HomeTeam.Name,
+                HomeShortName = state.HomeTeam.ShortName,
+                HomePrimaryColor = state.HomeTeam.PrimaryColor,
+                HomeSecondaryColor = state.HomeTeam.SecondaryColor,
+                AwayTeamId = state.AwayTeam.Id,
+                AwayTeamName = state.AwayTeam.Name,
+                AwayShortName = state.AwayTeam.ShortName,
+                AwayPrimaryColor = state.AwayTeam.PrimaryColor,
+                AwaySecondaryColor = state.AwayTeam.SecondaryColor,
+                HomeGoals = state.HomeScore,
+                AwayGoals = state.AwayScore,
+                Minute = state.Minute,
+                IsHome = isHome,
+                AtHalfTime = state.HalfTimePauseActive
+            };
+        }
+
+        return await Task.FromResult<LiveMatchSummary?>(null);
     }
 
     /// <summary>
@@ -819,6 +889,20 @@ public class MatchService
 
         lock (session.Gate)
         {
+            // A manager's command is a command for his own club. The route carries a team id
+            // the client chose, and a client can be on a match of two other clubs — the round
+            // group carries those to his screen — so the id is checked against the match's own
+            // idea of whose club he is before it is checked against the two teams playing.
+            //
+            // The engine's own substitutions do not come through here, so a match still runs
+            // the same way: this refuses a command, not football.
+            if (!session.State.ManagerCommandsTeam(teamId))
+            {
+                throw new DomainValidationException(
+                    "NotYourTeam",
+                    "Só é possível fazer substituições no seu próprio time.");
+            }
+
             var isHome = teamId == match.HomeTeamId;
             if (!isHome && teamId != match.AwayTeamId)
             {
@@ -922,6 +1006,15 @@ public class MatchService
             if (!session.State.PenaltyAwaitingSelection)
             {
                 return Refused(matchId, "Não há pênalti para cobrar nesta partida.");
+            }
+
+            // The same rule the substitution above obeys, for the same reason: naming who
+            // takes a penalty is a decision about a club, and it is the manager's own.
+            if (!session.State.ManagerCommandsTeam(teamId))
+            {
+                throw new DomainValidationException(
+                    "NotYourTeam",
+                    "Só é possível escolher o cobrador do seu próprio time.");
             }
 
             var isHome = teamId == match.HomeTeamId;
@@ -1057,6 +1150,63 @@ public class MatchService
             MatchId = matchId,
             Events = produced
         };
+    }
+
+    /// <summary>
+    /// Hands a headless match over to the manager of one of its clubs.
+    ///
+    /// A cup window opens every fixture of it at once — the manager's club included — so a
+    /// manager who reaches his own club's match on a day it has already kicked off finds a
+    /// match with no manager behind it: the engine is playing both sides, the interval is
+    /// left to itself and a substitution is refused because nobody is attached to answer it.
+    /// This is the seam for that: the moment the manager shows up with his club's id, the
+    /// keyboard is handed over. The score and the eleven are left exactly where they are;
+    /// only the control plane moves from the loop to the manager, so a matchday that has
+    /// already seen the kick-off keeps on looking like one.
+    ///
+    /// A claim for a match that already has a manager, that is not headless, or that is not
+    /// the manager's own side, is refused and is a no-op — the manager only ever takes his
+    /// own club, and a screen that sent the opposition's id is a screen that never had the
+    /// right to claim it. A match that has already finished by the time the claim lands
+    /// (its session is gone) refuses too: there is nothing left to hand over.
+    /// </summary>
+    public bool AttachManager(Guid matchId, Guid userTeamId)
+    {
+        if (!_sessions.TryGet(matchId, out var session))
+        {
+            return false;
+        }
+
+        // A match the engine is not auto-continuing is already watched by somebody. The
+        // keyboard is not taken twice: a second claim for a managed match is refused.
+        if (!session.AutoContinue || session.State.ManagerTeamId is not null)
+        {
+            return false;
+        }
+
+        // The manager claims the side he is acting for. A claim for any other club is a
+        // command without authority, and it is refused here instead of being trusted, the
+        // same rule a substitution obeys.
+        if (session.State.HomeTeam.Id != userTeamId && session.State.AwayTeam.Id != userTeamId)
+        {
+            return false;
+        }
+
+        lock (session.Gate)
+        {
+            // The clock is moving while the claim is made, so the test is repeated inside
+            // the lock: a match that was claimed by another tab, or that finished in the
+            // meantime, is left alone instead of being overwritten.
+            if (!session.AutoContinue || session.State.ManagerTeamId is not null)
+            {
+                return false;
+            }
+
+            session.State.ManagerTeamId = userTeamId;
+            session.AutoContinue = false;
+        }
+
+        return true;
     }
 
     /// <summary>

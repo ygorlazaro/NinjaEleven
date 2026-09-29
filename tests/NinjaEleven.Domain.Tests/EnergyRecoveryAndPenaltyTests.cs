@@ -53,6 +53,34 @@ public class EnergyRecoveryAndPenaltyTests
     }
 
     [Fact]
+    public void ASubstitutionMovesNobodyEnergy()
+    {
+        // The eleven, the bench and the opposition, all read before and after the change.
+        // A swap is two men changing places; energy is what ninety minutes costs a player,
+        // and the ninety minutes are the ticks. A change of shape is not a tick, so no man on
+        // either pitch is a point more tired for it — and the man who comes on arrives with
+        // the energy he was built with rather than a number the change invented for him.
+        var outgoing = PlayerAt(energy: 62, position: Position.ATT);
+        var incoming = PlayerAt(energy: 95, position: Position.DEF);
+        var teammate = PlayerAt(energy: 71, position: Position.MID);
+        var keeper = PlayerAt(energy: 80, position: Position.GK);
+        var opponent = PlayerAt(energy: 58, position: Position.ATT);
+        var reserve = PlayerAt(energy: 99, position: Position.MID);
+
+        var state = StateWith(outgoing, incoming, extra: [teammate, keeper], opponent: opponent, reserve: [reserve]);
+        state.Minute = 70;
+
+        var before = EveryoneIn(state).ToDictionary(pair => pair.Key, pair => pair.Value);
+
+        MatchSubstitution.Swap(state, home: true, outgoing, incoming);
+
+        foreach (var (player, energy) in EveryoneIn(state))
+        {
+            Assert.Equal(before[player], energy, 6);
+        }
+    }
+
+    [Fact]
     public void APlayerSentOffAtThirtyHasPlayedThirtyMinutes()
     {
         var player = PlayerAt(energy: 90);
@@ -232,20 +260,54 @@ public class EnergyRecoveryAndPenaltyTests
         Assert.True(MatchEngine.PenaltyConversion(spentTaker, null) < MatchEngine.PenaltyConversion(taker, null));
     }
 
-    /// <summary>A match with one man on the pitch and one man on the bench.</summary>
-    private static MatchState StateWith(MatchPlayerSnapshot onPitch, MatchPlayerSnapshot onBench)
+    /// <summary>Every player the match is holding, whoever he is playing for or sitting out.</summary>
+    private static IEnumerable<KeyValuePair<MatchPlayerSnapshot, double>> EveryoneIn(MatchState state) =>
+        state.HomeLineup
+            .Concat(state.HomeBench)
+            .Concat(state.AwayLineup)
+            .Concat(state.AwayBench)
+            .Select(player => new KeyValuePair<MatchPlayerSnapshot, double>(player, player.PreciseEnergy));
+
+    /// <summary>
+    /// A match with a home side and an away side. One man on the pitch and one on the bench
+    /// is the shape most of these tests need; the rest of the pitch, the opposition and the
+    /// rest of the bench are there for the tests that are about everybody rather than about
+    /// one pair.
+    /// </summary>
+    private static MatchState StateWith(
+        MatchPlayerSnapshot onPitch,
+        MatchPlayerSnapshot onBench,
+        IReadOnlyList<MatchPlayerSnapshot>? extra = null,
+        MatchPlayerSnapshot? opponent = null,
+        IReadOnlyList<MatchPlayerSnapshot>? reserve = null)
     {
         var home = new TeamInfo(Guid.NewGuid(), "Home United", "HU", "#FF0000", "#FFFFFF", 50);
         var away = new TeamInfo(Guid.NewGuid(), "Away City", "AC", "#0000FF", "#FFFFFF", 50);
 
-        var awayGoalkeeper = PlayerAt(energy: 90, position: Position.GK);
+        var homeLineup = new List<MatchPlayerSnapshot> { onPitch };
+        if (extra is not null)
+        {
+            homeLineup.AddRange(extra);
+        }
+
+        var awayLineup = new List<MatchPlayerSnapshot>
+        {
+            opponent ?? PlayerAt(energy: 90, position: Position.GK)
+        };
+
+        var homeBench = new List<MatchPlayerSnapshot> { onBench };
+        if (reserve is not null)
+        {
+            homeBench.AddRange(reserve);
+        }
+
         var context = new MatchContext(
             Guid.NewGuid(),
             home,
             away,
-            [onPitch],
-            [awayGoalkeeper],
-            [onBench],
+            homeLineup,
+            awayLineup,
+            homeBench,
             [],
             new FixedRandom());
 

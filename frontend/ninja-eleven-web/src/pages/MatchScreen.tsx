@@ -29,6 +29,7 @@ import { FixtureApi } from '@/api';
 import { useMatchAudio } from '@/hooks/useMatchAudio';
 import { formatLimo } from '@/services/limo';
 import { ClubName } from '@/components/Common/Names';
+import ClubCrest from '@/components/Club/ClubCrest';
 import { starsToString } from '@/services/formatters';
 
 /**
@@ -80,14 +81,27 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   const [matchdayScores, setMatchdayScores] = useState<MatchScore[]>([]);
   const [roundId, setRoundId] = useState<string>('');
   const [matchdayEvents, setMatchdayEvents] = useState<Record<string, FeedEvent[]>>({});
+  /** Whether the score is currently flashing after a goal. */
+  const [scoringFlash, setScoringFlash] = useState(false);
 
   // Last sequence the feed already holds. The hub stream can leave a hole when the
   // browser tab is busy or a subscription is replaced, and the sequence is how that
   // hole is detected and filled from the persisted log.
   const lastSequence = useRef(0);
 
+  /** The score the last goal flash was triggered by, so a goal is flashed once. */
+  const lastScoreRef = useRef<string | null>(null);
+
   /** The matches of the round whose history has already been asked for, once each. */
   const seededMatchday = useRef<Set<string>>(new Set());
+
+  /**
+   * Whether the headless takeover has already been asked for on this screen visit. The cup
+   * window starts every fixture at once, so a manager who reaches his club's match on a day
+   * it has already kicked off finds a headless session: the keyboard is handed over the
+   * first time that state shows up, and never asked for again while this screen is mounted.
+   */
+  const attachAttempted = useRef(false);
 
   // The sound of the match: the crowd for as long as it is being watched, and a whistle or
   // a goal for each thing the engine reports from now on.
@@ -138,9 +152,10 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
 
     // Everything the effect starts, it also stops. React runs an effect twice in
     // development, so a listener left behind would double every event of the feed.
-    let disposed = false;
+     let disposed = false;
+    attachAttempted.current = false;
 
-    loadLineup();
+     loadLineup();
     loadState();
     loadContext();
 
@@ -165,9 +180,16 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
                     homeTeamId: f.homeTeamId,
                     homeTeamName: f.homeTeam?.name || '',
                     homeShortName: f.homeTeam?.shortName || '',
+                    // The shield a row of the matchday carries comes from the fixture, which
+                    // already holds the whole club. The hub pushes the same two colours with
+                    // every score, so a row that arrives later draws the same shield.
+                    homePrimaryColor: f.homeTeam?.primaryColor || '',
+                    homeSecondaryColor: f.homeTeam?.secondaryColor || '',
                     awayTeamId: f.awayTeamId,
                     awayTeamName: f.awayTeam?.name || '',
                     awayShortName: f.awayTeam?.shortName || '',
+                    awayPrimaryColor: f.awayTeam?.primaryColor || '',
+                    awaySecondaryColor: f.awayTeam?.secondaryColor || '',
                     homeGoals: f.homeGoals ?? 0,
                     awayGoals: f.awayGoals ?? 0,
                     minute: f.status === 'InProgress' ? 1 : 0,
@@ -233,13 +255,32 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
       setIsPaused(next.isPaused);
 
       // The server stops the loop by itself at the interval; the client owns the
-      // decision to leave it.
-      if (next.isHalfTime) {
+      // decision to leave it. It is a decision about the manager's own club, so it is
+      // only raised for a match he is playing: a match of two other clubs has its
+      // interval left by the loop that is simulating it, and a manager watching it has
+      // no button to press about a second half that is not his.
+      if (next.isHalfTime && next.userTeamId) {
         setShowHalfTimeModal(true);
       }
 
       if (next.isFinished) {
         setShowEndModal(true);
+      }
+
+      // A cup window kicks off every fixture of it at once — the manager's club included —
+      // so a manager who reaches his own club's match while it is already being played
+      // finds a headless session: the engine is running both sides, the interval passes on
+      // its own and a substitution is refused because no manager is attached. The first time
+      // that live state shows up, the keyboard is handed over; the server refuses anything
+      // that is not the manager's own club, so another club's match is simply left running.
+      if (attachAttempted.current) {
+        // already claimed on this visit
+      } else if (!next.isFinished && next.userTeamId === null) {
+        const manager = useGameState.getState().selectedTeam;
+        if (manager) {
+          attachAttempted.current = true;
+          MatchHubClient.attachManager(matchId, manager.id).catch(() => undefined);
+        }
       }
 
     });
@@ -538,12 +579,24 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   // Which team the manager commands comes from the server when the match is live, and
   // from the club he picked otherwise: a finished match has no manager attached to it.
   const managedTeamId = state?.userTeamId ?? userTeam?.id;
+  // **Whether his club is in this match at all, asked before which side of it is his.**
+  //
+  // A manager follows a whole matchday: the round group carries the other clubs' scorelines
+  // and their goals to the screen he is on, and a row of "Outras" is a door into a match he
+  // is not playing in. There the answer to "which side is mine" is neither, and a screen
+  // that answered "the away one" would put the other club's eleven under the substitution
+  // button. The backend refuses a change for a club the manager does not command, so the
+  // honest thing is not to offer it: this is null there and every command is closed.
+  const isInThisMatch = !!managedTeamId && !!lineup
+    && (lineup.homeTeam.id === managedTeamId || lineup.awayTeam.id === managedTeamId);
   const userTeamIdx = managedTeamId
     ? lineup?.homeTeam.id === managedTeamId ? 0 : 1
     : lineup?.userTeamIndex ?? 0;
   const userLineup = userTeamIdx === 0 ? lineup?.homeLineup ?? [] : lineup?.awayLineup ?? [];
   const userBench = userTeamIdx === 0 ? lineup?.homeBench ?? [] : lineup?.awayBench ?? [];
-  const userTeamId = managedTeamId;
+  // The club a command is sent for, and the only one it may be sent for. Null in a match of
+  // two other clubs, which is what closes the substitution button over there.
+  const userTeamId = isInThisMatch ? managedTeamId : null;
   // The two clubs and every man who could be named in a sentence of this match, so a name
   // in the feed is a door to a profile. Recomputed only when somebody turns up or leaves:
   // a substitution changes who the feed is allowed to talk about.
@@ -563,6 +616,30 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   const score = `${state?.homeScore ?? 0} × ${state?.awayScore ?? 0}`;
 
   /**
+   * A goal makes the score jump, so the scoreboard is flashed the moment the home or
+   * away count changes. The state arrives on every tick, but the counts move only on a
+   * goal; comparing them to the last seen value is enough to know a goal just landed,
+   * and the first value is seeded without flashing so a manager who joins late does not
+   * see the live score strobe. The flash is cleared after a few seconds of silence.
+   */
+  useEffect(() => {
+    if (!state) return;
+
+    const current = `${state.homeScore ?? 0} × ${state.awayScore ?? 0}`;
+    if (lastScoreRef.current === null) {
+      lastScoreRef.current = current;
+      return;
+    }
+
+    if (current !== lastScoreRef.current) {
+      lastScoreRef.current = current;
+      setScoringFlash(true);
+      const timer = setTimeout(() => setScoringFlash(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [state?.homeScore, state?.awayScore]);
+
+  /**
    * The share of the ball the home side has had, as a number the engine decided. Before
    * there is a state there is no share, so the bar is left even rather than claiming a 50%
    * nobody has earned.
@@ -573,7 +650,13 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   const otherMatches = matchdayScores.filter(score => score.matchId !== matchId).length;
   const minute = state ? `${state.minute.toString().padStart(2, '0')}:${state.second.toString().padStart(2, '0')}` : '00:00';
   const halfLabel = state?.currentHalf === 'Second' ? '2º' : '';
-  const canSubstitute = !!lineup && !!state && !state.isFinished;
+  /**
+   * A change is available only in a match the manager's club is playing in, and only while
+   * it is being played. The first half of that test is the one that matters here: a manager
+   * watching a match of two other clubs has no eleven to change, and a button over a
+   * lineup that is not his would be a decision the backend refuses.
+   */
+  const canSubstitute = !!lineup && !!state && !state.isFinished && isInThisMatch;
 
   /**
    * Whether the ball is with the manager's club right now, and which of his players is
@@ -620,17 +703,32 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
 
         <div className="scoreline">
           <div className={`team-name ${userTeamIdx === 0 ? 'user-team team-colored' : 'team-colored'}`}>
+            {/* The shield of each club beside its name, the same one the club screen and
+                the matchday carry. A scoreboard says two names; a manager recognises a club
+                by its colours before he has finished reading them. */}
+            <ClubCrest
+              primary={homeTeam.primaryColor}
+              secondary={homeTeam.secondaryColor}
+              name={homeTeam.name}
+              className="match-crest"
+            />
             <ClubName teamId={homeTeam.id}>{homeTeam.name}</ClubName>
             <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(homeTeam.stars)}</span>
           </div>
           <div>
-            <div className="score" id="score">{score}</div>
+            <div className={`score ${scoringFlash ? 'score--flash' : ''}`} id="score">{score}</div>
             <div className="clock" id="clock">
               {minute}
               {halfLabel && <span className="clock-half">{halfLabel}</span>}
             </div>
           </div>
           <div className={`team-name away ${userTeamIdx === 1 ? 'user-team team-colored' : 'team-colored'}`}>
+            <ClubCrest
+              primary={awayTeam.primaryColor}
+              secondary={awayTeam.secondaryColor}
+              name={awayTeam.name}
+              className="match-crest"
+            />
             <ClubName teamId={awayTeam.id}>{awayTeam.name}</ClubName>
             <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(awayTeam.stars)}</span>
           </div>
@@ -683,15 +781,22 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
 
         <div id="possessionPlayers" className="on-pitch-list-wrap">
           <div className="on-pitch-head">
-            <b>{userTeamIdx === 0 ? homeTeam.name : awayTeam.name}</b>
+            {/* The eleven under the scoreboard is the one the manager is looking for. In a
+                match of two other clubs there is no such eleven — he is watching, not
+                managing — and the list shown is the home side's, named as what it is. */}
+            <b>{isInThisMatch
+              ? userTeamIdx === 0 ? homeTeam.name : awayTeam.name
+              : homeTeam.name}</b>
             <span>
-              {ballIsOurs ? 'com a bola' : 'em campo'} • clique num jogador para substituir
+              {isInThisMatch
+                ? `${ballIsOurs ? 'com a bola' : 'em campo'} • clique num jogador para substituir`
+                : 'em campo • você não está neste jogo'}
             </span>
           </div>
           <OnPitchList
-            players={userLineup}
+            players={isInThisMatch ? userLineup : lineup.homeLineup}
             onSelect={canSubstitute ? openSubstitutionFor : undefined}
-            ballCarrierId={ballIsOurs ? state?.possession?.playerId : null}
+            ballCarrierId={isInThisMatch && ballIsOurs ? state?.possession?.playerId : null}
           />
         </div>
       </div>
@@ -847,7 +952,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
           <div className="tabpane active" style={{ display: matchScreen === 'lineup' ? 'block' : 'none' }}>
             <TeamSheet
               lineup={lineup}
-              userTeamIndex={userTeamIdx}
+              userTeamIndex={isInThisMatch ? userTeamIdx : null}
               canSubstitute={canSubstitute}
               substitutionsUsed={userSubstitutionsUsed}
               busy={substituting}
@@ -897,7 +1002,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
           publishes, the way the penalty dialog does, rather than a local flag: an injury
           that happened while the screen was closed still has to reach the manager. */}
       <SubstitutionModal
-        show={showSubstitutionModal || !!state?.injury?.awaitingSubstitution}
+        show={isInThisMatch && (showSubstitutionModal || !!state?.injury?.awaitingSubstitution)}
         team={userTeamIdx === 0 ? homeTeam : awayTeam}
         lineup={userLineup}
         bench={userBench}
