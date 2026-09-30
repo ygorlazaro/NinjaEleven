@@ -642,5 +642,9 @@ public class MatchShootoutServiceTests
             _matchDays.Object,
             _seasons.Object,
             _cupTies.Object,
-            _teams.Object));
+            _teams.Object),
+        MatchTestContext.Host,
+        MatchTestContext.World(),
+        MatchTestContext.Clock,
+        Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchService>.Instance);
 }

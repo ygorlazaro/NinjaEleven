@@ -59,7 +59,7 @@ public static class EnergyRecoveryRules
 
     /// <summary>How much energy a window gives a player back.</summary>
     /// <remarks>
-    /// Three answers, as before, and then two multipliers over the top of whichever one it is:
+    /// Three answers, as before, and then three multipliers over the top of whichever one it is:
     ///
     ///   **the minutes.** A recovery band is what a full match earns, so a man who was on the
     ///   pitch for a fifth of it earns a fifth of it. Without this a substitute who came on
@@ -74,6 +74,14 @@ public static class EnergyRecoveryRules
     ///   who sat out a match at thirty-four is not as rested as a man who sat it out at
     ///   twenty-one.
     ///
+    ///   **the stamina.** The refill half of <see cref="StaminaRules"/>. It scales all three
+    ///   bands rather than the played one alone, because it is a fact about the body and not
+    ///   about the window: the same man with more in the tank puts back more of whatever was
+    ///   taken, and a low-stamina player is a decision a manager has to make rather than a
+    ///   fixture he is handed. It is also the counterpart of the tank that took the extra out
+    ///   of him in the first place — a body that empties slowly is a body that fills quickly,
+    ///   and reading only one of the two would leave a stamina that bought nothing.
+    ///
     /// A man who was never on the pitch is not scaled by the minutes — he has no minutes —
     /// and is scaled by the age only when the caller knows it. A whole window off is the one
     /// recovery in here that is not a consequence of the match, and it is left alone on
@@ -84,17 +92,35 @@ public static class EnergyRecoveryRules
     /// <param name="effort">What he did in the window.</param>
     /// <param name="minutesPlayed">How many minutes of the match he was on the pitch for.</param>
     /// <param name="age">His age, when the caller has it.</param>
+    /// <param name="stamina">
+    /// How much he has in the tank, when the caller has it. It is the refill half of
+    /// <see cref="StaminaRules"/> and it is here rather than folded into the band because a
+    /// band is what a window pays and stamina is what a body mends at: a tired man with more
+    /// in him than a fresh man with none is the whole reason the two attributes can disagree.
+    /// </param>
     /// <param name="random">The window's own source, so a replayed match recovers the same way.</param>
     public static int Recovery(
         WindowEffort effort,
         int minutesPlayed,
         int? age,
-        Common.IRandomSource random)
+        Common.IRandomSource random,
+        int? stamina = null)
     {
         ArgumentNullException.ThrowIfNull(random);
 
         var (min, max) = BandOf(effort);
         var recovery = random.Next(min, max + 1);
+
+        // Stamina multiplies the whole recovery rather than the played branch only, because
+        // it is a property of the body and not of the window: a man with more in the tank
+        // puts back more of whatever the window took, and a man who rested is still a man
+        // whose body does or does not mend quickly.
+        if (stamina is { } tank)
+        {
+            recovery = (int)Math.Round(
+                recovery * StaminaRules.Refill(tank),
+                MidpointRounding.AwayFromZero);
+        }
 
         if (effort.PlayedInMatch)
         {

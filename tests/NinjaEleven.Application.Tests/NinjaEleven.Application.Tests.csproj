@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\backend\NinjaEleven.Application\NinjaEleven.Application.csproj" />
     <ProjectReference Include="..\..\backend\NinjaEleven.Domain\NinjaEleven.Domain.csproj" />
+    <ProjectReference Include="..\..\backend\NinjaEleven.Scheduler\NinjaEleven.Scheduler.csproj" />
   </ItemGroup>
 
   <ItemGroup>

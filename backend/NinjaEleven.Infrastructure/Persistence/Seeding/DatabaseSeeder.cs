@@ -4,6 +4,7 @@ using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Finance;
 using NinjaEleven.Domain.Managers;
+using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Sponsors;
@@ -198,6 +199,51 @@ public class DatabaseSeeder : IDataSeeder
     private readonly DatabaseSeedOptions _options;
     private readonly ILogger<DatabaseSeeder> _logger;
 
+    /// <summary>
+    /// A seed offset for stamina's own stream, so it cannot collide with the world's.
+    /// </summary>
+    private const int StaminaStreamSalt = 7_919;
+
+    /// <summary>
+    /// A seed offset for potential's own stream, kept apart from the world's and from
+    /// stamina's. The rule is the one above and it is not negotiable: every draw a player
+    /// creation makes beyond the world's own attributes comes from a stream of its own, or
+    /// adding an attribute rewrites a world that already exists.
+    /// </summary>
+    private const int PotentialStreamSalt = 5_153;
+
+    /// <summary>
+    /// Stamina is drawn from a stream of its own, and that is a rule about the seeder rather
+    /// than about bodies.
+    ///
+    /// Every other attribute is drawn from the one shared stream, and drawing from a shared
+    /// stream means a single extra draw rewrites everything drawn after it. Adding stamina to
+    /// the player did exactly that: one more <c>Next</c> per man, and the world's faces,
+    /// names, positions and attribute values all shifted with it. A season's intake came out
+    /// of it with twenty-seven per cent of its men in goal rather than the fifteen per cent
+    /// the intake rule asks for — nothing had been changed about the rule, and the rule was
+    /// still being broken.
+    ///
+    /// The cost of a shared stream is that the world a seed produces is only stable while the
+    /// list of things being drawn from it is frozen, which is the opposite of what a seeder
+    /// is for. A separate stream is a draw the world does not see, so an attribute can be
+    /// added without rewriting a world that already exists. It also means the position roll
+    /// and the stamina roll are independent, which is what a keeper's tank and a
+    /// centre-back's tank being unrelated should mean.
+    /// </summary>
+    private readonly Random _staminaRandom;
+
+    /// <summary>
+    /// The second of the two private streams, and it exists because the first was not
+    /// enough. Stamina moved off the shared stream and the world settled; potential was then
+    /// added and drawn from the shared stream, and the intake came out of it with
+    /// twenty-seven per cent of its men in goal against a fifteen per cent rule again —
+    /// the same failure, the same test, three commits after the rule was written down in this
+    /// file. A rule that only the thing that motivated it follows is not a rule, so this
+    /// stream exists as a second instance of the same decision rather than as a special case.
+    /// </summary>
+    private readonly Random _potentialRandom;
+
     public DatabaseSeeder(
         NinjaElevenDbContext dbContext,
         IOptions<DatabaseSeedOptions> options,
@@ -206,6 +252,14 @@ public class DatabaseSeeder : IDataSeeder
         _dbContext = dbContext;
         _options = options.Value;
         _logger = logger;
+
+        _staminaRandom = _options.RandomSeed.HasValue
+            ? new Random(StaminaStreamSalt + _options.RandomSeed.Value)
+            : Random.Shared;
+
+        _potentialRandom = _options.RandomSeed.HasValue
+            ? new Random(PotentialStreamSalt + _options.RandomSeed.Value)
+            : Random.Shared;
     }
 
     public async Task SeedAsync(CancellationToken cancellationToken = default)
@@ -392,11 +446,21 @@ public class DatabaseSeeder : IDataSeeder
     }
 
     /// <summary>
-    /// The first season of a new world.
+    /// The first season of a new world: today, and the thirty-four days a season lasts.
+    ///
+    /// <para>
+    /// The date is today rather than a fixed one in the past because a matchday is a day and the
+    /// Scheduler asks the calendar what is due. A world whose first season began nine months ago
+    /// is a world that owes its whole season on its first morning, and the world answers that by
+    /// playing every matchday it missed in a single pass — which is what "the scheduler skipped
+    /// from the first round to the fourth" looks like from the other side. Starting the season
+    /// where the world was written is what makes the first round the first round.
+    /// </para>
     /// </summary>
     private static Season CreateSeason()
     {
-        var season = Season.Create(1, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31));
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var season = Season.Create(1, today, today.AddDays(CompetitionRules.SeasonMatchDays - 1));
         season.Start();
         return season;
     }
@@ -455,18 +519,98 @@ public class DatabaseSeeder : IDataSeeder
 
         var isGoalkeeper = position == Position.GK;
 
+        // The attributes are drawn into locals first so the potential can be read off the very
+        // attributes this man is being given. Drawing a second set to measure him with would
+        // rate a player on a player who does not exist, and the two readings would disagree
+        // often enough to matter and rarely enough to be found by reading the code.
+        var speed = GenerateAttribute(random);
+        var accuracy = GenerateAttribute(random);
+        var dribbling = GenerateAttribute(random);
+        var heading = GenerateAttribute(random);
+        var strength = GenerateAttribute(random);
+        var goalkeeperPower = isGoalkeeper ? GenerateAttribute(random) : 0;
+        var reflexes = isGoalkeeper ? GenerateAttribute(random) : 0;
+
+        var stamina = GenerateStamina(age);
+
         return Player.Create(
             $"{firstName} {surname}",
             age,
             position,
-            speed: GenerateAttribute(random),
-            accuracy: GenerateAttribute(random),
-            dribbling: GenerateAttribute(random),
-            heading: GenerateAttribute(random),
-            strength: GenerateAttribute(random),
-            goalkeeperPower: isGoalkeeper ? GenerateAttribute(random) : 0,
-            reflexes: isGoalkeeper ? GenerateAttribute(random) : 0,
-            face: face);
+            speed: speed,
+            accuracy: accuracy,
+            dribbling: dribbling,
+            heading: heading,
+            strength: strength,
+            goalkeeperPower: goalkeeperPower,
+            reflexes: reflexes,
+            face: face,
+            stamina: stamina,
+            potential: GeneratePotential(random, age, position, speed, accuracy, dribbling, heading, strength, goalkeeperPower, reflexes));
+    }
+
+    /// <summary>
+    /// The ceiling of a newly drawn man: his own current reading, the top a body of his age
+    /// could reach, and a draw biased low so that most men are near their ceiling and a few
+    /// are far above it.
+    ///
+    /// <para>
+    /// It is read off the attributes the man was just given and not rolled beside them, which
+    /// is the only way the number means anything: a potential drawn independently of the
+    /// player would have had a good twenty-three-year-old capped below where he already is,
+    /// and the world's best young players would have been the ones the dice happened to pair
+    /// with a high roll.
+    /// </para>
+    /// </summary>
+    private int GeneratePotential(
+        Random random,
+        int age,
+        Position position,
+        int speed,
+        int accuracy,
+        int dribbling,
+        int heading,
+        int strength,
+        int goalkeeperPower,
+        int reflexes)
+    {
+        var reading = CurrentReading(
+            position, speed, accuracy, dribbling, heading, strength, goalkeeperPower, reflexes);
+
+        return DevelopmentRules.PotentialFor(reading, age, _potentialRandom.NextDouble());
+    }
+
+    /// <summary>
+    /// The weighted reading of a man who does not exist yet, from the attributes he was just
+    /// given. It repeats <see cref="DevelopmentRules.Overall"/> rather than calling it because
+    /// there is no player to read: the reading is what the potential is drawn from, so the man
+    /// has to exist before the rule can be asked about him.
+    /// </summary>
+    private static int CurrentReading(
+        Position position,
+        int speed,
+        int accuracy,
+        int dribbling,
+        int heading,
+        int strength,
+        int goalkeeperPower,
+        int reflexes)
+    {
+        if (position == Position.GK)
+        {
+            return (goalkeeperPower + reflexes) / 2;
+        }
+
+        var weights = AttributeWeights.For(position);
+
+        var reading =
+            speed * weights.Speed
+            + accuracy * weights.Accuracy
+            + dribbling * weights.Dribbling
+            + heading * weights.Heading
+            + strength * weights.Strength;
+
+        return (int)Math.Round(reading, MidpointRounding.AwayFromZero);
     }
 
     /// <summary>
@@ -509,6 +653,51 @@ public class DatabaseSeeder : IDataSeeder
         }
 
         return random.Next(min, max + 1);
+    }
+
+    /// <summary>
+    /// How much a body of this age has in the tank, as a starting point rather than a rule.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Stamina is drawn on its own curve rather than as another <see cref="GenerateAttribute"/>
+    /// call, because it is not one thing a player is good at and it is not spread across the
+    /// world the way skill is: it peaks in the middle of a career and is bounded by what a
+    /// body can carry.
+    /// </para>
+    /// <para>
+    /// The bands are the development curve's own shape, read at five points along it, and the
+    /// peak sits on <see cref="DevelopmentRules.StaminaPeakAge"/> because that is where the
+    /// rule says a body is fullest. They are a starting point and not a rule: from the next
+    /// season this man fills, peaks and empties on the curve, and a world that drew a
+    /// nineteen-year-old's tank from a different peak than the one his own development used
+    /// would have had him grow and decline against a curve he was not on.
+    /// </para>
+    /// </remarks>
+    private int GenerateStamina(int age)
+    {
+        // The bands are read off the curve itself — a body that has been filling since the
+        // youngest age, evaluated at each of these ages — so a man the world draws at twenty
+        // and a man it draws at twenty-six are on the same curve rather than on two that
+        // happen to look similar. Bands invented separately drift: a world whose seed said
+        // ninety at twenty-six and whose rule topped out at seventy-two would have had every
+        // veteran seeded above the ceiling his own development could reach, and the ceiling
+        // would have been a number nothing in the world was ever near.
+        var baseStamina = age switch
+        {
+            <= 17 => 64,
+            <= 20 => 83,
+            <= 23 => 87,
+            <= 26 => 88,
+            <= 29 => 80,
+            <= 32 => 68,
+            <= 35 => 57,
+            <= 38 => 47,
+            <= 42 => 38,
+            _ => 30
+        };
+
+        return Math.Clamp(baseStamina + _staminaRandom.Next(-8, 9), 1, 100);
     }
 
     /// <summary>

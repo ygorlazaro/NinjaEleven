@@ -32,6 +32,15 @@ public class PlayerConfiguration : IEntityTypeConfiguration<Player>
         builder.Property(p => p.GoalkeeperPower).IsRequired();
         builder.Property(p => p.Reflexes).IsRequired();
 
+        // Stamina lives here and not on the season state because it is a fact about the body
+        // rather than about the window the player happened to be in. See Player.Stamina.
+        builder.Property(p => p.Stamina).IsRequired();
+
+        // Potential is here for the same reason and for one more: it is a forecast of the man
+        // rather than a fact about him, and a forecast belongs to the identity too. A
+        // seventeen-year-old's ceiling does not change because the season rolled over.
+        builder.Property(p => p.Potential).IsRequired();
+
         // A faces.js `FaceConfig` as raw JSON, and deliberately untyped on this side: the
         // shape is the library's, and a C# class mirroring it would be a second copy of it to
         // keep in step. The column holds a string, so the value travels to the client as the

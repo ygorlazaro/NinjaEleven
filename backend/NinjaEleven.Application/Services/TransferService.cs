@@ -1992,7 +1992,7 @@ return new TransferInbox
     }
 
     /// <summary>
-    /// The championship's windows for a season, across all three divisions. The championship is
+    /// The championship's windows for a season, across all four divisions. The championship is
     /// three editions of one competition and a season's rounds are only readable by walking all
     /// three, so this is the one place that walk happens.
     /// </summary>
@@ -2150,6 +2150,8 @@ return new TransferInbox
             Strength = player.Strength,
             GoalkeeperPower = player.GoalkeeperPower,
             Reflexes = player.Reflexes,
+            Stamina = player.Stamina,
+            Potential = player.Potential,
             Stars = PlayerRating.CalculateStars(player),
             TeamId = teamId,
             TeamName = team?.Name,

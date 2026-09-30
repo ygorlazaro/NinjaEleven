@@ -1,25 +1,33 @@
+using Microsoft.Extensions.DependencyInjection;
 using NinjaEleven.Api.Contracts;
-using NinjaEleven.Api.Mappings;
+using NinjaEleven.Application.Abstractions;
+using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Services;
 using NinjaEleven.Domain.Enums;
 
 namespace NinjaEleven.Api.Realtime;
 
 /// <summary>
-/// Plays the matches nobody is watching. The engine is the same one a manager watches
-/// and every step goes through <see cref="MatchService"/>, so a headless match produces
-/// the same events, the same statistics and the same final row as a live one.
-/// It is how the rest of the league keeps playing while the manager is in another
-/// match, and how a round is closed so the next one becomes the current one.
+/// Plays the matches nobody is watching.
+///
+/// <para>
+/// This used to be where the world moved itself: it started a whole matchday when a manager
+/// started his own match, and it had a loop of its own for finishing a round by hand. Both
+/// of those now live in the Application layer, in
+/// <see cref="CompetitionExecutionService"/> and <see cref="IHeadlessMatchPlayer"/>, and
+/// this is the thin shell the controllers still call. That is the whole point of the
+/// scheduler arriving: there is one way to play a match without a manager, and the API, the
+/// Scheduler and a person at a terminal all go through it, so a headless match produces the
+/// same events, the same statistics and the same books whichever door it came in by.
+/// </para>
+///
+/// <para>
+/// What is left here is the part that is genuinely about the API: starting a manager's own
+/// match and letting the rest of the day start around it.
+/// </para>
 /// </summary>
 public sealed class MatchSimulator
 {
-    /// <summary>
-    /// The engine needs about a hundred ticks to play a full match. The guard only
-    /// exists so a state that never reaches full time cannot spin for ever.
-    /// </summary>
-    private const int MaxTicksPerMatch = 400;
-
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<MatchSimulator> _logger;
 
@@ -130,101 +138,50 @@ public sealed class MatchSimulator
     }
 
     /// <summary>
-    /// Plays one fixture from kick-off to full time. The fixture must still be
-    /// scheduled: a match that is being played or already finished is not touched.
+    /// Plays one fixture from kick-off to full time, through the same service the Scheduler
+    /// uses. The fixture must still be scheduled: a match that is being played or already
+    /// finished is not touched.
     /// </summary>
     public async Task<Guid?> SimulateFixtureAsync(Guid fixtureId, CancellationToken cancellationToken = default)
     {
-        Guid matchId;
+        using var scope = _scopeFactory.CreateScope();
+        var player = scope.ServiceProvider.GetRequiredService<IHeadlessMatchPlayer>();
 
-        // Kick-off runs in its own scope, exactly like a match started from the app.
-        using (var scope = _scopeFactory.CreateScope())
-        {
-            var matchService = scope.ServiceProvider.GetRequiredService<MatchService>();
-            var started = await matchService.StartAsync(fixtureId, headless: true, cancellationToken: cancellationToken);
+        var played = await player.PlayAsync(fixtureId, cancellationToken);
 
-            if (!started.Accepted)
-            {
-                return null;
-            }
-
-            matchId = started.MatchId;
-        }
-
-        for (var tick = 0; tick < MaxTicksPerMatch; tick++)
-        {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return matchId;
-            }
-
-            // Each tick gets its own scope, the same rule the live loop follows, so a
-            // long headless match never grows one giant unit of work.
-            using var scope = _scopeFactory.CreateScope();
-            var matchService = scope.ServiceProvider.GetRequiredService<MatchService>();
-            var state = await matchService.GetStateAsync(matchId, cancellationToken);
-
-            if (state.IsFinished)
-            {
-                return matchId;
-            }
-
-            if (state.IsHalfTime)
-            {
-                // Nobody is watching to press "second half".
-                var resumed = await matchService.ContinueSecondHalfAsync(matchId, cancellationToken);
-                if (!resumed.Accepted)
-                {
-                    break;
-                }
-
-                continue;
-            }
-
-            var result = await matchService.TickAsync(matchId, cancellationToken);
-            if (!result.Accepted)
-            {
-                break;
-            }
-        }
-
-        _logger.LogWarning("Match {MatchId} did not reach full time while being simulated.", matchId);
-        return matchId;
+        return played.Started ? played.MatchId : null;
     }
 
     /// <summary>
     /// Resolves every fixture of a round that is still scheduled, which is what makes
     /// the round end and the next one the one being played.
+    ///
+    /// It goes through the world service rather than walking the fixtures itself: the claim
+    /// that stops two processes playing one round is the same claim whether the round was
+    /// asked for by a scheduled job or by a developer who does not want to wait for five
+    /// o'clock.
     /// </summary>
     public async Task<RoundSimulationDto> SimulateRoundAsync(Guid roundId, CancellationToken cancellationToken = default)
     {
-        List<Guid> scheduled;
+        using var scope = _scopeFactory.CreateScope();
+        var execution = scope.ServiceProvider.GetRequiredService<CompetitionExecutionService>();
 
-        using (var scope = _scopeFactory.CreateScope())
-        {
-            var fixtureService = scope.ServiceProvider.GetRequiredService<FixtureService>();
-            var fixtures = await fixtureService.GetByRoundAsync(roundId, cancellationToken);
-            scheduled = fixtures
-                .Where(fixture => fixture.Fixture.Status == FixtureStatus.Scheduled)
-                .Select(fixture => fixture.Fixture.Id)
-                .ToList();
-        }
+        var run = await execution.PlayRoundAsync(roundId, cancellationToken: cancellationToken);
 
-        var played = new List<Guid>();
-
-        foreach (var fixtureId in scheduled)
-        {
-            var matchId = await SimulateFixtureAsync(fixtureId, cancellationToken);
-            if (matchId.HasValue)
-            {
-                played.Add(matchId.Value);
-            }
-        }
+        _logger.LogInformation(
+            "Round {RoundId} simulated by hand: {Played} played, {Already} were already played, {Failed} failed.",
+            roundId,
+            run.Played,
+            run.AlreadyPlayed,
+            run.Failed);
 
         return new RoundSimulationDto
         {
             RoundId = roundId,
-            PlayedMatchIds = played
+            PlayedMatchIds = run.Fixtures
+                .Where(fixture => fixture.Status is FixtureRunStatus.Finished && fixture.MatchId is not null)
+                .Select(fixture => fixture.MatchId!.Value)
+                .ToList()
         };
     }
 }

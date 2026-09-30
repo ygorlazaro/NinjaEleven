@@ -36,7 +36,7 @@ public record SeasonCloseResult(
 /// **The prize is the division's purse, split by the weight of a position.** Every club in a
 /// division is paid, the champion takes a great deal of it and the twelfth place takes a
 /// little, and the four going down are paid exactly like the four staying up: a relegated club
-/// has been in the competition for twenty-two matchdays and a prize that stopped at the
+/// has been in the competition for thirty matchdays and a prize that stopped at the
 /// relegation line would be a prize for staying, which is a different competition.
 ///
 /// **The trophies are written, not recomputed.** A club that is relegated after winning still
@@ -60,7 +60,7 @@ public record SeasonCloseResult(
 /// clubs meeting and the point of it is a new season's first trophy, not a rematch of the last
 /// season's two trophies by the same club twice.
 /// </summary>
-public class SeasonCloseService
+public class SeasonCloseService : ISeasonCloser
 {
     private readonly ISeasonRepository _seasons;
     private readonly ICompetitionRepository _competitions;
@@ -316,11 +316,16 @@ public class SeasonCloseService
             .OrderBy(division => division.Tier)
             .ToList();
 
-        // The new season starts the day after the old one ended, and runs for as long as the
-        // old one ran. A season is a year of football and a calendar year is what the game's
-        // dates are, so the length is carried over rather than invented.
+        // The new season starts the day after the old one ended, and lasts exactly as long as a
+        // season lasts: thirty-four days, the last of which has no football in it. The old
+        // season's own end date is not carried over because a season's length is a rule of the
+        // calendar and not a property of the season before it — a world whose first season was
+        // drawn by hand over a year would otherwise give every season after it a year of days.
         var start = previous.EndDate.AddDays(1);
-        var season = Season.Create(previous.Number + 1, start, start.AddYears(1).AddDays(-1));
+        var season = Season.Create(
+            previous.Number + 1,
+            start,
+            start.AddDays(CompetitionRules.SeasonMatchDays - 1));
         season.Start();
         await _seasons.AddAsync(season, cancellationToken);
 
@@ -427,34 +432,23 @@ public class SeasonCloseService
     }
 
     /// <summary>
-    /// The twelve clubs that start the new season in a tier: the ones that stay, the ones
+    /// The clubs that start the new season in a tier: the ones that stay in it, the ones
     /// coming up from below and the ones going down from above.
+    ///
+    /// <para>
+    /// It is <see cref="Pyramid.ClubsOf"/> because where every club ends up is a rule of the
+    /// pyramid rather than of the close, and a rule that lives in a private method of a
+    /// service is a rule nothing can be asked about. It was also wrong here for a long time:
+    /// a tier's own list was read and then what arrived was added on top, so the clubs
+    /// leaving stayed as well as going, and each season's pyramid grew by every club that
+    /// moved — sixteen became twenty-four, and the country became eighty-eight clubs.
+    /// </para>
     /// </summary>
     private static IReadOnlyList<Guid> ClubsOf(
         int tier,
         IReadOnlyDictionary<int, DivisionMovement> movements,
-        IReadOnlyList<Division> divisions)
-    {
-        var clubs = new List<Guid>();
-
-        if (movements.TryGetValue(tier, out var own))
-        {
-            clubs.AddRange(own.Movements.Select(movement => movement.TeamId));
-        }
-
-        foreach (var other in movements.Values)
-        {
-            foreach (var movement in other.Movements)
-            {
-                if (movement.ToTier == tier)
-                {
-                    clubs.Add(movement.TeamId);
-                }
-            }
-        }
-
-        return clubs.Distinct().ToList();
-    }
+        IReadOnlyList<Division> divisions) =>
+        Pyramid.ClubsOf(tier, movements);
 
     private static string PositionName(int position) => position switch
     {

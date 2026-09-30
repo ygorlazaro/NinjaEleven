@@ -1,5 +1,6 @@
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Enums;
+using NinjaEleven.Domain.Players;
 
 namespace NinjaEleven.Domain.Matches;
 
@@ -610,9 +611,14 @@ public class MatchEngine
         if (taker is null) throw new ArgumentNullException(nameof(taker));
 
         // Finishing and control decide a penalty; the goalkeeper's reflexes and power are
-        // what keep it out.
-        var shooting = SkillFactor((taker.Accuracy + taker.Dribbling) / 2.0);
-        var saving = keeper is null ? 0.0 : SkillFactor((keeper.Reflexes + keeper.GoalkeeperPower) / 2.0);
+        // what keep it out. Both are read on the 1..100 scale the attributes live on — the
+        // old (average − 13) / 7 was the 1..20 scale and read 1.00 for every player above
+        // twenty, so the pair of terms cancelled exactly and every penalty in the world was
+        // the base conversion.
+        var shooting = AttributeScale.Factor(taker.Accuracy, taker.Dribbling) * EnergyCurve.Factor(taker);
+        var saving = keeper is null
+            ? 0.0
+            : AttributeScale.Factor(keeper.Reflexes, keeper.GoalkeeperPower) * EnergyCurve.Factor(keeper);
 
         // **And the two men are tired.** The attribute sheet describes a player on a good
         // day; the last penalty of a match is taken and saved by two men at the end of
@@ -631,13 +637,6 @@ public class MatchEngine
 
         return Math.Clamp(conversion, MinPenaltyConversion, MaxPenaltyConversion);
     }
-
-    /// <summary>
-    /// Places an averaged attribute on a -1..1 scale: 0 for a player of average quality on
-    /// the 1..20 attribute scale, positive above it, negative below.
-    /// </summary>
-    private static double SkillFactor(double average) =>
-        Math.Clamp((average - MatchRules.ReferenceAttribute) / MatchRules.AttributeSpan, -1.0, 1.0);
 
     /// <summary>
     /// Takes the penalty the engine awarded. The taker is already chosen; this resolves
@@ -699,7 +698,9 @@ public class MatchEngine
                     _random,
                     MatchNarration.PenaltyScored,
                     taker.Name),
-                "goal"));
+                "goal",
+                fromPenalty: true,
+                playerName: taker.Name));
 
             Hold(state);
 
@@ -824,9 +825,14 @@ public class MatchEngine
                 continue;
             }
 
+            // Stamina is the tank: a man with more of it empties more slowly. It is a
+            // multiplier on the cost rather than a separate cost, so a low-stamina player is
+            // not drained by a different rule — he is drained more by the same one, which is
+            // what makes the recovery on the other side of the match the right answer for him.
             var cost = MatchRules.EnergyCostPerTick
                 * PlayerMetric.AgeCost(player)
-                * PlayerMetric.InjuryCost(player);
+                * PlayerMetric.InjuryCost(player)
+                * StaminaRules.TankCost(player);
 
             if (_random.NextDouble() < MatchRules.SprintChancePerTick)
             {
@@ -1011,8 +1017,10 @@ public class MatchEngine
             "build-up"));
 
         // Dribbling against strength: the ball carrier is trying something, and the man in
-        // front of him is the one who decides whether it works.
-        if (_random.NextDouble() >= 0.52 + (builder.Dribbling - marker.Strength) * 0.018)
+        // front of him is the one who decides whether it works. Both men are read on the
+        // scale they actually live on and both are on the same ramp, so the difference is a
+        // number between -1 and 1 rather than a raw attribute gap of ninety-nine points.
+        if (_random.NextDouble() >= DuelChance(builder, marker, AttributeWeights.Dribble))
         {
             SetPossession(state, !home, marker);
             events.Add(Emit(
@@ -1048,10 +1056,7 @@ public class MatchEngine
 
         CountShot(state, home);
 
-        var onTargetChance = Math.Clamp(
-            0.48 + (shooter.Accuracy - 10) * 0.025 + (shooter.Dribbling - 10) * 0.015,
-            MatchRules.MinOnTargetChance,
-            0.90);
+        var onTargetChance = ShotOnTargetChance(shooter);
 
         if (_random.NextDouble() > onTargetChance)
         {
@@ -1099,8 +1104,16 @@ public class MatchEngine
         var shooter = shooters[_random.Next(0, shooters.Count)];
         var total = attackStrength + opponentsAttack;
 
+        // How well the side got to the final third, as a -1..1 reading of the two attacks.
+        // An even fixture reads zero, so the shot below is the striker's alone; a side
+        // twice as good as the one it is playing reads about +0.33 and gets worse shots than
+        // the striker would get from a weaker side, which is the whole claim of this branch.
+        var quality = total <= 0
+            ? 0.0
+            : AttributeScale.Factor(AttributeScale.ToAttribute(attackStrength / total));
+
         var chance = Math.Clamp(
-            (total <= 0 ? 0.5 : attackStrength / total) * MatchRules.OnTargetFromStrength
+            ShotOnTargetChance(shooter) + MatchRules.ChanceQualityWeight * quality
                 + (_random.NextDouble() - 0.5) * MatchRules.OnTargetSwing,
             MatchRules.MinOnTargetChance - 0.08,
             MatchRules.MaxOnTargetChance);
@@ -1126,6 +1139,56 @@ public class MatchEngine
         SetPossession(state, home, shooter);
         CountShotOnTarget(state, home);
         ResolveShot(state, events, home, shooter, reboundAllowed: false);
+    }
+
+    /// <summary>
+    /// Whether a shot finds the target, which is the striker's own business: finishing and
+    /// the ball under his foot, read on the scale the attributes live on and put on the same
+    /// ramp as everybody else.
+    /// </summary>
+    /// <remarks>
+    /// The pair of constants it replaced was <c>0.48 + (Accuracy − 10) × 0.025 + (Dribbling −
+    /// 10) × 0.015</c>, clamped at 0.20 and 0.90 — so over 1..100 the whole of it lives between
+    /// an attribute of 0 and an attribute of about 45, and every striker above 45 was on the
+    /// same number. Normalising first is what makes a 70 a different striker from a 90.
+    /// </remarks>
+    private static double ShotOnTargetChance(MatchPlayerSnapshot shooter)
+    {
+        var finishing = AttributeWeights.Of(shooter, AttributeWeights.Shot);
+
+        return Math.Clamp(
+            MatchRules.BaseOnTargetChance
+                + MatchRules.OnTargetSwing * AttributeScale.Factor(finishing) * EnergyCurve.Factor(shooter),
+            MatchRules.MinOnTargetChance,
+            MatchRules.MaxOnTargetChance);
+    }
+
+    /// <summary>
+    /// Whether the carrier gets past the man in front of him, which is a question about two
+    /// players rather than about a roll: the same base for both, plus the swing that the gap
+    /// between them earns.
+    /// </summary>
+    /// <remarks>
+    /// Both men are measured with the same <paramref name="weights"/> and then subtracted,
+    /// which is the only way the answer is symmetric. Measuring the carrier on the ball and
+    /// the marker on his strength is the football reading of a duel; measuring each of them on
+    /// his own is what makes the comparison mean anything.
+    /// </remarks>
+    private static double DuelChance(
+        MatchPlayerSnapshot carrier,
+        MatchPlayerSnapshot marker,
+        AttributeWeights.Weights weights)
+    {
+        var carrierSkill = AttributeScale.Factor(
+            AttributeWeights.Of(carrier, weights) * EnergyCurve.Factor(carrier));
+
+        var markerSkill = AttributeScale.Factor(
+            AttributeWeights.Of(marker, weights) * EnergyCurve.Factor(marker));
+
+        return Math.Clamp(
+            MatchRules.DuelBaseChance + MatchRules.DuelSwing * (carrierSkill - markerSkill),
+            MatchRules.MinDuelChance,
+            MatchRules.MaxDuelChance);
     }
 
     /// <summary>
@@ -1160,11 +1223,20 @@ public class MatchEngine
             return;
         }
 
-        var shotPower = shooter.Accuracy * 0.65 + shooter.Dribbling * 0.2 + shooter.Speed * 0.15;
-        var savePower = PlayerMetric.KeeperAbility(keeper) * (0.7 + keeper.Energy / 250.0);
+        var shotPower = AttributeScale.Factor(
+            AttributeWeights.Of(shooter, AttributeWeights.Shot) * EnergyCurve.Factor(shooter));
 
+        var savePower = AttributeScale.Factor(
+            AttributeWeights.KeeperAbility(keeper) * EnergyCurve.Factor(keeper));
+
+        // The striker and the keeper are read on the same -1..1 scale and compared, which is
+        // what a shot is: not a shooter's number against a keeper's number but the difference
+        // between them. The old form subtracted two raw sums and divided by a 20-point span
+        // written for the 1..20 scale, so it bolted at its ceiling for every striker better
+        // than about sixty — which is why a 70 and a 95 were the same finisher in front of
+        // the same keeper, and why a striker of 20 converted better than one of 90.
         var goalChance = Math.Clamp(
-            (shotPower - savePower + 14) / 54.0,
+            MatchRules.BaseGoalChance + MatchRules.GoalChanceSwing * (shotPower - savePower),
             MatchRules.MinGoalChance,
             MatchRules.MaxGoalChance);
 
@@ -1258,7 +1330,8 @@ public class MatchEngine
                 rebound ? MatchNarration.GoalRebound : MatchNarration.Goal,
                 home ? state.HomeTeam.Name : state.AwayTeam.Name,
                 scorer.Name),
-            "goal"));
+            "goal",
+            playerName: scorer.Name));
 
         Hold(state);
     }
@@ -1361,7 +1434,8 @@ public class MatchEngine
                 MatchNarration.GoalOwn,
                 own.Name,
                 attackingTeamName),
-            "own-goal"));
+            "own-goal",
+            playerName: own.Name));
 
         Hold(state);
     }
@@ -1426,7 +1500,7 @@ public class MatchEngine
         var carrier = attackers[_random.Next(0, attackers.Count)];
         var defender = defenders[_random.Next(0, defenders.Count)];
 
-        if (_random.NextDouble() < MatchRules.DuelSuccessChance)
+        if (_random.NextDouble() < DuelChance(carrier, defender, AttributeWeights.Duel))
         {
             SetPossession(state, home, carrier);
             events.Add(Emit(
@@ -1892,14 +1966,6 @@ public class MatchEngine
 
         MatchSubstitution.Swap(state, home, outgoing, incoming);
 
-        // Before the interval these are remembered, because the second half opens by saying
-        // whether either manager changed anything — and that sentence is about names, not
-        // about a count.
-        if (state.Half == 0)
-        {
-            state.FirstHalfChanges.Add($"{teamName}: {incoming.Name} no lugar de {outgoing.Name}");
-        }
-
         events.Add(Emit(
             state,
             MatchEventType.SubstitutionMade,
@@ -2205,7 +2271,9 @@ public class MatchEngine
         Guid? teamId,
         Guid? playerId,
         string description,
-        string icon)
+        string icon,
+        bool fromPenalty = false,
+        string? playerName = null)
     {
         state.Sequence++;
 
@@ -2218,6 +2286,8 @@ public class MatchEngine
             state.HomeScore,
             state.AwayScore,
             description,
-            icon);
+            icon,
+            fromPenalty,
+            playerName);
     }
 }

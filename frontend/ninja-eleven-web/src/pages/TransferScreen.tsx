@@ -4,7 +4,7 @@ import { SeasonApi, TransferApi, TeamApi } from '@/api';
 import { useGameState } from '@/state';
 import { useOffer } from '@/state/OfferProvider';
 import { formatLimo } from '@/services/limo';
-import { starsToString, positionLabel } from '@/services/formatters';
+import { starsToString, positionLabel, attributeToneClass } from '@/services/formatters';
 import { PlayerName, ClubName } from '@/components/Common/Names';
 import type {
   SeasonDto,
@@ -35,16 +35,6 @@ const STATUS_LABELS: Record<TransferStatus, string> = {
   Rejected: 'Recusada',
   Completed: 'Concluída',
   Expired: 'Expirada'
-};
-
-/**
- * The same colour rules the squad table uses, for the same reason: a number a manager reads in
- * two places is one number, and the two places must say the same thing about it.
- */
-const attrClass = (value: number): string => {
-  if (value < 8) return 'attr-red';
-  if (value < 14) return 'attr-yellow';
-  return 'attr-green';
 };
 
 const energyTextClass = (energy: number): string => {
@@ -84,15 +74,15 @@ const PlayerRow: React.FC<{
       <td className="num">{player.age}</td>
       <td className={`num ${energyTextClass(player.energy)}`}>{player.energy}</td>
       <td className="num stars-col">{starsToString(player.stars)}</td>
-      <td className={`num ${attrClass(player.speed)}`}>{player.speed}</td>
-      <td className={`num ${attrClass(player.accuracy)}`}>{player.accuracy}</td>
-      <td className={`num ${attrClass(player.dribbling)}`}>{player.dribbling}</td>
-      <td className={`num ${attrClass(player.heading)}`}>{player.heading}</td>
-      <td className={`num ${attrClass(player.strength)}`}>{player.strength}</td>
-      <td className={`num ${isKeeper ? attrClass(player.goalkeeperPower) : ''}`}>
+      <td className={`num ${attributeToneClass(player.speed)}`}>{player.speed}</td>
+      <td className={`num ${attributeToneClass(player.accuracy)}`}>{player.accuracy}</td>
+      <td className={`num ${attributeToneClass(player.dribbling)}`}>{player.dribbling}</td>
+      <td className={`num ${attributeToneClass(player.heading)}`}>{player.heading}</td>
+      <td className={`num ${attributeToneClass(player.strength)}`}>{player.strength}</td>
+      <td className={`num ${isKeeper ? attributeToneClass(player.goalkeeperPower) : ''}`}>
         {isKeeper ? player.goalkeeperPower : '—'}
       </td>
-      <td className={`num ${isKeeper ? attrClass(player.reflexes) : ''}`}>
+      <td className={`num ${isKeeper ? attributeToneClass(player.reflexes) : ''}`}>
         {isKeeper ? player.reflexes : '—'}
       </td>
       <td className="num accent">{player.season?.goals ?? 0}</td>
@@ -270,23 +260,23 @@ const PlayerDetail: React.FC<{
           <h4 className="transfer-detail__section-title">Atributos</h4>
           <div className="transfer-detail__kv">
             <span className="transfer-detail__k">Velocidade</span>
-            <span className={`transfer-detail__v ${attrClass(player.speed)}`}>{player.speed}</span>
+            <span className={`transfer-detail__v ${attributeToneClass(player.speed)}`}>{player.speed}</span>
             <span className="transfer-detail__k">Finalização</span>
-            <span className={`transfer-detail__v ${attrClass(player.accuracy)}`}>{player.accuracy}</span>
+            <span className={`transfer-detail__v ${attributeToneClass(player.accuracy)}`}>{player.accuracy}</span>
             <span className="transfer-detail__k">Drible</span>
-            <span className={`transfer-detail__v ${attrClass(player.dribbling)}`}>{player.dribbling}</span>
+            <span className={`transfer-detail__v ${attributeToneClass(player.dribbling)}`}>{player.dribbling}</span>
             <span className="transfer-detail__k">Cabeceio</span>
-            <span className={`transfer-detail__v ${attrClass(player.heading)}`}>{player.heading}</span>
+            <span className={`transfer-detail__v ${attributeToneClass(player.heading)}`}>{player.heading}</span>
             <span className="transfer-detail__k">Força</span>
-            <span className={`transfer-detail__v ${attrClass(player.strength)}`}>{player.strength}</span>
+            <span className={`transfer-detail__v ${attributeToneClass(player.strength)}`}>{player.strength}</span>
             {isKeeper && (
               <>
                 <span className="transfer-detail__k">Defesa de gol</span>
-                <span className={`transfer-detail__v ${attrClass(player.goalkeeperPower)}`}>
+                <span className={`transfer-detail__v ${attributeToneClass(player.goalkeeperPower)}`}>
                   {player.goalkeeperPower}
                 </span>
                 <span className="transfer-detail__k">Reflexos</span>
-                <span className={`transfer-detail__v ${attrClass(player.reflexes)}`}>
+                <span className={`transfer-detail__v ${attributeToneClass(player.reflexes)}`}>
                   {player.reflexes}
                 </span>
               </>

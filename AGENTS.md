@@ -101,7 +101,10 @@ GET  /player/{id}/profile?seasonId=
 
 GET  /team/{teamId}/scorer?seasonId=&competition=&topN=
 
-GET  /competition/{editionId}/top-scorer-prize
+GET /competition/{editionId}/top-scorer-prize
+
+GET  /world/due?wave=          POST /world/advance?teamId=
+POST /world/play-due?wave=&teamId=
 ```
 
 Domain errors return RFC 7807 with a stable `code` (e.g. `TeamNotFound`,
@@ -194,15 +197,15 @@ REST alone and SignalR only replaces polling.
 
 ## The Pyramid
 
-Brazil is not one league, and the code stopped pretending otherwise in three divisions of
-twelve. Three things follow from that, and they are the three things that were got wrong first:
+Brazil is not one league, and the code stopped pretending otherwise in four divisions of
+sixteen. Three things follow from that, and they are the three things that were got wrong first:
 
 - **A club has no division. An edition has a division.** `Division` is permanent and a club
   belongs to one for a season through `competition_participants`, so a club that is relegated
   is the same club next season in a different division. A `divisionId` on `teams` would make
   the move delete the club.
 - **A competition is not an edition.** `POST /league/setup` used to take a list of clubs and
-  a season, which is a request that cannot say which of the three divisions it means. The
+  a season, which is a request that cannot say which of the four divisions it means. The
   client asks `GET /competition/by-season/{id}` for the editions, picks one, and reads its
   clubs from `GET /competition/{editionId}/club`. A client that joins a club list to a
   division list itself is how a club ends up in the 3ª Divisão.
@@ -212,10 +215,21 @@ twelve. Three things follow from that, and they are the three things that were g
   match is finished.
 
 **The calendar is the season, and it is drawn once.** `GET /season/{id}/calendar?build=true`
-draws 22 matchdays, a championship window in each of the three divisions and a cup window in
-the second slot. `MatchDay`, `Round.CompletedAt` and `WindowsPerMatchDay` are what energy
-recovery is measured against, so a squad's rest is a fact about the calendar rather than a
-number a client invents.
+draws 34 matchdays of a 64-club world and puts the football of the whole country on them:
+a championship round in each of the four divisions every day from day 2 to day 31 — round `r`
+is day `r + 1`, so the calendar is one fixture list per day rather than eight — and the cup in
+waves on the days around them (32-avos on 7 and 8, 16-avos on 12 and 13, the round of 16 on 17
+and 18, the quarter-finals on 22 and 23, the semi-finals on 27 and 28 and the final on 32 and
+33). Day 34 is the rest day and the day the next season opens on. `MatchDay`,
+`Round.CompletedAt` and `WindowsPerMatchDay` are what energy recovery is measured against, so
+a squad's rest is a fact about the calendar rather than a number a client invents.
+
+**A day has two windows, and the round is in the first one.** `CompetitionRules` holds the
+hours — 15:00 UTC for a championship window and the Supercup, 21:00 for a cup leg — so the
+seventh day of a season carries the sixth round of the divisions and the first legs of the
+cup, and they are two windows six hours apart rather than one day of football. When a day
+carries both, the league is the first wave and the cup the second: a cup leg played by a side
+that has not yet played its league game is a leg played by a club that is not there yet.
 
 **A cup cannot be drawn all at once, because nobody knows who is in the quarter-finals before
 the round of 16 is played.** So the calendar draws the first round and nothing else, and
@@ -238,6 +252,150 @@ the engine's own choice from the eleven that played, measured by `MatchEngine.Pe
 against the keeper in the other goal. `CupTie` records the winner *and* the loser, because the
 losing side of a final is a fact in its own right: it is the runner-up and it goes on the shelf.
 Trophies are written, not recomputed, so a club that is relegated after winning still won.
+
+## Moving the World
+
+`NinjaEleven.Scheduler` is a .NET Worker Service on Quartz. Its jobs are thin — they ask
+`CompetitionExecutionService` to play one kind of window, and that is all a job is. No job
+knows what a goal is, how a round robin is drawn or when the artilharia is paid; a job that
+called a match service directly would be one rule away from being a second opinion about
+football.
+
+**A hand walks the world, one window at a time.** `POST /world/advance` calls
+`CompetitionExecutionService.AdvanceTheWorldAsync`, which finds the earliest matchday that is
+due and still has an unplayed window in it, plays that single window and answers with what it
+did: `WorldAdvanceKind.Window`, or `SeasonClosed` when the window it played was the last
+football of a season, or `Nothing` when the world owes nothing. A world that owes five hundred
+windows is five hundred presses, not one call and not a thousand — so the seasons before this
+one (`World:MatchDayDuration`, `World:CompressedSeasonAnchor`, `SeasonSchedule`) are gone, and
+so is the cron's job of deciding what a day is worth. The scheduler still exists and still
+calls the same service on its three crons, for a world someone wants running without a hand on
+it; it is a caller of the world's rules and not their author.
+
+PostgreSQL is the only coordination. There is no Redis, no lock table and no message broker,
+because a claim that is a row and a `SELECT ... FOR UPDATE` is the whole answer to two
+schedulers firing in the same minute. `RoundExecutionStoreTests` is that claim against a real
+PostgreSQL — an in-memory provider has no rows to lock and would answer "yes" to both.
+
+- **A window is claimed before a single fixture is touched, and completed only when every
+  fixture of it is finished.** A window left half played is not restarted: the fixtures that
+  were played are already `Finished`, and the run that comes back finishes the ones that are
+  left. A fixture that throws is reported and stepped over, and it takes only itself down.
+- **The claim carries a lease *and* an owner.** The lease is what makes a crashed process
+  recoverable; the owner is what stops the process that lost the claim from closing the window
+  over the one that took it. A window that recorded only *when* it was claimed cannot tell a
+  retaken claim from a young one, so the loser would still look like a valid owner for the
+  length of the new lease and would write "completed" above fixtures still to be played.
+- **A released window is nobody's again.** A window that failed goes back rather than being
+  held, so the next run finishes it instead of the next run after the lease expires. And the
+  release says `Scheduled`, because a row that still says "running" is a row that says
+  somebody is playing a window that nobody is playing.
+- **A window closed by hand is never offered to the scheduler.** `Round.HasBeenExecuted`
+  answers from either column — the claim or `CompletedAt` — because a window a manager finished
+  by pressing a button has a completion and no claim.
+- **Only a match that reached the final whistle decides its fixture.** `Match.IsFinished` is
+  also true of an *abandoned* match, which is precisely a match that did not get there, so the
+  reconciliation pass reads `MatchStatus.Finished` and not `IsFinished`. Reading it the other
+  way closed a window over football that was never played: the fixture was marked finished
+  above an abandoned match, the window counted itself complete, and the calendar carried on
+  with a matchday that had no match in it. An abandoned match leaves its fixture owed.
+- **A window that has begun is not begun again.** A match that finishes asks the day whether
+  there is anything left to kick off, and the fixtures the world has not walked to yet are
+  still on the schedule — so that answer used to be yes, and each of them was started twice:
+  once by the matchday and once by the walk that arrived afterwards, which abandoned the
+  first. `MatchdayService.AdvanceAsync` therefore starts a wave only when nothing of it has
+  been kicked off, which is what makes it the opening of a window rather than a second
+  opinion about one that is already running.
+- **A match already on the pitch is left to whoever put it there.** The cup window opens
+  every fixture of it at once, so the walk that plays it arrives to find the day already
+  playing; taking those matches over abandoned and restarted them under whoever was watching.
+  `PlayFixtureAsync` reads a fixture's own state and reports `PlayedElsewhere` instead, which
+  is also the answer that keeps the window owed.
+- **The manager's own fixture is started and left, not simulated.** A window that holds a
+  match of a club somebody is in charge of opens that fixture — a real kick-off, a real
+  session — and stops, reporting it as `LeftForTheManager`. The window is owed until he
+  finishes it, and the run that comes back reconciles it from the match he played. A world
+  that simulates the game its manager is waiting to watch is a game he never played. The club
+  is read from the world (`IManagedClubReader`: the managers with a user behind them) and not
+  from the request, because the scheduler walking the same season is walking it for the same
+  man; a club the caller names is added to that answer rather than replacing it.
+- **A match left on the touchline and never touched is nobody's match.** The world waits for
+  the manager, and a world that waited for ever would say so by playing nothing at all — the
+  same window, the same fixture, the same hundredth of a second, over and over, which is
+  indistinguishable from a broken route. So `MatchService.ReleaseTheUntouchedMatchAsync`
+  asks the match rather than a clock: minute zero, unfinished, and either no session here or
+  one still marked `LeftForTheManager`. A match the loop is driving and a match the manager
+  has claimed are both somebody's, and are refused.
+- **One match, one driver, and the driver is named.** `LiveMatch.Driver` says whether the
+  headless walk is on it (`WalkedByTheWorld`), whether it is waiting on the touchline for the
+  manager (`LeftForTheManager`), or whether the background loop may have it (`None`). The
+  loop moves a clock that is nobody else's, the walk stops the moment it is not the driver
+  any more, and `AttachManager` hands the clock back — a match left for a manager and then
+  claimed is a match the manager is watching, and a loop that kept off it would show him a
+  game that never moves.
+- **A matchday that is behind is owed, not skipped.** The calendar is read from its beginning
+  up to today, never from yesterday: a bound of "yesterday" caps how far behind the world may
+  fall at the price of never playing anything again, and it fails silently, reporting nothing
+  due over a world with hundreds of fixtures outstanding. The tolerance in
+  `WorldExecutionOptions` reaches backwards as well as forwards, so a process that woke up
+  twenty minutes early does not sleep through its own window.
+- **A match belongs to the process that kicked it off.** `Match.SessionHost` and
+  `SessionHeartbeatAt` say whose working memory a row is in, and a lease says how long that
+  claim is honoured. Without them a restart abandons somebody else's football; with them only,
+  a process killed at minute sixty strands a fixture and a round that can never close. A
+  process reclaiming its *own* match does not wait out the lease — its memory is gone, and
+  waiting would add minutes of nothing to every restart.
+- **A match this process could not finish is given up on, not left running.** Three exits in
+  the headless walk can stop a match before the final whistle, and each of them used to return
+  with the match still on the pitch and its session still in this process's registry — so the
+  next run of the window was told the match was already being played, for ever, by a driver
+  that had stopped. `MatchService.AbandonAsync` closes the match as `Abandoned` and reopens
+  its fixture, so a window is retried rather than stuck. It is `Abandoned` and not `Finished`
+  because the match did not reach full time, and a row recording a score that was never played
+  is a lie in the results table.
+- **A row read untracked is written through the instance the context already holds.** Reads
+  here are `AsNoTracking`, so a command holding a match holds a copy the context does not own,
+  and anything on the command's path that attaches one leaves the context with a second
+  instance of the same row. EF refuses to attach the second, and it refuses from inside a tick
+  — an "already being tracked" error raised by a command that only ever touched one match.
+  `MatchRepository.Update` and `FixtureRepository.Update` copy the values onto the tracked
+  instance instead, which is the one that will be written.
+- **SignalR observes; it does not decide.** A client following a match the scheduler is
+  playing is sent that match's persisted events in the engine's own event shape, so a manager
+  cannot tell which process is playing his football. A match is simulated from the whistle to
+  the final whistle in its own DI scope per fixture, so one match cannot be advanced by two
+  callers and nothing a client does can reach into a match it does not manage.
+
+## The Balance Laboratory
+
+`tools/NinjaEleven.BalanceLab` is an executable that references nothing but
+`NinjaEleven.Domain` and asks the model questions a match cannot answer: how often does this
+attacker beat that defender, given these two amounts of energy. It changes no production
+file, and it is measured rather than trusted.
+
+- **A balance number is worth nothing if the laboratory has drifted from the engine.**
+  `LabStrength` is `TeamStrength` with one thing changed — the ramp is a parameter instead of
+  a hardcoded `Energy / 100` — and `BalanceInvariantTests.TheLaboratoryStillMeasuresTheEngine`
+  is the assertion that holds it there. Every other number the laboratory prints is
+  downstream of that one.
+- **A duel is not a match.** `DuelSimulator` rolls one chance a hundred thousand times
+  instead of a match two hundred times, with injuries and the clock out of the way. It
+  measures the thing the curve touches rather than the whole evening around it.
+- **The invariant is the hierarchy, and it is a ratio.** "Energy may not cancel a quality
+  gap" is `InitiativeRatio(90, tired, 45, fresh) > 1`, and it is the assertion the design is
+  judged by. The production ramp fails it: a linear ramp lets a man on 20 deliver a fifth of
+  himself, which cancels a striker who is twice as good as his marker.
+- **A formula that is bolted carries no information, and the audit says which are.**
+  `ScaleAudit` sweeps every action formula over the 1..100 scale and reports the band
+  between its own clamps — the band in which two different players are still two different
+  players. Anything outside it is a constant wearing a formula's clothes.
+
+**The attributes are on 1..100 and the action formulas were written for 1..20.** That is
+the finding under everything else here: `SkillFactor` lives on 7–19, the on-target chance
+on 1–2, `ResolveShot` on 47–77. `TeamStrength` is the only formula that reads a raw 1..100
+attribute without saturating — and it is precisely the one energy multiplies inside. Energy
+does not dominate the engine because it is too strong; it dominates because quality is dead
+everywhere else, and a tax that is the only live path for a difference looks like a veto.
 
 ## The Match Model
 

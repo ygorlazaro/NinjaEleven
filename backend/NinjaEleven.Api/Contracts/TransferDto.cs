@@ -45,6 +45,8 @@ public class TransferListingDto
     public int Strength { get; init; }
     public int GoalkeeperPower { get; init; }
     public int Reflexes { get; init; }
+    public int Stamina { get; init; }
+    public int Potential { get; init; }
     public double Stars { get; init; }
 
     public Guid? TeamId { get; init; }

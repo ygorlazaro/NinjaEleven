@@ -117,39 +117,37 @@ public class SeasonPrizeAndPyramidTests
     public void NobodyIsRelegatedOutOfTheBottomDivisionBecauseThereIsNothingBelowIt()
     {
         var table = StandingsFor(12, reversed: true);
+        var bottom = CompetitionRules.Tiers().Count;
 
-        var movement = DivisionMovement.From(3, table);
+        var movement = DivisionMovement.From(bottom, table);
 
-        Assert.DoesNotContain(movement.Movements, movement => movement.ToTier > 3);
-        Assert.Equal(8, movement.Staying.Count);
+        Assert.DoesNotContain(movement.Movements, m => m.ToTier > bottom);
+        Assert.Equal(12 - CompetitionRules.PromotionSlots, movement.Staying.Count);
         Assert.Equal(CompetitionRules.PromotionSlots, movement.Promoted.Count);
         Assert.Equal(table[0].TeamId, movement.Promoted[0]);
 
-        // The champion of the third division goes up into the second: a tier's number counts
+        // The champion of the bottom division goes up into the one above: a tier's number counts
         // down as you climb, and winning the bottom division and staying in it would make the
         // title worthless.
-        Assert.Equal(2, movement.Movements.First(m => m.TeamId == table[0].TeamId).ToTier);
+        Assert.Equal(bottom - 1, movement.Movements.First(m => m.TeamId == table[0].TeamId).ToTier);
     }
 
     [Fact]
     public void ThePyramidIsAClosedSystemWithNobodyLeftOutAndNobodyArrivingFromNowhere()
     {
-        var tables = new Dictionary<int, IReadOnlyList<StandingEntry>>
-        {
-            [1] = StandingsFor(12, reversed: true),
-            [2] = StandingsFor(12, reversed: true),
-            [3] = StandingsFor(12, reversed: true)
-        };
+        var tables = CompetitionRules.Tiers()
+            .ToDictionary(tier => tier, tier => StandingsFor(12, reversed: true));
 
         var movements = tables.ToDictionary(pair => pair.Key, pair => DivisionMovement.From(pair.Key, pair.Value));
 
         var everybody = movements.Values.SelectMany(m => m.Movements).ToList();
+        var tiers = CompetitionRules.Tiers().Count;
 
-        Assert.Equal(36, everybody.Count);
-        Assert.Equal(36, everybody.Select(m => m.TeamId).Distinct().Count());
+        Assert.Equal(12 * tiers, everybody.Count);
+        Assert.Equal(12 * tiers, everybody.Select(m => m.TeamId).Distinct().Count());
         Assert.All(everybody, movement =>
         {
-            Assert.InRange(movement.ToTier, 1, 3);
+            Assert.InRange(movement.ToTier, 1, tiers);
             Assert.Equal(12, everybody.Count(other => other.ToTier == movement.ToTier));
         });
     }

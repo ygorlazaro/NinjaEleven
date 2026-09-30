@@ -446,6 +446,21 @@ public class MatchdayService
         // — and the state is read from the fixtures rather than kept in a flag, so a day left
         // half played by a restart waits for a person to finish it rather than starting itself
         // twice.
+        //
+        // And a wave that has already begun is not started again at all, which is the same
+        // rule read the other way round. Somebody is playing this window: the manager's own
+        // kick-off started the whole day, or the world is walking it a fixture at a time. A
+        // match that finishes in the middle of that walk must not go round starting the
+        // fixtures the walk has not reached yet — the walk reaches them, and a fixture started
+        // twice is a match abandoned and begun over again, which is a matchday that leaves a
+        // trail of matches nobody ever saw. The wave is only started here when nothing of it
+        // has been kicked off, which is what makes this the opening of a window rather than a
+        // second opinion about one that is already running.
+        if (fixtures.Any(item => item.Status is not FixtureStatus.Scheduled))
+        {
+            return await GetProgressAsync(round.MatchDayId.Value, cancellationToken);
+        }
+
         foreach (var toStart in fixtures.Where(item => item.Status == FixtureStatus.Scheduled))
         {
             await _startFixture(toStart.Id, cancellationToken);
@@ -462,11 +477,11 @@ public class MatchdayService
     /// advances on the finish of a match rather than on a timer: the round of the first
     /// division is over when its sixth match ends, and not one moment before. It is asked
     /// about here rather than only for the round the finished fixture belongs to, because a
-    /// day is three divisions' championship and a window that closed a match after another
+    /// day is four divisions' championship and a window that closed a match after another
     /// is a day whose calendar disagrees with itself.
     ///
-    /// Without it a round is never closed at all: a season would play its twenty-two
-    /// matchdays and every one of them would still read as open, which is what a window's
+    /// Without it a round is never closed at all: a season would play its thirty matchdays and
+    /// every one of them would still read as open, which is what a window's
     /// <see cref="Round.IsCompleted"/> is asked — by the calendar a manager reads, and by
     /// the recovery that is applied when a window ends.
     /// </summary>

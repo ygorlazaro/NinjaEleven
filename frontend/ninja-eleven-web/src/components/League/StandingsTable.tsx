@@ -18,20 +18,18 @@ interface StandingsTableProps {
 /**
  * The legend of a table, in the bands the pyramid actually has.
  *
- * The three divisions are not the same table with a different name: the first has the title and
- * no division above it to go up to, and the last has no division below it to go down to, so the
- * band at the bottom of the last division is the cup leaving four clubs out rather than a
- * relegation into a fourth division that the country does not have. A legend that showed the
- * same four lines under all three would be promising the first division four promotions that
- * cannot happen and the last one four relegations that have nowhere to go.
+ * The divisions are not the same table with a different name: the first has the title and no
+ * division above it to go up to, and the last has no division below it to go down to, so the
+ * last one promotes four clubs and relegates nobody. A legend that showed the same four lines
+ * under every division would be promising the first division four promotions that cannot happen
+ * and the last one four relegations that have nowhere to go.
  */
 const LEGEND: Record<TableZone, string> = {
   None: '',
   Safe: '',
   Champion: '1º lugar — campeão',
   Promotion: '4 primeiras — zona de acesso',
-  Relegation: '4 últimas — zona de descenso',
-  CupExclusion: '4 últimas — desclassificado da copa na temporada seguinte'
+  Relegation: '4 últimas — zona de descenso'
 };
 
 const BAND_CLASS: Record<TableZone, string> = {
@@ -39,26 +37,26 @@ const BAND_CLASS: Record<TableZone, string> = {
   Safe: '',
   Champion: 'champion',
   Promotion: 'promotion',
-  Relegation: 'relegation',
-  CupExclusion: 'cup-exclusion'
+  Relegation: 'relegation'
 };
 
 /**
  * The bands one division has, in the order a manager reads them down the table.
  *
  * Tier one is the title and nothing else — there is no division above it, so no club in it is
- * going up — and the last tier's bottom band is the cup leaving four clubs out, because there is
- * no division below it either. The number of tiers is passed in rather than written here: the
- * pyramid is the season's own list of divisions, and a screen with its own copy of how many
- * there are is a screen that is wrong the day a fourth one is added.
+ * going up — and the last tier has no band at the bottom either, because there is no division
+ * below it to be sent down to: its top four go up and everyone else stays. The number of tiers
+ * is passed in rather than written here: the pyramid is the season's own list of divisions, and
+ * a screen with its own copy of how many there are is a screen that is wrong the day a fifth one
+ * is added.
  */
 const bandsOf = (tier?: number | null, lastTier?: number | null): TableZone[] => {
   if (tier == null) return [];
 
   const bands: TableZone[] = [tier === 1 ? 'Champion' : 'Promotion'];
 
-  if (lastTier != null && lastTier > 0) {
-    bands.push(tier < lastTier ? 'Relegation' : 'CupExclusion');
+  if (lastTier != null && lastTier > 0 && tier < lastTier) {
+    bands.push('Relegation');
   }
 
   return bands;
@@ -77,9 +75,9 @@ const bandsOf = (tier?: number | null, lastTier?: number | null): TableZone[] =>
  *
  * The bands are tagged by the backend and only painted here, and the legend under the table is
  * built from the tier that table is: the first division races for the title and not for a
- * promotion, the last one has no relegation at all, and only the middle one is a race in both
- * directions. A screen that guessed the bands would be guessing a rule it has no copy of to
- * disagree with the season's end. The zone is highlighted, not recomputed.
+ * promotion, the last one promotes four clubs and relegates none, and only the middle ones are
+ * a race in both directions. A screen that guessed the bands would be guessing a rule it has no
+ * copy of to disagree with the season's end. The zone is highlighted, not recomputed.
  */
 const StandingsTable: React.FC<StandingsTableProps> = ({ standings, userId, teams, tier, lastTier }) => {
   const teamMap = teams.reduce<Record<string, TeamDto>>((acc, team) => {
@@ -122,7 +120,6 @@ const StandingsTable: React.FC<StandingsTableProps> = ({ standings, userId, team
               zone === 'Champion' ? 'champion' : '',
               zone === 'Promotion' ? 'promotion' : '',
               zone === 'Relegation' ? 'relegation' : '',
-              zone === 'CupExclusion' ? 'cup-exclusion' : '',
             ]
               .filter(Boolean)
               .join(' ');
@@ -138,7 +135,7 @@ const StandingsTable: React.FC<StandingsTableProps> = ({ standings, userId, team
               >
                 <td>{row.position}</td>
                 <td>
-                  <span className="standing-club">
+                  <span className={`standing-club ${isUser ? 'standing-club--mine' : ''}`}>
                     <ClubCrest
                       primary={colors}
                       secondary={team.secondaryColor || '#f2d34f'}
@@ -146,6 +143,11 @@ const StandingsTable: React.FC<StandingsTableProps> = ({ standings, userId, team
                       className="mini-crest"
                     />
                     <ClubName teamId={team.id}>{team.name}</ClubName>
+                    {/* Said on the name rather than only painted on the row. The band behind
+                        the line is what a manager reading down a column sees; this is what a
+                        manager scanning for his own club sees, and it is the half that does
+                        not depend on telling a club's colour from the zone's. */}
+                    {isUser && <span className="standing-club__you">Você</span>}
                   </span>
                 </td>
                 <td>

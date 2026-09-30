@@ -53,6 +53,46 @@ public class EnergyRecoveryAndPenaltyTests
     }
 
     [Fact]
+    public void AManagersChangeIsRememberedForTheInterval()
+    {
+        // The second half opens by saying whether either manager changed anything. The engine
+        // remembered its own changes and the manager's command did not, so a manager who spent
+        // the first half rearranging his side was told at the interval that nobody had touched
+        // anything. This is the manager's own path — `SubstituteAsync` calls the swap directly —
+        // and the rule therefore has to live in the swap, which is the only place both meet.
+        var outgoing = PlayerAt(energy: 62, position: Position.DEF);
+        var incoming = PlayerAt(energy: 95, position: Position.MID);
+
+        var state = StateWith(outgoing, incoming);
+        state.Minute = 44;
+
+        MatchSubstitution.Swap(state, home: true, outgoing, incoming);
+
+        Assert.Single(state.FirstHalfChanges);
+        Assert.Contains("Home United", state.FirstHalfChanges[0], StringComparison.Ordinal);
+        Assert.Contains(incoming.Name, state.FirstHalfChanges[0], StringComparison.Ordinal);
+        Assert.Contains(outgoing.Name, state.FirstHalfChanges[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AChangeInTheSecondHalfIsNotSomethingTheIntervalAnnounces()
+    {
+        // The interval announces the first half. A change after it is not something the second
+        // half opens by reporting, and recording it would put a substitution into a sentence
+        // that has already been said.
+        var outgoing = PlayerAt(energy: 62, position: Position.DEF);
+        var incoming = PlayerAt(energy: 95, position: Position.MID);
+
+        var state = StateWith(outgoing, incoming);
+        state.Half = 1;
+        state.Minute = 70;
+
+        MatchSubstitution.Swap(state, home: true, outgoing, incoming);
+
+        Assert.Empty(state.FirstHalfChanges);
+    }
+
+    [Fact]
     public void ASubstitutionMovesNobodyEnergy()
     {
         // The eleven, the bench and the opposition, all read before and after the change.
@@ -328,7 +368,7 @@ public class EnergyRecoveryAndPenaltyTests
     {
         // The attributes sit on the reference, so a test about tiredness and minutes is not
         // also a test about a man who happens to be worse than average.
-        var skill = (int)MatchRules.ReferenceAttribute;
+        var skill = (int)AttributeScale.Reference;
 
         var player = Player.Create(
             "Test Player",

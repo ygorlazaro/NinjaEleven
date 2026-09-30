@@ -23,6 +23,13 @@ public class MatchPlayerSnapshot
     public int Reflexes { get; private set; }
 
     /// <summary>
+    /// How much he has in the tank. It is a fact about the body rather than about the
+    /// season, so it is copied off the player and never written back from a match — see
+    /// <see cref="Players.Player.Stamina"/> for why it is not on the season state.
+    /// </summary>
+    public int Stamina { get; private set; }
+
+    /// <summary>
     /// The energy the player has left, rounded for everything that reads or writes it. A
     /// match spends a third of a point a tick, so the engine has to keep the decimals
     /// somewhere or the cost rounds away to nothing over a season.
@@ -259,6 +266,7 @@ public class MatchPlayerSnapshot
             Strength = player.Strength,
             GoalkeeperPower = player.GoalkeeperPower,
             Reflexes = player.Reflexes,
+            Stamina = player.Stamina,
             SeasonYellowCards = state.YellowCards,
             SuspensionMatches = state.SuspensionMatches,
             MatchYellowCards = 0,

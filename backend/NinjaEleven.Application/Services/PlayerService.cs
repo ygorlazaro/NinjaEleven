@@ -57,6 +57,8 @@ public class PlayerService
             Strength = player.Strength,
             GoalkeeperPower = player.GoalkeeperPower,
             Reflexes = player.Reflexes,
+            Stamina = player.Stamina,
+            Potential = player.Potential,
             Face = player.Face
         };
 

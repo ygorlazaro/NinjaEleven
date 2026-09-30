@@ -19,6 +19,8 @@ public static PlayerDto ToDto(this Domain.Players.Player player) => new()
     Strength = player.Strength,
     GoalkeeperPower = player.GoalkeeperPower,
     Reflexes = player.Reflexes,
+    Stamina = player.Stamina,
+    Potential = player.Potential,
     Stars = Domain.Players.PlayerRating.CalculateStars(player)
 };
 
@@ -53,6 +55,8 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
     Strength = squadPlayer.Player.Strength,
     GoalkeeperPower = squadPlayer.Player.GoalkeeperPower,
     Reflexes = squadPlayer.Player.Reflexes,
+    Stamina = squadPlayer.Player.Stamina,
+    Potential = squadPlayer.Player.Potential,
     Stars = Domain.Players.PlayerRating.CalculateStars(squadPlayer.Player),
     Energy = squadPlayer.SeasonState.Energy,
     Goals = squadPlayer.SeasonState.Goals,
@@ -224,7 +228,9 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
         AwayScore = matchEvent.AwayScore,
         Payload = matchEvent.Payload,
         Description = ReadPayload(matchEvent.Payload, "description"),
-        Icon = ReadPayload(matchEvent.Payload, "icon")
+        Icon = ReadPayload(matchEvent.Payload, "icon"),
+        FromPenalty = ReadPayloadBool(matchEvent.Payload, "fromPenalty"),
+        PlayerName = matchEvent.PlayerName
     };
 
     /// <summary>
@@ -252,8 +258,58 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
         }
     }
 
+    /// <summary>
+    /// The same reading for a flag. An event written before the field existed has no such
+    /// property, and an old goal is not a penalty — the answer is a plain no rather than a
+    /// failure, because a row nobody rewrote is a row that never knew.
+    /// </summary>
+    private static bool ReadPayloadBool(string payload, string field)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(payload);
+
+            return document.RootElement.TryGetProperty(field, out var value)
+                && value.ValueKind is System.Text.Json.JsonValueKind.True;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
     public static IReadOnlyList<MatchEventDto> ToDtos(this IEnumerable<Domain.Matches.MatchEvent> matchEvents) =>
         matchEvents.Select(matchEvent => matchEvent.ToDto()).ToList();
+
+    /// <summary>
+    /// A persisted event in the shape the live feed uses.
+    ///
+    /// The engine's own event and the row it was written to carry the same facts, and a
+    /// client should not be able to tell which of the two it was sent: a manager who opened
+    /// his match at minute sixty is sent the state and then the events of a match the
+    /// scheduler is playing, and those events arrive as themselves rather than as a different
+    /// kind of message that happens to mean the same thing.
+    /// </summary>
+    public static MatchEngineEventDto ToEngineDto(this MatchEventDto matchEvent) => new()
+    {
+        Sequence = matchEvent.Sequence,
+        Minute = matchEvent.Minute,
+        Type = matchEvent.Type,
+        TeamId = matchEvent.TeamId,
+        PlayerId = matchEvent.PlayerId,
+        HomeScore = matchEvent.HomeScore,
+        AwayScore = matchEvent.AwayScore,
+        Icon = matchEvent.Icon,
+        Description = matchEvent.Description
+    };
+
+    public static IReadOnlyList<MatchEngineEventDto> ToEngineDtos(this IEnumerable<MatchEventDto> matchEvents) =>
+        matchEvents.Select(matchEvent => matchEvent.ToEngineDto()).ToList();
 
     public static RoundDto ToDto(this Domain.Competitions.Round round) => new()
     {
@@ -475,7 +531,9 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
         HomeScore = engineEvent.HomeScore,
         AwayScore = engineEvent.AwayScore,
         Icon = engineEvent.Icon,
-        Description = engineEvent.Description
+        Description = engineEvent.Description,
+        FromPenalty = engineEvent.FromPenalty,
+        PlayerName = engineEvent.PlayerName
     };
 
     public static IReadOnlyList<MatchEngineEventDto> ToDtos(
@@ -495,6 +553,7 @@ public static MatchPlayerDto ToDto(this Domain.Matches.MatchPlayerSnapshot playe
     Strength = player.Strength,
     GoalkeeperPower = player.GoalkeeperPower,
     Reflexes = player.Reflexes,
+    Stamina = player.Stamina,
     Energy = player.Energy,
     MatchYellowCards = player.MatchYellowCards,
     RedCard = player.RedCard,
@@ -826,9 +885,18 @@ public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profi
     Strength = profile.Strength,
     GoalkeeperPower = profile.GoalkeeperPower,
     Reflexes = profile.Reflexes,
+    Stamina = profile.Stamina,
+    Potential = profile.Potential,
     Stars = profile.Position == "GK"
         ? Domain.Players.PlayerRating.CalculateGoalkeeperStars(profile.Speed, profile.Accuracy, profile.GoalkeeperPower, profile.Reflexes, profile.Strength)
         : Domain.Players.PlayerRating.CalculateOutfieldStars(profile.Speed, profile.Accuracy, profile.Dribbling, profile.Heading, profile.Strength),
+    SpeedStars = Domain.Players.PlayerRating.AttributeToStars(profile.Speed),
+    AccuracyStars = Domain.Players.PlayerRating.AttributeToStars(profile.Accuracy),
+    DribblingStars = Domain.Players.PlayerRating.AttributeToStars(profile.Dribbling),
+    HeadingStars = Domain.Players.PlayerRating.AttributeToStars(profile.Heading),
+    StrengthStars = Domain.Players.PlayerRating.AttributeToStars(profile.Strength),
+    GoalkeeperPowerStars = Domain.Players.PlayerRating.AttributeToStars(profile.GoalkeeperPower),
+    ReflexesStars = Domain.Players.PlayerRating.AttributeToStars(profile.Reflexes),
     Face = profile.Face,
     SeasonId = profile.SeasonId,
     TeamId = profile.TeamId,
@@ -985,6 +1053,8 @@ public static class TeamMatchRecordMapping
         Strength = listing.Strength,
         GoalkeeperPower = listing.GoalkeeperPower,
         Reflexes = listing.Reflexes,
+        Stamina = listing.Stamina,
+        Potential = listing.Potential,
         Stars = listing.Stars,
         TeamId = listing.TeamId,
         TeamName = listing.TeamName,
@@ -1145,4 +1215,45 @@ public static class TeamMatchRecordMapping
 
     public static IReadOnlyList<ClubRankingDto> ToDtos(this IEnumerable<Application.Services.ClubRankingEntry> entries) =>
         entries.Select(entry => entry.ToDto()).ToList();
+}
+
+/// <summary>
+/// A training sheet, mapped. The prices are carried across rather than recomputed: a cost is
+/// a number the domain decided, and mapping is not the place to have an opinion about it.
+/// </summary>
+public static class TrainingQuoteMapper
+{
+    public static TrainingQuoteDto ToDto(this TrainingQuote quote) => new()
+    {
+        PlayerId = quote.PlayerId,
+        Name = quote.Name,
+        Position = quote.Position,
+        Age = quote.Age,
+        Potential = quote.Potential,
+        Stamina = quote.Stamina,
+        Energy = quote.Energy,
+        IsAvailable = quote.IsAvailable,
+        Injury = quote.Injury,
+        SessionFee = quote.SessionFee,
+        Attributes = quote.Attributes
+            .Select(attribute => new TrainingAttributeQuoteDto
+            {
+                Attribute = Enum.Parse<Domain.Enums.PlayerAttribute>(attribute.Attribute),
+                Value = attribute.Value,
+                Cost = attribute.Cost
+            })
+            .ToList()
+    };
+
+    public static SquadTrainingQuotesDto ToDto(this SquadTrainingQuotes quotes) => new()
+    {
+        TeamId = quotes.TeamId,
+        SeasonId = quotes.SeasonId,
+        SquadEnergy = quotes.SquadEnergy,
+        Day = quotes.Day,
+        PlaysToday = quotes.PlaysToday,
+        SessionsAllowed = quotes.SessionsAllowed,
+        SessionsSpent = quotes.SessionsSpent,
+        Players = quotes.Players.Select(player => player.ToDto()).ToList()
+    };
 }

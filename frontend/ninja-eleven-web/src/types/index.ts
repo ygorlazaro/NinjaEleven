@@ -12,7 +12,101 @@ export interface PlayerDto {
   strength: number;
   goalkeeperPower: number;
   reflexes: number;
+  /**
+   * The ceiling on his reading: the best player of this position the world expects him
+   * to become. It arrives from the backend and is never worked out here.
+   */
+  potential: number;
+  /**
+   * How much football is left in him at minute eighty-five, on the same 1..100 scale as the
+   * attributes. The backend sends it on the squad and the player rows alike; it is here
+   * because the contract carries it, and the training panel reads it as the reason two men
+   * with the same numbers pay different prices for the same session.
+   */
+  stamina: number;
   stars: number;
+}
+
+/**
+ * One training session's result. A session spends energy and gets a point, and both numbers
+ * come back so a screen can say what it cost without refetching the whole squad.
+ */
+export interface TrainingResultDto {
+  playerId: Guid;
+  seasonId: Guid;
+  attribute: string;
+  energySpent: number;
+  energyLeft: number;
+  attributeBefore: number;
+  attributeAfter: number;
+  /** What the session cost the club, being a share of the man's season wage. */
+  fee: number;
+  /** How many sessions the club has left on the day after this one. */
+  sessionsLeft: number;
+}
+
+/**
+ * One of the eight attributes, as the wire names it. It is the same closed set the backend
+ * holds, and it is spelled out here rather than left as a string so that a cell is a
+ * `PlayerAttribute` and not a name that happens to match.
+ */
+export type PlayerAttribute =
+  | 'Speed'
+  | 'Accuracy'
+  | 'Dribbling'
+  | 'Heading'
+  | 'Strength'
+  | 'GoalkeeperPower'
+  | 'Reflexes'
+  | 'Stamina';
+
+/**
+ * One attribute on a training sheet. The cost is null when a session is impossible — an
+ * attribute that is not this man's, or one already at his ceiling — which is what lets a
+ * screen offer nothing instead of offering a button the backend will refuse. The price is
+ * arrived at by the domain and is never worked out here.
+ */
+export interface TrainingAttributeQuoteDto {
+  attribute: PlayerAttribute;
+  value: number;
+  cost: number | null;
+}
+
+/** One player's training sheet: who he is, what he has, and the price of each of the eight. */
+export interface TrainingQuoteDto {
+  playerId: Guid;
+  name: string;
+  position: Position;
+  age: number;
+  potential: number;
+  stamina: number;
+  energy: number;
+  isAvailable: boolean;
+  injury: string;
+  /**
+   * What one session on this man costs the club, being a share of his season wage. It is a
+   * number the domain arrived at and is never worked out here — the same session costs the
+   * club far more of a striker's wage than of a reserve goalkeeper's, so it is per man and
+   * not a single figure for the squad.
+   */
+  sessionFee: number;
+  attributes: TrainingAttributeQuoteDto[];
+}
+
+/** The club's whole sheet, with what the squad has left between them. */
+export interface SquadTrainingQuotesDto {
+  teamId: Guid;
+  seasonId: Guid;
+  squadEnergy: number;
+  /** The calendar day the allowance below is for, sent so the screen can name it. */
+  day: string;
+  /** Whether the club has a fixture that day, which is what makes it one session or two. */
+  playsToday: boolean;
+  /** How many sessions the club has that day. */
+  sessionsAllowed: number;
+  /** How many of them have been spent. */
+  sessionsSpent: number;
+  players: TrainingQuoteDto[];
 }
 
 export interface PlayerSeasonStateDto {
@@ -45,6 +139,18 @@ export interface SquadPlayerDto {
   strength: number;
   goalkeeperPower: number;
   reflexes: number;
+  /**
+   * The ceiling on his reading: the best player of this position the world expects him
+   * to become. It arrives from the backend and is never worked out here.
+   */
+  potential: number;
+  /**
+   * How much football is left in him at minute eighty-five, on the same 1..100 scale as the
+   * attributes. The backend sends it on the squad and the player rows alike; it is here
+   * because the contract carries it, and the training panel reads it as the reason two men
+   * with the same numbers pay different prices for the same session.
+   */
+  stamina: number;
   stars: number;
   energy: number;
   goals: number;
@@ -131,6 +237,18 @@ export interface TransferListingDto {
   strength: number;
   goalkeeperPower: number;
   reflexes: number;
+  /**
+   * The ceiling on his reading: the best player of this position the world expects him
+   * to become. It arrives from the backend and is never worked out here.
+   */
+  potential: number;
+  /**
+   * How much football is left in him at minute eighty-five, on the same 1..100 scale as the
+   * attributes. The backend sends it on the squad and the player rows alike; it is here
+   * because the contract carries it, and the training panel reads it as the reason two men
+   * with the same numbers pay different prices for the same session.
+   */
+  stamina: number;
   stars: number;
   teamId?: Guid | null;
   teamName?: string | null;
@@ -454,6 +572,10 @@ export interface MatchEventDto {
   awayScore: number;
   payload: string;
   description: string;
+  /** Whether a goal came from the spot. Decided by the engine when it emitted the goal. */
+  fromPenalty: boolean;
+  /** What the player on this event is called. */
+  playerName?: string | null;
   icon: string;
 }
 
@@ -624,11 +746,11 @@ export interface MatchPossessionDto {
 /**
  * The band a club sits in, tagged by the backend.
  *
- * The three divisions do not share a pair of bands: the top one has the title and no promotion
- * race, the middle races in both directions, and the bottom one has no division under it — so
- * its bottom four are out of the next season's cup rather than relegated anywhere.
+ * The divisions do not share a pair of bands: the top one has the title and no promotion race,
+ * the middle ones race in both directions, and the bottom one has no division under it — so it
+ * promotes four clubs and relegates nobody.
  */
-export type TableZone = 'None' | 'Safe' | 'Promotion' | 'Relegation' | 'Champion' | 'CupExclusion';
+export type TableZone = 'None' | 'Safe' | 'Promotion' | 'Relegation' | 'Champion';
 
 /**
  * How one of a club's finished games went. It is the backend's word, and it is a word rather
@@ -765,6 +887,10 @@ export interface MatchEngineEventDto {
   playerId?: Guid | null;
   icon: string;
   description: string;
+  /** Whether a goal came from the spot. Decided by the engine when it emitted the goal. */
+  fromPenalty: boolean;
+  /** What the player on this event is called, so a scoreline can name him without a squad. */
+  playerName?: string | null;
   homeScore?: number | null;
   awayScore?: number | null;
 }
@@ -1054,7 +1180,32 @@ export type PlayerProfileDto = {
   strength: number;
   goalkeeperPower: number;
   reflexes: number;
+  /**
+   * The ceiling on his reading. A profile that could only show what a man is has no way to
+   * answer "what will he become", and the backend owns that number like every other one.
+   */
+  potential: number;
+  /**
+   * How much football is left in him at minute eighty-five, on the same 1..100 scale as the
+   * attributes. The backend sends it on the squad and the player rows alike; it is here
+   * because the contract carries it, and the training panel reads it as the reason two men
+   * with the same numbers pay different prices for the same session.
+   */
+  stamina: number;
   stars: number;
+  /**
+   * Each attribute read as stars, worked out by the backend from the same conversion the
+   * engine makes. They arrive beside the attributes on purpose: the card used to divide the
+   * raw value by two, which was right while the attributes ran 1..20 and has been wrong on
+   * every card since the move to 1..100. A star is never computed here.
+   */
+  speedStars: number;
+  accuracyStars: number;
+  dribblingStars: number;
+  headingStars: number;
+  strengthStars: number;
+  goalkeeperPowerStars: number;
+  reflexesStars: number;
   seasonId?: Guid | null;
   teamId?: Guid | null;
   teamName: string;

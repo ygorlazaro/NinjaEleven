@@ -1,5 +1,6 @@
 using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Matches;
+using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Application.Services;
@@ -320,7 +321,11 @@ public class MatchServiceTests
             _matchDays.Object,
             _seasons.Object,
             _cupTies.Object,
-            _teams.Object));
+            _teams.Object),
+        MatchTestContext.Host,
+        MatchTestContext.World(),
+        MatchTestContext.Clock,
+        NullLogger<MatchService>.Instance);
 
     private FinanceService CreateFinance() => new(
         _finance.Object,
@@ -501,6 +506,58 @@ public class MatchServiceTests
     }
 
     [Fact]
+    public async Task A_manager_who_claims_the_match_the_world_left_him_gets_the_clock_back()
+    {
+        // The world opens the manager's own match and stops, and the background loop is told
+        // to keep its hands off it so the match is still at minute zero when he arrives. The
+        // claim is what hands the clock back: a loop that went on leaving it alone would show
+        // a manager a match that never moves while he watches it.
+        var service = CreateService();
+
+        var started = await service.StartAsync(_fixture.Id, 7, headless: true);
+        Assert.True(_sessions.TryGet(started.MatchId, out var left));
+        left.Driver = MatchDriver.LeftForTheManager;
+
+        Assert.True(service.AttachManager(started.MatchId, _home.Id));
+
+        Assert.True(_sessions.TryGet(started.MatchId, out var claimed));
+        Assert.Equal(MatchDriver.None, claimed.Driver);
+        Assert.Equal(_home.Id, claimed.State.ManagerTeamId);
+        Assert.False(claimed.AutoContinue);
+    }
+
+    [Fact]
+    public async Task A_match_left_on_the_touchline_and_never_touched_is_given_back_to_the_world()
+    {
+        // The world leaves the manager's own match open and waits. If he never comes, that
+        // match belongs to nobody: it is still at minute zero, and a world waiting for ever
+        // for a manager who is not coming is a world that never plays another day.
+        var service = CreateService();
+
+        var started = await service.StartAsync(_fixture.Id, 7, headless: true);
+        Assert.True(_sessions.TryGet(started.MatchId, out var left));
+        left.Driver = MatchDriver.LeftForTheManager;
+
+        Assert.True(await service.ReleaseTheUntouchedMatchAsync(_fixture.Id));
+        Assert.Equal(FixtureStatus.Scheduled, _fixture.Status);
+        Assert.False(_sessions.TryGet(started.MatchId, out _));
+    }
+
+    [Fact]
+    public async Task A_match_the_loop_is_driving_is_nobody_untouched()
+    {
+        // The other side of the same question: a match that is not waiting for a manager is
+        // somebody's match, whatever minute it is on. Releasing it would take a game away
+        // from whoever is playing it, which is the mistake this whole rule exists to stop.
+        var service = CreateService();
+
+        await service.StartAsync(_fixture.Id, 7, headless: true);
+
+        Assert.False(await service.ReleaseTheUntouchedMatchAsync(_fixture.Id));
+        Assert.Equal(FixtureStatus.InProgress, _fixture.Status);
+    }
+
+    [Fact]
     public async Task Start_abandons_a_match_whose_session_was_lost_and_reopens_the_fixture()
     {
         var service = CreateService();
@@ -524,6 +581,242 @@ public class MatchServiceTests
         Assert.NotEqual(orphan.Id, result.MatchId);
         Assert.True(orphan.IsFinished, "the orphan has to be closed so history keeps a single row");
         _matches.Verify(repo => repo.Update(orphan), Times.Once);
+    }
+
+    [Fact]
+    public async Task Giving_up_on_a_match_closes_it_and_reopens_its_fixture()
+    {
+        // The case a headless run creates: this process kicked the match off and then could
+        // not play it to the end. Left as it is, the match stays on the pitch, its session
+        // stays in this process's registry, and the next run of the window is told the match is
+        // already being played — by a driver that stopped.
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        var given = await service.AbandonAsync(matchId);
+
+        Assert.True(given);
+        Assert.True(_started.Single(m => m.Id == matchId).IsFinished);
+        Assert.Equal(MatchStatus.Abandoned, _started.Single(m => m.Id == matchId).Status);
+        Assert.Equal(FixtureStatus.Scheduled, _fixture.Status);
+        Assert.False(_sessions.TryGet(matchId, out _), "the session is what refused the next run");
+    }
+
+    [Fact]
+    public async Task Giving_up_on_a_match_that_has_been_decided_changes_nothing()
+    {
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+        _started.Single(match => match.Id == matchId).Finish();
+
+        Assert.False(await service.AbandonAsync(matchId));
+    }
+
+    [Fact]
+    public async Task A_club_playing_in_this_process_is_told_which_match()
+    {
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        var live = await service.GetLiveMatchForTeamAsync(_home.Id);
+
+        Assert.NotNull(live);
+        Assert.Equal(matchId, live!.MatchId);
+        Assert.True(live.IsHome);
+        Assert.Equal("Clube Aurora", live.HomeTeamName);
+        Assert.Equal("Estrela do Norte", live.AwayTeamName);
+    }
+
+    [Fact]
+    public async Task A_club_playing_in_another_process_is_still_told_which_match()
+    {
+        // The Scheduler plays the matches nobody is watching and this process holds the
+        // sockets, so the working memory of a live match is in the other one. A badge answered
+        // from this registry alone would go quiet at exactly the moment there is a match to
+        // watch, and the manager would learn his club was playing from the fixture list.
+        var service = CreateService();
+        var theirs = Match.Create(_fixture.Id, _home.Id, _away.Id);
+        theirs.KickOff(11, null, new AttendanceContext(
+            Tier: 1,
+            HomePosition: 1,
+            ClubsInDivision: 16,
+            HomeSquadStars: 4,
+            AwaySquadStars: 4,
+            DivisionAverageStars: 1,
+            Matchday: 1,
+            TotalMatchdays: 30,
+            Importance: MatchImportance.Normal));
+        theirs.StartFirstHalf();
+
+        _matches.Setup(repo => repo.ListLiveExceptHostAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<LiveMatchRow> { new(theirs, Guid.NewGuid()) });
+
+        _teams.Setup(repo => repo.ListByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Team> { _home, _away });
+
+        var live = await service.GetLiveMatchForTeamAsync(_away.Id);
+
+        Assert.NotNull(live);
+        Assert.Equal(theirs.Id, live!.MatchId);
+        Assert.False(live.IsHome);
+        Assert.Equal("Clube Aurora", live.HomeTeamName);
+        Assert.Equal("Estrela do Norte", live.AwayTeamName);
+    }
+
+    [Fact]
+    public async Task A_club_that_is_not_playing_anything_is_told_nothing()
+    {
+        _matches.Setup(repo => repo.ListLiveExceptHostAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<LiveMatchRow>());
+
+        Assert.Null(await CreateService().GetLiveMatchForTeamAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task A_match_in_this_process_is_answered_from_here_and_not_from_the_rows()
+    {
+        // The registry is the working memory, and it is the truth about a match this process
+        // is driving: the row is only rewritten on the snapshot cadence, so a match that
+        // kicked off a minute ago is a row that still says minute zero.
+        var service = CreateService();
+        await StartAsync(service);
+
+        _matches.Verify(
+            repo => repo.ListLiveExceptHostAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Giving_up_on_a_match_that_does_not_exist_changes_nothing()
+    {
+        var service = CreateService();
+
+        Assert.False(await service.AbandonAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task Recovering_an_interrupted_match_drops_its_session_as_well()
+    {
+        // The path a restart takes, and the one that used to leak: the recovery closes the
+        // match and reopens the fixture, and a match left in the registry is a match the next
+        // run of the fixture is refused at the door — "already being played here", said by a
+        // process that is playing nothing. A window of a matchday that hit this could never
+        // close itself again.
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+        Assert.True(_sessions.TryGet(matchId, out _));
+
+        _matches.Setup(repo => repo.ListUnfinishedAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Match> { _started.Single(match => match.Id == matchId) });
+
+        // The recovery also asks the matchday to close the windows that were played and never
+        // closed, so the calendar is not a day behind its own results.
+        _rounds.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Round>());
+
+        await service.RecoverInterruptedMatchesAsync();
+
+        Assert.False(_sessions.TryGet(matchId, out _), "the session is what refused the next run");
+        Assert.Equal(FixtureStatus.Scheduled, _fixture.Status);
+    }
+
+    [Fact]
+    public async Task A_match_left_running_on_a_decided_fixture_is_abandoned_and_the_fixture_stays_decided()
+    {
+        // A live match holds its fixture: the database refuses a second one while the first is
+        // running, and no walk ever asks about a fixture the world has already settled. So a
+        // match left on the pitch of a decided fixture is a claim on a fixture that can never
+        // be played again, held by a match nobody is driving.
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+        _fixture.MarkFinished();
+
+        _matches.Setup(repo => repo.ListUnfinishedOnFinishedFixturesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new List<Match> { _started.Single(match => match.Id == matchId) });
+
+        Assert.Equal(1, await service.AbandonMatchesOnDecidedFixturesAsync());
+
+        // Abandoned and not finished: the match never reached full time, and a row recording
+        // a score that was never played is a lie in the results table.
+        Assert.Equal(MatchStatus.Abandoned, _started.Single(match => match.Id == matchId).Status);
+
+        // The fixture is not reopened. It was decided, the result is in the table, and
+        // reopening it would have the world play the same match twice.
+        Assert.Equal(FixtureStatus.Finished, _fixture.Status);
+        Assert.False(_sessions.TryGet(matchId, out _));
+    }
+
+    [Fact]
+    public async Task A_window_with_no_match_holding_a_decided_fixture_is_not_swept()
+    {
+        _matches.Setup(repo => repo.ListUnfinishedOnFinishedFixturesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Match>());
+
+        Assert.Equal(0, await CreateService().AbandonMatchesOnDecidedFixturesAsync());
+    }
+
+    [Fact]
+    public async Task A_kick_off_that_takes_a_match_over_starts_a_new_one_and_leaves_the_old_match_closed()
+    {
+        // The other caller of the same close. A match whose working memory this process no
+        // longer has is a match it is entitled to take over, and taking it over means closing it
+        // and starting again — not handing the manager the match that is already on the pitch.
+        var service = CreateService();
+        var firstMatchId = await StartAsync(service);
+        _sessions.Remove(firstMatchId);
+
+        var second = await service.StartAsync(_fixture.Id, 8, _home.Id, HomeSquadIds().Take(SquadSize).ToList());
+
+        Assert.True(second.Accepted);
+        Assert.NotEqual(firstMatchId, second.MatchId);
+        Assert.Equal(MatchStatus.Abandoned, _started.Single(match => match.Id == firstMatchId).Status);
+        Assert.False(_sessions.TryGet(firstMatchId, out _));
+    }
+
+    [Fact]
+    public async Task A_headless_run_takes_over_a_match_nobody_is_driving()
+    {
+        // The fixture that can never be played again. A run created the match, left its
+        // working memory on the registry and stopped for any reason at all; every run after
+        // that one found the same session, was told "already being played here" by a process
+        // that was playing nothing, and the matchday sat there for ever. The registry holds
+        // memory, not a claim — a headless caller takes the match over and plays it.
+        var service = CreateService();
+        var stuckMatchId = await StartAsync(service);
+        Assert.True(_sessions.TryGet(stuckMatchId, out _));
+
+        var taken = await service.StartAsync(
+            _fixture.Id,
+            seed: 9,
+            userTeamId: null,
+            starterIds: HomeSquadIds().Take(SquadSize).ToList(),
+            headless: true);
+
+        Assert.True(taken.Accepted);
+        Assert.NotEqual(stuckMatchId, taken.MatchId);
+        Assert.Equal(MatchStatus.Abandoned, _started.Single(match => match.Id == stuckMatchId).Status);
+        Assert.False(_sessions.TryGet(stuckMatchId, out _), "the old match's memory is nobody's now");
+        Assert.Equal(FixtureStatus.InProgress, _fixture.Status);
+    }
+
+    [Fact]
+    public async Task A_manager_is_still_sent_to_the_match_that_is_already_being_played()
+    {
+        // The other half of the same rule, and the one that must not be given up: a manager
+        // arriving at a match somebody is watching joins it rather than restarting it.
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        var joined = await service.StartAsync(
+            _fixture.Id,
+            seed: 9,
+            userTeamId: _home.Id,
+            starterIds: HomeSquadIds().Take(SquadSize).ToList());
+
+        Assert.True(joined.Accepted);
+        Assert.Equal(matchId, joined.MatchId);
+        Assert.Equal(MatchRefusal.AlreadyRunningHere, joined.Reason);
+        Assert.Equal(1, _started.Count);
     }
 
     [Fact]

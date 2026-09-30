@@ -108,6 +108,21 @@ public static class MatchSubstitution
         incoming.EnteredAtMinute = state.Minute;
         outgoing.LeaveThePitchAt(state.Minute);
 
+        // Before the interval the change is remembered, because the second half opens by
+        // saying whether either manager changed anything — and that sentence is about names,
+        // not about a count.
+        //
+        // This lives here rather than in the callers because there are two of them and they
+        // had learned different habits: the engine recorded its own changes and the
+        // manager's command did not, so a manager who spent the first half rearranging his
+        // side was told at the interval that nobody had touched anything. A rule that lives
+        // in one of its two callers is a rule one of them does not have.
+        if (state.Half == 0)
+        {
+            var clubName = home ? state.HomeTeam.Name : state.AwayTeam.Name;
+            state.FirstHalfChanges.Add($"{clubName}: {incoming.Name} no lugar de {outgoing.Name}");
+        }
+
         if (home)
         {
             state.SubstitutionsHome++;

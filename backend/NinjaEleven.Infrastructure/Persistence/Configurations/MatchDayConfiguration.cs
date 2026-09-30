@@ -23,5 +23,10 @@ public class MatchDayConfiguration : IEntityTypeConfiguration<MatchDay>
         builder.Property(d => d.Date).HasColumnType("date").IsRequired();
 
         builder.HasIndex(d => new { d.SeasonId, d.Number }).IsUnique();
+
+        // The world asks "which days are in reach" on every tick of every scheduler job, and
+        // the answer is a range of dates. An index on the date is what keeps that question a
+        // range scan rather than a read of every season the world has ever played.
+        builder.HasIndex(d => d.Date);
     }
 }

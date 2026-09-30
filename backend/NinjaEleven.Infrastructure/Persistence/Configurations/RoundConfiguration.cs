@@ -33,6 +33,22 @@ public class RoundConfiguration : IEntityTypeConfiguration<Round>
         // being applied twice, and it is why recovery is a thing that happens exactly once.
         builder.Property(r => r.CompletedAt);
 
+        // How far whoever moves the world has taken this window. It is separate from
+        // CompletedAt on purpose: a window can be half executed and still not be over, and a
+        // window can be over without the scheduler ever having run it — a manager played it by
+        // hand. Two facts about two different moments, in two columns.
+        builder.Property(r => r.ExecutionStatus)
+            .HasConversion<string>()
+            .HasMaxLength(16)
+            .IsRequired()
+            .HasDefaultValue(RoundExecutionStatus.Scheduled);
+
+        // The lease on the current claim. It is what lets a process that died holding a
+        // window be replaced by the next one to ask for it.
+        builder.Property(r => r.ExecutionStartedAt);
+
+        builder.HasIndex(r => r.ExecutionStatus);
+
         builder.HasIndex(r => new { r.CompetitionSeasonId, r.Number }).IsUnique();
         builder.HasIndex(r => r.MatchDayId);
     }

@@ -29,10 +29,7 @@ public class NinjaElevenDbContextFactory : IDesignTimeDbContextFactory<NinjaElev
             ?? DefaultConnectionString;
 
         var optionsBuilder = new DbContextOptionsBuilder<NinjaElevenDbContext>();
-        optionsBuilder
-            .UseNpgsql(connectionString, npgsql =>
-                npgsql.MigrationsHistoryTable("__ef_migrations_history"))
-            .UseSnakeCaseNamingConvention();
+        NinjaElevenDbContext.Configure(optionsBuilder, connectionString);
 
         return new NinjaElevenDbContext(optionsBuilder.Options);
     }

@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Mappings;
 using NinjaEleven.Application.Matches;
@@ -18,7 +20,7 @@ namespace NinjaEleven.Application.Services;
 /// match is running; the engine's working memory lives in the session registry and is
 /// rebuilt from the snapshot when a client reconnects.
 /// </summary>
-public class MatchService
+public class MatchService : IMatchCleaner
 {
     private const int SquadSize = 11;
     private const int BenchSize = 7;
@@ -53,6 +55,21 @@ public class MatchService
     private readonly AttendanceContextFactory _attendanceContextFactory;
     private readonly IUnitOfWork _unitOfWork;
     private readonly CupProgressionService _cupProgression;
+
+    /// <summary>
+    /// Which process this is, and how long a match's working memory is honoured after this
+    /// process last touched it.
+    ///
+    /// The world is played by more than one process now: the Scheduler plays the matches
+    /// nobody is watching and this one plays the match somebody is. Both write to the same
+    /// rows, so a match has to say whose memory it belongs to and for how long — otherwise
+    /// a process that restarts takes every open match it can find, including the one the
+    /// other process is in the middle of.
+    /// </summary>
+    private readonly IMatchHost _host;
+    private readonly IOptions<WorldExecutionOptions> _world;
+    private readonly IClock _clock;
+    private readonly ILogger<MatchService> _logger;
 
     /// <summary>
     /// Which window of the matchday is playing. It is here because the rule it enforces is
@@ -94,7 +111,11 @@ public class MatchService
         FinanceService financeService,
         SponsorOfferService sponsorService,
         InboxService inbox,
-        MatchContextService matchContext)
+        MatchContextService matchContext,
+        IMatchHost host,
+        IOptions<WorldExecutionOptions> world,
+        IClock clock,
+        ILogger<MatchService> logger)
     {
         _matchRepository = matchRepository;
         _teamRepository = teamRepository;
@@ -111,6 +132,10 @@ public class MatchService
         _sponsorService = sponsorService;
         _inbox = inbox;
         _matchContext = matchContext;
+        _host = host;
+        _world = world;
+        _clock = clock;
+        _logger = logger;
     }
 
     public async Task<IReadOnlyList<Match>> GetAllAsync(CancellationToken cancellationToken = default) =>
@@ -150,9 +175,32 @@ public class MatchService
 
         var events = await _matchRepository.ListEventsAsync(id, cancellationToken);
 
-        return afterSequence.HasValue
+        var wanted = afterSequence.HasValue
             ? events.Where(matchEvent => matchEvent.Sequence > afterSequence.Value).ToList()
             : events.ToList();
+
+        // Named in one read for the whole match. A client that has to ask who scored has to
+        // hold the squad he belongs to, and a finished match is answered with the squad as it
+        // is now — so a striker who has since left the club was a goal with nobody beside it.
+        var playerIds = wanted
+            .Select(matchEvent => matchEvent.PlayerId)
+            .Where(playerId => playerId is not null)
+            .Select(playerId => playerId!.Value)
+            .Distinct()
+            .ToList();
+
+        var names = (await _playerRepository.ListByIdsAsync(playerIds, cancellationToken))
+            .ToDictionary(player => player.Id, player => player.Name);
+
+        foreach (var matchEvent in wanted)
+        {
+            if (matchEvent.PlayerId is { } playerId && names.TryGetValue(playerId, out var name))
+            {
+                matchEvent.PlayerName = name;
+            }
+        }
+
+        return wanted;
     }
 
     /// <summary>
@@ -189,23 +237,56 @@ public class MatchService
         {
             if (_sessions.TryGet(existing.Id, out _))
             {
-                // Already being played: hand back the running match so the caller joins
-                // it instead of creating a second one.
-                return new MatchCommandResult
+                // Already being played in this process. A manager is told the match to watch
+                // so they join it rather than start a second one; a headless caller is told
+                // no, because the match is already on the registry and something in this
+                // process is driving it, and a second driver would play it twice as fast.
+                //
+                // Except when nothing is driving it. The registry holds working memory, and
+                // working memory is not a claim: a match can be in it because a run started,
+                // created the match and then stopped for any reason at all, and the next run
+                // of the window finds the very same session and refuses forever. A fixture
+                // like that is a matchday that can never be played and a season that stops
+                // over it, so a headless caller takes the match over rather than believing a
+                // registry entry that nothing is driving. The two cannot be talking about the
+                // same match: a headless match is played to the end by the one run that
+                // started it, inside the one round, and a second start of the same fixture
+                // cannot be that run.
+                if (!headless)
                 {
-                    Accepted = true,
-                    MatchId = existing.Id,
-                    ErrorMessage = "Esta partida já está em andamento."
-                };
+                    return new MatchCommandResult
+                    {
+                        Accepted = true,
+                        MatchId = existing.Id,
+                        ErrorMessage = "Esta partida já está em andamento.",
+                        Reason = MatchRefusal.AlreadyRunningHere
+                    };
+                }
             }
-
-            if (existing.IsFinished)
+            else if (existing.IsFinished)
             {
                 return new MatchCommandResult
                 {
                     Accepted = false,
                     MatchId = existing.Id,
-                    ErrorMessage = "Esta partida já foi disputada."
+                    ErrorMessage = "Esta partida já foi disputada.",
+                    Reason = MatchRefusal.AlreadyFinished
+                };
+            }
+
+            // A match that is on the pitch and is not ours. Somebody else's process is
+            // playing it with its working memory in hand, and this one leaves it alone: an
+            // abandoned match is a match that stops halfway through, and a world that abandons
+            // another process's football every time it wakes up is a world that never finishes
+            // a round. It becomes reclaimable when its owner's lease runs out.
+            if (!existing.CanBeReclaimedBy(_host.HostId, _clock.UtcNow, _world.Value.SessionLease))
+            {
+                return new MatchCommandResult
+                {
+                    Accepted = false,
+                    MatchId = existing.Id,
+                    ErrorMessage = "Esta partida está sendo jogada por outro processo.",
+                    Reason = MatchRefusal.PlayedByAnotherProcess
                 };
             }
 
@@ -322,6 +403,12 @@ public class MatchService
         var state = new MatchState(context);
         var engine = new MatchEngine(context.Random);
 
+        // The match belongs to this process from the whistle. The row says so, and the lease
+        // it starts here is what lets another process take the match over if this one dies
+        // in the middle of it — a fixture left in progress for ever is a round that can
+        // never be completed, and one that is never completed is a season that stops.
+        match.ClaimSession(_host.HostId, _clock.UtcNow);
+
         fixture.MarkInProgress();
         _fixtureRepository.Update(fixture);
 
@@ -331,7 +418,32 @@ public class MatchService
         ApplyToMatch(match, state, events);
         await PersistEventsAsync(match, events, cancellationToken);
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception error)
+        {
+            // The write did not go through. The refusal the database raises here is the one
+            // that says another process got this fixture a moment earlier — a fixture can
+            // hold one live match and no more, so the second of two processes that woke at
+            // the same instant is the one that loses, and it says so rather than starting a
+            // second copy of the same evening. It is caught as a plain exception because the
+            // Application layer does not name EF Core, and the exception is logged in full so
+            // a refusal that was something else is still visible.
+            _logger.LogError(
+                error,
+                "The kick-off of fixture {FixtureId} was refused by the database. Another process is playing it.",
+                fixtureId);
+
+            return new MatchCommandResult
+            {
+                Accepted = false,
+                MatchId = Guid.Empty,
+                ErrorMessage = "Esta partida já foi iniciada por outro processo.",
+                Reason = MatchRefusal.LostTheKickOff
+            };
+        }
 
         _sessions.Register(new LiveMatch(match.Id, fixture.RoundId, headless, engine, state));
 
@@ -355,11 +467,132 @@ public class MatchService
     }
 
     /// <summary>
+    /// Closes the match of a fixture that somebody started and nobody ever touched, so the
+    /// world can play the fixture again instead of waiting for ever for somebody who is not
+    /// coming.
+    ///
+    /// <para>
+    /// A match the world left on the touchline is the manager's to play, and he is given the
+    /// chance: the world opens it, leaves the clock to nobody and waits. What it cannot do is
+    /// wait for ever — a match that was left and never once ticked has been nobody's business
+    /// since the moment it was opened, and a window that holds it is a window the world can
+    /// never walk past. It would say so by doing nothing at all, over and over, which is
+    /// indistinguishable from a broken route.
+    /// </para>
+    ///
+    /// <para>
+    /// So the question is asked of the match itself, not of a clock. Untouched means minute
+    /// zero, unfinished, and either no session in this process or a session still marked as
+    /// left for the manager: a match the loop is driving, a match somebody claimed and a match
+    /// that has been played for a while are all refused, because those belong to somebody.
+    /// </para>
+    /// </summary>
+    /// <param name="fixtureId">The fixture whose match is sitting on the touchline.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Whether a match was closed, so the fixture could be played again.</returns>
+    public async Task<bool> ReleaseTheUntouchedMatchAsync(
+        Guid fixtureId,
+        CancellationToken cancellationToken = default)
+    {
+        var match = await _matchRepository.GetByFixtureAsync(fixtureId, cancellationToken);
+
+        if (match is null || match.IsFinished || match.CurrentMinute != 0)
+        {
+            return false;
+        }
+
+        // A session in this process that is not waiting for a manager is somebody's match:
+        // the loop is on it, or the manager claimed it and is watching it now.
+        if (_sessions.TryGet(match.Id, out var session)
+            && session.Driver is not MatchDriver.LeftForTheManager)
+        {
+            return false;
+        }
+
+        _logger.LogInformation(
+            "Match {MatchId} was left on the touchline and nobody touched it. The world takes the fixture back.",
+            match.Id);
+
+        return await AbandonAsync(match.Id, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gives up on a match this process was playing and could not finish, and reopens its
+    /// fixture so the next run of the window plays it again from the whistle.
+    ///
+    /// <para>
+    /// This is the counterpart to <see cref="RecoverInterruptedMatchesAsync"/> for a process
+    /// that is very much alive. A headless match that stops advancing — because the engine
+    /// would not tick it, or because it never reached full time — leaves two things behind that
+    /// must not be left behind: the match, still on the pitch and still holding a claim, and
+    /// its session, still in this process's memory. The next run of the window asks to start
+    /// the match, finds the session on the registry, and is told it is already being played —
+    /// for ever, by a driver that stopped. A fixture stuck that way is a window that never
+    /// closes, and a season with a window that never closes is a season that stops.
+    /// </para>
+    ///
+    /// <para>
+    /// So the match is closed and the fixture reopened here rather than left for a restart to
+    /// clean up. The match ends <see cref="MatchStatus.Abandoned"/> rather than
+    /// <see cref="MatchStatus.Finished"/>: it did not reach full time, and a match recorded as
+    /// finished with a score it never actually played is a lie in the results table.
+    /// </para>
+    /// </summary>
+    /// <param name="matchId">The match to give up on.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Whether the match was this process's and has been closed.</returns>
+    public async Task<bool> AbandonAsync(Guid matchId, CancellationToken cancellationToken = default)
+    {
+        var match = await _matchRepository.GetAsync(matchId, cancellationToken);
+
+        // Somebody else's football is not this process's to close, and a match that has
+        // already been decided is not a match to reopen.
+        if (match is null || match.IsFinished)
+        {
+            return false;
+        }
+
+        if (!match.CanBeReclaimedBy(_host.HostId, _clock.UtcNow, _world.Value.SessionLease))
+        {
+            _logger.LogDebug(
+                "Match {MatchId} belongs to {Host} and is left alone.",
+                match.Id,
+                match.SessionHost);
+
+            return false;
+        }
+
+        // The session first. It is the reason the next run would be refused, and it is the
+        // only part of this that lives in memory rather than in a column.
+        _sessions.Remove(match.Id);
+
+        var fixture = await _fixtureRepository.GetAsync(match.FixtureId, cancellationToken);
+
+        if (fixture is null)
+        {
+            match.Abandon();
+            _matchRepository.Update(match);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+
+        await AbandonAsync(match, fixture, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
     /// Abandons a match whose working memory is gone and reopens its fixture, so the
     /// fixture is playable again instead of being stuck for ever.
     /// </summary>
     private async Task AbandonAsync(Match match, Fixture fixture, CancellationToken cancellationToken)
     {
+        // The session first, on every path and not only the public one. A match left in the
+        // registry is a match the next run of its fixture is refused at the door — "already
+        // running here" — while nothing is running it, and a fixture in that state can never
+        // be played again by this process at all. Reopening the fixture without dropping the
+        // session is what turns a match that was given up on into a fixture that is stranded.
+        _sessions.Remove(match.Id);
+
         match.Abandon();
         _matchRepository.Update(match);
 
@@ -370,9 +603,19 @@ public class MatchService
     }
 
     /// <summary>
-    /// Abandons every match that is still open when the process starts. The live
-    /// sessions live in memory, so after a restart their matches can never be resumed;
-    /// closing them here is what keeps a fixture from being stranded in progress.
+    /// Abandons every match this process was playing and has lost, and every match whose
+    /// owner has stopped renewing its lease. The live sessions live in memory, so a match
+    /// this process was playing can never be resumed; closing it is what keeps a fixture
+    /// from being stranded in progress.
+    ///
+    /// <para>
+    /// A match belonging to <i>another</i> process is not touched. That is the whole of what
+    /// makes it safe for the API and the Scheduler to be running at the same time: the
+    /// Scheduler plays the matches nobody is watching and the API plays the one somebody is,
+    /// and a restart of either must not take the other's football away mid-match. A match
+    /// whose owner died anyway is still reclaimed, because its lease runs out and the next
+    /// run of its window finds it.
+    /// </para>
     ///
     /// It also asks the matchday to close the windows that were played and never closed.
     /// A match that finished while the process was down was finished by nobody's call, and
@@ -382,10 +625,22 @@ public class MatchService
     public async Task<int> RecoverInterruptedMatchesAsync(CancellationToken cancellationToken = default)
     {
         var unfinished = await _matchRepository.ListUnfinishedAsync(cancellationToken);
+        var now = _clock.UtcNow;
+        var lease = _world.Value.SessionLease;
         var recovered = 0;
 
         foreach (var match in unfinished)
         {
+            if (!match.CanBeReclaimedBy(_host.HostId, now, lease))
+            {
+                // Somebody else is playing it and their lease is alive. Not ours to close.
+                _logger.LogDebug(
+                    "Match {MatchId} is being played by {Host}; it is left alone.",
+                    match.Id,
+                    match.SessionHost);
+                continue;
+            }
+
             var fixture = await _fixtureRepository.GetAsync(match.FixtureId, cancellationToken);
             if (fixture is null)
             {
@@ -403,6 +658,62 @@ public class MatchService
         await _matchday.CloseTheWindowsThatWereLeftOpenAsync(cancellationToken);
 
         return recovered;
+    }
+
+    /// <summary>
+    /// Closes the matches that are still on the pitch on a fixture the world has already
+    /// decided, so they stop holding their fixtures.
+    ///
+    /// <para>
+    /// A live match and its fixture are exclusive: the database refuses a second match for a
+    /// fixture while the first one is running. So a match left running on a decided fixture is
+    /// not a leftover nobody looks at — it is a claim on a fixture that can never be played
+    /// again, held by a match that is never ticked, and no window will ever ask about it
+    /// because every walk has already finished with that fixture. The world does not skip a
+    /// matchday over that; it owes it for ever.
+    /// </para>
+    ///
+    /// <para>
+    /// The fixture is <b>not</b> reopened. It was decided, the result is in the table, and
+    /// reopening it would put a played match back on the schedule and have the world play it
+    /// twice. Only the match is closed, and it is closed as <c>Abandoned</c> because it never
+    /// reached full time — a row recording a score that was never played is a lie in the
+    /// results table.
+    /// </para>
+    ///
+    /// <para>
+    /// Whoever owns the match closes it, lease or not: the match is on a decided fixture, so
+    /// there is no football anybody could be watching, and the lease is about a claim on a
+    /// fixture that has already been settled.
+    /// </para>
+    /// </summary>
+    /// <returns>How many matches were closed.</returns>
+    public async Task<int> AbandonMatchesOnDecidedFixturesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var orphans = await _matchRepository.ListUnfinishedOnFinishedFixturesAsync(cancellationToken);
+
+        if (orphans.Count == 0)
+        {
+            return 0;
+        }
+
+        foreach (var match in orphans)
+        {
+            _sessions.Remove(match.Id);
+
+            match.Abandon();
+            _matchRepository.Update(match);
+
+            _logger.LogDebug(
+                "Match {MatchId} was left running on fixture {FixtureId}, which was already " +
+                "decided. It is abandoned so the fixture is not held for ever.",
+                match.Id,
+                match.FixtureId);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return orphans.Count;
     }
 
     /// <summary>
@@ -559,7 +870,76 @@ public class MatchService
             };
         }
 
-        return await Task.FromResult<LiveMatchSummary?>(null);
+        return await LiveMatchAnotherProcessIsPlayingAsync(teamId, cancellationToken);
+    }
+
+    /// <summary>
+    /// The same answer, asked of the matches another process is playing.
+    ///
+    /// <para>
+    /// A club's live working memory is in the process that kicked the match off, and there are
+    /// two of them: the one that holds the sockets and the Scheduler, which plays the matches
+    /// nobody is watching. A badge answered from this process's registry alone would say a club
+    /// is not playing while the Scheduler is playing its match in front of it — the badge goes
+    /// quiet exactly when there is a match to watch, which is the one moment it exists for.
+    /// </para>
+    ///
+    /// <para>
+    /// So the walk of the matches being played is a walk of the registry and then of the live
+    /// rows, and both are a handful: a club plays at most one match at a time, and the whole
+    /// world is rarely more than a matchday's worth. What this process does not own, it reads
+    /// from the row rather than the session, which is the same answer the loop republishes
+    /// from and the same one the client would be sent.
+    /// </para>
+    ///
+    /// <para>
+    /// The two clubs are read in one call. A badge that asked for each club in turn would be a
+    /// badge that costs a round trip per field it draws.
+    /// </para>
+    /// </summary>
+    private async Task<LiveMatchSummary?> LiveMatchAnotherProcessIsPlayingAsync(
+        Guid teamId,
+        CancellationToken cancellationToken)
+    {
+        var live = await _matchRepository.ListLiveExceptHostAsync(_host.HostId, cancellationToken);
+        var mine = live.FirstOrDefault(row => row.Match.HomeTeamId == teamId || row.Match.AwayTeamId == teamId);
+
+        if (mine is null)
+        {
+            return null;
+        }
+
+        var match = mine.Match;
+        var isHome = match.HomeTeamId == teamId;
+        var clubs = (await _teamRepository.ListByIdsAsync(
+            new[] { match.HomeTeamId, match.AwayTeamId },
+            cancellationToken)).ToDictionary(team => team.Id);
+
+        if (!clubs.TryGetValue(match.HomeTeamId, out var home) || !clubs.TryGetValue(match.AwayTeamId, out var away))
+        {
+            return null;
+        }
+
+        return new LiveMatchSummary
+        {
+            MatchId = match.Id,
+            RoundId = mine.RoundId,
+            HomeTeamId = home.Id,
+            HomeTeamName = home.Name,
+            HomeShortName = home.ShortName,
+            HomePrimaryColor = home.PrimaryColor,
+            HomeSecondaryColor = home.SecondaryColor,
+            AwayTeamId = away.Id,
+            AwayTeamName = away.Name,
+            AwayShortName = away.ShortName,
+            AwayPrimaryColor = away.PrimaryColor,
+            AwaySecondaryColor = away.SecondaryColor,
+            HomeGoals = match.HomeScore,
+            AwayGoals = match.AwayScore,
+            Minute = match.CurrentMinute,
+            IsHome = isHome,
+            AtHalfTime = mine.IsHalfTime
+        };
     }
 
     /// <summary>
@@ -760,6 +1140,15 @@ public class MatchService
         // The events are the part a reconnecting client replays, so they are always
         // committed here. The match row is only rewritten on the snapshot cadence.
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // The lease on this match's working memory, renewed by the only thing that can play
+        // it. It is what tells another process that this match is being looked after, and it
+        // is renewed on the snapshot cadence rather than on every tick because the row is
+        // only written on that cadence anyway.
+        if (dueForSnapshot)
+        {
+            match.TouchSession(_clock.UtcNow);
+        }
 
         if (finished)
         {
@@ -979,7 +1368,11 @@ public class MatchService
             var events = new List<MatchEngineEvent>
             {
                 EmitEvent(session.State, MatchEventType.SubstitutionMade, teamId, incoming.PlayerId,
-                    $"Substituição: {incoming.Name} entra no lugar de {outgoing.Name}")
+                    // The club is named because the feed does not belong to one club: a manager
+                    // following a whole matchday sees the changes of every fixture on it, and
+                    // a substitution that does not say whose it was is a sentence about
+                    // nobody. The engine's own wordings name their club for the same reason.
+                    $"{TeamNameOf(session.State, isHome)}: {incoming.Name} entra no lugar de {outgoing.Name}")
             };
 
             DrainFeed(session.State);
@@ -1169,6 +1562,13 @@ public class MatchService
     }
 
     /// <summary>
+    /// The name of the club playing on that side, read off the match's own state so a
+    /// sentence written about one of its players can say who they play for.
+    /// </summary>
+    private static string TeamNameOf(MatchState state, bool home) =>
+        home ? state.HomeTeam.Name : state.AwayTeam.Name;
+
+    /// <summary>
     /// Hands a headless match over to the manager of one of its clubs.
     ///
     /// A cup window opens every fixture of it at once — the manager's club included — so a
@@ -1220,6 +1620,12 @@ public class MatchService
 
             session.State.ManagerTeamId = userTeamId;
             session.AutoContinue = false;
+
+            // And it is his match now: the world left it on the touchline for him and the
+            // background loop was told to keep off it, so the claim is what hands the clock
+            // back. Without this the loop would go on leaving a match alone that the manager
+            // is watching — a match that never moves while he watches it.
+            session.Driver = MatchDriver.None;
         }
 
         return true;
@@ -1332,10 +1738,15 @@ public class MatchService
             var pitch = onPitch.ToList();
             var names = pitch.Select(player => player.PlayerId).ToHashSet();
 
+            // The minute the match ended, which is the only thing the snapshot cannot know for
+            // itself: a man who never came off has no LeftAtMinute, and his ninety minutes are
+            // measured to the whistle rather than to a stamp nobody wrote.
+            var finalMinute = state.Minute;
+
             foreach (var player in pitch)
             {
                 var line = MatchPlayerStatistics.Create(matchId, player.PlayerId, teamId, seasonId);
-                line.ApplyFrom(player, started: !player.SubbedIn);
+                line.ApplyFrom(player, started: !player.SubbedIn, finalMinute: finalMinute);
                 lines.Add(line);
             }
 
@@ -1348,7 +1759,7 @@ public class MatchService
                 }
 
                 var line = MatchPlayerStatistics.Create(matchId, player.PlayerId, teamId, seasonId);
-                line.ApplyFrom(player, started: !player.SubbedIn);
+                line.ApplyFrom(player, started: !player.SubbedIn, finalMinute: finalMinute);
                 lines.Add(line);
             }
 
@@ -1361,7 +1772,7 @@ public class MatchService
                 }
 
                 var line = MatchPlayerStatistics.Create(matchId, player.PlayerId, teamId, seasonId);
-                line.ApplyFrom(player, started: false, wasOnBenchUnused: true);
+                line.ApplyFrom(player, started: false, wasOnBenchUnused: true, finalMinute: finalMinute);
                 lines.Add(line);
             }
         }
@@ -1747,7 +2158,9 @@ public class MatchService
             }
 
             // A man who did not travel has no minutes to be paid for and no snapshot to read
-            // an age from, so his window is the band on its own.
+            // an age or a stamina from, so his window is the band on its own. Both are body
+            // facts the caller would have to query for, and a query per player at the end of
+            // each of the thirty-four matches of a matchday moves a number nobody is reading.
             seasonState.RecoverEnergy(EnergyRecoveryRules.Recovery(
                 WindowEffort.NoMatch, minutesPlayed: 0, age: null, recovery));
             _playerRepository.UpdateSeasonState(seasonState);
@@ -1806,7 +2219,7 @@ public class MatchService
             var minutes = player.MinutesPlayed(state.Minute);
 
             seasonState.SetEnergy(player.Energy + EnergyRecoveryRules.Recovery(
-                effort, minutes, player.Age, recovery));
+                effort, minutes, player.Age, recovery, player.Stamina));
 
             _playerRepository.UpdateSeasonState(seasonState);
         }

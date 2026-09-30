@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>ninja-eleven-scheduler</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NinjaEleven.Application\NinjaEleven.Application.csproj" />
+    <ProjectReference Include="..\NinjaEleven.Infrastructure\NinjaEleven.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.4" />
+    <!-- Quartz is scheduling infrastructure and nothing else. It is told when to wake up;
+         it is never told what a goal is, and it is not the source of truth about anything:
+         a trigger that never fires costs a matchday, while a window's own state costs nothing
+         and is what a restart is answered from. In Quartz 4 the hosting and DI integrations
+         live in this one package. -->
+    <PackageReference Include="Quartz" Version="4.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

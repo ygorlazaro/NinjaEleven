@@ -26,7 +26,10 @@ const legScore = (goals?: number | null, conceded?: number | null) =>
  * yet, so the bracket ends where the football has got to — which is the honest shape of a
  * knockout, and the reason the columns get wider as they go.
  */
-const CupBracket: React.FC<{ bracket: CupBracketDto }> = ({ bracket }) => {
+const CupBracket: React.FC<{ bracket: CupBracketDto; userTeamId?: string | null }> = ({
+  bracket,
+  userTeamId
+}) => {
   const navigate = useNavigate();
 
   if (bracket.rounds.length === 0) {
@@ -45,7 +48,7 @@ const CupBracket: React.FC<{ bracket: CupBracketDto }> = ({ bracket }) => {
             <h3 className="cup-bracket__title">{round.name}</h3>
             <div className="cup-bracket__ties">
               {round.ties.map(tie => (
-                <TieCard key={tie.tieId} tie={tie} onNavigate={navigate} />
+                <TieCard key={tie.tieId} tie={tie} userTeamId={userTeamId} onNavigate={navigate} />
               ))}
             </div>
           </section>
@@ -66,7 +69,11 @@ const CupBracket: React.FC<{ bracket: CupBracketDto }> = ({ bracket }) => {
 };
 
 /** One tie: the two clubs, the two legs, and the aggregate. */
-const TieCard: React.FC<{ tie: CupBracketTieDto; onNavigate: (path: string) => void }> = ({ tie, onNavigate }) => {
+const TieCard: React.FC<{
+  tie: CupBracketTieDto;
+  userTeamId?: string | null;
+  onNavigate: (path: string) => void;
+}> = ({ tie, userTeamId, onNavigate }) => {
   const [home, away] = tie.clubs;
 
   const goToMatch = (matchId?: string | null) => {
@@ -75,8 +82,8 @@ const TieCard: React.FC<{ tie: CupBracketTieDto; onNavigate: (path: string) => v
 
   return (
     <div className={`cup-tie ${tie.clubs.some(club => club.isWinner) ? 'cup-tie--decided' : ''}`}>
-      <ClubLine club={home} />
-      <ClubLine club={away} />
+      <ClubLine club={home} matchId={tie.firstLegMatchId} userTeamId={userTeamId} onGoToMatch={goToMatch} />
+      <ClubLine club={away} matchId={tie.secondLegMatchId} userTeamId={userTeamId} onGoToMatch={goToMatch} />
       <div className="cup-tie__aggregate">
         {home?.aggregateGoals != null ? (
           <>
@@ -121,12 +128,33 @@ const TieCard: React.FC<{ tie: CupBracketTieDto; onNavigate: (path: string) => v
  * One club's line of a tie. The winner is marked by the line, not by a trophy in it: a bracket
  * with two winners in it is a bracket nobody can read, and the club that goes through is the one
  * whose line carries the day.
+ *
+ * A leg's score is the door to that leg's match, for both clubs. The two legs swap ends, so the
+ * away club's first leg is the same match the home club's first leg is — which is exactly why
+ * the score is linked and not merely printed: it is the number a manager wants to click, and
+ * the id it is wired to is the one the backend read it out of.
  */
-const ClubLine: React.FC<{ club?: CupBracketClubDto }> = ({ club }) => {
+const ClubLine: React.FC<{
+  club?: CupBracketClubDto;
+  matchId?: string | null;
+  userTeamId?: string | null;
+  onGoToMatch: (matchId?: string | null) => void;
+}> = ({ club, matchId, userTeamId, onGoToMatch }) => {
   if (!club) return null;
 
+  const isMine = !!userTeamId && club.teamId === userTeamId;
+
   return (
-    <div className={`cup-club ${club.isWinner ? 'cup-club--winner' : ''} ${club.isLoser ? 'cup-club--loser' : ''}`}>
+    <div
+      className={[
+        'cup-club',
+        club.isWinner ? 'cup-club--winner' : '',
+        club.isLoser ? 'cup-club--loser' : '',
+        isMine ? 'cup-club--mine' : ''
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <span className="cup-club__crest">
         <ClubCrest
           primary={club.primaryColor}
@@ -137,12 +165,52 @@ const ClubLine: React.FC<{ club?: CupBracketClubDto }> = ({ club }) => {
       </span>
       <span className="cup-club__name">
         <ClubName teamId={club.teamId}>{club.name}</ClubName>
+        {isMine && <span className="cup-club__you" title="O seu clube">Você</span>}
       </span>
       <span className="cup-club__legs">
-        <span title="Primeiro jogo">{legScore(club.firstLegGoals, club.firstLegConceded)}</span>
-        <span title="Segundo jogo">{legScore(club.secondLegGoals, club.secondLegConceded)}</span>
+        <LegScore
+          score={legScore(club.firstLegGoals, club.firstLegConceded)}
+          title="Primeiro jogo"
+          matchId={matchId}
+          onGoToMatch={onGoToMatch}
+        />
+        <LegScore
+          score={legScore(club.secondLegGoals, club.secondLegConceded)}
+          title="Segundo jogo"
+          matchId={matchId}
+          onGoToMatch={onGoToMatch}
+        />
       </span>
     </div>
+  );
+};
+
+/**
+ * One leg's score, which is a link when the leg has been played and plain text when it has not.
+ *
+ * A leg that was never played has no match to go to, so it prints a dash and offers nothing —
+ * a button that goes nowhere is worse than a number that does not, because a manager presses it
+ * expecting the whistle.
+ */
+const LegScore: React.FC<{
+  score: string;
+  title: string;
+  matchId?: string | null;
+  onGoToMatch: (matchId?: string | null) => void;
+}> = ({ score, title, matchId, onGoToMatch }) => {
+  if (!matchId) {
+    return <span title={title}>{score}</span>;
+  }
+
+  return (
+    <button
+      type="button"
+      className="cup-club__leg"
+      title={`${title} — ver a partida`}
+      onClick={() => onGoToMatch(matchId)}
+    >
+      {score}
+    </button>
   );
 };
 

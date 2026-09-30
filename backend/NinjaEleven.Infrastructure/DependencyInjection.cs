@@ -1,5 +1,6 @@
 using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Matches;
+using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Application.Services;
 using NinjaEleven.Infrastructure.Persistence;
@@ -24,17 +25,21 @@ public static class DependencyInjection
                 $"Connection string '{ConnectionStringName}' was not found.");
 
         services.AddDbContext<NinjaElevenDbContext>(options =>
-            options
-                .UseNpgsql(connectionString, npgsql =>
-                    npgsql.MigrationsHistoryTable("__ef_migrations_history"))
-                .UseSnakeCaseNamingConvention());
+            NinjaElevenDbContext.Configure(options, connectionString));
 
         services.Configure<DatabaseSeedOptions>(configuration.GetSection(DatabaseSeedOptions.SectionName));
+        services.Configure<WorldExecutionOptions>(configuration.GetSection(WorldExecutionOptions.SectionName));
         services.AddScoped<IDataSeeder, DatabaseSeeder>();
         services.AddScoped<IUnitOfWork, EfUnitOfWork>();
 
         services.AddScoped<ITeamRepository, TeamRepository>();
         services.AddScoped<IPlayerRepository, PlayerRepository>();
+
+        // Training is kept as rows rather than as a tally on the club, because the day's
+        // allowance is counted from the sessions that were actually run. A counter would be a
+        // second answer to the same question, and the two would only agree on the day nothing
+        // went wrong.
+        services.AddScoped<ITrainingSessionRepository, TrainingSessionRepository>();
         services.AddScoped<ICompetitionRepository, CompetitionRepository>();
         services.AddScoped<ISeasonRepository, SeasonRepository>();
         services.AddScoped<IDivisionRepository, DivisionRepository>();
@@ -50,7 +55,12 @@ public static class DependencyInjection
     services.AddScoped<ISponsorContractRepository, SponsorContractRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IManagerRepository, ManagerRepository>();
+        // Which clubs a person is in charge of. The world walk asks it before it plays a
+        // window, because a match somebody is waiting to watch is not a match it may play
+        // for him — whoever is walking the world, be it a scheduler or a hand.
+        services.AddScoped<IManagedClubReader, ManagedClubReader>();
         services.AddScoped<IInboxMessageRepository, InboxMessageRepository>();
+        services.AddScoped<IRoundExecutionStore, RoundExecutionStore>();
 
         return services;
     }
@@ -63,6 +73,15 @@ public static class DependencyInjection
         services.AddScoped<SeasonService>();
         services.AddScoped<SeasonCalendarService>();
         services.AddScoped<SeasonCloseService>();
+        // The same instance under the narrow door the walking of the world uses: whether a
+        // season is over and what closing it does are the two questions the execution service
+        // asks, and it must not be able to answer them with a second close of its own.
+        services.AddScoped<ISeasonCloser>(provider => provider.GetRequiredService<SeasonCloseService>());
+        // And the same instance under the other narrow door the walking of the world uses: a
+        // season nobody has drawn has no matchdays at all, so the walk draws it before asking
+        // it what is due — and the calendar of a season a close has just opened is drawn by
+        // the walk that comes back, not by whoever noticed.
+        services.AddScoped<ISeasonCalendarBuilder>(provider => provider.GetRequiredService<SeasonCalendarService>());
         services.AddScoped<CompetitionService>();
         services.AddScoped<RoundService>();
         services.AddScoped<FixtureService>();
@@ -92,7 +111,20 @@ public static class DependencyInjection
             return matchday;
         });
         services.AddScoped<MatchService>();
+        // The same instance under the narrow door the walking of a window uses: a match left
+        // running on a decided fixture is a claim on a fixture the world can never play again,
+        // and only the owner of the live sessions can close it.
+        services.AddScoped<IMatchCleaner>(provider => provider.GetRequiredService<MatchService>());
         services.AddScoped<MatchContextService>();
+        // The service that moves the world: what the calendar says is due, which fixtures of
+        // it are left, and how to ask the match service to play one. It is a service like any
+        // other, so the Scheduler, a person pressing a button and a test all reach the world
+        // through the same door.
+        services.AddScoped<CompetitionExecutionService>();
+        // Each fixture is played in a scope of its own, because a match is a hundred commits
+        // and a window is thirty-two matches: one unit of work for the whole window would
+        // leave the change tracker holding every event of the day for as long as the day lasted.
+        services.AddScoped<IHeadlessMatchPlayer, HeadlessMatchPlayer>();
         services.AddScoped<LeagueService>();
         services.AddScoped<StandingsService>();
         services.AddScoped<CupBracketService>();
@@ -106,6 +138,10 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<TransferService>();
         services.AddScoped<RosterService>();
+        // Training spends energy off a season state and puts a point on the man, so it is
+        // registered next to the two services that own the other halves of that: the roster
+        // that ages him and the match that tires him.
+        services.AddScoped<TrainingService>();
         services.AddScoped<AttendanceContextFactory>();
         // The box is written by the engine, so it is a service the other services call rather
         // than a screen that composes its own news. It depends on no other service, which is
@@ -114,6 +150,14 @@ public static class DependencyInjection
         services.AddScoped<InboxService>();
 
         services.AddSingleton<IMatchSessionRegistry, MatchSessionRegistry>();
+
+        // The two singletons that make "now" and "which process is this" answerable from
+        // inside a service. Both are per process and both are asked for rather than read:
+        // a service that read the clock itself could only be checked by waiting, and a
+        // process that could not name itself could not tell its own matches from another
+        // process's.
+        services.AddSingleton<IClock, SystemClock>();
+        services.AddSingleton<IMatchHost, ProcessMatchHost>();
 
         return services;
     }

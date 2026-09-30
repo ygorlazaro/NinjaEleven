@@ -61,7 +61,7 @@ public class CupBracketServiceTests
         var bracket = await Service().GetAsync(_edition.Id);
 
         var round = Assert.Single(bracket!.Rounds);
-        Assert.Equal("16 avos de final", round.Name);
+        Assert.Equal("32 avos de final", round.Name);
         var read = Assert.Single(round.Ties);
 
         var home = read.Clubs[0];

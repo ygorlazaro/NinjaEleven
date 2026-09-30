@@ -17,6 +17,7 @@ import { buildNameIndex } from '@/components/Match/NarrativeText';
 import MatchControls from '@/components/Match/MatchControls';
 import MatchStats from '@/components/Match/MatchStats';
 import OnPitchList from '@/components/Match/OnPitchList';
+import GoalHistory from '@/components/Match/GoalHistory';
 import TeamSheet from '@/components/Match/TeamSheet';
 import EndModal from '@/components/Modals/EndModal';
 import HalfTimeModal from '@/components/Modals/HalfTimeModal';
@@ -102,6 +103,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
    * first time that state shows up, and never asked for again while this screen is mounted.
    */
   const attachAttempted = useRef(false);
+  const lastLineupMinute = useRef(-1);
 
   // The sound of the match: the crowd for as long as it is being watched, and a whistle or
   // a goal for each thing the engine reports from now on.
@@ -253,6 +255,18 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
     const offState = MatchHubClient.onState(next => {
       setState(next);
       setIsPaused(next.isPaused);
+
+      // The eleven's energy is read from the lineup, and the lineup used to be read again
+      // only when a substitution was announced. That froze every energy bar at its kick-off
+      // value for as long as the match ran and then moved the whole eleven at once — a
+      // striker who had been tiring since the first whistle appeared to lose eight points
+      // the instant a manager changed a defender, which is not a thing the match did to him.
+      // The server publishes a snapshot every few minutes and on anything worth seeing, so
+      // the lineup follows the same beat the scoreboard does and the bars track the match.
+      if (!next.isFinished && next.minute !== lastLineupMinute.current) {
+        lastLineupMinute.current = next.minute;
+        loadLineup();
+      }
 
       // The server stops the loop by itself at the interval; the client owns the
       // decision to leave it. It is a decision about the manager's own club, so it is
@@ -714,6 +728,10 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
             />
             <ClubName teamId={homeTeam.id}>{homeTeam.name}</ClubName>
             <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(homeTeam.stars)}</span>
+            {/* The goals under the name they belong to. A score says how many; the manager
+                watching this match reads who, and an own goal and a penalty are not the same
+                goal as any other. */}
+            <GoalHistory feed={feed} teamId={homeTeam.id} lineup={lineup!} />
           </div>
           <div>
             <div className={`score ${scoringFlash ? 'score--flash' : ''}`} id="score">{score}</div>
@@ -731,6 +749,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
             />
             <ClubName teamId={awayTeam.id}>{awayTeam.name}</ClubName>
             <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(awayTeam.stars)}</span>
+            <GoalHistory feed={feed} teamId={awayTeam.id} lineup={lineup!} />
           </div>
 
           {/*

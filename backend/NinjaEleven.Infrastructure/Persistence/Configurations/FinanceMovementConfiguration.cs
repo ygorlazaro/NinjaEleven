@@ -31,7 +31,7 @@ public class FinanceMovementConfiguration : IEntityTypeConfiguration<FinanceMove
         builder.Property(m => m.MatchDayNumber);
         builder.Property(m => m.Kind).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(m => m.Description).HasMaxLength(200).IsRequired();
-        builder.Property(m => m.Reference).HasMaxLength(60);
+        builder.Property(m => m.Reference).HasMaxLength(160);
         builder.Property(m => m.Amount).HasPrecision(14, 2).IsRequired();
         builder.Property(m => m.BalanceAfter).HasPrecision(14, 2).IsRequired();
 

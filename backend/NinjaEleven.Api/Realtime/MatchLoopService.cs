@@ -1,8 +1,13 @@
+using System.Collections.Concurrent;
+using Microsoft.Extensions.DependencyInjection;
 using NinjaEleven.Api.Contracts;
 using NinjaEleven.Api.Mappings;
 using NinjaEleven.Api.Realtime;
+using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Matches;
 using NinjaEleven.Domain.Common;
+using NinjaEleven.Application.Models;
+using NinjaEleven.Application.Repositories;
 using NinjaEleven.Application.Services;
 
 namespace NinjaEleven.Api.Realtime;
@@ -12,6 +17,16 @@ namespace NinjaEleven.Api.Realtime;
 /// currently being played, asks the service to advance each one by a tick, and
 /// republishes what came back. Because the loop is the only caller that advances the
 /// clock, a match can never be simulated by two callers at once.
+///
+/// <para>
+/// It also reads, rather than plays, the matches another process is playing. The Scheduler
+/// moves the windows nobody is watching and the API owns the connections, so a match the
+/// manager is watching may well be a match this process never kicked off. Those are read
+/// out of the database — which is the truth about them — and republished, because a client
+/// following a match that is being played is entitled to see it whatever process is
+/// playing it. Nothing here advances a foreign match: two simulators on one match is the one
+/// thing this loop exists to prevent.
+/// </para>
 /// </summary>
 public sealed class MatchLoopService : BackgroundService
 {
@@ -32,20 +47,32 @@ public sealed class MatchLoopService : BackgroundService
     /// </summary>
     private const int ShootoutTickIntervalMs = BaseTickIntervalMs * 3;
 
+    /// <summary>
+    /// How far a foreign match has been republished. A match is first seen at whatever
+    /// sequence it is on, and everything after that is what this process has not told its
+    /// clients yet — so a manager who opens a match at minute sixty is sent the state at
+    /// minute sixty and then the events that follow it, which is the whole of what a
+    /// reconnect is.
+    /// </summary>
+    private readonly ConcurrentDictionary<Guid, int> _republished = new();
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IMatchSessionRegistry _sessions;
     private readonly IMatchBroadcaster _broadcaster;
+    private readonly IMatchHost _host;
     private readonly ILogger<MatchLoopService> _logger;
 
     public MatchLoopService(
         IServiceScopeFactory scopeFactory,
         IMatchSessionRegistry sessions,
         IMatchBroadcaster broadcaster,
+        IMatchHost host,
         ILogger<MatchLoopService> logger)
     {
         _scopeFactory = scopeFactory;
         _sessions = sessions;
         _broadcaster = broadcaster;
+        _host = host;
         _logger = logger;
     }
 
@@ -91,6 +118,11 @@ public sealed class MatchLoopService : BackgroundService
                 shortestWait = ShootoutTickIntervalMs;
             }
 
+            // The matches somebody else is playing, read rather than played. It is on the same
+            // pass as the loop's own because a client watching a matchday should not be able
+            // to tell which process is playing which of its fixtures.
+            await PublishForeignMatchesAsync(stoppingToken);
+
             try
             {
                 await Task.Delay(shortestWait, stoppingToken);
@@ -99,6 +131,99 @@ public sealed class MatchLoopService : BackgroundService
             {
                 return;
             }
+        }
+    }
+
+    /// <summary>
+    /// Republishes the matches another process is playing.
+    ///
+    /// <para>
+    /// The world is played by more than one process now, and this one is the one holding the
+    /// connections. A match the Scheduler kicked off is a real match with real events, and a
+    /// client that subscribed to it is entitled to see them — so they are read out of the
+    /// event log and pushed, at the same moment they were written down, by whichever process
+    /// happens to own the socket.
+    /// </para>
+    ///
+    /// <para>
+    /// It is a read and nothing more. A foreign match is never ticked here, never paused and
+    /// never resumed: the process that kicked it off is the only one that may move its clock,
+    /// and a loop that adopted somebody else's match would be the exact failure this whole
+    /// arrangement exists to avoid.
+    /// </para>
+    ///
+    /// <para>
+    /// It is also cheap when there is nothing to do. One query a second returns nothing while
+    /// the API is playing the whole matchday itself, which is every matchday on a machine with
+    /// no scheduler running, and the dictionary is emptied the moment a match is no longer
+    /// live so a season of football does not leave a season of rows behind it.
+    /// </para>
+    /// </summary>
+    private async Task PublishForeignMatchesAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var repository = scope.ServiceProvider.GetRequiredService<IMatchRepository>();
+            var matchService = scope.ServiceProvider.GetRequiredService<MatchService>();
+
+            var live = await repository.ListLiveExceptHostAsync(_host.HostId, stoppingToken);
+
+            foreach (var row in live)
+            {
+                if (stoppingToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                var match = row.Match;
+
+                // The first time a match is seen it is seen whole: the state goes out at the
+                // sequence it is on, and only what comes after that is anybody's business.
+                // Replaying its history to a group that may have nobody in it would be a great
+                // deal of work for a screen that is not there.
+                var since = _republished.GetOrAdd(match.Id, _ => match.Sequence);
+
+                var events = (await matchService.GetEventsAsync(match.Id, since, stoppingToken))
+                    .Where(played => played.Sequence > since)
+                    .ToList();
+
+                if (events.Count > 0)
+                {
+                    var published = events.Select(played => played.ToDto()).ToEngineDtos();
+
+                    await _broadcaster.PublishEventsAsync(match.Id, published, stoppingToken);
+                    await _broadcaster.PublishMatchdayEventsAsync(row.RoundId, match.Id, published, stoppingToken);
+
+                    _republished[match.Id] = events[^1].Sequence;
+                }
+
+                var state = await matchService.GetStateAsync(match.Id, stoppingToken);
+                await _broadcaster.PublishStateAsync(match.Id, state.ToDto(), stoppingToken);
+
+                var score = await matchService.GetScoreAsync(match.Id, stoppingToken);
+                await _broadcaster.PublishScoreAsync(row.RoundId, score.ToDto(), stoppingToken);
+            }
+
+            // A match that has left the live list is one this process will not see again, and
+            // its high-water mark would otherwise stay in memory until the season ended.
+            if (live.Count > 0)
+            {
+                var current = live.Select(row => row.Match.Id).ToHashSet();
+
+                foreach (var forgotten in _republished.Keys.Where(id => !current.Contains(id)).ToList())
+                {
+                    _republished.TryRemove(forgotten, out _);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Shutting down. Nothing was missed: the database has the whole match in it.
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Failed to republish the matches another process is playing.");
         }
     }
 
@@ -140,6 +265,19 @@ public sealed class MatchLoopService : BackgroundService
     {
         try
         {
+            // A match somebody else is driving is not this loop's to drive. The headless
+            // player walks a match of the world's own from kick-off to the final whistle in
+            // one go, and the world can also open the manager's own match and stop — both sit
+            // in the registry like any other, so without this the loop moves the same clock at
+            // the same time, and whichever reaches full time first leaves the other asking for
+            // a second half of a match that is already over. A match left on the touchline for
+            // the manager is nobody's to drive at all until he claims it: a loop that ran it
+            // out from under him is the world playing his evening for him.
+            if (_sessions.TryGet(matchId, out var owned) && owned.Driver is not MatchDriver.None)
+            {
+                return (Math.Max(1, owned.State.Speed), false);
+            }
+
             using var scope = _scopeFactory.CreateScope();
             var matchService = scope.ServiceProvider.GetRequiredService<MatchService>();
 

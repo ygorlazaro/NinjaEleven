@@ -16,6 +16,8 @@ public class PlayerDto
     public int Strength { get; init; }
     public int GoalkeeperPower { get; init; }
     public int Reflexes { get; init; }
+    public int Stamina { get; init; }
+    public int Potential { get; init; }
     public double Stars { get; init; }
 }
 
@@ -54,6 +56,8 @@ public class SquadPlayerDto
     public int Strength { get; init; }
     public int GoalkeeperPower { get; init; }
     public int Reflexes { get; init; }
+    public int Stamina { get; init; }
+    public int Potential { get; init; }
     public double Stars { get; init; }
 
     public int Energy { get; init; }
@@ -120,8 +124,26 @@ public class PlayerProfileDto
     public int Strength { get; init; }
     public int GoalkeeperPower { get; init; }
     public int Reflexes { get; init; }
+    public int Stamina { get; init; }
+    public int Potential { get; init; }
     public double Stars { get; init; }
     public Guid? SeasonId { get; init; }
+
+    /// <summary>
+    /// Each attribute read as stars, beside the attribute itself, because a card shows both
+    /// and the star is the same conversion the engine would make. They are worked out by
+    /// <see cref="Domain.Players.PlayerRating.AttributeToStars"/> on the way out and never by
+    /// the client: the card used to divide the raw value by two, which was right while the
+    /// attributes ran 1..20 and has been the wrong answer on every card since they moved to
+    /// 1..100 — a 34 was drawn as five stars and a 90 as five.
+    /// </summary>
+    public double SpeedStars { get; init; }
+    public double AccuracyStars { get; init; }
+    public double DribblingStars { get; init; }
+    public double HeadingStars { get; init; }
+    public double StrengthStars { get; init; }
+    public double GoalkeeperPowerStars { get; init; }
+    public double ReflexesStars { get; init; }
     public Guid? TeamId { get; init; }
     public string TeamName { get; init; } = string.Empty;
     public string? TeamPrimaryColor { get; init; }

@@ -61,6 +61,15 @@ public class TransferListing
     public int Strength { get; set; }
     public int GoalkeeperPower { get; set; }
     public int Reflexes { get; set; }
+    public int Stamina { get; set; }
+
+    /// <summary>
+    /// The ceiling on his reading, which is the market's whole reason to list a young man: a
+    /// nineteen-year-old at fifty-four and a nineteen-year-old at fifty-four with a potential
+    /// of eighty-eight are two different signings, and the market that could only show the
+    /// first of them was a market where every prospect looked like the same prospect.
+    /// </summary>
+    public int Potential { get; set; }
 
     public double Stars { get; set; }
 

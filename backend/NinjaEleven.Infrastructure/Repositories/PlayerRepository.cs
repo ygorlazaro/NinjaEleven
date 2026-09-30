@@ -22,6 +22,21 @@ public class PlayerRepository : IPlayerRepository
             .OrderBy(player => player.Name)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<Player>> ListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        if (ids.Count == 0)
+        {
+            return Array.Empty<Player>();
+        }
+
+        return await _dbContext.Players
+            .AsNoTracking()
+            .Where(player => ids.Contains(player.Id))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<Player?> GetAsync(Guid id, CancellationToken cancellationToken = default) =>
         await _dbContext.Players
             .AsNoTracking()
@@ -30,7 +45,41 @@ public class PlayerRepository : IPlayerRepository
     public async Task AddAsync(Player player, CancellationToken cancellationToken = default) =>
         await _dbContext.Players.AddAsync(player, cancellationToken);
 
-    public void Update(Player player) => _dbContext.Players.Update(player);
+    /// <summary>
+    /// Writes a player through the instance the context already holds, if it holds one.
+    ///
+    /// <para>
+    /// Reads here are <c>AsNoTracking</c>, so a command holding a player holds a copy the
+    /// context does not own, and <c>Update</c> on that copy attaches it. That is fine while
+    /// the context is empty of players — and it stops being fine the moment anything else has
+    /// touched the same row in the same scope, because EF refuses to attach a second instance
+    /// of a key it is already holding. A season opening that aged a player and then a command
+    /// that trained him is enough, and the refusal arrives from inside the second one, which
+    /// never looked at the first.
+    /// </para>
+    ///
+    /// <para>
+    /// This is the same seam <c>MatchRepository.Update</c> has, for the same reason and with
+    /// the same guard: the very instance the context is holding has nothing to copy onto
+    /// itself.
+    /// </para>
+    /// </para>
+    /// </summary>
+    public void Update(Player player)
+    {
+        var tracked = _dbContext.Players.Local.FirstOrDefault(candidate => candidate.Id == player.Id);
+
+        if (tracked is null)
+        {
+            _dbContext.Players.Update(player);
+            return;
+        }
+
+        if (!ReferenceEquals(tracked, player))
+        {
+            _dbContext.Entry(tracked).CurrentValues.SetValues(player);
+        }
+    }
 
     public void Remove(Player player) => _dbContext.Players.Remove(player);
 
@@ -84,8 +133,28 @@ public class PlayerRepository : IPlayerRepository
         await _dbContext.PlayerSeasonStates
             .FirstOrDefaultAsync(state => state.PlayerId == playerId && state.SeasonId == seasonId, cancellationToken);
 
-    public void UpdateSeasonState(PlayerSeasonState seasonState) =>
-        _dbContext.PlayerSeasonStates.Update(seasonState);
+    /// <summary>
+    /// Writes a season state through the instance the context already holds. Same seam and
+    /// same reason as <see cref="Update(Player)"/>: the tracked read above returns the
+    /// context's own instance, and a caller that got its state some other way must not be
+    /// refused for holding a second copy of a row this scope already has.
+    /// </summary>
+    public void UpdateSeasonState(PlayerSeasonState seasonState)
+    {
+        var tracked = _dbContext.PlayerSeasonStates.Local
+            .FirstOrDefault(candidate => candidate.Id == seasonState.Id);
+
+        if (tracked is null)
+        {
+            _dbContext.PlayerSeasonStates.Update(seasonState);
+            return;
+        }
+
+        if (!ReferenceEquals(tracked, seasonState))
+        {
+            _dbContext.Entry(tracked).CurrentValues.SetValues(seasonState);
+        }
+    }
 
     /// <summary>
     /// The goals of a club's men in a season, summed from the match lines and grouped by
@@ -163,7 +232,7 @@ public class PlayerRepository : IPlayerRepository
     /// <remarks>
     /// <para>
     /// The edition and not the kind of competition, because the championship is three editions of
-    /// one kind. A season's list restricted to "League" counts all three divisions at once, which
+    /// one kind. A season's list restricted to "League" counts all four divisions at once, which
     /// is right for a chart of the country and wrong for the artilharia of one division: the
     /// first division's prize list built that way would be topped by a second-division striker
     /// and then paid the first division's money.

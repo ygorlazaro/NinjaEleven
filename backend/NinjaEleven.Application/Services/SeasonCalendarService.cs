@@ -24,7 +24,7 @@ namespace NinjaEleven.Application.Services;
 /// has matchdays is a season that has been drawn, and asking again returns what is there
 /// instead of a second calendar.
 /// </summary>
-public class SeasonCalendarService
+public class SeasonCalendarService : ISeasonCalendarBuilder
 {
     private readonly ISeasonRepository _seasonRepository;
     private readonly IMatchDayRepository _matchDayRepository;
@@ -99,11 +99,15 @@ public class SeasonCalendarService
     /// <summary>
     /// Draws the whole season, or returns the calendar that is already there.
     ///
-    /// Everything about the shape comes from <see cref="CompetitionRules"/>: twenty-two
-    /// matchdays a week apart, the three divisions' round-robins in the first window, the
-    /// cup's five tie-rounds over two legs each in the second, and the Supercup on the first
-    /// matchday of the second window where nothing else is playing.
+    /// Everything about the shape comes from <see cref="CompetitionRules"/>: thirty-four days a
+    /// season, the four divisions' round-robins one round a day from day two, the cup's six
+    /// tie-rounds over two legs each on the seventh, twelfth, seventeenth, twenty-second,
+    /// twenty-seventh and thirty-second days, and the Supercup alone on the first day of a
+    /// season that has a season before it.
     /// </summary>
+    public async Task DrawAsync(Guid seasonId, CancellationToken cancellationToken = default) =>
+        await BuildAsync(seasonId, cancellationToken);
+
     public async Task<SeasonCalendar> BuildAsync(Guid seasonId, CancellationToken cancellationToken = default)
     {
         var season = await _seasonRepository.GetAsync(seasonId, cancellationToken)
@@ -250,18 +254,21 @@ public class SeasonCalendarService
     }
 
     /// <summary>
-    /// The matchdays of a season: one a week, starting on the day the season starts.
+    /// The matchdays of a season: one a day, starting on the day the season starts and running
+    /// to its rest day.
     ///
-    /// The count is the championship's, and it is the spine of the calendar. The cup's final
-    /// is forced onto the last of them, so a calendar longer or shorter than the
-    /// championship's would either leave the final off the end of the season or stretch the
-    /// season past its own last matchday.
+    /// The count is the whole of <see cref="CompetitionRules.SeasonMatchDays"/> and not the
+    /// championship's: the cup's final is played on the thirty-second and thirty-third days, and
+    /// the thirty-fourth is the day with nothing in it, so a calendar cut at the championship's
+    /// thirty matchdays would leave the final off the end of the season. Day one is in the
+    /// calendar too, because it is the day the Supercup is played in and it is the day a manager
+    /// is told about.
     /// </summary>
     private static List<MatchDay> CreateMatchDays(Season season)
     {
-        var matchDays = new List<MatchDay>(CompetitionRules.LeagueMatchDays);
+        var matchDays = new List<MatchDay>(CompetitionRules.SeasonMatchDays);
 
-        for (var number = 1; number <= CompetitionRules.LeagueMatchDays; number++)
+        for (var number = 1; number <= CompetitionRules.SeasonMatchDays; number++)
         {
             matchDays.Add(MatchDay.Create(
                 season.Id,
@@ -273,12 +280,15 @@ public class SeasonCalendarService
     }
 
     /// <summary>
-    /// A division's round-robin, one round per matchday in the first window.
+    /// A division's round-robin, one round a day in the first window.
     ///
-    /// A division of twelve plays every other eleven twice, so twenty-two rounds fill
-    /// twenty-two matchdays exactly. The participants are the edition's own, read from the
-    /// database, because the edition is what says who is in this division this season — a
-    /// club promoted into it is not in it until the season that promoted it.
+    /// A division of sixteen plays every other fifteen twice, so thirty rounds fill thirty days
+    /// exactly: the first fifteen days are the first leg of every pair and the next fifteen the
+    /// same pairs with the ground the other way round, which is why a club's first match of the
+    /// season is at home and its second is away. Day one belongs to the Supercup, so the first
+    /// round is on day two. The participants are the edition's own, read from the database,
+    /// because the edition is what says who is in this division this season — a club promoted
+    /// into it is not in it until the season that promoted it.
     /// </summary>
     private async Task DrawLeagueAsync(
         CompetitionSeasonView view,
@@ -301,13 +311,15 @@ public class SeasonCalendarService
 
         for (var index = 0; index < count; index++)
         {
-            var matchDayNumber = index + 1;
+            var roundNumber = index + 1;
+            var matchDayNumber = CompetitionRules.ChampionshipMatchDayOf(roundNumber);
+
             if (!matchDays.TryGetValue(matchDayNumber, out var matchDay))
             {
                 continue;
             }
 
-            var round = Round.Create(view.Id, matchDayNumber, CompetitionRules.ChampionshipWindow);
+            var round = Round.Create(view.Id, roundNumber, CompetitionRules.ChampionshipWindow);
             round.ScheduleOn(matchDay.Id);
             rounds.Add(round);
 
@@ -319,7 +331,7 @@ public class SeasonCalendarService
     }
 
     /// <summary>
-    /// The thirty-two clubs in the cup, in the order the tie-round is drawn from.
+    /// The sixty-four clubs in the cup, in the order the tie-round is drawn from.
     ///
     /// Entrants live on the edition rather than being worked out every time a draw is needed,
     /// because a cup that is re-seeded on every read is a cup whose draw can change between
@@ -447,8 +459,8 @@ public class SeasonCalendarService
                 && trophy.CompetitionSeasonId == competitionSeasonId.Value);
 
     /// <summary>
-    /// The cup's first tie-round: sixteen ties, two legs each, in the second window of two
-    /// consecutive matchdays.
+    /// The cup's first tie-round: thirty-two ties, two legs each, the first leg in the cup's
+    /// window of the seventh day and the return in the cup's window of the eighth.
     ///
     /// Only the first round is drawn here. The rounds after it are drawn from the winners of
     /// the round before, and a bracket drawn on the first day of the season would be a
@@ -501,9 +513,10 @@ public class SeasonCalendarService
     }
 
     /// <summary>
-    /// The Supercup: one match, in the second window of the first matchday, where nothing else
-    /// is playing. The cup's first tie-round is not until the fifth matchday, so the window is
-    /// free and the season stays exactly twenty-two matchdays long with its final last.
+    /// The Supercup: one match, in the first window of the first day, where nothing else is
+    /// playing. The championship opens on day two and the cup's first leg is not until the
+    /// seventh, so day one belongs to the two clubs that won last season's two competitions
+    /// and to nobody else.
     /// </summary>
     private static void DrawSuperCup(
         CompetitionSeasonView view,
@@ -525,7 +538,7 @@ public class SeasonCalendarService
     }
 
     /// <summary>
-    /// The thirty-two clubs in the cup, in seed order.
+    /// The sixty-four clubs in the cup, in seed order.
     ///
     /// The last finished season's tables decide it, and that is the rule from the second
     /// season on. A brand new world has no such tables — nothing has been played — and then
@@ -567,22 +580,5 @@ public class SeasonCalendarService
 
         // Get all 64 clubs for the cup (completely random draw, no seeding)
         return CupQualification.GetAllClubsForCup(byTier);
-    }
-
-
-    /// <summary>
-    /// The window number a leg is played in. The legs of a tie-round are two consecutive
-    /// windows of the cup, because a round is one window and a tie is two of them: counting
-    /// the tie-rounds instead would leave the second leg of a round sharing a window number
-    /// with the first leg of the next.
-    /// </summary>
-    /// <summary>How many clubs the pyramid holds, counted from the tables of its divisions.</summary>
-    private static int ClubsInPyramid(IReadOnlyDictionary<int, IReadOnlyList<StandingEntry>> byTier) =>
-        byTier.Values.Sum(standings => standings.Count);
-
-    private static IEnumerable<(int FirstLeg, int SecondLeg)> Legs(int tieRound)
-    {
-        var (first, second) = CompetitionRules.CupLegMatchDays(tieRound);
-        return new[] { (first, second) };
     }
 }

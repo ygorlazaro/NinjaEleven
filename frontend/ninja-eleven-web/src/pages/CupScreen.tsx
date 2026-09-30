@@ -194,7 +194,7 @@ const CupScreen: React.FC = () => {
             </div>
           </div>
 
-          <CupBracket bracket={bracket} />
+          <CupBracket bracket={bracket} userTeamId={selectedTeam?.id} />
         </>
       )}
     </div>

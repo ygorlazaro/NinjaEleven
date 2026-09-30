@@ -39,6 +39,30 @@ namespace NinjaEleven.Domain.Matches;
         /// <summary>True when he was on the bench for the whole match and never played.</summary>
         public bool WasOnBenchUnused { get; private set; }
 
+        /// <summary>
+        /// How many minutes of the match he was actually on the pitch.
+        ///
+        /// <para>
+        /// This used to not exist, and the reason it did not is the reason it now does: the
+        /// engine keeps a clock, not a stopwatch on each man, so a number this table showed
+        /// would have been a guess wearing the costume of a measurement. It is no longer a
+        /// guess — the engine stamps the minute a man leaves the pitch for every way of
+        /// leaving it, and a substitute's <c>EnteredAtMinute</c> is the minute he came on.
+        /// The measurement exists; the column was what was missing.
+        /// </para>
+        ///
+        /// <para>
+        /// It is worth persisting for three reasons, and the third is the one that settles it.
+        /// A recovery is measured against the minutes actually played, so without the column a
+        /// season's worth of fatigue could not be re-derived from the record and the number
+        /// that decided a rotation could not be checked afterwards. A player who came on at
+        /// the eighty-fifth and one who started and was taken off at the same minute have the
+        /// same two appearance flags in some order — <see cref="Started"/> and
+        /// <see cref="CameOn"/> — and only the minutes tell them apart.
+        /// </para>
+        /// </summary>
+        public int MinutesPlayed { get; private set; }
+
         public int Goals { get; private set; }
         public int OwnGoals { get; private set; }
         public int Assists { get; private set; }
@@ -80,12 +104,21 @@ namespace NinjaEleven.Domain.Matches;
     /// <summary>
     /// Fills the line from a player as the match ended. The live snapshot is the only
     /// place this is known, so it is copied out here and the snapshot goes away.
-    ///
-    /// There is deliberately no "minutes played" column. The engine keeps a clock, not a
-    /// stopwatch on each man, and a number this table showed would be a guess wearing the
-    /// costume of a measurement.
     /// </summary>
-    public void ApplyFrom(MatchPlayerSnapshot player, bool started, bool wasOnBenchUnused = false)
+    /// <param name="player">The man as the whistle went.</param>
+    /// <param name="started">Whether he was one of the eleven who kicked off.</param>
+    /// <param name="wasOnBenchUnused">Whether he never left the bench.</param>
+    /// <param name="finalMinute">
+    /// The last minute of the match, which is what a man who never came off is measured to.
+    /// The snapshot knows every stamp except this one — a starter who played out the ninety
+    /// has no <c>LeftAtMinute</c> — so the minute is passed in rather than guessed at, and a
+    /// mismatch between this column and the recovery the match applied is then impossible.
+    /// </param>
+    public void ApplyFrom(
+        MatchPlayerSnapshot player,
+        bool started,
+        bool wasOnBenchUnused = false,
+        int finalMinute = 90)
     {
         Started = started;
         Goals = player.MatchGoals;
@@ -99,5 +132,6 @@ namespace NinjaEleven.Domain.Matches;
         WasInjured = player.Injury != Injury.None;
         InjuredOff = player.InjuredOff;
         InjuryMatchesOut = player.InjuryMatchesOut;
+        MinutesPlayed = player.MinutesPlayed(finalMinute);
     }
 }

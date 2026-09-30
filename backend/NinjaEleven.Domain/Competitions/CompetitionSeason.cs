@@ -4,8 +4,8 @@ namespace NinjaEleven.Domain.Competitions;
 /// One competition running inside one season.
 ///
 /// The division is what makes this a division rather than a league in general: the same
-/// "Campeonato Brasileiro" competition runs three times in a season, once per tier, and each
-/// of those three editions has its own twelve clubs, its own twenty-two matchdays and its
+/// "Campeonato Brasileiro" competition runs four times in a season, once per tier, and each
+/// of those four editions has its own sixteen clubs, its own thirty matchdays and its
 /// own table. A cup edition leaves the division null, because a cup is drawn from the whole
 /// pyramid and does not belong to one of its tiers.
 /// </summary>

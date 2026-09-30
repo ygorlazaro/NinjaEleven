@@ -249,8 +249,8 @@ public class MatchModelTests
     public void AnImprovisedGoalkeeperIsWorthFarLessThanAKeeper()
     {
         var team = HomeTeam();
-        var keeper = MakePlayer(team, "Keeper", Position.GK, 100, new Attributes { Power = 18, Reflexes = 18 });
-        var outfielder = MakePlayer(team, "Centre back", Position.DEF, 100, new Attributes { Speed = 12, Accuracy = 12, Dribbling = 12, Heading = 12, Strength = 12 });
+        var keeper = MakePlayer(team, "Keeper", Position.GK, 100, new Attributes { Power = 90, Reflexes = 90 });
+        var outfielder = MakePlayer(team, "Centre back", Position.DEF, 100, new Attributes { Speed = 60, Accuracy = 60, Dribbling = 60, Heading = 60, Strength = 60 });
         outfielder.PromoteToGoalkeeper();
 
         // A promoted outfielder is rated on the three attributes that stand in for a pair of

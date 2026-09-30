@@ -29,6 +29,19 @@ public class MatchEngineEventDto
     public int? AwayScore { get; init; }
     public string Icon { get; init; } = string.Empty;
     public string Description { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Whether a goal came from the spot, so a scoreline can mark one without reading the
+    /// wording of the event. Decided by the engine when it emitted the goal.
+    /// </summary>
+    public bool FromPenalty { get; init; }
+
+    /// <summary>
+    /// What the player on this event is called, when the engine had him to hand. A scoreline
+    /// names a scorer from the goal itself rather than out of a squad that may since have
+    /// changed around him.
+    /// </summary>
+    public string? PlayerName { get; init; }
 }
 
 /// <summary>
@@ -63,6 +76,7 @@ public class MatchPlayerDto
     public int Strength { get; init; }
     public int GoalkeeperPower { get; init; }
     public int Reflexes { get; init; }
+    public int Stamina { get; init; }
     public int Energy { get; init; }
     public int MatchYellowCards { get; init; }
     public bool RedCard { get; init; }

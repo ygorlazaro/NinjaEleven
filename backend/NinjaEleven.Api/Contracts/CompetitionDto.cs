@@ -266,6 +266,19 @@ public class MatchEventDto
     public string Description { get; init; } = string.Empty;
 
     public string Icon { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Whether a goal came from the spot. Lifted out of the payload for the same reason the
+    /// description and the icon are: a reconnected client renders a scoreline from this and
+    /// must not have to parse JSON to learn how a goal was scored.
+    /// </summary>
+    public bool FromPenalty { get; init; }
+
+    /// <summary>
+    /// What the player on this event is called, so a screen can name him without having to
+    /// hold the squad he belongs to — which a finished match no longer tells it.
+    /// </summary>
+    public string? PlayerName { get; init; }
 }
 
 public class StandingDto

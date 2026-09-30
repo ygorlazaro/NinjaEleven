@@ -57,7 +57,7 @@ public class MatchContextServiceTests
             .ReturnsAsync(Season.Create(2, new DateOnly(2027, 1, 1), new DateOnly(2027, 12, 31)));
         _matchDays.Setup(repo => repo.GetAsync(_dayId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(MatchDay.Create(_seasonId, 16, new DateOnly(2027, 5, 3)));
-        var window = Round.Create(_editionId, 5);
+        var window = Round.Create(_editionId, 6);
         window.ScheduleOn(_dayId);
         _rounds.Setup(repo => repo.GetAsync(_windowId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(window);
@@ -104,14 +104,15 @@ public class MatchContextServiceTests
     [Fact]
     public async Task A_cup_window_is_named_by_the_round_of_the_tie_and_not_by_its_own_number()
     {
-        // Window 5 of a cup is the second leg of the third tie-round: the calendar lays the
-        // two legs out as two windows, so the window's number is not the bracket's.
+        // Window 6 of a cup is the second leg of the third tie-round — the oitavas: the calendar
+        // lays the two legs out as two windows, so the window's number is not the bracket's and
+        // the window's own number is not a phase either.
         _tie.SetLegs(Guid.NewGuid(), _fixture.Id);
 
         var context = await CreateService().GetAsync(_matchId);
 
         Assert.NotNull(context);
-        Assert.Equal("quartas de final", context!.PhaseName);
+        Assert.Equal("oitavas de final", context!.PhaseName);
         Assert.Equal(16, context.MatchDayNumber);
         Assert.Equal("Temporada II", context.SeasonName);
         Assert.Equal("partida de volta", context.LegLabel);
@@ -180,7 +181,7 @@ public class MatchContextServiceTests
 
         var context = await CreateService().GetAsync(_matchId);
 
-        Assert.Equal("Rodada 5", context!.PhaseName);
+        Assert.Equal("Rodada 6", context!.PhaseName);
         Assert.Equal("1ª Divisão", context.EditionName);
         Assert.Null(context.LegLabel);
         Assert.Null(context.FirstLeg);

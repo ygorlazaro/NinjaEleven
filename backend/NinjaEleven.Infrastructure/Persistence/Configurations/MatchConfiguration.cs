@@ -68,7 +68,28 @@ public class MatchConfiguration : IEntityTypeConfiguration<Match>
         // A fixture can hold more than one match: a match interrupted by a restart is
         // abandoned and the fixture is played again, so the old row stays as history.
         // The live match of a fixture is the newest row that was not abandoned.
-        builder.HasIndex(m => m.FixtureId);
+        builder.HasIndex(m => m.FixtureId).HasDatabaseName("ix_matches_fixture_id");
         builder.HasIndex(m => m.Status);
+
+        // Whose working memory this match belongs to, and how long that memory is honoured
+        // after the last tick. The world is played by more than one process now, so a match
+        // has to say which one is in the middle of it.
+        builder.Property(m => m.SessionHost).HasMaxLength(64).IsRequired().HasDefaultValue(string.Empty);
+        builder.Property(m => m.SessionHeartbeatAt);
+        builder.HasIndex(m => m.SessionHost);
+
+        // One live match per fixture, and the database is the one that says so.
+        //
+        // Two processes that woke at the same instant can both read a scheduled fixture and
+        // both decide to play it, and reading first and writing second is how a fixture ends
+        // up with two copies of the same evening on the pitch. The second insert is refused
+        // here rather than by a check that another process might not have made yet, which is
+        // the same reason the round claim is taken under a row lock. Finished and abandoned
+        // rows are outside the index, so a replay of a fixture whose match went wrong is
+        // still allowed.
+        builder.HasIndex(m => m.FixtureId)
+            .IsUnique()
+            .HasFilter("status NOT IN ('Finished', 'Abandoned')")
+            .HasDatabaseName("ux_matches_live_fixture");
     }
 }

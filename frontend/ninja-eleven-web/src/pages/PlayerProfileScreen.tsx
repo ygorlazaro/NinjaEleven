@@ -6,30 +6,35 @@ import { useOffer } from '@/state/OfferProvider';
 import type { PlayerProfileDto } from '@/types';
 import { positionLabel } from '@/services/formatters';
 import { formatLimo } from '@/services/limo';
-import { starsToString, attributeToStars } from '@/services/formatters';
+import { starsToString, attributeBarWidth, attributeToneClass } from '@/services/formatters';
 import { PlayerFace } from '@/components/Common/PlayerFace';
 import StarRating from '@/components/Common/StarRating';
 import ClubCrest from '@/components/Club/ClubCrest';
 import { ClubName } from '@/components/Common/Names';
 
-const OUTFIELD_ATTRIBUTES: { key: keyof PlayerProfileDto; label: string }[] = [
-  { key: 'speed', label: 'Vel' },
-  { key: 'accuracy', label: 'Fin' },
-  { key: 'dribbling', label: 'Dri' },
-  { key: 'heading', label: 'Cab' },
-  { key: 'strength', label: 'For' }
+/**
+ * An attribute as the card draws it: the raw reading, the stars the backend read off it, and
+ * the abbreviation the column carries. `starsKey` is named rather than derived because the
+ * star belongs to the backend — deriving it here is the bug this list was rebuilt to remove.
+ */
+type AttributeEntry = {
+  key: 'speed' | 'accuracy' | 'dribbling' | 'heading' | 'strength' | 'reflexes' | 'goalkeeperPower';
+  starsKey: 'speedStars' | 'accuracyStars' | 'dribblingStars' | 'headingStars' | 'strengthStars' | 'reflexesStars' | 'goalkeeperPowerStars';
+  label: string;
+};
+
+const OUTFIELD_ATTRIBUTES: AttributeEntry[] = [
+  { key: 'speed', starsKey: 'speedStars', label: 'Vel' },
+  { key: 'accuracy', starsKey: 'accuracyStars', label: 'Fin' },
+  { key: 'dribbling', starsKey: 'dribblingStars', label: 'Dri' },
+  { key: 'heading', starsKey: 'headingStars', label: 'Cab' },
+  { key: 'strength', starsKey: 'strengthStars', label: 'For' }
 ];
 
-const KEEPER_ATTRIBUTES: { key: keyof PlayerProfileDto; label: string }[] = [
-  { key: 'reflexes', label: 'Ref' },
-  { key: 'goalkeeperPower', label: 'Mão' }
+const KEEPER_ATTRIBUTES: AttributeEntry[] = [
+  { key: 'reflexes', starsKey: 'reflexesStars', label: 'Ref' },
+  { key: 'goalkeeperPower', starsKey: 'goalkeeperPowerStars', label: 'Mão' }
 ];
-
-function attrClass(value: number): string {
-  if (value < 8) return 'attr-red';
-  if (value < 14) return 'attr-yellow';
-  return 'attr-green';
-}
 
 const appearances = (line: { appearances: number; started: number; cameOn: number; benchUnused: number }) =>
   line.cameOn > 0 || line.benchUnused > 0
@@ -221,14 +226,14 @@ const PlayerProfileScreen: React.FC = () => {
 
         <section className="profile-attrs">
           {attributes.map(attribute => {
-            const value = profile[attribute.key] as number;
-            const stars = attributeToStars(value);
+            const value = profile[attribute.key];
+            const stars = profile[attribute.starsKey];
             return (
-              <div key={attribute.key as string} className="attr-box">
-                <span className={`attr-value ${attrClass(value)}`}>{value}</span>
+              <div key={attribute.key} className="attr-box">
+                <span className={`attr-value ${attributeToneClass(value)}`}>{value}</span>
                 <span className="attr-stars">{starsToString(stars)}</span>
                 <span className="attr-bar" aria-hidden="true">
-                  <span className="attr-bar-fill" style={{ width: `${Math.min(100, (value / 20) * 100)}%` }} />
+                  <span className="attr-bar-fill" style={{ width: attributeBarWidth(value) }} />
                 </span>
                 <span className="attr-label">{attribute.label}</span>
               </div>

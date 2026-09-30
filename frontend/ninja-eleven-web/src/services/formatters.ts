@@ -143,62 +143,36 @@ export function starsToString(stars: number): string {
 }
 
 /**
- * Converts a single attribute value (1..20) to stars (0.5..5.0).
- * Matches backend PlayerRating.AttributeToStars.
+ * The colour an attribute is drawn in: red below average, amber around it, green above, on
+ * the 1..100 scale the attributes live on.
+ *
+ * This lives here and not on each screen because it is read in three of them — the card, the
+ * squad table and the transfer list — and a number a manager reads in more than one place is
+ * one number, so the places must not each hold their own copy. They were copied, and the
+ * bands were 8 and 14 from the days when the scale ran to twenty: kept as they were they put
+ * every attribute in the world above fourteen and so every man in green.
+ *
+ * It is the class a value maps to and nothing more. The value itself arrives from the
+ * backend, and so does the star the card draws beside it.
  */
-export function attributeToStars(attribute: number): number {
-  if (attribute <= 0) return 0;
-  if (attribute <= 2) return 0.5;
-  const stars = Math.ceil(attribute / 2) * 0.5;
-  return Math.min(stars, 5.0);
+export function attributeToneClass(attribute: number): string {
+  if (attribute < 35) return 'attr-red';
+  if (attribute < 65) return 'attr-yellow';
+  return 'attr-green';
 }
 
 /**
- * Rounds a value to the nearest 0.5 increment, clamped to 0..5.
- * Matches backend PlayerRating.RoundToHalfStar.
+ * How full an attribute bar is, as a CSS width on the 1..100 scale the attributes live on.
+ *
+ * The one thing a bar is allowed to do on the client: map a value the backend sent onto the
+ * width of a track. It is not the star conversion -- that belongs to the backend and arrives
+ * on the DTO -- and it is not a second scale: an attribute bar used to divide by twenty, so
+ * every man in a world of 1..100 attributes drew a bar at least half full and a good one
+ * drew a full one.
  */
-function roundToHalfStar(value: number): number {
-  const rounded = Math.round(value * 2) / 2;
-  return Math.max(0, Math.min(5, rounded));
-}
-
-/**
- * Calculates stars for a single player from their attributes.
- * Matches backend PlayerRating.CalculateOutfieldStars / CalculateGoalkeeperStars.
- */
-export function calculatePlayerStars(player: { position: string; speed: number; accuracy: number; dribbling: number; heading: number; strength: number; goalkeeperPower?: number; reflexes?: number }): number {
-  const isGK = player.position === 'GK';
-  
-  if (isGK) {
-    const sum = attributeToStars(player.speed || 0)
-      + attributeToStars(player.accuracy || 0)
-      + attributeToStars(player.goalkeeperPower || 0)
-      + attributeToStars(player.reflexes || 0)
-      + attributeToStars(player.strength || 0);
-    return roundToHalfStar(sum / 5);
-  } else {
-    const sum = attributeToStars(player.speed || 0)
-      + attributeToStars(player.accuracy || 0)
-      + attributeToStars(player.dribbling || 0)
-      + attributeToStars(player.heading || 0)
-      + attributeToStars(player.strength || 0);
-    return roundToHalfStar(sum / 5);
-  }
-}
-
-/**
- * Calculates team stars as the average of all players' stars.
- * Matches backend PlayerRating.CalculateTeamStars.
- */
-export function calculateTeamStars(players: Array<{ position: string; speed: number; accuracy: number; dribbling: number; heading: number; strength: number; goalkeeperPower?: number; reflexes?: number }>): number {
-  if (!players || players.length === 0) return 0;
-  
-  let total = 0;
-  for (const player of players) {
-    total += calculatePlayerStars(player);
-  }
-  
-  return roundToHalfStar(total / players.length);
+export function attributeBarWidth(attribute: number): string {
+  const value = Number.isFinite(attribute) ? attribute : 0;
+  return `${Math.max(0, Math.min(100, value))}%`;
 }
 
 /**
@@ -254,6 +228,8 @@ export function convertToFeedEvent(event: any): FeedEvent {
     awayScore: event.awayScore,
     onTarget: event.type === 'Shot' || event.type === 'Save',
     isGoal: event.type === 'GoalScored' || event.type === 'OwnGoalScored',
+    fromPenalty: event.fromPenalty === true,
+    playerName: event.playerName ?? null,
     scored: event.type === 'PenaltyShootoutKick' ? event.icon === 'goal' : null,
   };
 }

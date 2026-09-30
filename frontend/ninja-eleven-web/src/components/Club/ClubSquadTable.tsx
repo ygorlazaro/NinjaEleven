@@ -3,7 +3,7 @@ import type { SquadPlayerDto } from '@/types';
 import { positionLabel } from '@/services/formatters';
 import { formatLimo } from '@/services/limo';
 import { PlayerName } from '@/components/Common/Names';
-import { starsToString } from '@/services/formatters';
+import { starsToString, attributeToneClass } from '@/services/formatters';
 
 /**
  * The columns a manager sorts a squad by. Each one is a number the engine decided, so
@@ -22,16 +22,6 @@ interface Column {
   key: SortKey;
   label: string;
   className?: string;
-}
-
-/**
- * Returns CSS class for attribute color coding:
- * < 8: red (attr-red), < 14: yellow (attr-yellow), >= 14: green (attr-green)
- */
-function attrClass(value: number): string {
-  if (value < 8) return 'attr-red';
-  if (value < 14) return 'attr-yellow';
-  return 'attr-green';
 }
 
 /**
@@ -270,16 +260,16 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
                 <td className="num">{player.age}</td>
                 <td className={`num ${energyTextClass(player.energy)}`}>{player.energy}</td>
                 <td className="num stars-col">{starsToString(player.stars)}</td>
-                <td className={`num ${attrClass(player.speed)}`}>{player.speed}</td>
-                <td className={`num ${attrClass(player.accuracy)}`}>{player.accuracy}</td>
-                <td className={`num ${attrClass(player.dribbling)}`}>{player.dribbling}</td>
-                <td className={`num ${attrClass(player.heading)}`}>{player.heading}</td>
-                <td className={`num ${attrClass(player.strength)}`}>{player.strength}</td>
+                <td className={`num ${attributeToneClass(player.speed)}`}>{player.speed}</td>
+                <td className={`num ${attributeToneClass(player.accuracy)}`}>{player.accuracy}</td>
+                <td className={`num ${attributeToneClass(player.dribbling)}`}>{player.dribbling}</td>
+                <td className={`num ${attributeToneClass(player.heading)}`}>{player.heading}</td>
+                <td className={`num ${attributeToneClass(player.strength)}`}>{player.strength}</td>
                 {hasKeeper && (
-                  <td className={`num ${player.position === 'GK' ? attrClass(player.goalkeeperPower) : ''}`}>{player.position === 'GK' ? player.goalkeeperPower : '—'}</td>
+                  <td className={`num ${player.position === 'GK' ? attributeToneClass(player.goalkeeperPower) : ''}`}>{player.position === 'GK' ? player.goalkeeperPower : '—'}</td>
                 )}
                 {hasKeeper && (
-                  <td className={`num ${player.position === 'GK' ? attrClass(player.reflexes) : ''}`}>{player.position === 'GK' ? player.reflexes : '—'}</td>
+                  <td className={`num ${player.position === 'GK' ? attributeToneClass(player.reflexes) : ''}`}>{player.position === 'GK' ? player.reflexes : '—'}</td>
                 )}
                 {/* The money a manager negotiates with. The price carries the fine as a mark
                     rather than as a second number, so the two are read as one figure with a

@@ -436,6 +436,53 @@ public class FinanceService
         string? reference = null,
         IEnumerable<InboxPersonDto>? mentions = null)
     {
+        var line = await StageMovementAsync(
+            teamId,
+            seasonId,
+            matchDayNumber,
+            kind,
+            description,
+            amount,
+            matchId,
+            cancellationToken,
+            reference);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        await _inbox.PostFinanceAsync(line, mentions, cancellationToken);
+
+        return line;
+    }
+
+    /// <summary>
+    /// Writes a line into the book and hands it back **without committing it**.
+    ///
+    /// <para>
+    /// This exists for the one caller that has more than one thing to commit at once: a
+    /// training session writes the session, the man's energy, the point he gained and the fee
+    /// the club paid, and a fee that reached the book on its own would be a club charged for a
+    /// session it never had. The seam is here rather than in the caller because the balance
+    /// and the sequence both come from the club's own last line — a line composed anywhere else
+    /// would be a caller re-deriving the running balance, which is the one number in the book
+    /// that cannot be worked out twice and expected to agree.
+    /// </para>
+    ///
+    /// <para>
+    /// Nothing is written and nothing is charged until the caller commits. A service that
+    /// stages a line and then throws leaves the club's book exactly as it was.
+    /// </para>
+    /// </summary>
+    public async Task<FinanceMovement> StageMovementAsync(
+        Guid teamId,
+        Guid seasonId,
+        int? matchDayNumber,
+        FinanceMovementKind kind,
+        string description,
+        decimal amount,
+        Guid? matchId,
+        CancellationToken cancellationToken,
+        string? reference = null)
+    {
         var last = await _finance.GetLastAsync(teamId, cancellationToken);
 
         var line = FinanceMovement.Create(
@@ -451,12 +498,33 @@ public class FinanceService
             reference);
 
         await _finance.AddAsync(line, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        await _inbox.PostFinanceAsync(line, mentions, cancellationToken);
 
         return line;
     }
+
+    /// <summary>
+    /// Reports a line that has already been committed to the manager's box.
+    ///
+    /// <para>
+    /// Separate from <see cref="StageMovementAsync"/> because the report has to come after the
+    /// commit: a manager who is told about a payment that then failed to be written has been
+    /// told something false, and a message about a line that does not exist is a message that
+    /// names a balance the club does not have.
+    /// </para>
+    /// </summary>
+    /// <param name="line">The committed line, as it was written.</param>
+    /// <param name="mentions">The people the message is about.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    public async Task ReportAsync(
+        FinanceMovement line,
+        IEnumerable<InboxPersonDto>? mentions = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(line);
+
+        await _inbox.PostFinanceAsync(line, mentions, cancellationToken);
+    }
+
 
     /// <summary>
     /// The day of the season a fixture was played on, which is the day a line of money is

@@ -17,25 +17,6 @@ builder.Services.AddApplication();
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
 builder.Services.AddProblemDetails();
 
-// Malformed requests (an id that is not a guid, a missing field, a bad enum value) must
-// answer with the same machine readable contract as the business errors.
-builder.Services.Configure<ApiBehaviorOptions>(options =>
-{
-    options.InvalidModelStateResponseFactory = context =>
-    {
-        var problem = new ValidationProblemDetails(context.ModelState)
-        {
-            Status = StatusCodes.Status400BadRequest,
-            Title = "ValidationFailed",
-            Instance = context.HttpContext.Request.Path
-        };
-
-        problem.Extensions["code"] = "ValidationFailed";
-
-        return new BadRequestObjectResult(problem);
-    };
-});
-
 var jwtOptions = builder.Configuration.GetSection("Jwt");
 builder.Services.Configure<JwtOptions>(jwtOptions);
 
@@ -96,6 +77,25 @@ builder.Services.AddCors(options => options.AddPolicy(CorsPolicy, policy => poli
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+// Malformed requests (an id that is not a guid, a missing field, a bad enum value) must
+// answer with the same machine readable contract as the business errors.
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var problem = new ValidationProblemDetails(context.ModelState)
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "ValidationFailed",
+            Instance = context.HttpContext.Request.Path
+        };
+
+        problem.Extensions["code"] = "ValidationFailed";
+
+        return new BadRequestObjectResult(problem);
+    };
+});
 
 // SignalR has its own JSON protocol, so the enum converter has to be registered for
 // it as well. Without this the hub would push numeric event types while the REST API

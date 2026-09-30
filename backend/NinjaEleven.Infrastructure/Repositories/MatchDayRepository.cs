@@ -28,6 +28,16 @@ public class MatchDayRepository : IMatchDayRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(matchDay => matchDay.Id == id, cancellationToken);
 
+    public async Task<IReadOnlyList<MatchDay>> ListUntilAsync(
+        DateOnly to,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.MatchDays
+            .AsNoTracking()
+            .Where(matchDay => matchDay.Date <= to)
+            .OrderBy(matchDay => matchDay.Date)
+            .ThenBy(matchDay => matchDay.Number)
+            .ToListAsync(cancellationToken);
+
     public async Task AddRangeAsync(
         IEnumerable<MatchDay> matchDays,
         CancellationToken cancellationToken = default) =>

@@ -4,6 +4,41 @@ using NinjaEleven.Domain.Teams;
 namespace NinjaEleven.Application.Models;
 
 /// <summary>
+/// Why a match command was refused.
+/// </summary>
+/// <remarks>
+/// It is a reason and not a sentence on purpose. A caller that is playing a whole matchday
+/// has to tell "somebody else is in the middle of this one, leave it alone" apart from
+/// "this one could not be started", because the first is a window that waits and the second
+/// is a window that has to be looked at — and a screen that has to draw the difference is a
+/// screen that would have had to read the Portuguese. The sentence is for people; this is
+/// for the code that acts on the answer.
+/// </remarks>
+public enum MatchRefusal
+{
+    /// <summary>Nothing was refused.</summary>
+    None = 0,
+
+    /// <summary>The match has already been played and its result is standing.</summary>
+    AlreadyFinished = 1,
+
+    /// <summary>
+    /// Another process is playing it right now, with its working memory in hand. The caller
+    /// steps out of the way and comes back to it later.
+    /// </summary>
+    PlayedByAnotherProcess = 2,
+
+    /// <summary>
+    /// The match is already on this process's own registry, so something here is driving it
+    /// and a second driver would play it twice as fast.
+    /// </summary>
+    AlreadyRunningHere = 3,
+
+    /// <summary>The kick-off was refused by the database, which means the other process won.</summary>
+    LostTheKickOff = 4
+}
+
+/// <summary>
 /// Outcome of a state changing match command. The engine answers with typed events
 /// instead of throwing for an expected refusal, so a client can render the reason
 /// without special casing transport errors.
@@ -14,6 +49,9 @@ public class MatchCommandResult
     public required Guid MatchId { get; init; }
     public string? ErrorMessage { get; init; }
     public IReadOnlyList<MatchEngineEvent> Events { get; init; } = Array.Empty<MatchEngineEvent>();
+
+    /// <summary>Why it was refused, in a form a caller can act on rather than parse.</summary>
+    public MatchRefusal Reason { get; init; } = MatchRefusal.None;
 }
 
 /// <summary>

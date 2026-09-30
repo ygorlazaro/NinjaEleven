@@ -18,6 +18,11 @@ public class MatchPlayerStatisticsConfiguration : IEntityTypeConfiguration<Match
         builder.Property(s => s.PlayerId).ValueGeneratedNever();
         builder.Property(s => s.TeamId).ValueGeneratedNever();
 
+        // The minutes he was actually out there, which is what a recovery is measured against
+        // and what tells a starter taken off at the sixtieth from a substitute who came on at
+        // the sixtieth. See MatchPlayerStatistics.MinutesPlayed.
+        builder.Property(s => s.MinutesPlayed).IsRequired();
+
         builder.HasOne<Match>()
             .WithMany()
             .HasForeignKey(s => s.MatchId)

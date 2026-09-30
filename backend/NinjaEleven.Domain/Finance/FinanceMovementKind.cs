@@ -34,6 +34,20 @@ public enum FinanceMovementKind
     /// <summary>What a club pays for a player it signs.</summary>
     TransferOut,
 
+    /// <summary>
+    /// What the club pays the coaching staff for a session of training.
+    ///
+    /// <para>
+    /// Its own kind rather than folded into <see cref="Infrastructure"/>, because a club that
+    /// has spent a season's worth of its development budget and cannot say so from its own
+    /// statement has been told nothing. A manager deciding whether the points his striker
+    /// gained in August are worth what they cost in October needs the training out of the
+    /// ledger on its own line, and a line that shared a kind with the buses would put them in
+    /// the same pot as the pitch and leave him to divide one by the other.
+    /// </para>
+    /// </summary>
+    Training,
+
     /// <summary>Money from a sponsor.</summary>
     Sponsorship,
 

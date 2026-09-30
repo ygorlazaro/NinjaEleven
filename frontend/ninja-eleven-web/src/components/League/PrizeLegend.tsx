@@ -36,8 +36,8 @@ const PrizeLegend: React.FC<{ purses: DivisionPurseDto[]; tier?: number | null }
       <h3 className="prize-legend__title">💰 Premiação — {purse.name}</h3>
       <p className="prize-legend__hint">
         A bolsa da divisão é <b>{formatLimo(purse.purse)}</b>, dividida entre os {purse.clubs}{' '}
-        clubes pelo peso da posição. As quatro rebaixadas também recebem: jogaram a temporada
-        inteira.
+        clubes pelo peso da posição. As quatro últimas da tabela também recebem: jogaram a
+        temporada inteira.
       </p>
       <div className="prize-legend__rows">
         {purse.shares.map(share => (

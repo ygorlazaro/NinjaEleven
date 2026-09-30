@@ -95,6 +95,12 @@ public class CupProgressionServiceTests
 
     public CupProgressionServiceTests()
     {
+        // The whole season's days, because the cup's legs are drawn on days the championship
+        // does not reach: a calendar cut at the thirtieth round would have no thirty-second day
+        // for the final and the bracket would silently draw nothing.
+        _days.AddRange(Enumerable.Range(1, CompetitionRules.SeasonMatchDays)
+            .Select(number => MatchDay.Create(_seasonId, number, DateOnly.FromDayNumber(number))));
+
         _cupTies.Setup(repo => repo.GetByLegAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns((Guid fixtureId, CancellationToken _) =>
                 Task.FromResult<CupTie?>(
@@ -162,15 +168,15 @@ public class CupProgressionServiceTests
             .Returns(() => Task.FromResult<CompetitionSeason?>(_cup));
 
         _matchDays.Setup(repo => repo.ListBySeasonAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .Returns(() => Task.FromResult<IReadOnlyList<MatchDay>>(
-                Enumerable.Range(1, CompetitionRules.LeagueMatchDays)
-                    .Select(number => MatchDay.Create(_seasonId, number, DateOnly.FromDayNumber(number)))
-                    .ToList()));
+            .Returns(() => Task.FromResult<IReadOnlyList<MatchDay>>(_days));
 
         _matchesByFixture = new Dictionary<Guid, Match>();
     }
 
     private readonly Dictionary<Guid, Match> _matchesByFixture = new();
+
+    /// <summary>The season's days, as the drawer will find them.</summary>
+    private readonly List<MatchDay> _days = new();
 
     /// <summary>
     /// A detached copy of a tie, decided or not as the original is — which is what an untracked
@@ -207,7 +213,7 @@ public class CupProgressionServiceTests
         return copy;
     }
 
-    private static readonly Guid[] _clubs = Enumerable.Range(0, 32).Select(_ => Guid.NewGuid()).ToArray();
+    private static readonly Guid[] _clubs = Enumerable.Range(0, 64).Select(_ => Guid.NewGuid()).ToArray();
 
     /// <summary>
     /// The seed a leg reports. Nothing in the cup reads it any more — the penalties come from
@@ -286,7 +292,7 @@ public class CupProgressionServiceTests
         // the last tie of the round as still being played, decide the round was unfinished, and
         // never draw the next one — a cup that stops after its first two matchdays, with no
         // error anywhere to explain why. So the commit has to come first.
-        var last = CompleteRoundOfSixteenWithTheLastTieDecided();
+        var last = CompleteTheRoundOfSixtyFourWithTheLastTieDecided();
         await CreateService().AdvanceAsync(SecondLegOf(last, last.SecondLegFixtureId!.Value, 1, 1, TakenByTheLegsHomeClub(last)));
 
         var commit = _calls.IndexOf("commit");
@@ -399,7 +405,7 @@ public class CupProgressionServiceTests
     [Fact]
     public async Task The_next_round_is_not_drawn_while_a_tie_in_it_is_undecided()
     {
-        // Two ties in the round of 16: one finished, one still being played.
+        // Two ties in the round of 64: one finished, one still being played.
         var finished = DecidedPairing(1, _clubs[0], _clubs[1], 2, 0, 1, 1);
         DecidedPairing(1, _clubs[2], _clubs[3], 0, 0, 0, 0);
 
@@ -412,23 +418,23 @@ public class CupProgressionServiceTests
     [Fact]
     public async Task The_next_round_is_drawn_once_the_round_before_it_is_decided()
     {
-        var last = CompleteRoundOfSixteenWithTheLastTieDecided();
+        var last = CompleteTheRoundOfSixtyFourWithTheLastTieDecided();
 
         await CreateService().AdvanceAsync(SecondLegOf(last, last.SecondLegFixtureId!.Value, 0, 0, TakenByTheLegsHomeClub(last)));
 
-        // Sixteen clubs become eight quarter-final ties, over two windows, one leg each.
-        Assert.Equal(8, _addedTies.Count);
+        // Sixty-four clubs become sixteen ties of the round of 32, over two windows, one leg each.
+        Assert.Equal(16, _addedTies.Count);
         Assert.All(_addedTies, tie => Assert.Equal(2, tie.RoundNumber));
-        Assert.Equal(16, _addedFixtures.Count);
+        Assert.Equal(32, _addedFixtures.Count);
         Assert.Equal(2, _addedRounds.Count);
     }
 
     [Fact]
-    public async Task The_quarter_finals_are_scheduled_on_the_matchdays_the_rules_give_them()
+    public async Task The_round_of_thirty_two_is_scheduled_on_the_days_the_rules_give_them()
     {
-        // One decided tie in a round of 16 that has only this tie in it, which is enough to
-        // reach the draw: the round is complete.
-        var complete = CompleteRoundOfSixteenWithTheLastTieDecided();
+        // A whole round of 64 with every tie but one decided, which is enough to reach the draw:
+        // the round is complete.
+        var complete = CompleteTheRoundOfSixtyFourWithTheLastTieDecided();
 
         await CreateService().AdvanceAsync(
             SecondLegOf(complete, complete.SecondLegFixtureId!.Value, 1, 1, TakenByTheLegsHomeClub(complete)));
@@ -440,18 +446,22 @@ public class CupProgressionServiceTests
         Assert.Equal(CompetitionRules.CupWindowNumber(2, 2), _addedRounds[1].Number);
         Assert.Equal(CompetitionRules.CupWindow, _addedRounds[0].Window);
 
-        // Each leg is on the matchday the rules name, and the two are a week apart.
+        // Each leg is on the day the rules name, and the two are a day apart.
         Assert.Equal(1, expectedSecondLeg - expectedFirstLeg);
+
+        var dayById = _days.ToDictionary(day => day.Id);
+        Assert.Equal(expectedFirstLeg, dayById[_addedRounds[0].MatchDayId!.Value].Number);
+        Assert.Equal(expectedSecondLeg, dayById[_addedRounds[1].MatchDayId!.Value].Number);
     }
 
     /// <summary>
-    /// A whole round of 16 with every tie but one decided, and that last one returned so the
-    /// caller can play it. Sixteen ties is what a round of a thirty-two club cup holds, and a
-    /// round of any other size is not a round the bracket may draw.
+    /// A whole round of 64 with every tie but one decided, and that last one returned so the
+    /// caller can play it. Thirty-two ties is what a round of a sixty-four club cup holds, and
+    /// a round of any other size is not a round the bracket may draw.
     /// </summary>
-    private CupTie CompleteRoundOfSixteenWithTheLastTieDecided()
+    private CupTie CompleteTheRoundOfSixtyFourWithTheLastTieDecided()
     {
-        for (var index = 0; index < 15; index++)
+        for (var index = 0; index < 31; index++)
         {
             var home = _clubs[index * 2];
             var away = _clubs[index * 2 + 1];
@@ -464,13 +474,13 @@ public class CupProgressionServiceTests
             pair.Resolve(3, 1);
         }
 
-        return DecidedPairing(1, _clubs[30], _clubs[31], 0, 0, 0, 0);
+        return DecidedPairing(1, _clubs[62], _clubs[63], 0, 0, 0, 0);
     }
 
     [Fact]
-    public async Task A_round_that_is_not_the_size_a_cup_of_thirty_two_has_is_not_drawn()
+    public async Task A_round_that_is_not_the_size_a_cup_of_sixty_four_has_is_not_drawn()
     {
-        // One tie decided in a round that should hold sixteen. The tie is settled — it was a
+        // One tie decided in a round that should hold thirty-two. The tie is settled — it was a
         // real match between two real clubs — but a bracket of one cannot be halved into the
         // next round, and a bracket that cannot be drawn must not throw: the call arrives from
         // inside the tick of a match that has already finished.

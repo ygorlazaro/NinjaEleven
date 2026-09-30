@@ -1,3 +1,4 @@
+using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Matches;
@@ -40,6 +41,49 @@ public class MatchRepository : IMatchRepository
             .OrderBy(match => match.CreatedAt)
             .ToListAsync(cancellationToken);
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Match>> ListUnfinishedOnFinishedFixturesAsync(
+        CancellationToken cancellationToken = default) =>
+        await (
+                from match in _dbContext.Matches.AsNoTracking()
+                join fixture in _dbContext.Fixtures.AsNoTracking()
+                    on match.FixtureId equals fixture.Id
+                where match.Status != MatchStatus.Finished
+                    && match.Status != MatchStatus.Abandoned
+                    && fixture.Status == FixtureStatus.Finished
+                orderby match.CreatedAt
+                select match)
+            .ToListAsync(cancellationToken);
+
+    /// <summary>
+    /// The matches another process is playing, with the window each of them belongs to.
+    ///
+    /// The window is joined in rather than asked for afterwards: a client following a
+    /// matchday needs every live score of it, so this is read once a second while there is
+    /// football on, and one question per match to find out which scoreboard a goal belongs to
+    /// is the query that turns a live screen into an expensive one.
+    /// </summary>
+    public async Task<IReadOnlyList<LiveMatchRow>> ListLiveExceptHostAsync(
+        string hostId,
+        CancellationToken cancellationToken = default)
+    {
+        var live = MatchStatus.KickOff;
+
+        var rows = await (
+            from match in _dbContext.Matches.AsNoTracking()
+            join fixture in _dbContext.Fixtures.AsNoTracking() on match.FixtureId equals fixture.Id
+            where match.Status == live
+                   || match.Status == Domain.Enums.MatchStatus.InProgress
+                   || match.Status == Domain.Enums.MatchStatus.HalfTime
+                   || match.Status == Domain.Enums.MatchStatus.SecondHalf
+            where match.SessionHost != hostId
+            orderby match.CreatedAt
+            select new { match, fixture.RoundId })
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(row => new LiveMatchRow(row.match, row.RoundId)).ToList();
+    }
+
     public async Task<IReadOnlyList<Match>> ListByFixtureIdsAsync(
         IEnumerable<Guid> fixtureIds,
         CancellationToken cancellationToken = default) =>
@@ -63,7 +107,44 @@ public class MatchRepository : IMatchRepository
     public async Task AddAsync(Match match, CancellationToken cancellationToken = default) =>
         await _dbContext.Matches.AddAsync(match, cancellationToken);
 
-    public void Update(Match match) => _dbContext.Matches.Update(match);
+    /// <summary>
+    /// Marks a match's row as changed.
+    ///
+    /// <para>
+    /// Not simply <c>Update(match)</c>, because the match this method is handed is almost never
+    /// the instance the context is already tracking. Reads here are <c>AsNoTracking</c> — a
+    /// match is a snapshot a command works from, not a graph the context owns — so every call
+    /// hands back a fresh instance of the same row. A single command touches a match more than
+    /// once: it reads it, plays it, and asks the cup and the books about it, and anything on
+    /// that path that attaches an instance leaves the context holding a <i>different</i> copy of
+    /// the row the command is holding. EF refuses to attach the second, and it refuses by
+    /// throwing an "already being tracked" error from inside a tick, which is a long way round
+    /// to say that two parts of one command disagree about who owns a row.
+    /// </para>
+    ///
+    /// <para>
+    /// So the values are written onto whichever instance is already tracked. That instance is
+    /// the one that will be written, the row ends up with the numbers the command played, and
+    /// the copy the command was holding — which is the one the engine mutates and the one the
+    /// in-memory session keeps — is left alone to keep doing that.
+    /// </para>
+    /// </summary>
+    public void Update(Match match)
+    {
+        var tracked = _dbContext.Matches.Local.FirstOrDefault(candidate => candidate.Id == match.Id);
+
+        if (tracked is null)
+        {
+            _dbContext.Matches.Update(match);
+            return;
+        }
+
+        // The very instance the context is holding has nothing to copy onto itself.
+        if (!ReferenceEquals(tracked, match))
+        {
+            _dbContext.Entry(tracked).CurrentValues.SetValues(match);
+        }
+    }
 
     public async Task<IReadOnlyList<MatchEvent>> ListEventsAsync(
         Guid matchId,

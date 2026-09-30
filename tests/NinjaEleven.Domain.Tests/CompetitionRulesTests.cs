@@ -6,8 +6,9 @@ using Xunit;
 namespace NinjaEleven.Domain.Tests;
 
 /// <summary>
-/// The shape of the world: three divisions of twelve, a cup of thirty-two over five tie-rounds
-/// of two legs, and a season of twenty-two matchdays with the final on the last of them.
+/// The shape of the world: four divisions of sixteen, a cup of sixty-four over six tie-rounds
+/// of two legs, and a season of thirty-four days with the final on the thirty-second and
+/// thirty-third and nothing at all on the thirty-fourth.
 ///
 /// The numbers are asserted through the rules that use them rather than by reading the
 /// constants, because a constant that is only ever checked against itself is a constant nobody
@@ -16,11 +17,11 @@ namespace NinjaEleven.Domain.Tests;
 public class CompetitionRulesTests
 {
     [Fact]
-    public void The_pyramid_is_three_divisions_of_twelve_and_thirty_six_clubs()
+    public void The_pyramid_is_four_divisions_of_sixteen_and_sixty_four_clubs()
     {
-        Assert.Equal(3, CompetitionRules.DivisionCount);
-        Assert.Equal(12, CompetitionRules.ClubsPerDivision);
-        Assert.Equal(36, CompetitionRules.TotalClubs);
+        Assert.Equal(4, CompetitionRules.DivisionCount);
+        Assert.Equal(16, CompetitionRules.ClubsPerDivision);
+        Assert.Equal(64, CompetitionRules.TotalClubs);
     }
 
     [Fact]
@@ -32,19 +33,56 @@ public class CompetitionRulesTests
     }
 
     [Fact]
-    public void A_division_of_twelve_is_worth_twenty_two_matchdays()
+    public void A_division_of_sixteen_is_worth_thirty_rounds()
     {
-        Assert.Equal(11, CompetitionRules.LeagueRoundsPerLeg);
-        Assert.Equal(22, CompetitionRules.LeagueMatchDays);
+        Assert.Equal(15, CompetitionRules.LeagueRoundsPerLeg);
+        Assert.Equal(30, CompetitionRules.LeagueMatchDays);
     }
 
     [Fact]
-    public void The_cup_finishes_on_the_last_matchday_of_the_season()
+    public void The_championship_plays_one_round_a_day_from_the_second_day()
     {
-        var days = CompetitionRules.CupMatchDays();
+        // Day one is the Supercup's, and there is no day in the middle of the run with nothing
+        // in it: thirty consecutive days carry the thirty rounds, which is what makes a round
+        // something a club can count on rather than something the calendar might skip.
+        Assert.Equal(2, CompetitionRules.FirstChampionshipMatchDay);
+        Assert.Equal(1, CompetitionRules.DaysBetweenMatchDays);
 
-        Assert.Equal(CompetitionRules.CupRounds, days.Count);
-        Assert.Equal(CompetitionRules.LeagueMatchDays, days[^1]);
+        for (var round = 1; round <= CompetitionRules.LeagueMatchDays; round++)
+        {
+            Assert.Equal(round + CompetitionRules.FirstChampionshipMatchDay - 1,
+                CompetitionRules.ChampionshipMatchDayOf(round));
+
+            if (round > 1)
+            {
+                Assert.Equal(1,
+                    CompetitionRules.ChampionshipMatchDayOf(round)
+                    - CompetitionRules.ChampionshipMatchDayOf(round - 1));
+            }
+        }
+
+        Assert.Equal(31, CompetitionRules.ChampionshipMatchDayOf(CompetitionRules.LeagueMatchDays));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => CompetitionRules.ChampionshipMatchDayOf(CompetitionRules.LeagueMatchDays + 1));
+    }
+
+    [Fact]
+    public void The_cup_opens_a_tie_round_every_five_days_from_the_seventh()
+    {
+        // 32-avos, 16-avos, oitavas, quartas, semi and final: the days they are drawn are the
+        // game's, not an even spread, because a club that has to wait nine days for the next
+        // tie and a club that plays four in a row are both calendars nobody asked for.
+        Assert.Equal(new[] { 7, 12, 17, 22, 27, 32 }, CompetitionRules.CupMatchDays());
+    }
+
+    [Fact]
+    public void The_final_is_the_last_football_of_the_season_and_the_day_after_it_is_empty()
+    {
+        var (first, second) = CompetitionRules.CupLegMatchDays(CompetitionRules.CupRounds);
+
+        Assert.Equal(32, first);
+        Assert.Equal(33, second);
+        Assert.Equal(CompetitionRules.SeasonMatchDays - 1, second);
     }
 
     [Fact]
@@ -58,25 +96,17 @@ public class CompetitionRulesTests
                 $"Tie-round {index + 1} is not after tie-round {index}.");
         }
 
-        Assert.All(days, day => Assert.InRange(day, 1, CompetitionRules.LeagueMatchDays));
+        Assert.All(days, day => Assert.InRange(day, CompetitionRules.FirstChampionshipMatchDay,
+            CompetitionRules.SeasonMatchDays));
     }
 
     [Fact]
-    public void A_tie_is_a_week_long_because_its_two_legs_are_a_week_apart()
+    public void A_tie_is_a_day_long_because_its_two_legs_are_a_day_apart()
     {
         var (first, second) = CompetitionRules.CupLegMatchDays(1);
 
-        Assert.Equal(second - 1, first);
-        Assert.Equal(CompetitionRules.DaysBetweenMatchDays, (second - first) * 7);
-    }
-
-    [Fact]
-    public void The_final_is_the_last_two_matchdays_of_the_season()
-    {
-        var (first, second) = CompetitionRules.CupLegMatchDays(CompetitionRules.CupRounds);
-
-        Assert.Equal(CompetitionRules.LeagueMatchDays, second);
-        Assert.Equal(CompetitionRules.LeagueMatchDays - 1, first);
+        Assert.Equal(second - first, CompetitionRules.DaysBetweenCupLegs);
+        Assert.Equal(8, second);
     }
 
     [Fact]
@@ -86,33 +116,34 @@ public class CompetitionRulesTests
         {
             var (first, second) = CompetitionRules.CupLegMatchDays(round);
 
-            Assert.InRange(first, 1, CompetitionRules.LeagueMatchDays);
-            Assert.InRange(second, 1, CompetitionRules.LeagueMatchDays);
+            Assert.InRange(first, 1, CompetitionRules.SeasonMatchDays);
+            Assert.InRange(second, 1, CompetitionRules.SeasonMatchDays);
         }
     }
 
     [Fact]
     public void A_window_is_numbered_in_the_order_it_is_played()
     {
-        // The Supercup takes window zero so that a championship window is window one whether
-        // or not anything played before it on the same day.
-        Assert.Equal(0, CompetitionRules.SuperCupWindow);
-        Assert.True(CompetitionRules.SuperCupWindow < CompetitionRules.ChampionshipWindow);
+        // Two windows, counted from one: the day's first is the championship's and the cup is
+        // the second. The Supercup shares the first because it is alone on the one day it is
+        // played in, so a window numbered zero would be a window before the first window.
+        Assert.Equal(1, CompetitionRules.ChampionshipWindow);
+        Assert.Equal(1, CompetitionRules.SuperCupWindow);
         Assert.True(CompetitionRules.ChampionshipWindow < CompetitionRules.CupWindow);
-        Assert.Equal(3, CompetitionRules.WindowsPerMatchDay);
+        Assert.Equal(2, CompetitionRules.WindowsPerMatchDay);
     }
 
     [Fact]
-    public void A_matchday_plays_the_supercup_then_the_championship_then_the_cup()
+    public void A_matchday_plays_the_championship_first_and_the_cup_after_it()
     {
         // The order is the rule: every division's round plays in the same wave, and the cup
         // follows the day. A cup leg played before the championship of the same day would be
-        // a leg taken by a side that had not yet run its legs that week.
+        // a leg taken by a side that has not yet run its legs.
         Assert.Equal(
             new[] { CompetitionType.SuperCup, CompetitionType.League, CompetitionType.Cup },
             CompetitionRules.MatchdayWaves);
 
-        Assert.Equal(0, CompetitionRules.WaveOf(CompetitionType.SuperCup));
+        Assert.Equal(1, CompetitionRules.WaveOf(CompetitionType.SuperCup));
         Assert.Equal(1, CompetitionRules.WaveOf(CompetitionType.League));
         Assert.Equal(2, CompetitionRules.WaveOf(CompetitionType.Cup));
 
@@ -127,13 +158,15 @@ public class CompetitionRulesTests
     [Fact]
     public void The_supercup_is_the_first_match_of_the_new_season()
     {
-        // The cup's first tie-round is not until the fifth matchday at the earliest, so
-        // matchday one is free, and the Supercup takes window zero: it is played before the
-        // championship of the same day, because it is the first football of the season.
+        // Day one is free — the championship opens on day two and the cup's first leg is not
+        // until the seventh — so the Supercup has the day to itself, at the championship's
+        // hour: it is the first football of the season, before anybody has played a league game.
         var (firstCupLeg, _) = CompetitionRules.CupLegMatchDays(1);
 
         Assert.Equal(1, CompetitionRules.SuperCupMatchDay);
-        Assert.Equal(0, CompetitionRules.SuperCupWindow);
+        Assert.Equal(CompetitionRules.ChampionshipWindow, CompetitionRules.SuperCupWindow);
+        Assert.Equal(CompetitionRules.ChampionshipKickOff, CompetitionRules.SuperCupKickOff);
+        Assert.True(CompetitionRules.SuperCupMatchDay < CompetitionRules.FirstChampionshipMatchDay);
         Assert.True(CompetitionRules.SuperCupMatchDay < firstCupLeg);
     }
 
@@ -178,17 +211,19 @@ public class CompetitionRulesTests
     [Fact]
     public void The_last_division_relegates_nobody_because_there_is_nothing_below_it()
     {
-        // The cup is thirty-two of the pyramid's thirty-six clubs, ranked by tier and then by
-        // position, so the four that finish last in the last division are the four the bracket
-        // has no room for. That is the band, said in the game's words: a fourth division that
-        // does not exist is not somewhere these clubs can be sent.
+        // The bottom of the pyramid is a wall: there is no fifth division to send four clubs to,
+        // so the last four of the last division are simply safe. They are not a band of their own
+        // and nothing else is done to them — the top four still go up, exactly as in any other
+        // division, and the four that come down from above take their places.
         const int count = CompetitionRules.ClubsPerDivision;
         var lowest = CompetitionRules.Tiers().Count;
 
         Assert.Equal(TableZone.Promotion, CompetitionRules.ZoneFor(lowest, 1, count));
-        Assert.Equal(TableZone.Safe, CompetitionRules.ZoneFor(lowest, count - CompetitionRules.RelegationSlots - 1, count));
-        Assert.Equal(TableZone.CupExclusion, CompetitionRules.ZoneFor(lowest, count - CompetitionRules.RelegationSlots + 1, count));
-        Assert.Equal(TableZone.CupExclusion, CompetitionRules.ZoneFor(lowest, count, count));
+        Assert.Equal(TableZone.Promotion, CompetitionRules.ZoneFor(lowest, CompetitionRules.PromotionSlots, count));
+        Assert.Equal(TableZone.Safe, CompetitionRules.ZoneFor(lowest, CompetitionRules.PromotionSlots + 1, count));
+        Assert.Equal(TableZone.Safe, CompetitionRules.ZoneFor(lowest, count - CompetitionRules.RelegationSlots, count));
+        Assert.Equal(TableZone.Safe, CompetitionRules.ZoneFor(lowest, count - CompetitionRules.RelegationSlots + 1, count));
+        Assert.Equal(TableZone.Safe, CompetitionRules.ZoneFor(lowest, count, count));
     }
 
     [Fact]

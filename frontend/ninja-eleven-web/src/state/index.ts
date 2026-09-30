@@ -84,6 +84,16 @@ export interface FeedEvent {
   onTarget?: boolean;
   isGoal?: boolean;
   /**
+   * Whether a goal came from the spot, and absent on every other event.
+   *
+   * It rides the event rather than being read out of the wording because the scoreline marks
+   * it, and a scoreline that had to recognise a phrase to know a penalty from an open-play
+   * goal would be broken by the next rewording of that phrase.
+   */
+  fromPenalty?: boolean;
+  /** What the player on this event is called, carried so a scoreline can name a scorer. */
+  playerName?: string | null;
+  /**
    * Whether a kick of a shootout went in, and null on every other event.
    *
    * It is its own field rather than a reading of the icon because the icon on screen is an

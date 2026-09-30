@@ -18,6 +18,16 @@ public class PlayerProfile
     public int GoalkeeperPower { get; set; }
     public int Reflexes { get; set; }
 
+    /// <summary>How much he has in the tank, on the same 1..100 scale as the rest.</summary>
+    public int Stamina { get; set; }
+
+    /// <summary>
+    /// The ceiling on his reading, on the same 1..100 scale. It is on the profile because a
+    /// profile is where a manager asks what a man will become, and a screen that can only
+    /// show what a man is has no way to answer it.
+    /// </summary>
+    public int Potential { get; set; }
+
     /// <summary>
     /// The player's face as the raw JSON of a faces.js <c>FaceConfig</c>, or null when he has
     /// none. It is carried as a string on purpose: the shape belongs to the library that draws
@@ -218,3 +228,105 @@ public class PlayerMatchLine
         public string? StadiumName { get; set; }
         public int? Attendance { get; set; }
     }
+
+/// <summary>
+/// One attribute of a training quote: what it is at, and what a session on it would cost.
+///
+/// <para>
+/// It is a pair rather than a number because the manager is being offered a decision, and a
+/// decision needs both halves. An attribute whose price is shown without its value tells him
+/// nothing about whether the session is worth taking, and a value shown without its price
+/// makes the choice a guess.
+/// </para>
+/// </summary>
+public class TrainingAttributeQuote
+{
+    public string Attribute { get; set; } = string.Empty;
+    public int Value { get; set; }
+
+    /// <summary>
+    /// What one session on this attribute costs, in energy, or null when a session is
+    /// impossible — a goalkeeper attribute on an outfielder, or one already at the man's
+    /// ceiling. Null is what lets a screen offer nothing instead of offering a button the
+    /// backend will refuse, and the reason a client never has to know the rule that made it
+    /// null.
+    /// </summary>
+    public int? Cost { get; set; }
+}
+
+/// <summary>
+/// A player's whole training sheet: who he is, what he has to spend, and what each of the
+/// eight would cost him.
+///
+/// <para>
+/// A squad's sheets are one read rather than one read per player. A manager opening the
+/// training screen is asking a question about twenty-three men, and asking it a man at a time
+/// would be twenty-three round trips to answer a question the backend can answer in one — and
+/// the last answer would arrive after the first had already been clicked, so the prices on
+/// screen would be from two different moments.
+/// </para>
+/// </summary>
+public class TrainingQuote
+{
+    public Guid PlayerId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Position { get; set; } = string.Empty;
+    public int Age { get; set; }
+    public int Potential { get; set; }
+    public int Stamina { get; set; }
+    public int Energy { get; set; }
+    public bool IsAvailable { get; set; }
+    public string Injury { get; set; } = "None";
+
+    /// <summary>
+    /// What one session on this man costs the club, being a share of his season wage.
+    /// </summary>
+    /// <remarks>
+    /// It is on every man's sheet rather than once on the squad's because it is a per-man
+    /// number: the same session costs the club a great deal more of a striker's wage than of a
+    /// reserve goalkeeper's, and a single figure on the header would price a decision that is
+    /// not one decision but twenty-three. It is a wage and not a share of one, so the manager
+    /// can check it against the salary he already reads on the same screen.
+    /// </remarks>
+    public decimal SessionFee { get; set; }
+
+    public List<TrainingAttributeQuote> Attributes { get; set; } = new();
+}
+
+/// <summary>
+/// The club's whole training sheet, with what the squad has left between them.
+///
+/// <para>
+/// The total is here rather than added up on the screen because it is the number a manager
+/// plans a week with, and a total the client assembled from twenty-three rows it had already
+/// rounded would be a total nobody could reproduce.
+/// </para>
+/// </summary>
+public class SquadTrainingQuotes
+{
+    public Guid TeamId { get; set; }
+    public Guid SeasonId { get; set; }
+    public int SquadEnergy { get; set; }
+
+    /// <summary>
+    /// The calendar day the allowance on this sheet is for. It is named rather than implied by
+    /// the client, because the allowance is a day's allowance and a screen that showed a
+    /// number without saying which day it belonged to would be showing yesterday's budget at
+    /// tomorrow's prices after midnight.
+    /// </summary>
+    public DateOnly Day { get; set; }
+
+    /// <summary>
+    /// Whether the club has a fixture on <see cref="Day"/>, which is the whole difference
+    /// between one session and two.
+    /// </summary>
+    public bool PlaysToday { get; set; }
+
+    /// <summary>How many sessions the club has on <see cref="Day"/>.</summary>
+    public int SessionsAllowed { get; set; }
+
+    /// <summary>How many of them have been spent.</summary>
+    public int SessionsSpent { get; set; }
+
+    public List<TrainingQuote> Players { get; set; } = new();
+}

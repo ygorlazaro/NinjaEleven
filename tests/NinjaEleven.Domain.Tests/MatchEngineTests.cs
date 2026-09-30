@@ -89,6 +89,20 @@ public class MatchEngineTests
     }
 
     [Fact]
+    public void AGoalFromOpenPlayIsNotAPenalty()
+    {
+        // A whole match driven by the engine with a seeded source, so the goals in it are
+        // real ones. The flag on a goal is a scoreline's only way of telling a penalty from
+        // any other goal, and a flag that defaulted to true would mark every goal in the game.
+        var events = RunFullMatch(new DeterministicRandomSource(20260930));
+
+        var goals = events.Where(e => e.IsGoal).ToList();
+
+        Assert.NotEmpty(goals);
+        Assert.All(goals, goal => Assert.False(goal.FromPenalty));
+    }
+
+    [Fact]
     public void MatchEngine_FullMatch_IsDeterministic_WithSameSeed()
     {
         var random1 = new DeterministicRandomSource(Seed);

@@ -71,6 +71,24 @@ namespace NinjaEleven.Domain.Matches;
         /// <summary>What the club that travelled took, which is the rest of the gate.</summary>
         public decimal AwayRevenue { get; private set; }
 
+        /// <summary>
+        /// The process whose memory holds this match's working state.
+        ///
+        /// The engine's state lives in RAM while a match is being played, and it is no longer
+        /// necessarily the API's: the Scheduler plays the matches nobody is watching and the
+        /// API plays the one somebody is. Two processes, one world, so a row has to say whose
+        /// working memory it belongs to. Without it a process that restarts abandons every
+        /// open match it can find, including the one the other process is in the middle of.
+        /// </summary>
+        public string SessionHost { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// The last moment this match was ticked. It is the lease that lets another process
+        /// take a match over once its owner has gone quiet: a process that dies mid-match does
+        /// not get to leave its games locked for ever.
+        /// </summary>
+        public DateTimeOffset? SessionHeartbeatAt { get; private set; }
+
         /// <summary>The gate as one value, for a caller that wants all of it at once.</summary>
         public GateReceipt Gate => GateReceipt.For(Attendance, TicketPrice, GateSplit.For(CompetitionType));
 
@@ -105,6 +123,39 @@ namespace NinjaEleven.Domain.Matches;
     public bool IsFinished => Status is MatchStatus.Finished or MatchStatus.Abandoned;
 
     public bool IsInProgress => Status is MatchStatus.InProgress or MatchStatus.SecondHalf;
+
+    /// <summary>
+    /// Whether the match is somewhere between kick-off and the final whistle, which is the
+    /// only stretch in which two processes could both believe they own it.
+    /// </summary>
+    public bool IsLive => Status is MatchStatus.KickOff or MatchStatus.InProgress
+        or MatchStatus.HalfTime or MatchStatus.SecondHalf;
+
+    /// <summary>
+    /// Takes the match's working memory on behalf of a process, and starts its lease.
+    /// It is written at kick-off and refreshed on every tick.
+    /// </summary>
+    public void ClaimSession(string host, DateTimeOffset now)
+    {
+        SessionHost = host ?? string.Empty;
+        SessionHeartbeatAt = now;
+    }
+
+    /// <summary>Renews the lease on a match that has just been advanced.</summary>
+    public void TouchSession(DateTimeOffset now) => SessionHeartbeatAt = now;
+
+    /// <summary>Whether this process is the one holding the match's working memory.</summary>
+    public bool IsOwnedBy(string host) =>
+        !string.IsNullOrEmpty(SessionHost)
+        && string.Equals(SessionHost, host, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Whether a process may take this match over: it is this process's own match, whose
+    /// memory died with it, or it is a match whose owner has stopped renewing its lease.
+    /// Anything else belongs to somebody who is still playing it.
+    /// </summary>
+    public bool CanBeReclaimedBy(string host, DateTimeOffset now, TimeSpan lease) =>
+        IsOwnedBy(host) || SessionHeartbeatAt is null || SessionHeartbeatAt.Value + lease <= now;
 
     /// <summary>
     /// Works out the crowd and the gate, and stamps them onto the match.
@@ -220,11 +271,13 @@ namespace NinjaEleven.Domain.Matches;
     public void Finish()
     {
         Status = MatchStatus.Finished;
+        SessionHeartbeatAt = null;
     }
 
     public void Abandon()
     {
         Status = MatchStatus.Abandoned;
+        SessionHeartbeatAt = null;
     }
 
     /// <summary>

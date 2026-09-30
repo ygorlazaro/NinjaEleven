@@ -255,6 +255,9 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_match_days");
 
+                    b.HasIndex("Date")
+                        .HasDatabaseName("ix_match_days_date");
+
                     b.HasIndex("SeasonId", "Number")
                         .IsUnique()
                         .HasDatabaseName("ix_match_days_season_id_number");
@@ -276,6 +279,22 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
 
+                    b.Property<string>("ExecutionHost")
+                        .HasColumnType("text")
+                        .HasColumnName("execution_host");
+
+                    b.Property<DateTimeOffset?>("ExecutionStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("execution_started_at");
+
+                    b.Property<string>("ExecutionStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("Scheduled")
+                        .HasColumnName("execution_status");
+
                     b.Property<Guid?>("MatchDayId")
                         .HasColumnType("uuid")
                         .HasColumnName("match_day_id");
@@ -292,6 +311,9 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_rounds");
+
+                    b.HasIndex("ExecutionStatus")
+                        .HasDatabaseName("ix_rounds_execution_status");
 
                     b.HasIndex("MatchDayId")
                         .HasDatabaseName("ix_rounds_match_day_id");
@@ -401,8 +423,8 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnName("match_id");
 
                     b.Property<string>("Reference")
-                        .HasMaxLength(60)
-                        .HasColumnType("character varying(60)")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
                         .HasColumnName("reference");
 
                     b.Property<Guid>("SeasonId")
@@ -679,6 +701,18 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("sequence");
 
+                    b.Property<DateTimeOffset?>("SessionHeartbeatAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("session_heartbeat_at");
+
+                    b.Property<string>("SessionHost")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasDefaultValue("")
+                        .HasColumnName("session_host");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -705,10 +739,15 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_matches_away_team_id");
 
                     b.HasIndex("FixtureId")
-                        .HasDatabaseName("ix_matches_fixture_id");
+                        .IsUnique()
+                        .HasDatabaseName("ux_matches_live_fixture")
+                        .HasFilter("status NOT IN ('Finished', 'Abandoned')");
 
                     b.HasIndex("HomeTeamId")
                         .HasDatabaseName("ix_matches_home_team_id");
+
+                    b.HasIndex("SessionHost")
+                        .HasDatabaseName("ix_matches_session_host");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_matches_status");
@@ -804,6 +843,10 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("MatchId")
                         .HasColumnType("uuid")
                         .HasColumnName("match_id");
+
+                    b.Property<int>("MinutesPlayed")
+                        .HasColumnType("integer")
+                        .HasColumnName("minutes_played");
 
                     b.Property<int>("OwnGoals")
                         .HasColumnType("integer")
@@ -1030,6 +1073,10 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("position");
 
+                    b.Property<int>("Potential")
+                        .HasColumnType("integer")
+                        .HasColumnName("potential");
+
                     b.Property<int>("Reflexes")
                         .HasColumnType("integer")
                         .HasColumnName("reflexes");
@@ -1037,6 +1084,10 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                     b.Property<int>("Speed")
                         .HasColumnType("integer")
                         .HasColumnName("speed");
+
+                    b.Property<int>("Stamina")
+                        .HasColumnType("integer")
+                        .HasColumnName("stamina");
 
                     b.Property<int>("Strength")
                         .HasColumnType("integer")
@@ -1125,6 +1176,77 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_player_season_states_season_id_team_id");
 
                     b.ToTable("player_season_states", (string)null);
+                });
+
+            modelBuilder.Entity("NinjaEleven.Domain.Players.TrainingSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Attribute")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("attribute");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<int>("EnergyCost")
+                        .HasColumnType("integer")
+                        .HasColumnName("energy_cost");
+
+                    b.Property<decimal>("Fee")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("fee");
+
+                    b.Property<Guid?>("MatchDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("match_day_id");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("integer")
+                        .HasColumnName("ordinal");
+
+                    b.Property<DateTimeOffset>("PerformedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("performed_at");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("player_id");
+
+                    b.Property<Guid>("SeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_id");
+
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("team_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_training_sessions");
+
+                    b.HasIndex("MatchDayId")
+                        .HasDatabaseName("ix_training_sessions_match_day_id");
+
+                    b.HasIndex("PlayerId")
+                        .HasDatabaseName("ix_training_sessions_player_id");
+
+                    b.HasIndex("TeamId", "Day")
+                        .HasDatabaseName("ix_training_sessions_team_id_day");
+
+                    b.HasIndex("SeasonId", "TeamId", "Day")
+                        .HasDatabaseName("ix_training_sessions_season_id_team_id_day");
+
+                    b.HasIndex("TeamId", "Day", "Ordinal")
+                        .IsUnique()
+                        .HasDatabaseName("ix_training_sessions_team_id_day_ordinal");
+
+                    b.ToTable("training_sessions", (string)null);
                 });
 
             modelBuilder.Entity("NinjaEleven.Domain.Seasons.Division", b =>
@@ -1858,6 +1980,36 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TeamId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_player_season_states_teams_team_id");
+                });
+
+            modelBuilder.Entity("NinjaEleven.Domain.Players.TrainingSession", b =>
+                {
+                    b.HasOne("NinjaEleven.Domain.Competitions.MatchDay", null)
+                        .WithMany()
+                        .HasForeignKey("MatchDayId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_training_sessions_match_days_match_day_id");
+
+                    b.HasOne("NinjaEleven.Domain.Players.Player", null)
+                        .WithMany()
+                        .HasForeignKey("PlayerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_training_sessions_players_player_id");
+
+                    b.HasOne("NinjaEleven.Domain.Seasons.Season", null)
+                        .WithMany()
+                        .HasForeignKey("SeasonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_training_sessions_seasons_season_id");
+
+                    b.HasOne("NinjaEleven.Domain.Teams.Team", null)
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_training_sessions_teams_team_id");
                 });
 
             modelBuilder.Entity("NinjaEleven.Domain.Sponsors.SponsorContract", b =>

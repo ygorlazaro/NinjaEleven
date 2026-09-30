@@ -109,11 +109,36 @@ public static class MatchRules
     public const double CornerLimit = 0.36;
     public const double ShotLimit = 0.72;
 
+    // --- Dueling -----------------------------------------------------------------
+
     /// <summary>
-    /// A midfield duel, which is everything above <see cref="ShotLimit"/>: a minute with
-    /// no shot in it is a minute of passing, pressing and second balls.
+    /// What a carrier is worth against a marker when two equal men meet: the base both sides
+    /// are measured from.
     /// </summary>
-    public const double DuelSuccessChance = 0.56;
+    /// <remarks>
+    /// It was a bare <c>0.56</c> before, which meant a duel was decided by the same roll in
+    /// every duel of every match, and a match of them was a match in which no pair of players
+    /// was ever better than another pair. The base is a little under a coin because football
+    /// is not a coin, and the swing below is what makes the two men in the duel matter.
+    /// </remarks>
+    public const double DuelBaseChance = 0.56;
+
+    /// <summary>
+    /// How much of the attribute gap between the two men in a duel reaches the roll. It is
+    /// applied to a -1..1 difference (see <see cref="AttributeScale.Factor(double)"/>), so a
+    /// world-class dribbler against a squad-player marker is worth about 0.40 more than a
+    /// coin and the reverse pairing about 0.40 less.
+    /// </summary>
+    /// <remarks>
+    /// It is a swing and not a coefficient on raw attributes because the raw version was
+    /// already answered: <c>0.52 + (dribbling − strength) × 0.018</c> over 1..100 is
+    /// <b>1.00 for every pair thirty-five points apart or more</b>, so the whole world played
+    /// the same duel. Normalising first is what turns the same forty points into a difference
+    /// that is still a difference at ninety.
+    /// </remarks>
+    public const double DuelSwing = 0.40;
+    public const double MinDuelChance = 0.08;
+    public const double MaxDuelChance = 0.94;
 
     // --- Shooting ---------------------------------------------------------------
 
@@ -125,6 +150,26 @@ public static class MatchRules
     public const double MaxGoalChance = 0.50;
 
     /// <summary>
+    /// What an average shot on target is worth before the striker and the keeper are read:
+    /// the base both of them are measured from.
+    /// </summary>
+    public const double BaseGoalChance = 0.31;
+
+    /// <summary>
+    /// How much of the -1..1 gap between the striker's shot and the keeper's hands reaches the
+    /// roll.
+    /// </summary>
+    /// <remarks>
+    /// The pair together is the whole repair. The old form was
+    /// <c>(shotPower − savePower + 14) / 54</c> with the constants written for a 1..20 scale,
+    /// which over 1..100 bolts at 0.50 for any striker better than about 60 against an average
+    /// keeper — so a 70 and a 95 were the same finisher. Comparing the two men on the same
+    /// -1..1 scale makes the striker's keeper a real question: a great striker against a poor
+    /// keeper is about 0.42, and the reverse is about 0.20.
+    /// </remarks>
+    public const double GoalChanceSwing = 0.22;
+
+    /// <summary>
     /// The band a shot can leave for the target. A poor finisher off a poor pass is
     /// off target more often than not, and never misses when he is alone with the keeper.
     /// </summary>
@@ -132,11 +177,29 @@ public static class MatchRules
     public const double MaxOnTargetChance = 0.88;
 
     /// <summary>
-    /// How much of a team's attacking strength converts into a shot on target. A side
-    /// that never gets to the final third still has shots; they are just worse ones.
+    /// What a shot in open play is worth before the striker is read: the base the side's
+    /// chance quality moves around.
     /// </summary>
-    public const double OnTargetFromStrength = 0.98;
+    public const double BaseOnTargetChance = 0.46;
+
+    /// <summary>
+    /// How much of the -1..1 gap between the striker and an average man reaches the roll,
+    /// and the same gap for the side's chance quality in open play.
+    /// </summary>
     public const double OnTargetSwing = 0.22;
+
+    /// <summary>
+    /// How much of the side's chance quality — how well it got to the final third, measured
+    /// off the two attacks — reaches the shot's chance of being on target.
+    /// </summary>
+    /// <remarks>
+    /// A side that cannot get to the final third still has shots; they are just worse ones,
+    /// and this is what makes them worse ones. It is a swing off the *even* fixture rather
+    /// than a share of the two attacks, because a share of two attacks is a number between
+    /// zero and one whose two ends are "never shoots" and "always on target" — which is not
+    /// what either end means.
+    /// </remarks>
+    public const double ChanceQualityWeight = 0.30;
 
     /// <summary>
     /// The chance a ball trapped by the keeper comes loose to somebody else, and the
@@ -167,6 +230,21 @@ public static class MatchRules
     public const double PenaltyFromFoulChance = 0.06;
 
     // --- Energy -----------------------------------------------------------------
+
+    /// <summary>
+    /// The floor of the energy ramp, and how steeply it falls at the bottom. See
+    /// <see cref="EnergyCurve"/> for why they are two numbers rather than one.
+    /// </summary>
+    /// <remarks>
+    /// The floor is the property the whole model rests on. A ramp that reaches zero lets a
+    /// tired man deliver nothing, and nothing is not worse than a squad player — it is
+    /// <i>worse than a squad player</i> by as much as he would have been better than one,
+    /// which is how energy became a veto over quality instead of a tax on it. At 0.65 a fully
+    /// drained player keeps two thirds of himself, so an attribute gap of about two to one is
+    /// untouchable by energy whatever the tank.
+    /// </remarks>
+    public const double EnergyFactorFloor = 0.65;
+    public const double EnergyFactorGamma = 1.5;
 
     /// <summary>
     /// What a tick of running costs a player who is having an ordinary night, before his
@@ -339,19 +417,18 @@ public static class MatchRules
     // --- Ratings ----------------------------------------------------------------
 
     /// <summary>
-    /// The average attribute of the 1..20 scale, and the distance from it to the top. They
-    /// turn an attribute into a -1..1 factor around an average player.
-    /// </summary>
-    public const double ReferenceAttribute = 13.0;
-    public const double AttributeSpan = 7.0;
-
-    /// <summary>
     /// The base of a goalkeeper's ability when his club has had to make one out of an
-    /// outfielder. He is not a goalkeeper, so it is a small fraction of the same three
-    /// attributes, and a team is punished in its own goal for having no cover.
+    /// outfielder. He is not a goalkeeper, so it is a fraction of the same three attributes,
+    /// and a team is punished in its own goal for having no cover.
     /// </summary>
     public const double EmergencyKeeperScale = 0.42;
-    public const double EmergencyKeeperFloor = 2.0;
+    public const double EmergencyKeeperFloor = 20.0;
+
+    /// <summary>
+    /// How much of a keeper's ability is his reflexes rather than his power. Reflexes are
+    /// what the role is; the power is what stops him being a mannequin.
+    /// </summary>
+    public const double KeeperReflexShare = 0.55;
 
     /// <summary>
     /// What a missing player is worth. A club down a man is not playing the same match,

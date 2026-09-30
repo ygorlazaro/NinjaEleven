@@ -419,6 +419,13 @@ public class FairPlayTests
         var scored = state.HomeScore > scoreBefore;
         Assert.Equal(scored, penaltyEvents.Any(e => e.Type == MatchEventType.GoalScored));
         Assert.Equal(scored, penaltyEvents.Any(e => e.IsGoal));
+
+        // And a goal taken from the spot says so on the event itself. The scoreline is what
+        // marks a penalty, and it cannot recognise one out of the narration without breaking
+        // the day the narration is reworded.
+        Assert.All(
+            penaltyEvents.Where(e => e.Type == MatchEventType.GoalScored),
+            goal => Assert.True(goal.FromPenalty));
     }
 
     [Fact]

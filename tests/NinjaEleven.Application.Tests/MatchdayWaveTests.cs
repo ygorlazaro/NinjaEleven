@@ -228,6 +228,46 @@ public class MatchdayWaveTests
     }
 
     [Fact]
+    public async Task A_match_finishing_in_the_middle_of_its_own_window_does_not_start_that_window_again()
+    {
+        // The double start this guards: the world walks a window a fixture at a time, and every
+        // match that finishes asks the day whether there is anything left to kick off. The
+        // fixtures the walk has not reached yet are still on the schedule, so the answer used
+        // to be yes — and each one was started here, abandoned by the walk when it arrived,
+        // and started again, which is a matchday that leaves four abandoned matches behind
+        // every fixture it played. A window that has begun belongs to whoever began it.
+        var first = _championship[0];
+        var second = _championship[1];
+        var third = _championship[2];
+
+        var service = CreateService();
+
+        // The window has begun: the manager's kick-off started the day, and the other two are
+        // on the pitch. One of them finishes, which is the moment the day used to go round
+        // starting whatever it found on the schedule.
+        Play(first);
+        Play(second);
+        Play(third);
+
+        Finish(first);
+        await service.AdvanceAsync(first.Id);
+
+        Assert.Equal(CompetitionType.League, (await service.GetProgressAsync(_matchDayId)).OpenWave);
+        Assert.DoesNotContain(_started, id => _championship.Any(fixture => fixture.Id == id));
+
+        // And the cup is not opened by it either: the window it belongs to is still running.
+        Assert.DoesNotContain(_cupFixtures[0].Id, _started);
+
+        // The last match of the window is what opens the next one, which is the whole of what
+        // this method is for.
+        Finish(second);
+        Finish(third);
+        await service.AdvanceAsync(third.Id);
+
+        Assert.Equal(CompetitionType.Cup, (await service.GetProgressAsync(_matchDayId)).OpenWave);
+    }
+
+    [Fact]
     public async Task A_manager_cannot_start_a_cup_match_while_the_championship_is_still_running()
     {
         var manager = _championship[0];

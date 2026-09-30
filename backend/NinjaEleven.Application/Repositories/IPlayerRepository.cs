@@ -10,6 +10,18 @@ namespace NinjaEleven.Application.Repositories;
 public interface IPlayerRepository
 {
     Task<IReadOnlyList<Player>> ListAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A set of players by their ids, in one read.
+    ///
+    /// It exists because a set of names is needed together — a match's scorers, a squad's
+    /// training quotes — and asking the repository once per player turns one question into a
+    /// loop, which is the shape that made a page of clubs take half a minute.
+    /// </summary>
+    Task<IReadOnlyList<Player>> ListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default);
+
     Task<Player?> GetAsync(Guid id, CancellationToken cancellationToken = default);
     Task AddAsync(Player player, CancellationToken cancellationToken = default);
     void Update(Player player);
@@ -94,7 +106,7 @@ public interface IPlayerRepository
     /// </summary>
     /// <remarks>
     /// The edition and not the kind of competition, because the championship is three editions of
-    /// one kind. A season's list restricted to "League" counts all three divisions at once, which
+    /// one kind. A season's list restricted to "League" counts all four divisions at once, which
     /// is a chart of the country and not a division's artilharia: a first-division prize list
     /// counted that way would be topped by a third-division striker and then paid out of the
     /// first division's title money.

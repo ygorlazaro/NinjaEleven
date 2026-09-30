@@ -353,7 +353,15 @@ button { cursor: pointer; }
 .standings th:nth-child(2) { text-align: left; }
 .standings td { padding: 8px 5px; border-top: 1px solid rgba(34, 56, 75, .65); text-align: center; }
 .standings td:nth-child(2) { text-align: left; }
-.standings tr.user-row { background: color-mix(in srgb, var(--team-primary) 10%, transparent); box-shadow: inset 3px 0 var(--team-primary); }
+/* The manager's own club, and the band it is in. Both paint the same row, and the band used to
+   win: the zone rules are written after this one and carry the same weight, so a manager's club
+   in the promotion race or the relegation battle was given the zone's colour and lost the only
+   thing that says which row is his. The bar on the edge and the name are what identify it, and
+   they are set here rather than left to whichever background happened to be declared last. */
+.standings tr.user-row { background: color-mix(in srgb, var(--team-primary) 16%, transparent); box-shadow: inset 4px 0 var(--team-primary); }
+.standings tr.user-row.promotion,
+.standings tr.user-row.relegation,
+.standings tr.user-row.champion { background: color-mix(in srgb, var(--team-primary) 22%, transparent); }
 .standings tr.projected { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .standings tr.current-match { background: color-mix(in srgb, var(--team-primary) 10%, transparent); }
 .standings tr.current-match.projected { background: color-mix(in srgb, var(--accent) 8%, var(--team-primary) 10%); }
@@ -385,6 +393,18 @@ button { cursor: pointer; }
    which colour the club wears; a shield says which club it is, at the same size a name is read.
    It sits in a row with the name rather than above it, so a table of clubs stays a table. */
 .standing-club { display: inline-flex; align-items: center; gap: 6px; }
+/* The name of the manager's own club, in the table. The row behind it says "this one" to
+   someone reading down a column, and the name says it to someone scanning for it — a table
+   of sixteen clubs is read by looking, not by reading the colours of every row, and the club
+   a manager is looking for is found by his eye on his own name. The weight and the colour are
+   the club's own, so a club in a strong colour is not flattened into a theme's blue. */
+.standings .standing-club--mine .club-link { font-weight: 800; color: var(--team-primary); }
+.standings .standing-club--mine .standing-club__you {
+  margin-left: 2px; font-size: 9px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted);
+  border: 1px solid currentColor; border-radius: 999px; padding: 0 5px; line-height: 15px;
+  opacity: .8;
+}
 .standings .standing-form { white-space: nowrap; }
 .standings .form-run { justify-content: center; flex-wrap: nowrap; gap: 3px; }
 .standings .form-run__letter { width: 17px; height: 17px; border-radius: 4px; font-size: 11px; }
@@ -573,10 +593,63 @@ button { cursor: pointer; }
 .match-attendance b { color: var(--text); }
 .competition { font-size: 13px; color: var(--muted); letter-spacing: .13em; text-transform: uppercase; }
 .scoreline { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 18px; margin-top: 10px; }
-.team-name { font-size: 27px; font-weight: 850; display: flex; align-items: center; gap: 10px; }
+.team-name { font-size: 27px; font-weight: 850; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .team-name.away { justify-content: flex-end; }
 .team-name.user-team { color: var(--accent); }
 .team-name.team-colored { color: var(--team-primary); }
+
+/* The goals under each club's name, on the scoreline itself.
+   The name row is the loud part and this is the quiet part: the score in the middle still
+   reads first, and the strip beneath each name answers the question the number cannot — who
+   scored, and how. It wraps onto its own line under the name rather than beside it, which
+   is why the name row is allowed to wrap at all. */
+.goal-history {
+  flex: 0 0 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.team-name.away .goal-history { align-items: flex-end; text-align: right; }
+
+.goal-history__line--own { color: var(--muted); }
+
+/* The ball is the mark of the goal, and a goal against is a different kind of goal, so it
+   is a different ball. A white ball on a dark scoreline needs a little help to be seen. */
+.goal-history .ball {
+  font-size: 11px;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, .9));
+  flex: 0 0 auto;
+}
+
+.goal-history .ball--scored { color: var(--text); }
+.goal-history .ball--own { color: var(--red); }
+
+.goal-history__name { color: var(--text); font-weight: 650; }
+.goal-history__line--own .goal-history__name { color: var(--muted); text-decoration: line-through; }
+.goal-history__minutes { color: var(--muted); white-space: nowrap; }
+
+.goal-history__own-tag,
+.goal-history__penalty-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  margin-right: 4px;
+  border-radius: 3px;
+  vertical-align: 1px;
+}
+
+.goal-history__own-tag { color: #fff; background: var(--red); }
+.goal-history__penalty-tag { color: #071018; background: var(--accent); }
 
 /* The shield beside each name on the scoreboard. It is the same crest the club screen and
    the matchday draw, sized for a row whose loudest thing is the score in the middle — the
@@ -1368,6 +1441,36 @@ button { cursor: pointer; }
 .cup-club--winner { background: color-mix(in srgb, var(--green) 12%, transparent); }
 .cup-club--winner .cup-club__name { color: var(--green); font-weight: 700; }
 .cup-club--loser { color: var(--muted); }
+
+/* The manager's own club in the bracket, which is the one line in each tie he is looking for.
+   A bracket is read by following a club across the columns, and a manager cannot follow a club
+   he cannot find: the winner's green and the loser's grey say what happened, and neither says
+   which of the two is his. The line is marked rather than the card, because the card holds
+   both clubs and only one of them is his — and it is marked on the name and in the club's own
+   colour, which is what a manager scanning for his crest will actually catch. */
+.cup-club--mine { background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 3px 0 var(--accent); }
+.cup-club--mine .cup-club__name .club-link { font-weight: 800; }
+.cup-club--mine.cup-club--winner .cup-club__name .club-link { color: var(--green); }
+.cup-club__you {
+  margin-left: 4px; font-size: 8px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--accent);
+  border: 1px solid currentColor; border-radius: 999px; padding: 0 4px; line-height: 13px;
+  opacity: .9; vertical-align: 1px;
+}
+
+/* A leg's score is the door to that leg's match, and it has to look like one without shouting:
+   the number is what the bracket is for, and a score in a link colour would turn a column of
+   them into a column of things to click. It gains the affordance on hover and on focus, and
+   keeps the bracket's own typography throughout. */
+.cup-club__leg {
+  background: none; border: 1px solid transparent; border-radius: 3px; padding: 0 3px;
+  color: inherit; font: inherit; font-variant-numeric: tabular-nums; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.cup-club__leg:hover, .cup-club__leg:focus-visible {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: var(--accent); color: var(--text); outline: none;
+}
 .cup-tie__aggregate {
   display: flex; justify-content: space-between; gap: 6px; flex-wrap: wrap;
   padding: 2px 6px; font-size: 11px; color: var(--muted); background: rgba(0, 0, 0, .18);
@@ -1924,6 +2027,19 @@ button { cursor: pointer; }
 .calendar-score {
   text-align: center; font-weight: 800; font-variant-numeric: tabular-nums;
   white-space: nowrap; min-width: 62px;
+}
+/* The score as a door. It is the only link in the row, so it is underlined rather than filled:
+   a calendar is read down a column of numbers and a filled box in every played row would be a
+   wall of buttons, and the underline says "this one goes somewhere" without taking the number
+   away from the column it belongs to. */
+.calendar-score__link {
+  background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+  color: var(--accent); font: inherit; font-weight: 800; font-variant-numeric: tabular-nums;
+  text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  text-underline-offset: 3px; transition: color 0.15s, text-decoration-color 0.15s;
+}
+.calendar-score__link:hover, .calendar-score__link:focus-visible {
+  color: var(--text); text-decoration-color: var(--text); outline: none;
 }
 /* A played game is a door to the match; one that has not been is a row of the season, and
    a row that looks like a door and is not is worse than a row that obviously is not. */
@@ -2872,3 +2988,69 @@ button { cursor: pointer; }
   border-color: var(--accent); color: var(--accent);
 }
 .inbox-message__link:hover { color: var(--text); }
+
+/* --- Training -------------------------------------------------------------------
+   A manager's week, spent. The screen is a grid of prices rather than a list of players,
+   because the decision is per attribute and not per man: twenty-three rows with one button
+   each would have hidden the only question worth asking, which is what this one costs. */
+.club-tabs { margin: 14px 0 10px; }
+
+.training__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+}
+.training__head .club-form__title { margin: 0; }
+.training__budget { margin: 0; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.training__budget strong { color: var(--text); }
+
+.training__hint {
+  margin: 4px 0 12px; color: var(--muted); font-size: 12.5px; line-height: 1.45;
+}
+
+.training__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+
+.training__player {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px;
+  background: #0a1520;
+}
+/* A man who cannot be trained. He is dimmed rather than hidden: a sheet of twenty-two rows
+   with one missing would read as a squad of twenty-two. */
+.training__player--out { opacity: .55; }
+.training__player--busy { border-color: var(--accent); }
+
+.training__who { display: flex; align-items: center; gap: 8px; min-width: 260px; flex: 1 1 260px; }
+.training__name { font-size: 14px; font-weight: 600; }
+.training__meta {
+  color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.training__cells { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* One attribute and what a session on it costs. The three numbers are the whole offer: what
+   it is at, and what pressing this will spend. */
+.training__cell {
+  display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto;
+  gap: 0 4px; align-items: baseline;
+  padding: 4px 7px; min-width: 56px;
+  background: #0d1c29; border: 1px solid var(--line); border-radius: 7px;
+  color: var(--text); cursor: pointer; font: inherit; text-align: left;
+}
+.training__cell:hover:not(:disabled) { border-color: var(--accent); }
+.training__cell:disabled { cursor: not-allowed; }
+/* A cell with nothing to offer. Flat rather than hidden — a goalkeeper attribute on a
+   centre-back and an attribute already at the ceiling are refusals, and a sheet that dropped
+   them would leave a manager asking where they went. */
+.training__cell--off { opacity: .4; }
+
+.training__cell-label {
+  grid-column: 1; font-size: 10.5px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.training__cell-value {
+  grid-column: 1; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.training__cell-cost {
+  grid-column: 2; grid-row: 1 / span 2; align-self: center;
+  font-size: 12px; color: var(--orange); font-variant-numeric: tabular-nums;
+}

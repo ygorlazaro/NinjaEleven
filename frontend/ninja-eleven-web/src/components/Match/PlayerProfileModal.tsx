@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlayerApi, SeasonApi } from '@/api';
 import type { PlayerProfileDto } from '@/types';
-import { positionLabel } from '@/services/formatters';
+import { positionLabel, attributeBarWidth } from '@/services/formatters';
 import { formatLimo } from '@/services/limo';
 import { PlayerFace } from '@/components/Common/PlayerFace';
 import StarRating from '@/components/Common/StarRating';
@@ -39,14 +39,15 @@ const KEEPER_ATTRIBUTES: { key: keyof PlayerProfileDto; label: string }[] = [
 /**
  * One attribute as a number big enough to be read without glasses.
  *
- * The bar behind it is the same value the engine reads, scaled the way the engine scales
- * it, so a 15 here and a 15 on the team sheet are the same fifteen.
+ * The bar behind it is the same value the engine reads, on the same 1..100 scale, so a 15
+ * here and a 15 on the team sheet are the same fifteen. It used to divide by twenty, which
+ * was the scale the attributes left behind.
  */
 const AttributeBox: React.FC<{ label: string; value: number }> = ({ label, value }) => (
   <div className="attr-box">
     <span className="attr-value">{value}</span>
     <span className="attr-bar" aria-hidden="true">
-      <span className="attr-bar-fill" style={{ width: `${Math.min(100, (value / 20) * 100)}%` }} />
+      <span className="attr-bar-fill" style={{ width: attributeBarWidth(value) }} />
     </span>
     <span className="attr-label">{label}</span>
   </div>

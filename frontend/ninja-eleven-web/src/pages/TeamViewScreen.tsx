@@ -1,6 +1,7 @@
-import { SeasonApi, TeamApi, ManagerApi, TransferApi } from '@/api';
+import { SeasonApi, TeamApi, ManagerApi, TransferApi, PlayerApi } from '@/api';
 import ClubCrest from '@/components/Club/ClubCrest';
 import ClubSquadTable from '@/components/Club/ClubSquadTable';
+import TrainingPanel from '@/components/Club/TrainingPanel';
 import FormRun, { formOf } from '@/components/Club/FormRun';
 import { ClubName, PlayerName } from '@/components/Common/Names';
 import DivisionTrophy from '@/components/League/DivisionTrophy';
@@ -8,7 +9,7 @@ import { useClubWindow } from '@/services/clubColors';
 import { formatLimo } from '@/services/limo';
 import { starsToString } from '@/services/formatters';
 import { useGameState } from '@/state';
-import type { ClubStandingDto, SquadPlayerDto, TeamDto, TeamMatchRecordDto, ClubTransferHistoryDto, TransferHistoryLineDto, TransferStatus } from '@/types';
+import type { ClubStandingDto, SquadPlayerDto, TeamDto, TeamMatchRecordDto, ClubTransferHistoryDto, TransferHistoryLineDto, TransferStatus, SquadTrainingQuotesDto, PlayerAttribute } from '@/types';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
@@ -26,6 +27,27 @@ const STATUS_LABELS: Record<TransferStatus, string> = {
   Rejected: 'Recusada',
   Completed: 'Concluída',
   Expired: 'Expirada'
+};
+
+/**
+ * The wire name of an attribute and the field the squad row carries it in.
+ *
+ * The backend's enum is spelled in Pascal case because that is how enums travel; the DTO is
+ * camel case because that is how JSON fields are. Both are right and neither is derivable
+ * from the other by a rule a screen should be guessing at, so the eight are written out.
+ * Writing it out is also what makes the compiler complain when an attribute is added and
+ * this table is not — which is the moment to be told, rather than the moment a manager
+ * watches a column stop moving.
+ */
+const ATTRIBUTE_FIELD: Partial<Record<PlayerAttribute, keyof SquadPlayerDto>> = {
+  Speed: 'speed',
+  Accuracy: 'accuracy',
+  Dribbling: 'dribbling',
+  Heading: 'heading',
+  Strength: 'strength',
+  GoalkeeperPower: 'goalkeeperPower',
+  Reflexes: 'reflexes',
+  Stamina: 'stamina'
 };
 
 const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) => {
@@ -46,14 +68,52 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
   const [busyPlayerId, setBusyPlayerId] = useState<string | null>(null);
   const [transferHistory, setTransferHistory] = useState<ClubTransferHistoryDto | null>(null);
 
+  /**
+   * The club's training sheet: every man, every attribute, and what a session on each costs.
+   *
+   * It is its own state and not derived from `players` because the prices are not on the
+   * squad row and must not be worked out here — the cost is a product of the attribute, the
+   * potential, the stamina and a curve, and a client computing it would be a second
+   * implementation of a rule the backend owns.
+   */
+  const [training, setTraining] = useState<SquadTrainingQuotesDto | null>(null);
+  const [trainingLoading, setTrainingLoading] = useState(false);
+  const [trainingError, setTrainingError] = useState<string | null>(null);
+
   const FORM_GUIDE_LENGTH = 10;
   const H2H_LENGTH = 5;
 
   const navigate = useNavigate();
   const { teamId: routeTeamId = '' } = useParams();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const urlTeamId = propTeamId || routeTeamId;
   const seasonId = params.get('season') || '';
+
+  /**
+   * Which of the club's two screens is being read: the men, or what the manager is doing
+   * about them. A training column inside the squad table would have made the table a place
+   * where every row is a decision, and a table of twenty-three decisions is not a table any
+   * more.
+   *
+   * The answer is read from the URL and not held here, because the sidebar has a door to
+   * training and a door that goes nowhere is a door nobody uses: a piece of state that only
+   * exists inside one component cannot be pointed at from outside it. So `?tab=training` is
+   * what the link says and what the screen obeys, and the tab buttons write the same
+   * parameter rather than a variable — which is also why the back button works.
+   */
+  const activeTab: 'squad' | 'training' = params.get('tab') === 'training' ? 'training' : 'squad';
+
+  const setActiveTab = (tab: 'squad' | 'training') => {
+    setParams(
+      current => {
+        const next = new URLSearchParams(current);
+        if (tab === 'training') next.set('tab', 'training');
+        else next.delete('tab');
+        return next;
+      },
+      { replace: true }
+    );
+  };
 
   useEffect(() => {
     const teamObj = teams.find(t => t.id === urlTeamId);
@@ -128,6 +188,49 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
       cancelled = true;
     };
   }, [urlTeamId, seasonId, selectedTeam?.id]);
+
+  /**
+   * The training sheet, read when — and only when — the manager opens the tab.
+   *
+   * <para>
+   * It is not read with the squad, on purpose. A club page is opened far more often than a
+   * training page, and twenty-three men times eight prices is a payload paid on every visit
+   * to read a screen most visits never look at. Reading it on the tab's own opening is the
+   * difference between a club card that loads as fast as it always did and one that does not.
+   * </para>
+   */
+  useEffect(() => {
+    // The club is the manager's own, and the sheet is a decision only a manager may make —
+    // so the same test that gates the button gates the read, and a spectator never pulls
+    // twenty-three price lists he has no use for. It is written out rather than reusing the
+    // `isOwnTeam` further down, which is declared after the early returns.
+    const ownsClub = Boolean(selectedTeam && selectedTeam.id === urlTeamId);
+
+    if (activeTab !== 'training' || !urlTeamId || !ownsClub) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    setTrainingLoading(true);
+    setTrainingError(null);
+
+    TeamApi.training(urlTeamId, seasonId || undefined)
+      .then(quotes => {
+        if (!cancelled) setTraining(quotes);
+      })
+      .catch(err => {
+        console.error('Failed to load the training sheet:', err);
+        if (!cancelled) setTrainingError('Não foi possível carregar o treino.');
+      })
+      .finally(() => {
+        if (!cancelled) setTrainingLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, urlTeamId, seasonId, selectedTeam?.id]);
 
   /**
    * Loads the club's transfer history for the current and previous season.
@@ -211,6 +314,83 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
   };
 
   const clubWindow = useClubWindow(team);
+
+  /**
+   * One session, and both halves of what it did.
+   *
+   * <para>
+   * The sheet and the squad table are patched from the same answer rather than refetched.
+   * The backend's response already carries the attribute either side of the session and the
+   * energy either side of it, so the screen knows every number that changed without asking
+   * again — and asking again would be a way of being wrong: a refetch landing between a
+   * session and its next would show the manager a price that is no longer the price.
+   * </para>
+   *
+   * <para>
+   * The squad is patched as well as the sheet because they are the same men. A manager who
+   * trained somebody and went back to the elenco to find his energy unchanged would be
+   * looking at one screen that spent something and another that says nothing was spent, and
+   * the second one is the one a manager would believe.
+   * </para>
+   */
+  const handleTrain = async (playerId: string, attribute: PlayerAttribute) => {
+    setBusyPlayerId(playerId);
+
+    try {
+      const result = await PlayerApi.train(playerId, attribute, seasonId || undefined);
+
+      setTraining(current => {
+        if (!current) return current;
+
+        const players = current.players.map(player => {
+          if (player.playerId !== playerId) return player;
+
+          return {
+            ...player,
+            energy: result.energyLeft,
+            attributes: player.attributes.map(cell =>
+              cell.attribute === attribute
+                ? { ...cell, value: result.attributeAfter }
+                : cell
+            )
+          };
+        });
+
+        return {
+          ...current,
+          squadEnergy: current.squadEnergy - result.energySpent,
+          // Read off the server's own remainder rather than incremented here: the allowance
+          // is counted from the club's sessions, and a counter on this screen would be a
+          // second answer to a question only the backend can answer.
+          sessionsSpent: current.sessionsAllowed - result.sessionsLeft,
+          players
+        };
+      });
+
+      setPlayers(current =>
+        current.map(player => {
+          if (player.id !== playerId) return player;
+
+          // The attribute arrives under its wire name ("Speed") and the squad row's field is
+          // camel case ("speed"). Spreading the wire name in would have written a second,
+          // unread key onto the row and left the column a manager is looking at unchanged —
+          // a session that visibly did nothing on the very screen they came back to.
+          const field = ATTRIBUTE_FIELD[attribute];
+
+          return field ? { ...player, energy: result.energyLeft, [field]: result.attributeAfter } : player;
+        })
+      );
+
+      setNotice(
+        `${result.attribute} de ${result.attributeBefore} para ${result.attributeAfter}, ` +
+        `gastando ${result.energySpent} de energia e ${formatLimo(result.fee)} do clube.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível treinar o jogador.');
+    } finally {
+      setBusyPlayerId(null);
+    }
+  };
 
   const getH2HResultFromHumanPerspective = useMemo(() => (match: TeamMatchRecordDto): 'win' | 'draw' | 'loss' => {
     const humanGoals = match.isHome ? match.goalsAgainst : match.goalsFor;
@@ -325,10 +505,45 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
         {notice && <p className="league-notice">{notice}</p>}
         {busyPlayerId && <p className="league-empty">Registrando a decisão…</p>}
 
-        <ClubSquadTable
-          squad={players}
-          onRelease={isOwnTeam ? handleRelease : undefined}
-        />
+        {/*
+          The two screens of a club. The tab only exists for the manager's own club: a
+          spectator has no decision to make about these twenty-three men, and a tab that
+          opened onto a list of prices he may not pay would be a control the server has
+          already said no to.
+        */}
+        {isOwnTeam && (
+          <div className="tabs club-tabs">
+            <button
+              type="button"
+              className={`tab ${activeTab === 'squad' ? 'active' : ''}`}
+              onClick={() => setActiveTab('squad')}
+            >
+              Elenco
+            </button>
+            <button
+              type="button"
+              className={`tab ${activeTab === 'training' ? 'active' : ''}`}
+              onClick={() => setActiveTab('training')}
+            >
+              Treino
+            </button>
+          </div>
+        )}
+
+        {activeTab === 'training' && isOwnTeam ? (
+          <TrainingPanel
+            quotes={training}
+            loading={trainingLoading}
+            error={trainingError}
+            busyPlayerId={busyPlayerId}
+            onTrain={handleTrain}
+          />
+        ) : (
+          <ClubSquadTable
+            squad={players}
+            onRelease={isOwnTeam ? handleRelease : undefined}
+          />
+        )}
 
         <section className="club-form">
           <div className="club-form__head">

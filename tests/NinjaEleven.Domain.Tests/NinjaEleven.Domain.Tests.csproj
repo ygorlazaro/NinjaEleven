@@ -2,6 +2,23 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\backend\NinjaEleven.Domain\NinjaEleven.Domain.csproj" />
+
+    <!--
+      The balance laboratory is compiled into the test project as source rather than
+      referenced as a project, for two reasons: it is an executable and a test project
+      should not reference one, and the invariants below have to read the same classes the
+      report was generated from. Linking the files rather than copying them means a change to
+      a curve breaks the build here instead of quietly making the assertions test a model
+      nobody runs.
+    -->
+    <Compile Include="..\..\tools\NinjaEleven.BalanceLab\EnergyCurve.cs" Link="Balance\EnergyCurve.cs" />
+    <Compile Include="..\..\tools\NinjaEleven.BalanceLab\PlayerCard.cs" Link="Balance\PlayerCard.cs" />
+    <Compile Include="..\..\tools\NinjaEleven.BalanceLab\LabRandom.cs" Link="Balance\LabRandom.cs" />
+    <Compile Include="..\..\tools\NinjaEleven.BalanceLab\LabStrength.cs" Link="Balance\LabStrength.cs" />
+    <Compile Include="..\..\tools\NinjaEleven.BalanceLab\DuelSimulator.cs" Link="Balance\DuelSimulator.cs" />
+    <Compile Include="..\..\tools\NinjaEleven.BalanceLab\ScaleAudit.cs" Link="Balance\ScaleAudit.cs" />
+    <Compile Include="..\..\tools\NinjaEleven.BalanceLab\RecoveryModel.cs" Link="Balance\RecoveryModel.cs" />
+    <Compile Include="..\..\tools\NinjaEleven.BalanceLab\SeasonSimulator.cs" Link="Balance\SeasonSimulator.cs" />
   </ItemGroup>
 
   <ItemGroup>

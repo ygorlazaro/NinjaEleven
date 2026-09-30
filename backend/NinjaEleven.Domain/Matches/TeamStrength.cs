@@ -77,29 +77,35 @@ public sealed class TeamStrength
 
         foreach (var player in onPitch)
         {
-            var energy = player.Energy / 100.0;
+            // One ramp, one place. The three unit readings live in
+            // <see cref="AttributeWeights"/> and the ramp in <see cref="EnergyCurve"/>, so
+            // there is no fourth answer to "how tired is he" left in this method.
+            var effective = EnergyCurve.Factor(player.Energy)
+                * AttributeWeights.Of(player, AttributeWeights.For(player.Position));
 
             switch (player.Position)
             {
                 case Position.ATT:
-                    attack += (player.Accuracy + player.Dribbling + player.Speed) * energy;
+                    attack += effective;
                     break;
                 case Position.MID:
-                    midfield += (player.Accuracy + player.Dribbling + player.Strength) * energy;
+                    midfield += effective;
                     break;
                 case Position.DEF:
-                    defense += (player.Speed + player.Strength + player.Heading) * energy;
+                    defense += effective;
                     break;
             }
         }
 
         // A club with nobody in goal still defends: whatever outfield player is standing
         // in front of an empty net is the last line, and he is worth a fraction of a
-        // keeper rather than nothing.
+        // keeper rather than nothing. The keeper is on the same ramp as everybody else, which
+        // is the point: a tired keeper is a worse keeper by the same rule that a tired
+        // centre back is a worse centre back.
         var keeper = onPitch.FirstOrDefault(player => player.KeepsGoal);
         var keeperValue = keeper is null
             ? 0.0
-            : PlayerMetric.KeeperAbility(keeper) * (0.9 + keeper.Energy / 1000.0);
+            : AttributeWeights.KeeperAbility(keeper) * EnergyCurve.Factor(keeper.Energy);
 
         // The shape of the eleven scales each unit. More forwards means a heavier attack
         // and a lighter defence, and that trade is the whole point of choosing a

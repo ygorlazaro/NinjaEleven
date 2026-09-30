@@ -8,6 +8,12 @@
     <!-- The abstractions only, so a service can say what it did and did not do without
          taking a dependency on a logging implementation. -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.4" />
+    <!-- The world's tolerances are configured, not constant, so the options types are part
+         of the contract the Application layer publishes. -->
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.4" />
+    <!-- The scope a fixture is played in. It is the only place the Application layer
+         composes a container, and it exists so a match is a unit of work of its own. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.4" />
   </ItemGroup>
 
   <PropertyGroup>

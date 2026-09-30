@@ -22,61 +22,42 @@ public static class PlayerMetric
     /// <summary>
     /// A goalkeeper's ability on the scale the outfield attributes use.
     ///
-    /// A real goalkeeper is rated on his reflexes, which is what the role is. A promoted
-    /// outfield player is rated on the three attributes that stand in for a pair of gloves
-    /// — and rated low, on purpose: a club that has run out of keepers is playing a
+    /// A real goalkeeper is rated on his reflexes and his power, which is what the role is.
+    /// A promoted outfield player is rated on the three attributes that stand in for a pair of
+    /// gloves — and rated low, on purpose: a club that has run out of keepers is playing a
     /// different match, and the number says so.
     /// </summary>
-    public static double KeeperAbility(MatchPlayerSnapshot player)
-    {
-        if (player is null) throw new ArgumentNullException(nameof(player));
-
-        if (!player.EmergencyGK)
-        {
-            return player.Reflexes;
-        }
-
-        var improvised = (player.Speed + player.Strength + player.Accuracy) / 3.0;
-
-        return Math.Max(MatchRules.EmergencyKeeperFloor, improvised * MatchRules.EmergencyKeeperScale);
-    }
+    public static double KeeperAbility(MatchPlayerSnapshot player) =>
+        AttributeWeights.KeeperAbility(player);
 
     /// <summary>
-    /// What a player is worth to his unit, as a single number. It is deliberately
-    /// position-aware, because "the best eleven" is a claim about roles and not about a
-    /// sum of attributes:
+    /// What a player is worth to his unit, as a single number on the attribute scale. It is
+    /// deliberately position-aware, because "the best eleven" is a claim about roles and not
+    /// about a sum of attributes:
     ///
     /// - an attacker is judged on what he does with the ball, and carries the game;
     /// - a midfielder is judged on control and on the ball he can win;
     /// - a defender is judged on what he holds, covers and heads.
     ///
-    /// Energy is added rather than multiplied in, so a tiring player drops in the order
-    /// but never disappears from it: a manager who has to choose still sees the better
-    /// footballer, and sees how tired he is.
+    /// Energy is multiplied in rather than added, so a tiring player drops in the order but
+    /// never disappears from it: the ramp's floor (<see cref="EnergyCurve"/>) means a manager
+    /// who has to choose still sees the better footballer, and sees how tired he is. An
+    /// <i>additive</i> energy term was the shape this used to have, and on the 1..100
+    /// attribute scale it was worth about three points against a tactical sum in the hundreds
+    /// — which is a term that cannot change a single ordering, and so a term carrying a
+    /// promise the code did not keep.
     /// </summary>
     public static double Metric(MatchPlayerSnapshot player)
     {
         if (player is null) throw new ArgumentNullException(nameof(player));
 
-        // Energy factor: 1.0 at 100 energy, down to 0.85 at 0 energy
-        var energyFactor = 0.85 + (player.Energy / 100.0) * 0.15;
-
         if (player.KeepsGoal)
         {
-            var baseKeeper = KeeperAbility(player) * 0.62
-                + player.Strength * 0.08
-                + player.Accuracy * 0.06;
-            return (baseKeeper + player.Energy * 0.08) * energyFactor;
+            return KeeperAbility(player) * EnergyCurve.Factor(player);
         }
 
-        var tactical = player.Position switch
-        {
-            Position.ATT => player.Accuracy * 1.25 + player.Dribbling * 1.2 + player.Speed,
-            Position.MID => player.Accuracy * 1.1 + player.Dribbling * 1.1 + player.Strength + player.Speed,
-            _ => player.Speed + player.Strength * 1.2 + player.Heading * 1.1 + player.Accuracy
-        };
-
-        return (tactical + player.Energy * 0.10) * energyFactor;
+        return AttributeWeights.Of(player, AttributeWeights.For(player.Position))
+            * EnergyCurve.Factor(player);
     }
 
     /// <summary>
@@ -115,19 +96,20 @@ public static class PlayerMetric
             ? CreatingRating(player)
             : HoldingRating(player);
 
-        // Energy is already factored into baseMetric, so just blend with job rating
+        // Energy is already factored into baseMetric and jobRating alike, so the blend
+        // compares two readings of the same man at the same tiredness rather than letting
+        // one of them carry the fatigue and the other not.
         return baseMetric * (1.0 - MatchRules.LineJobWeight) + jobRating * MatchRules.LineJobWeight;
     }
 
     /// <summary>
     /// A player read as the man who stands in front of the back four, whatever line he is
     /// nominally in. A forward told to hold does not become a midfielder, and is rated
-    /// accordingly.
+    /// accordingly: the holding reading of a striker leans on the attributes he has least of,
+    /// which is what being told to hold costs him.
     /// </summary>
     private static double HoldingRating(MatchPlayerSnapshot player) =>
-        player.Position == Position.ATT
-            ? player.Strength * 1.1 + player.Heading * 1.1 + player.Speed * 0.5
-            : player.Strength * 1.2 + player.Heading * 1.2 + player.Speed;
+        AttributeWeights.Of(player, AttributeWeights.Holding) * EnergyCurve.Factor(player);
 
     /// <summary>
     /// A player read as the man who makes the thing happen, whatever line he is nominally
@@ -135,9 +117,7 @@ public static class PlayerMetric
     /// with the ball rather than on what he can hold.
     /// </summary>
     private static double CreatingRating(MatchPlayerSnapshot player) =>
-        player.Position == Position.DEF
-            ? player.Speed + player.Accuracy + player.Dribbling
-            : player.Accuracy * 1.1 + player.Dribbling * 1.2 + player.Speed;
+        AttributeWeights.Of(player, AttributeWeights.Creating) * EnergyCurve.Factor(player);
 
     /// <summary>
     /// What a match costs this player, relative to one of his age playing at full tilt.

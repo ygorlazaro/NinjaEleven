@@ -1,3 +1,4 @@
+using NinjaEleven.Application.Models;
 using NinjaEleven.Domain.Matches;
 
 namespace NinjaEleven.Application.Repositories;
@@ -20,6 +21,46 @@ public interface IMatchRepository
     /// put back on the schedule.
     /// </summary>
     Task<IReadOnlyList<Match>> ListUnfinishedAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Matches that are still on the pitch on a fixture that has already been decided.
+    ///
+    /// <para>
+    /// A live match holds its fixture: the database refuses a second one for the same fixture
+    /// while the first is running, so an orphan is not a row nobody looks at — it is a row
+    /// that stops its fixture from ever being played again, and no walk will ask about it,
+    /// because a fixture that is already decided is a fixture every walk has finished with.
+    /// That is how twenty-one matches ended up holding index entries on fixtures the season
+    /// had already settled, keeping a whole window of the world owed for ever.
+    /// </para>
+    ///
+    /// <para>
+    /// It is read as one question rather than as an unfinished list and a fixture read per
+    /// row: the answer is a join, and a sweep that asked once per match would be a sweep that
+    /// is itself too slow to run.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<Match>> ListUnfinishedOnFinishedFixturesAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The matches that are on the pitch right now and are not being played by this process,
+    /// with the window each of them belongs to.
+    ///
+    /// A match's working state lives in the memory of whoever kicked it off, and after this
+    /// change that is not necessarily the API: the Scheduler plays the matches nobody is
+    /// watching. Those matches are still real, still have events, and a client following one
+    /// has to be shown them — so the process that owns the connections reads the rows the
+    /// other process is writing. The window comes with the match because the scoreboard of a
+    /// matchday is addressed by window, and asking for it once per second per match is the
+    /// read a matchday is made of.
+    /// </summary>
+    /// <param name="hostId">The process doing the asking; its own matches are not returned.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    Task<IReadOnlyList<LiveMatchRow>> ListLiveExceptHostAsync(
+        string hostId,
+        CancellationToken cancellationToken = default);
+
     Task AddAsync(Match match, CancellationToken cancellationToken = default);
     void Update(Match match);
 

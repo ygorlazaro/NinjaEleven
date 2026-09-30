@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
-import { SeasonApi, ManagerApi } from '@/api';
+import { SeasonApi, TeamApi, ManagerApi } from '@/api';
 import { useGameState } from '@/state';
+import { useAuthStore } from '@/state/auth';
 import { useNextFixture } from '@/hooks/useNextFixture';
 import { usePendingOfferCount, useCurrentSeasonId } from '@/hooks/usePendingOffers';
 import { useLiveMatch } from '@/hooks/useLiveMatch';
@@ -21,6 +22,11 @@ import ClubCrest from '@/components/Club/ClubCrest';
  */
 const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const selectedTeam = useGameState((s) => s.selectedTeam);
+  const setSelectedTeam = useGameState((s) => s.setSelectedTeam);
+  const forgetClub = useGameState((s) => s.forgetClub);
+  const leagueTeams = useGameState((s) => s.leagueTeams);
+  const setLeagueTeams = useGameState((s) => s.setLeagueTeams);
+  const authTeamId = useAuthStore((s) => s.teamId);
   const { pathname } = useLocation();
 
   /**
@@ -54,6 +60,51 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       alive = false;
     };
   }, []);
+
+  /**
+   * The club the account owns is the one the sidebar is built around, and it is the auth
+   * store that owns it. A manager who lands on a route other than the club selector — the
+   * inbox, the market, the calendar — arrives here with the game store empty, and without
+   * this every door that belongs to a club was missing from the column. The auth store has
+   * the team from the token; this loads the club row once and the sidebar reads it from
+   * then on, so the two stores cannot disagree about which club the manager is running.
+   */
+  useEffect(() => {
+    if (!authTeamId) return;
+    if (selectedTeam?.id === authTeamId) return;
+
+    let cancelled = false;
+    TeamApi.get(authTeamId)
+      .then(loaded => {
+        if (!cancelled) {
+          setSelectedTeam(loaded);
+          if (!leagueTeams.some(t => t.id === loaded.id)) {
+            setLeagueTeams([...leagueTeams, loaded]);
+          }
+        }
+      })
+      // The club the token names is not there, so the session is over rather than the club
+      // being merely unfound. A world thrown away and drawn again gives every club a new id,
+      // and the token in this browser carries the id of one of the old ones; swallowing that
+      // left a dead club in the store, and a dead club explains everything that was wrong —
+      // the training link never drawn because its gate compares two ids and one of them is
+      // gone, and no screen able to say which club is the manager's, so nothing was ever
+      // highlighted.
+      //
+      // Both halves go, and they are the same two halves `AuthRoot` drops on the same
+      // failure. The session goes because the token names a club that does not exist, and
+      // the club goes because there is nothing left to point at. Clearing the session is also
+      // what stops this asking again: `authTeamId` is what the effect keys on, and it has just
+      // been emptied, so a forgotten club is asked for once and never a second time.
+      .catch(() => {
+        if (cancelled) return;
+        useAuthStore.getState().clearAuth();
+        forgetClub();
+      });
+
+    return () => { cancelled = true; };
+  }, [authTeamId, selectedTeam?.id]);
+
   const [managerName, setManagerName] = useState<string | null>(null);
 
   useEffect(() => {
@@ -98,6 +149,12 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // match is started from the lineup screen, and a badge that appeared half a minute after
   // the whistle would be a badge nobody could rely on to mean "go now".
   const liveMatch = useLiveMatch(selectedTeam?.id, pathname);
+
+  // Whether the training tab is the one on screen, read off the query rather than off the
+  // path: the tab and the squad share a route, so the path alone cannot say which of the
+  // two the manager is looking at.
+  const { search } = useLocation();
+  const trainingTabOpen = new URLSearchParams(search).get('tab') === 'training';
 
   return (
     <div className={`shell${bare ? ' shell--bare' : ''}`}>
@@ -210,6 +267,29 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <span className="sidebar-link__icon">📅</span>
             <span className="sidebar-link__label">Calendário</span>
           </NavLink>
+
+          {/* What the manager does about his men between matches. It is a link of its own
+              because a training session is a decision taken on a day rather than a tab
+              looked at: the sheet is two clicks away from here and nowhere else, and a
+              manager who has to go to the club, then find the second tab, and then find the
+              row is not choosing to develop anybody. The tab is a parameter rather than a
+              piece of screen state, so this link can actually land on it.
+
+              The link says the training tab, and being active is decided by that parameter:
+              a link whose active state is the path alone would light up for the squad too,
+              and a manager standing on the roster could not tell which of the club's two
+              screens he was on. */}
+          {selectedTeam && (
+            <NavLink
+              to={`/team/${selectedTeam.id}?tab=training`}
+              className={({ isActive }) =>
+                `sidebar-link ${isActive && trainingTabOpen ? 'active' : ''}`
+              }
+            >
+              <span className="sidebar-link__icon">🏋️</span>
+              <span className="sidebar-link__label">Treino</span>
+            </NavLink>
+          )}
 
           {/* Who scores for the club, over every season and every competition. It sits with
               the club's own pages because it is a page about the club: the league's scorers

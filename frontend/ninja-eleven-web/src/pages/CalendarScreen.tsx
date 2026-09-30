@@ -413,9 +413,31 @@ const CalendarScreen: React.FC = () => {
                         ) : '…'}
                       </td>
                       <td className="calendar-score">
-                        {fixture.status === 'Finished' && fixture.homeGoals !== null && fixture.homeGoals !== undefined
-                          ? `${fixture.homeGoals} x ${fixture.awayGoals}`
-                          : 'x'}
+                        {fixture.status === 'Finished' && fixture.homeGoals !== null && fixture.homeGoals !== undefined ? (
+                          // The score is the door, and it is a real button rather than a row
+                          // that happens to be clickable: a row that navigates on click is a
+                          // row a keyboard cannot reach and a screen reader never announces,
+                          // and the score is the one thing in the line a manager came for.
+                          // It stops the click reaching the row behind it so the manager does
+                          // not navigate twice.
+                          fixture.matchId ? (
+                            <button
+                              type="button"
+                              className="calendar-score__link"
+                              title="Ver a partida"
+                              onClick={event => {
+                                event.stopPropagation();
+                                navigate(`/match/${fixture.matchId}`);
+                              }}
+                            >
+                              {fixture.homeGoals} x {fixture.awayGoals}
+                            </button>
+                          ) : (
+                            `${fixture.homeGoals} x ${fixture.awayGoals}`
+                          )
+                        ) : (
+                          'x'
+                        )}
                       </td>
                       <td className="calendar-team">
                         {away ? (

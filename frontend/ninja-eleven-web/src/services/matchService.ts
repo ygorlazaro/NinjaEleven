@@ -22,6 +22,8 @@ export function useMatchEngine() {
     awayScore: event.awayScore,
     onTarget: event.type === 'Shot' || event.type === 'Save',
     isGoal: event.type === 'GoalScored' || event.type === 'OwnGoalScored',
+    fromPenalty: event.fromPenalty === true,
+    playerName: event.playerName ?? null,
   });
 
   const startMatch = async (fixtureId: string) => {

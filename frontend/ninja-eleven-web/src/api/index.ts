@@ -4,6 +4,8 @@ import type {
   SeasonCalendarDto,
   TeamMatchRecordDto,
   PlayerSeasonStateDto,
+  TrainingResultDto,
+  SquadTrainingQuotesDto,
   PlayerDto, CompetitionDto, CompetitionEditionDto, SeasonDto, TeamDto,
   FixtureDto, NextFixtureDto, RoundDto, StandingDto, CompetitionStandingsDto, ScorerDto, LeagueSetupResult,
   MatchDto, MatchEventDto, MatchLineupDto, MatchStateDto, MatchContextDto, LiveMatchDto,
@@ -55,6 +57,20 @@ const SCORER_POOL = 250;
 export const TeamApi = {
   list: () => api.get<TeamDto[]>('/team').then(r => r.data),
   get: (id: string) => api.get<TeamDto>(`/team/${id}`).then(r => r.data),
+
+  /**
+   * The club's whole training sheet in one call: every man, every attribute, and what a
+   * session on each costs. One call rather than one per player because a manager opening the
+   * training screen is asking about twenty-three men at once — and because a price fetched
+   * per man would put the first row's price and the last row's price from two different
+   * moments, with the manager clicking through both.
+   */
+  training: (teamId: string, seasonId?: string) =>
+    api
+      .get<SquadTrainingQuotesDto>(
+        `/team/${teamId}/training${seasonId ? `?seasonId=${seasonId}` : ''}`
+      )
+      .then(r => r.data),
   /**
    * Marks the club as the manager's own. The flag is what the world reads to decide who a
    * transfer belongs to — a proposal is only the manager's when the club is his — and it is
@@ -144,6 +160,19 @@ export const PlayerApi = {
       .get<PlayerProfileDto>(
         `/player/${playerId}/profile${seasonId ? `?seasonId=${seasonId}` : ''}`
       )
+      .then(r => r.data),
+  /**
+   * One training session: it spends energy and gets a point, and it is a POST because the
+   * energy is gone whether or not the request arrives twice. The attribute is named rather
+   * than numbered, and a name the game does not have is refused by the backend's own
+   * ValidationFailed contract rather than by a check invented here.
+   */
+  train: (playerId: string, attribute: string, seasonId?: string) =>
+    api
+      .post<TrainingResultDto>(`/player/${playerId}/training`, {
+        attribute,
+        seasonId: seasonId ?? null,
+      })
       .then(r => r.data),
 };
 
