@@ -628,6 +628,12 @@ public class MatchShootoutServiceTests
             _seasons.Object,
             _cupTies.Object,
             _teams.Object),
+        new StandingsService(
+            _rounds.Object,
+            _fixtures.Object,
+            _matches.Object,
+            _competitions.Object,
+            _teams.Object),
         MatchTestContext.Host,
         MatchTestContext.World(),
         MatchTestContext.Clock,

@@ -499,7 +499,6 @@ window.ArrivalRoundNumber);
 
         await _finance.AddAsync(settlement, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        await ReportTheMoneyAsync(settlement, playerId, player.Name, cancellationToken);
 
         // The player is now a free agent, and a free agent is a man on the market: his state
         // carries his goals but names no club, and the market reads that state to know he is
@@ -565,6 +564,13 @@ window.ArrivalRoundNumber);
         // awaits a message per deal is a caller that asks the world three names per deal.
         var calledOff = new List<Transfer>();
 
+        // The shirts dealt in this window, per club, so two men arriving at the same club in
+        // the same window are put in two different shirts. Without it the second read of the
+        // dressing room would not see the first signing — the membership is written but the
+        // save happens once at the end of the loop — and both would be handed the same number,
+        // which is a clash the world would discover as a failed window rather than as a shirt.
+        var dealtShirts = new Dictionary<Guid, HashSet<int>>();
+
         foreach (var transfer in accepted)
         {
             if (transfer.ArrivalRoundNumber is null)
@@ -581,6 +587,27 @@ window.ArrivalRoundNumber);
                     "Transfer {TransferId}: {BuyingClub} is full at {Size} players. The deal waits for the next window.",
                     transfer.Id, buyer?.Name, buyerSize);
                 _transfers.Update(transfer);
+                continue;
+            }
+
+            // The invariant rather than the race: a club does not hold the same man twice, and
+            // no caller gets to decide that by being first. The claim further down settles
+            // which of two simultaneous callers writes the membership; this settles what a
+            // membership *is* — a man the club has signed, not a row it happens to be about to
+            // add. A deal whose buyer already holds him is a deal that died between being
+            // agreed and being completed, and it is called off rather than kept, because the
+            // alternative is a squad of twenty-three that is twenty-four men with one of them
+            // twice — and a shirt number dealt to the second copy that nobody can see.
+            var alreadyHere = (await _teams.GetLiveContractsAsync(
+                transfer.BuyingClubId, cancellationToken))
+                .Any(contract => contract.PlayerId == transfer.PlayerId);
+
+            if (alreadyHere)
+            {
+                await CallOffTheDealAsync(transfer, arrivalSeason, calledOff, cancellationToken);
+                _logger.LogWarning(
+                    "Transfer {TransferId}: {BuyingClub} already holds player {PlayerId}. The deal is off.",
+                    transfer.Id, buyer?.Name, transfer.PlayerId);
                 continue;
             }
 
@@ -625,17 +652,38 @@ window.ArrivalRoundNumber);
                 _teams.UpdateMembership(oldMembership);
             }
 
+            // The deal is taken here and not at the top of the loop, because a claim is a
+            // promise that this caller is about to sign the player: taken earlier it would
+            // mark a deal completed whose buyer was full and which is only waiting for the
+            // next window, and a deal marked completed is a deal nobody signs again.
+            //
+            // Everything above is a question this deal might still fail, and a failed deal
+            // must be left exactly as it was found. Past this line it cannot fail: the row is
+            // this caller's, the membership below belongs to exactly one signing, and the
+            // claim and the membership commit together or not at all.
+            if (!await _transfers.TryClaimForCompletionAsync(transfer.Id, cancellationToken))
+            {
+                _logger.LogInformation(
+                    "Transfer {TransferId} was completed by another caller; this one did not sign him again.",
+                    transfer.Id);
+                continue;
+            }
+
             await _teams.AddMembershipAsync(
                 TeamMembership.Create(
                     transfer.PlayerId,
                     transfer.BuyingClubId,
                     DateOnly.FromDateTime(DateTime.Now),
                     contractSeasons: FinanceRules.DefaultContractSeasons,
-                    startSeasonNumber: arrivalSeason.Number),
+                    startSeasonNumber: arrivalSeason.Number,
+                    shirtNumber: await DealTheShirtAsync(
+                        transfer.BuyingClubId, transfer.PlayerId, dealtShirts, cancellationToken)),
                 cancellationToken);
 
             await MoveTheStateAsync(transfer, arrivalSeason, cancellationToken);
 
+            // The status was written by the claim, atomically and only once. This update is
+            // here for the arrival round the deal records, which the claim does not set.
             transfer.Complete(DateOnly.FromDateTime(DateTime.Now));
             _transfers.Update(transfer);
             completed++;
@@ -649,6 +697,48 @@ window.ArrivalRoundNumber);
             completed, arrivalSeason.Number, arrivalRound);
 
         return completed;
+    }
+
+    /// <summary>
+    /// The shirt a signing is given: the lowest number nobody on this club's books is wearing,
+    /// asked of the position he plays so that the number one stays a goalkeeper's.
+    ///
+    /// <para>
+    /// A signing is not offered a number to pick from. The market brings a player, not a shirt,
+    /// and a man who arrives in a club whose eleven already wears 2 through 22 takes 23 —
+    /// which is why the rule is "the lowest one that is free" and not "the next one in
+    /// sequence", and why a club that has deliberately moved somebody out of the way does not
+    /// hand that same number to the next man through the door.
+    /// </para>
+    ///
+    /// <para>
+    /// The numbers dealt earlier in this same window are remembered rather than re-read,
+    /// because the membership carrying them is written but not yet saved and the second read
+    /// of the dressing room would not contain it.
+    /// </para>
+    /// </summary>
+    private async Task<int> DealTheShirtAsync(
+        Guid buyingClubId,
+        Guid playerId,
+        Dictionary<Guid, HashSet<int>> dealtInThisWindow,
+        CancellationToken cancellationToken)
+    {
+        if (!dealtInThisWindow.TryGetValue(buyingClubId, out var worn))
+        {
+            var contracts = await _teams.GetLiveContractsAsync(buyingClubId, cancellationToken);
+            worn = contracts
+                .Where(contract => contract.ShirtNumber.HasValue)
+                .Select(contract => contract.ShirtNumber!.Value)
+                .ToHashSet();
+
+            dealtInThisWindow[buyingClubId] = worn;
+        }
+
+        var player = await _players.GetAsync(playerId, cancellationToken);
+        var number = ShirtNumberRules.For(worn, player?.Position == Domain.Enums.Position.GK);
+
+        worn.Add(number);
+        return number;
     }
 
     /// <summary>
@@ -702,7 +792,6 @@ window.ArrivalRoundNumber);
 
             await _finance.AddAsync(purchase, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
-            await ReportTheMoneyAsync(purchase, transfer.PlayerId, playerName, cancellationToken);
         }
 
         if (transfer.SellingClubId is not { } sellerId)
@@ -730,34 +819,8 @@ window.ArrivalRoundNumber);
 
             await _finance.AddAsync(sale, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
-            await ReportTheMoneyAsync(sale, transfer.PlayerId, playerName, cancellationToken);
         }
     }
-
-    /// <summary>
-    /// Reports a line of a transfer to the manager's box.
-    ///
-    /// The market writes its lines straight onto the repository rather than through
-    /// <see cref="FinanceService"/>, because a transfer moves money for two clubs at once and
-    /// a deal that dies at the window has to be able to write both halves without the ledger
-    /// deciding what a prize is. The reporting is here instead so that the seam is the same one
-    /// everywhere: a line the book knows about and the box does not is a movement the manager
-    /// hears about from a table instead of from his own mail.
-    /// </summary>
-    private Task ReportTheMoneyAsync(
-        FinanceMovement line,
-        Guid playerId,
-        string playerName,
-        CancellationToken cancellationToken) =>
-        _inbox.PostFinanceAsync(
-            line,
-            [new InboxPersonDto
-            {
-                Id = playerId,
-                Name = playerName,
-                Kind = Domain.Inbox.InboxMentionKind.Player
-            }],
-            cancellationToken);
 
     /// <summary>
     /// Gives the fee back to the club that paid it, when a deal that was already paid for falls
@@ -802,7 +865,6 @@ window.ArrivalRoundNumber);
 
             await _finance.AddAsync(refund, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
-            await ReportTheMoneyAsync(refund, transfer.PlayerId, playerName, cancellationToken);
         }
 
         if (transfer.SellingClubId is not { } sellerId)
@@ -830,7 +892,6 @@ window.ArrivalRoundNumber);
 
             await _finance.AddAsync(clawback, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
-            await ReportTheMoneyAsync(clawback, transfer.PlayerId, playerName, cancellationToken);
         }
     }
 

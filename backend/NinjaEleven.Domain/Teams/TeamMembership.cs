@@ -30,6 +30,30 @@ public class TeamMembership
     /// </summary>
     public int StartSeasonNumber { get; private set; }
 
+    /// <summary>
+    /// The number this man wears for this club, or null while he has not been given one.
+    ///
+    /// <para>
+    /// It lives on the contract and not on the player, because it is not part of who he is.
+    /// A number belongs to a dressing room: the striker who is sold leaves his shirt on its
+    /// peg, and the man bought in his place is given whatever is free on the day he signs. A
+    /// number on the player would travel with him and two clubs would end up with a squad
+    /// wearing the same shirts, which is the one thing the number is there to prevent.
+    /// </para>
+    ///
+    /// <para>
+    /// Null is the honest "not dealt yet", and it is a state the domain allows rather than
+    /// one it works around: a world seeded before shirts existed has memberships with no
+    /// number, and the seeder fills them in rather than the column being invented per row.
+    /// A live contract with no number is still a club that has not finished dressing its
+    /// squad, and <see cref="HasShirtNumber"/> is how that is said.
+    /// </para>
+    /// </summary>
+    public int? ShirtNumber { get; private set; }
+
+    /// <summary>Whether this contract has been given a shirt.</summary>
+    public bool HasShirtNumber => ShirtNumber.HasValue;
+
     private TeamMembership() { }
 
     public static TeamMembership Create(
@@ -37,8 +61,15 @@ public class TeamMembership
         Guid teamId,
         DateOnly startDate,
         int contractSeasons = Finance.FinanceRules.DefaultContractSeasons,
-        int startSeasonNumber = 1)
+        int startSeasonNumber = 1,
+        int? shirtNumber = null)
     {
+        if (shirtNumber is { } number && !ShirtNumberRules.IsValid(number))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(shirtNumber), number, "A shirt number is a number a player wears.");
+        }
+
         if (contractSeasons <= 0)
         {
             throw new ArgumentOutOfRangeException(
@@ -61,8 +92,36 @@ public class TeamMembership
             StartDate = startDate,
             EndDate = null,
             ContractSeasons = contractSeasons,
-            StartSeasonNumber = startSeasonNumber
+            StartSeasonNumber = startSeasonNumber,
+            ShirtNumber = shirtNumber
         };
+    }
+
+    /// <summary>
+    /// Puts this man in a shirt.
+    ///
+    /// <para>
+    /// The range is checked here and the clash is checked by whoever is holding the club's
+    /// other contracts, because only they can see the whole dressing room. That split is not
+    /// a convenience: a number outside one to ninety-nine is nonsense whoever asks for it, so
+    /// it is refused by the object itself, while a number that another man is already wearing
+    /// is not nonsense at all until you know about the other man.
+    /// </para>
+    ///
+    /// <para>
+    /// Taking the number a man already wears is allowed and does nothing. A manager who taps
+    /// a number that has not changed should not be told he has changed it.
+    /// </para>
+    /// </summary>
+    public void WearNumber(int number)
+    {
+        if (!ShirtNumberRules.IsValid(number))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(number), number, "A shirt number is a number a player wears.");
+        }
+
+        ShirtNumber = number;
     }
 
     public bool IsActiveOn(DateOnly date) => date >= StartDate && (EndDate is null || date <= EndDate);

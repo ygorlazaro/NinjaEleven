@@ -141,4 +141,30 @@ public interface ITransferRepository
 
     Task AddAsync(Transfer transfer, CancellationToken cancellationToken = default);
     void Update(Transfer transfer);
+
+    /// <summary>
+    /// Takes a deal out of the hands of anybody else who is completing this same window,
+    /// and says whether this caller is the one that got it.
+    /// </summary>
+    /// <para>
+    /// The claim is a conditional update rather than a read followed by a write, because a
+    /// read followed by a write is a race with a name: two callers — the matchday sweep and
+    /// a hand on <c>POST /transfer/complete</c> — both read the same accepted row, both
+    /// believe they own it, and both sign the player. The membership is written before the
+    /// status is, so the second one lands on top of the first and the club ends up holding
+    /// the same man twice with one deal row saying he arrived once.
+    /// </para>
+    /// <para>
+    /// One row, updated by its own key and its own status, is the whole claim. The second
+    /// caller's update blocks on the first's row lock and then re-reads the row, finds it
+    /// no longer accepted, and matches nothing — so it is told no rather than being trusted
+    /// to have checked. It runs inside the same unit of work as the membership it guards, so
+    /// the claim and the signing commit together or not at all: a deal claimed and then lost
+    /// is a deal whose player never arrived and whose status says he did.
+    /// </para>
+    /// <param name="transferId">The deal to take.</param>
+    /// <returns>True when this caller took the deal and is the one to complete it.</returns>
+    Task<bool> TryClaimForCompletionAsync(
+        Guid transferId,
+        CancellationToken cancellationToken = default);
 }

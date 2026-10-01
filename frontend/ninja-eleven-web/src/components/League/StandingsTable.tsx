@@ -137,6 +137,7 @@ const StandingsTable: React.FC<StandingsTableProps> = ({ standings, userId, team
                 <td>
                   <span className={`standing-club ${isUser ? 'standing-club--mine' : ''}`}>
                     <ClubCrest
+                      crest={team.crest}
                       primary={colors}
                       secondary={team.secondaryColor || '#f2d34f'}
                       name={team.name}

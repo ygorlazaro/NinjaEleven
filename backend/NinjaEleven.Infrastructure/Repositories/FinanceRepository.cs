@@ -118,4 +118,32 @@ public class FinanceRepository : IFinanceRepository
 
         return new FinanceTotals(income, expenses);
     }
+
+    /// <summary>
+    /// The lines written between two days of the season, oldest first.
+    ///
+    /// Ordered by the sequence rather than by the day because two payments on the same
+    /// matchday have no other way to say which came first, and a statement that listed a
+    /// signing before the gate of the match that paid for it would be a chronology of nothing.
+    /// </summary>
+    public async Task<IReadOnlyList<FinanceMovement>> ListBetweenMatchDaysAsync(
+        Guid teamId,
+        Guid seasonId,
+        int fromMatchDay,
+        int toMatchDay,
+        CancellationToken cancellationToken = default)
+    {
+        var first = Math.Min(fromMatchDay, toMatchDay);
+        var last = Math.Max(fromMatchDay, toMatchDay);
+
+        return await _dbContext.FinanceMovements
+            .AsNoTracking()
+            .Where(movement => movement.TeamId == teamId
+                               && movement.SeasonId == seasonId
+                               && movement.MatchDayNumber != null
+                               && movement.MatchDayNumber >= first
+                               && movement.MatchDayNumber <= last)
+            .OrderBy(movement => movement.Sequence)
+            .ToListAsync(cancellationToken);
+    }
 }

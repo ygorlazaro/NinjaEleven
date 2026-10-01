@@ -1,7 +1,13 @@
 import { SeasonApi, TeamApi, ManagerApi, TransferApi, PlayerApi } from '@/api';
+import { ApiProblemError } from '@/api/client';
 import ClubCrest from '@/components/Club/ClubCrest';
 import ClubSquadTable from '@/components/Club/ClubSquadTable';
 import TrainingPanel from '@/components/Club/TrainingPanel';
+import SquadFilterBar, {
+  applySquadFilter,
+  emptyFilter,
+  type SquadFilter
+} from '@/components/Club/SquadFilterBar';
 import FormRun, { formOf } from '@/components/Club/FormRun';
 import { ClubName, PlayerName } from '@/components/Common/Names';
 import DivisionTrophy from '@/components/League/DivisionTrophy';
@@ -76,6 +82,8 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
    * potential, the stamina and a curve, and a client computing it would be a second
    * implementation of a rule the backend owns.
    */
+  const [filter, setFilter] = useState<SquadFilter>({ ...emptyFilter });
+  const [shirtRefusals, setShirtRefusals] = useState<Record<string, string>>({});
   const [training, setTraining] = useState<SquadTrainingQuotesDto | null>(null);
   const [trainingLoading, setTrainingLoading] = useState(false);
   const [trainingError, setTrainingError] = useState<string | null>(null);
@@ -270,6 +278,16 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
   }, [urlTeamId, seasonId]);
 
   /**
+   * The twenty-three men the manager is looking at, which is not always the twenty-three he
+   * has. It is worked out here rather than inside the table, because the lineup screen draws
+   * the same table and a manager picking eleven is not narrowing a list — he is choosing.
+   */
+  const filteredPlayers = useMemo(
+    () => applySquadFilter(players, filter),
+    [players, filter]
+  );
+
+  /**
    * Rereads the squad after a decision the manager just took.
    *
    * The list is not edited here: a release ends a contract, and that is a fact the world holds.
@@ -279,6 +297,54 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
   const reloadSquad = async () => {
     const season = seasonId || (await SeasonApi.current()).id;
     setPlayers(await TeamApi.getSquad(urlTeamId, season));
+  };
+
+  /**
+   * Puts a man in a shirt, and says nothing at all when the server agrees.
+   *
+   * A successful renumbering is not news: it is the state the manager asked for, and a
+   * notice for it would train him to read past the notices that are. The one row that
+   * changes is patched from the answer, so a manager who renumbers five men in a row sees
+   * five rows change and is not waiting on twenty-three.
+   */
+  const handleShirtNumber = async (player: SquadPlayerDto, shirtNumber: number) => {
+    if (!urlTeamId) return;
+
+    setBusyPlayerId(player.id);
+    setNotice(null);
+    setError(null);
+    setShirtRefusals(current => {
+      const next = { ...current };
+      delete next[player.id];
+      return next;
+    });
+
+    try {
+      const result = await TeamApi.updateShirtNumber(urlTeamId, player.id, shirtNumber);
+
+      // The number painted is the one the backend answered with, not the one that was asked
+      // for: a client that trusted its own input would put 10 on a row whose change had been
+      // refused, and the refusal would only surface on the next reload.
+      setPlayers(current =>
+        current.map(row =>
+          row.id === result.playerId ? { ...row, shirtNumber: result.shirtNumber } : row
+        )
+      );
+    } catch (err) {
+      // The refusal is the rule's own sentence rather than a message written here: the
+      // backend knows whether it was the range or the clash with another man, and a screen
+      // that guessed would be guessing twice — once wrong here, and once in whatever the
+      // backend changes the rule to tomorrow.
+      setShirtRefusals(current => ({
+        ...current,
+        [player.id]:
+          err instanceof ApiProblemError && err.detail
+            ? err.detail
+            : 'Não foi possível alterar o número.'
+      }));
+    } finally {
+      setBusyPlayerId(null);
+    }
   };
 
   const handleRelease = async (player: SquadPlayerDto) => {
@@ -466,6 +532,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
         <div className="squad-head team-view-summary">
           <div className="team-header-with-crest">
             <ClubCrest
+              crest={team.crest}
               primary={team.primaryColor || '#f2d34f'}
               secondary={team.secondaryColor || '#f2d34f'}
               name={team.name}
@@ -532,6 +599,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
 
         {activeTab === 'training' && isOwnTeam ? (
           <TrainingPanel
+            team={team}
             quotes={training}
             loading={trainingLoading}
             error={trainingError}
@@ -539,10 +607,26 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
             onTrain={handleTrain}
           />
         ) : (
-          <ClubSquadTable
-            squad={players}
-            onRelease={isOwnTeam ? handleRelease : undefined}
-          />
+          <>
+            {/* The filters are offered on any club's roster, not only the manager's own,
+                because narrowing a list he is reading is not a decision about the world: a
+                manager scouting a rival wants the twenty-three-year-old defenders and has
+                no way to say so without this. What stays behind isOwnTeam is the one thing
+                that changes anything — the number on the man's shirt. */}
+            <SquadFilterBar
+              filter={filter}
+              onChange={setFilter}
+              matched={filteredPlayers.length}
+              total={players.length}
+            />
+            <ClubSquadTable
+              squad={filteredPlayers}
+              team={team}
+              onRelease={isOwnTeam ? handleRelease : undefined}
+              onEditShirtNumber={isOwnTeam ? handleShirtNumber : undefined}
+              shirtRefusals={shirtRefusals}
+            />
+          </>
         )}
 
         <section className="club-form">

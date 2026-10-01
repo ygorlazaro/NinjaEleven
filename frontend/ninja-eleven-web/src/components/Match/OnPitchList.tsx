@@ -1,13 +1,24 @@
 import React, { useMemo } from 'react';
-import type { Guid, MatchPlayerDto } from '@/types';
+import type { Guid, KitSide, MatchPlayerDto, TeamDto } from '@/types';
 import { positionLabel, sortByPosition, starsToString } from '@/services/formatters';
 import EnergyBar from '@/components/Match/EnergyBar';
 import { PlayerName } from '@/components/Common/Names';
 import HurtBadge from '@/components/Match/HurtBadge';
+import KitChip from '@/components/Club/KitChip';
 
 interface OnPitchListProps {
   /** Only the club the manager commands: the list is his team sheet, not both. */
   players: MatchPlayerDto[];
+  /**
+   * The club these eleven belong to, and which of its two shirts they are playing in.
+   *
+   * It is the fixture that says the side and not the club: the same club plays its first shirt
+   * at home and its second when the two colours on the pitch would be impossible to tell apart,
+   * so a list that asked the club would be showing the wrong shirt for half of a season's
+   * matches.
+   */
+  team?: TeamDto | null;
+  side?: KitSide;
   /** False once the match is over, and while the five substitutions are spent. */
   onSelect?: (player: MatchPlayerDto) => void;
   /**
@@ -26,8 +37,12 @@ interface OnPitchListProps {
  * looks for his own men, not for the other club. Every card carries what happened to its
  * player so far, and clicking one opens the substitution screen with that player already
  * picked to come off.
+ *
+ * Every card carries the shirt too, because a column of names is a column in one colour and a
+ * manager glancing down it during a substitution is looking for the men on the pitch, not
+ * reading eleven names.
  */
-const OnPitchList: React.FC<OnPitchListProps> = ({ players, onSelect, ballCarrierId }) => {
+const OnPitchList: React.FC<OnPitchListProps> = ({ players, team, side, onSelect, ballCarrierId }) => {
   const ordered = useMemo(() => sortByPosition(players), [players]);
 
   if (ordered.length === 0) {
@@ -58,6 +73,7 @@ const OnPitchList: React.FC<OnPitchListProps> = ({ players, onSelect, ballCarrie
           >
             <span className="pc-pos">{positionLabel(p.position)}</span>
             <span className="pc-name">
+              <KitChip team={team} side={side} />
               <PlayerName playerId={p.playerId}>{p.name}</PlayerName>
               {/* A man playing through a knock is still in the eleven, so the card that
                   says who is on the pitch is also the card that says who is hurt. */}

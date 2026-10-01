@@ -5,6 +5,8 @@ using Moq;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Application.Services;
+using NinjaEleven.Domain.Competitions;
+using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Finance;
 using NinjaEleven.Domain.Inbox;
 using NinjaEleven.Domain.Teams;
@@ -65,78 +67,133 @@ public class InboxServiceTests
             .ReturnsAsync(npc);
     }
 
-    private FinanceMovement AGateReceipt(string clubName) => FinanceMovement.Create(
-        _clubId,
-        Guid.NewGuid(),
-        sequence: 1,
-        matchDayNumber: 9,
-        FinanceMovementKind.GateRevenue,
-        $"Bilheteria contra {clubName}",
-        amount: 24_000m,
-        balanceBefore: 100_000m);
+    private FinanceMovement APrize(string description, decimal amount = 24_000m) =>
+        FinanceMovement.Create(
+            _clubId,
+            Guid.NewGuid(),
+            sequence: 1,
+            matchDayNumber: null,
+            FinanceMovementKind.PrizeMoney,
+            description,
+            amount,
+            balanceBefore: 100_000m,
+            reference: $"championship:{Guid.NewGuid()}:3");
 
+    /// <summary>
+    /// A prize is the one line of a club's book the box interrupts the manager for, and the
+    /// message carries the purse and the balance it left behind: "the club is richer" is not
+    /// a thing a manager can act on and "the club has this much" is.
+    /// </summary>
     [Fact]
-    public async Task AMovementOfTheManagersClubArrivesInHisBox()
+    public async Task APrizeArrivesInHisBoxWithTheMoneyAndTheBalanceItLeft()
     {
-        await Service().PostFinanceAsync(AGateReceipt("Nautico"));
+        await Service().PostPrizeAsync(APrize("3ª da 1ª Divisão"));
 
         var message = Assert.Single(_written);
         Assert.Equal(InboxCategory.Finance, message.Category);
         Assert.Equal(_clubId, message.RecipientTeamId);
+        Assert.Contains("24.000", message.Subject);
         Assert.Contains("24.000", message.Body);
-        // The balance the line leaves behind is in the message, because "the club is richer"
-        // is not a thing a manager can act on and "the club has this much" is.
         Assert.Contains("124.000", message.Body);
         Assert.Equal("/financeiro", message.LinkRoute);
     }
 
     /// <summary>
     /// The rule that keeps the box the manager's: a club with no manager has nobody to
-    /// deliver to. Thirty five of them being told their own gate receipts would be thirty
-    /// five clubs writing rows nobody ever asks for.
+    /// deliver to. Thirty five of them being told their own prizes would be thirty five
+    /// clubs writing rows nobody ever asks for.
     /// </summary>
     [Fact]
-    public async Task AMovementOfAClubNobodyIsRunningIsNotWritten()
+    public async Task APrizeForAClubNobodyIsRunningIsNotWritten()
     {
         GivenTheClubHasNoManager();
 
-        await Service().PostFinanceAsync(AGateReceipt("Nautico"));
+        await Service().PostPrizeAsync(APrize("3ª da 1ª Divisão"));
 
         Assert.Empty(_written);
     }
 
     /// <summary>
-    /// A match settled twice — by the tick that blew the whistle and by one that arrives
-    /// after it — leaves one line in the book and one message in the box. A box that repeats
-    /// itself is a box a manager learns to distrust, which is worse than a quiet one.
+    /// A prize asked about twice — a season closed again, a cup tie settled twice — is one
+    /// purse. A box that repeats itself is a box a manager learns to distrust, which is worse
+    /// than a quiet one.
     /// </summary>
     [Fact]
-    public async Task TheSameMovementIsOnlyEverReportedOnce()
+    public async Task TheSamePrizeIsOnlyEverWrittenOnce()
     {
         var service = Service();
-        var line = AGateReceipt("Nautico");
+        var line = APrize("3ª da 1ª Divisão");
 
-        await service.PostFinanceAsync(line);
-        await service.PostFinanceAsync(line);
+        await service.PostPrizeAsync(line);
+        await service.PostPrizeAsync(line);
 
         Assert.Single(_written);
     }
 
     /// <summary>
-    /// The founding capital and the balance carried from last season state where the club
-    /// stands rather than moving it, and a box that reported them would open the season with
-    /// two messages about money the club already had.
+    /// The week, in one message, in the four buckets a manager thinks in.
     /// </summary>
     [Fact]
-    public async Task TheTwoLinesThatStateABalanceAreNotNews()
+    public async Task AWeekIsOneMessageThatAddsUp()
     {
-        var service = Service();
+        await Service().PostStatementAsync(new StatementFacts
+        {
+            RecipientTeamId = _clubId,
+            ClubName = "Portuguesa",
+            FromMatchDay = 8,
+            ToMatchDay = 14,
+            GateRevenue = 40_000m,
+            Signings = 0m,
+            Sales = 0m,
+            OtherIncome = 0m,
+            Wages = 30_000m,
+            Training = 2_000m,
+            OtherExpenses = 0m,
+            OpeningBalance = 100_000m,
+            ClosingBalance = 108_000m,
+            HomeMatches = 1,
+            Reference = "statement:8"
+        });
 
-        await service.PostFinanceAsync(FinanceMovement.Seed(_clubId, Guid.NewGuid(), 1_000_000m));
-        await service.PostFinanceAsync(FinanceMovement.OpenWithBalance(
-            _clubId, Guid.NewGuid(), 2, FinanceMovementKind.CarryOver, "Saldo transportado", 900_000m));
+        var message = Assert.Single(_written);
+        Assert.Equal(InboxCategory.Finance, message.Category);
+        // 40.000 in, 32.000 out.
+        Assert.Contains("40.000", message.Body);
+        Assert.Contains("32.000", message.Body);
+        Assert.Contains("108.000", message.Body);
+    }
 
-        Assert.Empty(_written);
+    /// <summary>
+    /// A bucket that did not move is not printed. Four empty lines make the two real ones
+    /// harder to find on a screen a manager reads on a phone.
+    /// </summary>
+    [Fact]
+    public async Task AStatementDoesNotPrintTheBucketsThatStayedAtZero()
+    {
+        await Service().PostStatementAsync(new StatementFacts
+        {
+            RecipientTeamId = _clubId,
+            ClubName = "Portuguesa",
+            FromMatchDay = 8,
+            ToMatchDay = 14,
+            GateRevenue = 40_000m,
+            Signings = 0m,
+            Sales = 0m,
+            OtherIncome = 0m,
+            Wages = 30_000m,
+            Training = 0m,
+            OtherExpenses = 0m,
+            OpeningBalance = 100_000m,
+            ClosingBalance = 110_000m,
+            HomeMatches = 1,
+            Reference = "statement:8"
+        });
+
+        var message = Assert.Single(_written);
+        Assert.DoesNotContain("Treinos", message.Body);
+        Assert.DoesNotContain("Vendas", message.Body);
+        Assert.Contains("Bilheteria", message.Body);
+        Assert.Contains("Salários", message.Body);
     }
 
     [Fact]
@@ -441,4 +498,387 @@ public class InboxServiceTests
         ManagerIsSeller = managerIsSeller,
         Reference = $"transfer:{Guid.NewGuid()}"
     };
+    /// <summary>
+    /// A result is not only a score: a manager opening the report wants to know what kind of
+    /// result it was. A turnaround that leaves the club where it was and a turnaround that
+    /// lifts it two places are the same football and different news, and this holds that the
+    /// subject line says which one it was — because the subject line is the only line of a
+    /// message a manager is certain to read.
+    /// </summary>
+    [Fact]
+    public async Task ASportsPageLeadsWithTheShapeAndNotWithTheScore()
+    {
+        await Service().PostMatchReportAsync(Facts(shape: MatchShape.Comeback, clubGoals: 2, opponentGoals: 1));
+
+        var message = Assert.Single(_written);
+
+        Assert.Contains("Virada", message.Subject, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("2 x 1", message.Subject);
+    }
+
+    [Fact]
+    public async Task AWhitewashIsCalledAGoleadaRatherThanAVictoryByFive()
+    {
+        await Service().PostMatchReportAsync(Facts(shape: MatchShape.Whitewash, clubGoals: 4, opponentGoals: 0));
+
+        var message = Assert.Single(_written);
+
+        Assert.Contains("Goleada", message.Subject, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A club two goals up that ends level has thrown a result away, and "noite de gols" would
+    /// have told the manager his team had a good evening. This is the sentence that stops that
+    /// from happening.
+    /// </summary>
+    [Fact]
+    public async Task ASquanderedLeadIsNotReportedAsAGoodEvening()
+    {
+        await Service().PostMatchReportAsync(Facts(shape: MatchShape.Squandered, clubGoals: 2, opponentGoals: 2));
+
+        var message = Assert.Single(_written);
+
+        Assert.Contains("tinha dois ou mais gols na mão", message.Subject);
+        Assert.DoesNotContain("Noite de gols", message.Subject, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The table move is the half of the news the score cannot carry, and it belongs on the
+    /// subject as well as in the body: a manager who only reads subjects still learns that the
+    /// result was worth two places.
+    /// </summary>
+    [Fact]
+    public async Task TheSubjectSaysWhereTheResultLeftTheClub()
+    {
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            clubGoals: 1,
+            opponentGoals: 0,
+            competition: League(positionBefore: 7, positionAfter: 5, points: 45)));
+
+        var message = Assert.Single(_written);
+
+        Assert.Contains("sobe", message.Subject, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("tabela", message.Subject, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AClubThatDidNotMoveIsNotToldItMoved()
+    {
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            competition: League(positionBefore: 5, positionAfter: 5, points: 40)));
+
+        var message = Assert.Single(_written);
+
+        Assert.Contains("continua em 5º", message.Body);
+        Assert.DoesNotContain("sobe", message.Subject, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// "Três pontos da classificação" has to mean three points off the *last* club that goes
+    /// up, because that is the club a manager is actually racing.
+    /// </summary>
+    [Fact]
+    public async Task TheGapToThePromotionPlacesIsSaidInPoints()
+    {
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            competition: League(
+                positionBefore: 9,
+                positionAfter: 9,
+                points: 39,
+                toPromotion: 3,
+                toRelegation: 8)));
+
+        var message = Assert.Single(_written);
+
+        Assert.Contains("3 pontos", message.Body);
+        Assert.Contains("classificação", message.Body);
+        Assert.Contains("rebaixamento", message.Body);
+    }
+
+    [Fact]
+    public async Task TheRoundsLeftAreSaidAndTheLastOneIsCalledTheLast()
+    {
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            competition: League(roundsRemaining: 0, positionBefore: 3, positionAfter: 3, points: 60)));
+
+        var message = Assert.Single(_written);
+
+        Assert.Contains("última rodada", message.Body);
+
+        _written.Clear();
+
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            competition: League(roundsRemaining: 1, positionBefore: 3, positionAfter: 3, points: 60)));
+
+        Assert.Contains("Falta uma rodada", Assert.Single(_written).Body);
+    }
+
+    /// <summary>
+    /// A cup tie has no table and no position, and a report that printed a position about a
+    /// quarter-final would be inventing a league the competition does not have.
+    /// </summary>
+    [Fact]
+    public async Task ACupTieIsNotGivenAPositionItDoesNotHave()
+    {
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            clubGoals: 1,
+            opponentGoals: 0,
+            competition: new CompetitionContext
+            {
+                Kind = CompetitionType.Cup,
+                HasTable = false,
+                RoundNumber = 2,
+                RoundsRemaining = 1,
+                Advanced = true
+            }));
+
+        var message = Assert.Single(_written);
+
+        Assert.DoesNotContain("lugar na tabela", message.Body);
+        Assert.Contains("vaga", message.Body);
+    }
+
+    /// <summary>
+    /// A tie that is not decided yet is not a qualification. A manager planning the last five
+    /// rounds from a 1 x 0 away leg would be planning for a match that is still to be played.
+    /// </summary>
+    [Fact]
+    public async Task ATieThatIsNotFinishedIsNotCalledAQualification()
+    {
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            competition: new CompetitionContext
+            {
+                Kind = CompetitionType.Cup,
+                HasTable = false,
+                RoundNumber = 1,
+                RoundsRemaining = 1,
+                Advanced = null
+            }));
+
+        var message = Assert.Single(_written);
+
+        Assert.DoesNotContain("vaga é conquistada", message.Body);
+    }
+
+    [Fact]
+    public async Task AnEliminationSaysTheCampaignIsOver()
+    {
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            clubGoals: 0,
+            opponentGoals: 1,
+            competition: new CompetitionContext
+            {
+                Kind = CompetitionType.Cup,
+                HasTable = false,
+                RoundNumber = 2,
+                RoundsRemaining = 1,
+                Advanced = false
+            }));
+
+        var message = Assert.Single(_written);
+
+        Assert.Contains("fora", message.Body);
+        Assert.Contains("fim da campanha", message.Body);
+    }
+
+    /// <summary>
+    /// A suspension is the absence a manager can do nothing about, and a replacement does not
+    /// fix it — so it is the one that has to be on the page.
+    /// </summary>
+    [Fact]
+    public async Task TheMenMissingNextWeekAreNamedWithTheirReason()
+    {
+        var suspended = Guid.NewGuid();
+        var knocked = Guid.NewGuid();
+
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            absence: new MatchAbsence
+            {
+                Players =
+                [
+                    new PlayerAbsence { PlayerId = suspended, Cause = AbsenceCause.RedCard, Matches = 1 },
+                    new PlayerAbsence { PlayerId = knocked, Cause = AbsenceCause.Injury, Matches = 3 }
+                ]
+            },
+            squad: [
+                new InboxPersonDto { Id = suspended, Name = "Zé da Silva", Kind = InboxMentionKind.Player },
+                new InboxPersonDto { Id = knocked, Name = "Ana Souza", Kind = InboxMentionKind.Player }
+            ]));
+
+        var body = Assert.Single(_written).Body;
+
+        Assert.Contains("Zé da Silva", body);
+        Assert.Contains("expulsão", body);
+        Assert.Contains("Ana Souza", body);
+        Assert.Contains("3 jogos", body);
+        Assert.Contains("lesão", body);
+    }
+
+    [Fact]
+    public async Task ThreeYellowsAreSuspensionAndAreNotCalledAKnock()
+    {
+        var player = Guid.NewGuid();
+
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            absence: new MatchAbsence
+            {
+                Players = [new PlayerAbsence { PlayerId = player, Cause = AbsenceCause.AccumulatedYellows, Matches = 1 }]
+            },
+            squad: [new InboxPersonDto { Id = player, Name = "Bola", Kind = InboxMentionKind.Player }]));
+
+        var body = Assert.Single(_written).Body;
+
+        Assert.Contains("três amarelos", body);
+        Assert.DoesNotContain("lesão", body);
+    }
+
+    [Fact]
+    public async Task AMatchWithNoAbsencesDoesNotInventASuspensionList()
+    {
+        await Service().PostMatchReportAsync(Facts(shape: MatchShape.Ordinary));
+
+        var body = Assert.Single(_written).Body;
+
+        Assert.DoesNotContain("Fora da próxima", body);
+    }
+
+    /// <summary>
+    /// The goals are quoted in the words the match used, not reworded at report time: a match
+    /// that said "GOL! João 0" is a match that said it, and a report that reworded the same
+    /// afternoon would be the one place in the game where a fixture could be told two ways.
+    /// </summary>
+    [Fact]
+    public async Task TheGoalsAreQuotedInTheWordsTheMatchItselfUsed()
+    {
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            clubGoals: 1,
+            opponentGoals: 0,
+            goalLines: ["GOL! João da Silva 34'"],
+            goals: [new MatchGoal(Guid.NewGuid(), Guid.NewGuid(), "João da Silva", 34, GoalKind.Rebound)]));
+
+        var body = Assert.Single(_written).Body;
+
+        Assert.Contains("GOL! João da Silva 34'", body);
+    }
+
+    /// <summary>
+    /// The narration is the report's first source, but a match replayed from a row whose
+    /// events carry no description has none to quote, and a report that then said "nenhum" for
+    /// a match with a goal in it would be wrong in a worse way than one that words it itself.
+    /// </summary>
+    [Fact]
+    public async Task AMatchWithNoNarrationIsStillAccountedFor()
+    {
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            clubGoals: 1,
+            opponentGoals: 0,
+            goals: [new MatchGoal(Guid.NewGuid(), Guid.NewGuid(), "João da Silva", 34, GoalKind.Penalty)]));
+
+        var body = Assert.Single(_written).Body;
+
+        Assert.Contains("pênalti", body);
+        Assert.Contains("34'", body);
+    }
+
+    [Fact]
+    public async Task APenaltyIsSaidToHaveComeFromElevenMetres()
+    {
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            clubGoals: 1,
+            opponentGoals: 0,
+            goals: [new MatchGoal(Guid.NewGuid(), Guid.NewGuid(), "João da Silva", 34, GoalKind.Penalty)]));
+
+        Assert.Contains("de pênalti", Assert.Single(_written).Body);
+    }
+
+    [Fact]
+    public async Task AnOwnGoalIsNeverCreditedToTheManWhoGotItInHisOwnNet()
+    {
+        await Service().PostMatchReportAsync(Facts(
+            shape: MatchShape.Ordinary,
+            clubGoals: 0,
+            opponentGoals: 1,
+            goals: [new MatchGoal(Guid.NewGuid(), Guid.NewGuid(), "Zé da Silva", 12, GoalKind.OwnGoal)]));
+
+        var body = Assert.Single(_written).Body;
+
+        Assert.Contains("errada", body);
+        Assert.Contains("Zé da Silva", body);
+    }
+
+    [Fact]
+    public async Task TheElevenIsListedWithTheShapeItMadeOfThePitch()
+    {
+        await Service().PostMatchReportAsync(Facts(shape: MatchShape.Ordinary, formation: "4-3-3"));
+
+        var body = Assert.Single(_written).Body;
+
+        Assert.Contains("4-3-3", body);
+        Assert.Contains("Escalação", body);
+    }
+
+    private static CompetitionContext League(
+        int positionBefore,
+        int positionAfter,
+        int points,
+        int? toPromotion = null,
+        int? toRelegation = null,
+        int? roundsRemaining = 5) => new()
+        {
+            Kind = CompetitionType.League,
+            HasTable = true,
+            PositionBefore = positionBefore,
+            PositionAfter = positionAfter,
+            PositionChange = positionBefore - positionAfter,
+            Points = points,
+            PointsToPromotion = toPromotion,
+            PointsToRelegation = toRelegation,
+            RoundNumber = 9,
+            RoundsRemaining = roundsRemaining
+        };
+
+    private MatchReportFacts Facts(
+        MatchShape shape,
+        int clubGoals = 0,
+        int opponentGoals = 0,
+        string formation = "4-3-3",
+        CompetitionContext? competition = null,
+        MatchAbsence? absence = null,
+        IReadOnlyList<MatchGoal>? goals = null,
+        IReadOnlyList<string>? goalLines = null,
+        IReadOnlyList<InboxPersonDto>? squad = null) => new()
+        {
+            MatchId = Guid.NewGuid(),
+            RecipientTeamId = _clubId,
+            ClubId = _clubId,
+            ClubName = "Ninja Eleven",
+            OpponentId = Guid.NewGuid(),
+            OpponentName = "Bairro Unido",
+            IsHome = true,
+            CompetitionName = "1ª Divisão",
+            PhaseName = "Rodada 9",
+            MatchDayNumber = 9,
+            ClubGoals = clubGoals,
+            OpponentGoals = opponentGoals,
+            ClubFormation = formation,
+            Shape = shape,
+            Goals = goals ?? [],
+            GoalLines = goalLines ?? [],
+            Lineup = squad ?? [new InboxPersonDto { Id = Guid.NewGuid(), Name = "Titular", Kind = InboxMentionKind.Player }],
+            Absence = absence,
+            Competition = competition
+        };
 }

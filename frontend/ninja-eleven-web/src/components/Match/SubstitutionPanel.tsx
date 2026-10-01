@@ -1,10 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import type { MatchPlayerDto } from '@/types';
+import type { MatchPlayerDto, TeamDto } from '@/types';
 import { positionLabel, sortByPosition, starsToString } from '@/services/formatters';
 import EnergyBar from '@/components/Match/EnergyBar';
 import HurtBadge from '@/components/Match/HurtBadge';
+import KitChip from '@/components/Club/KitChip';
 
 interface SubstitutionPanelProps {
+  /**
+   * The club the men belong to and the shirt it is playing in, so the two grids are two
+   * columns of names in two colours rather than one list of men to sort through at the
+   * interval.
+   */
+  team?: TeamDto;
+  kitSide?: 'Home' | 'Away';
   lineup: MatchPlayerDto[];
   bench: MatchPlayerDto[];
   /** Substitutions already used by the club: the league allows five. */
@@ -22,6 +30,8 @@ interface SubstitutionPanelProps {
  * substitution is refused there and never here.
  */
 const SubstitutionPanel: React.FC<SubstitutionPanelProps> = ({
+  team,
+  kitSide,
   lineup,
   bench,
   used,
@@ -91,6 +101,7 @@ const SubstitutionPanel: React.FC<SubstitutionPanelProps> = ({
       <div className="player-top">
         <span className="player-pos">{positionLabel(player.position)}</span>
         <span className="player-card__name">
+          <KitChip team={team} side={kitSide} />
           {player.name}
           <HurtBadge player={player} />
         </span>

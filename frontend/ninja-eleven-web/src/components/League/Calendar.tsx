@@ -117,6 +117,7 @@ const Calendar: React.FC<CalendarProps> = ({ fixtures, rounds, currentRoundId, u
                     <span className="fixture__side">
                       <ClubName teamId={f.homeTeamId}>{home.name}</ClubName>
                       <ClubCrest
+                        crest={home.crest}
                         primary={home.primaryColor || homeColor}
                         secondary={home.secondaryColor || homeColor}
                         name={home.name}
@@ -130,6 +131,7 @@ const Calendar: React.FC<CalendarProps> = ({ fixtures, rounds, currentRoundId, u
                   {away ? (
                     <span className="fixture__side">
                       <ClubCrest
+                        crest={away.crest}
                         primary={away.primaryColor || awayColor}
                         secondary={away.secondaryColor || awayColor}
                         name={away.name}

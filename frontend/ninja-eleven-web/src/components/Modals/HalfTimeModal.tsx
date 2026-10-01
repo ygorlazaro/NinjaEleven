@@ -10,6 +10,8 @@ interface HalfTimeModalProps {
   lineup: MatchPlayerDto[];
   bench: MatchPlayerDto[];
   substitutionsUsed: number;
+  /** Which of the club's two shirts this match was played in. */
+  kitSide?: 'Home' | 'Away';
   busy?: boolean;
   onSubstitute: (playerOutId: string, playerInId: string) => void;
   onContinue: () => void;
@@ -23,6 +25,7 @@ const HalfTimeModal: React.FC<HalfTimeModalProps> = ({
   lineup,
   bench,
   substitutionsUsed,
+  kitSide,
   busy = false,
   onSubstitute,
   onContinue,
@@ -40,6 +43,8 @@ const HalfTimeModal: React.FC<HalfTimeModalProps> = ({
         </p>
 
         <SubstitutionPanel
+          team={homeTeam}
+          kitSide={kitSide}
           lineup={lineup}
           bench={bench}
           used={substitutionsUsed}

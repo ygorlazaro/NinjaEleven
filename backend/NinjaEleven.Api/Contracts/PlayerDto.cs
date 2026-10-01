@@ -100,6 +100,15 @@ public class SquadPlayerDto
     public bool IsInLastSeason { get; init; }
     public decimal AskingPrice { get; init; }
 
+    /// <summary>
+    /// The number he wears for this club, null when nobody has dealt him one.
+    ///
+    /// It is the contract's number and not the player's, so the same man in two clubs over a
+    /// career wears two numbers, and a squad row that showed the number the player had under
+    /// somebody else would be showing a shirt from last season.
+    /// </summary>
+    public int? ShirtNumber { get; init; }
+
     public bool IsAvailable { get; init; }
     public bool Retiring { get; init; }
     public Guid? TeamId { get; init; }
@@ -152,6 +161,13 @@ public class PlayerProfileDto
     public bool IsAvailable { get; init; }
     public string Injury { get; init; } = string.Empty;
     public int InjuryMatchesRemaining { get; init; }
+
+    /// <summary>
+    /// The number he wears for the club named on this card, null when he is a free agent.
+    /// A free agent has a number he used to wear and not one he has, and the card says so by
+    /// saying nothing.
+    /// </summary>
+    public int? ShirtNumber { get; init; }
 
     /// <summary>
     /// What he is worth, and what the club owes for his contract, in limos. The wage is a

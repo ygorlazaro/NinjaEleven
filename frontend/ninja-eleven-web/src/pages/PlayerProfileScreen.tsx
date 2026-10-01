@@ -161,6 +161,25 @@ const PlayerProfileScreen: React.FC = () => {
           <div className="profile-id">
             <h2 className="profile-name">
               {profile.name}
+              {/* The shirt he wears for this club, beside his name rather than in a line of
+                  its own. A manager looking a striker up wants to know the number he will be
+                  asked for on Saturday in the same glance as the name, and the number is a
+                  fact about the contract — so a man who has just moved clubs shows the new
+                  one, which is the whole reason it does not live on the player. */}
+              {profile.shirtNumber != null && (
+                <span
+                  className="shirt-badge"
+                  title={`Número ${profile.shirtNumber} no ${profile.teamName}`}
+                >
+                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                    <path
+                      fill="currentColor"
+                      d="M9 2 4 4v5c0 1.4.8 2.6 2 3.2V22h12v-9.8c1.2-.6 2-1.8 2-3.2V4l-5-2-1.2 1.6a4.4 4.4 0 0 1-5.6 0L9 2Z"
+                    />
+                  </svg>
+                  <span className="shirt-badge__number">{profile.shirtNumber}</span>
+                </span>
+              )}
               {profile.injury !== 'None' && <span className="injury-badge" title={profile.injury === 'Grave' ? 'Lesão grave' : 'Lesão leve'}>🩹</span>}
               <StarRating
                 stars={profile.stars}

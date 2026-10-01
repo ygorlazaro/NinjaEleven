@@ -276,6 +276,7 @@ public class DatabaseSeeder : IDataSeeder
             _logger.LogInformation("Seeding skipped: the world already contains teams.");
             await GiveFacesToTheWorldAlreadySeededAsync(random, cancellationToken);
             await GiveIdentitiesToTheWorldAlreadySeededAsync(cancellationToken);
+            await GiveShirtNumbersToTheWorldAlreadySeededAsync(cancellationToken);
             await GiveManagersToTheWorldAlreadySeededAsync(random, cancellationToken);
             await OpenTheBooksOfTheWorldAlreadySeededAsync(cancellationToken);
             return;
@@ -284,6 +285,7 @@ public class DatabaseSeeder : IDataSeeder
         await SeedStartingWorldAsync(random, cancellationToken);
         await GiveFacesToTheWorldAlreadySeededAsync(random, cancellationToken);
         await GiveIdentitiesToTheWorldAlreadySeededAsync(cancellationToken);
+        await GiveShirtNumbersToTheWorldAlreadySeededAsync(cancellationToken);
         await GiveManagersToTheWorldAlreadySeededAsync(random, cancellationToken);
         await OpenTheBooksOfTheWorldAlreadySeededAsync(cancellationToken);
     }
@@ -541,7 +543,14 @@ public class DatabaseSeeder : IDataSeeder
         var seasonStates = new List<PlayerSeasonState>();
         var memberships = new List<TeamMembership>();
 
-        foreach (var position in BuildPositions(_options.PlayersPerTeam, _options.GoalkeepersPerTeam))
+        // The squad's shapes are built first so the shirts can be dealt against the whole
+        // group rather than one player at a time: a keeper's number is one of three reserved
+        // ones, and whether the second keeper gets the twelve depends on who else is in the
+        // club, which is not known until everybody is.
+        var shapes = BuildPositions(_options.PlayersPerTeam, _options.GoalkeepersPerTeam).ToList();
+        var shirts = ShirtNumberRules.Deal(shapes.Select(position => position == Position.GK));
+
+        foreach (var (position, shirt) in shapes.Zip(shirts))
         {
             var player = CreatePlayer(position, random, faces.Dequeue());
             var state = PlayerSeasonState.Create(
@@ -552,7 +561,12 @@ public class DatabaseSeeder : IDataSeeder
 
             players.Add(player);
             seasonStates.Add(state);
-            memberships.Add(TeamMembership.Create(player.Id, team.Id, startDate, startSeasonNumber: startSeasonNumber));
+            memberships.Add(TeamMembership.Create(
+                player.Id,
+                team.Id,
+                startDate,
+                startSeasonNumber: startSeasonNumber,
+                shirtNumber: shirt));
         }
 
         return (players, seasonStates, memberships);
@@ -800,6 +814,122 @@ public class DatabaseSeeder : IDataSeeder
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Gave a face to {Count} players that had none.", faceless.Count);
+    }
+
+    /// <summary>
+    /// Puts a shirt on every live contract that has not been given one.
+    ///
+    /// <para>
+    /// A world seeded before shirts existed has sixty-four clubs whose squads are all wearing
+    /// nothing, and the column is nullable precisely so that this pass has something to do.
+    /// The numbers are dealt per club, and per club in the order the contracts come out of
+    /// the database, so a world's shirts are the same on the boot that fills them in as they
+    /// would have been on the boot that created it — a club that has been running for a
+    /// season does not come back wearing a different squad from the one it left with.
+    /// </para>
+    ///
+    /// <para>
+    /// Only live contracts are touched. An ended one keeps whatever it had, including nothing,
+    /// because what a man wore for a club he has left is history and history is not rewritten
+    /// by a newer season arriving.
+    /// </para>
+    /// </summary>
+    private async Task GiveShirtNumbersToTheWorldAlreadySeededAsync(CancellationToken cancellationToken)
+    {
+        var shirtless = await _dbContext.TeamMemberships
+            .Where(membership => membership.EndDate == null && membership.ShirtNumber == null)
+            .ToListAsync(cancellationToken);
+
+        if (shirtless.Count == 0)
+        {
+            return;
+        }
+
+        var shirtlessPlayers = shirtless.Select(membership => membership.PlayerId).ToList();
+
+        var positions = await _dbContext.Players
+            .Where(player => shirtlessPlayers.Contains(player.Id))
+            .ToDictionaryAsync(player => player.Id, player => player.Position, cancellationToken);
+
+        // The numbers a club's other contracts are already wearing, and not only the ones this
+        // pass is about to write. A world part-way through a transfer window has men who
+        // signed after shirts existed and men who were there before, and starting each club
+        // from an empty set would deal the new man's number to somebody already wearing it —
+        // which the unique index refuses, and a refused save takes the whole world down.
+        var alreadyWorn = await _dbContext.TeamMemberships
+            .Where(membership => membership.EndDate == null && membership.ShirtNumber != null)
+            .ToListAsync(cancellationToken);
+
+        var worn = new Dictionary<Guid, HashSet<int>>();
+
+        foreach (var membership in alreadyWorn)
+        {
+            NumbersFor(worn, membership.TeamId).Add(membership.ShirtNumber!.Value);
+        }
+
+        // The order these are dealt in *is* the numbering, and it is spelled out rather than
+        // left to the database. An unordered read is a different squad every time it runs:
+        // PostgreSQL answers in whatever order the plan finds cheapest, so a club whose
+        // outfield men happened to come back before its third goalkeeper would deal twelve to
+        // a striker and hand the keeper seventeen — and a world's shirts would then depend on
+        // when a developer last rebuilt an index.
+        //
+        // Keepers first within each club, because a keeper is given a keeper's number only
+        // while one is free, and twelve is only free while no keeper has claimed it. The id
+        // breaks the remaining ties, so the same world is numbered the same way twice.
+        var ordered = shirtless
+            .OrderBy(membership => membership.TeamId)
+            .ThenByDescending(membership => IsAGoalkeeper(positions, membership.PlayerId))
+            .ThenBy(membership => membership.Id);
+
+        var dealt = 0;
+
+        foreach (var membership in ordered)
+        {
+            var numbers = NumbersFor(worn, membership.TeamId);
+
+            membership.WearNumber(ShirtNumberRules.For(
+                numbers,
+                IsAGoalkeeper(positions, membership.PlayerId)));
+
+            numbers.Add(membership.ShirtNumber!.Value);
+            dealt++;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Gave a shirt number to {Count} contracts that had none.", dealt);
+    }
+
+    /// <summary>
+    /// Whether a contract belongs to a goalkeeper, asked of a set already read.
+    ///
+    /// <para>
+    /// A man whose player row is missing is not a keeper. He is not an outfield player either,
+    /// and the number he is given is the lowest free one — which is the right answer for a
+    /// contract whose player the world does not hold, and the only one available.
+    /// </para>
+    /// </summary>
+    private static bool IsAGoalkeeper(Dictionary<Guid, Position> positions, Guid playerId) =>
+        positions.TryGetValue(playerId, out var position) && position == Position.GK;
+
+    /// <summary>
+    /// The numbers one club's dressing room is already using, added to on first sight.
+    ///
+    /// It is a method rather than a dictionary access because the same club is looked at once
+    /// per contract, and a set rebuilt from scratch each time would forget what the pass had
+    /// already dealt — which is the difference between a world numbered once and a world
+    /// numbered with twenty-three men all wearing two.
+    /// </summary>
+    private static HashSet<int> NumbersFor(Dictionary<Guid, HashSet<int>> worn, Guid teamId)
+    {
+        if (!worn.TryGetValue(teamId, out var numbers))
+        {
+            numbers = new HashSet<int>();
+            worn[teamId] = numbers;
+        }
+
+        return numbers;
     }
 
     /// <summary>

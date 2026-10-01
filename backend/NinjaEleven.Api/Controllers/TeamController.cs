@@ -275,6 +275,33 @@ public class TeamController : ControllerBase
     }
 
     /// <summary>
+    /// Puts one of the manager's own men in a shirt.
+    ///
+    /// <para>
+    /// The answer is the number the man now wears rather than the whole squad, because the
+    /// screen that sends this is holding the squad already and wants to change one cell of
+    /// it. Re-reading twenty-three men to learn one number is a round trip the caller did not
+    /// ask for, and it is a round trip that can answer after somebody else has changed a
+    /// second row.
+    /// </para>
+    /// </summary>
+    [HttpPut("{id:guid}/shirt-number")]
+    public async Task<ActionResult<UpdateShirtNumberResponseDto>> UpdateShirtNumber(
+        Guid id,
+        [FromBody] UpdateShirtNumberRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var number = await _teamService.UpdateShirtNumberAsync(
+            id, request.PlayerId, request.ShirtNumber, cancellationToken);
+
+        return Ok(new UpdateShirtNumberResponseDto
+        {
+            PlayerId = request.PlayerId,
+            ShirtNumber = number
+        });
+    }
+
+    /// <summary>
     /// The wire's kit as the domain's, with the domain doing the refusing. The controller maps
     /// and nothing else: a colour that is not a colour is a fact about the request, and the
     /// domain is where a club's clothes are a rule.

@@ -243,4 +243,33 @@ public class TransferRepository : ITransferRepository
         await _context.Transfers.AddAsync(transfer, cancellationToken);
 
     public void Update(Transfer transfer) => _context.Transfers.Update(transfer);
+
+    /// <summary>
+    /// Moves one deal from accepted to completed, and says whether this caller is the one that
+    /// moved it.
+    /// </summary>
+    /// <remarks>
+    /// The predicate is the claim. A caller whose update matches no row is a caller that lost
+    /// the race to a window being completed twice — by the matchday sweep and by a hand on the
+    /// route at the same moment — and it is told so here rather than discovering it afterwards
+    /// in a squad that holds one man three times. No <c>FOR UPDATE</c> is needed, and none is
+    /// wanted: the row lock PostgreSQL takes for the update is held until the unit of work
+    /// commits, which is exactly as long as the membership this guards needs it.
+    /// </remarks>
+    public async Task<bool> TryClaimForCompletionAsync(
+        Guid transferId,
+        CancellationToken cancellationToken = default)
+    {
+        var claimed = await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE transfers
+                SET status = {TransferStatus.Completed.ToString()},
+                    completed_at = {DateOnly.FromDateTime(DateTime.Now)}
+              WHERE id = {transferId}
+                AND status = {TransferStatus.Accepted.ToString()}
+             """,
+            cancellationToken);
+
+        return claimed == 1;
+    }
 }

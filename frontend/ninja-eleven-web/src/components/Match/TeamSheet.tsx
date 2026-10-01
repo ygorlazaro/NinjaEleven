@@ -6,6 +6,7 @@ import SubstitutionPanel from '@/components/Match/SubstitutionPanel';
 import { ClubName, PlayerName } from '@/components/Common/Names';
 import ClubCrest from '@/components/Club/ClubCrest';
 import HurtBadge from '@/components/Match/HurtBadge';
+import KitChip from '@/components/Club/KitChip';
 
 interface TeamSheetProps {
   lineup: MatchLineupDto;
@@ -31,6 +32,12 @@ type Side = {
   /** True for the club the manager commands, and the only side a change can be made on. */
   isHis: boolean;
   substitutionsUsed: number;
+  /**
+   * Which of this club's two shirts the match was played in. It is on the fixture and not on
+   * the club, so a sheet that showed the club's first shirt beside a visitor's second would be
+   * showing him the wrong men.
+   */
+  kitSide: 'Home' | 'Away';
 };
 
 /**
@@ -79,6 +86,7 @@ const TeamSheet: React.FC<TeamSheetProps> = ({
       bench: lineup.homeBench,
       isHis: userTeamIndex === 0,
       substitutionsUsed,
+      kitSide: lineup.homeKitSide,
     },
     away: {
       team: lineup.awayTeam,
@@ -86,6 +94,7 @@ const TeamSheet: React.FC<TeamSheetProps> = ({
       bench: lineup.awayBench,
       isHis: userTeamIndex === 1,
       substitutionsUsed,
+      kitSide: lineup.awayKitSide,
     },
   };
 
@@ -108,6 +117,7 @@ const TeamSheet: React.FC<TeamSheetProps> = ({
               title={tab.isHis ? 'Seu time' : 'Adversário'}
             >
               <ClubCrest
+                crest={tab.team.crest}
                 primary={tab.team.primaryColor}
                 secondary={tab.team.secondaryColor}
                 name={tab.team.name}
@@ -121,6 +131,8 @@ const TeamSheet: React.FC<TeamSheetProps> = ({
 
       {current.isHis && canSubstitute && (
         <SubstitutionPanel
+          team={current.team}
+          kitSide={current.kitSide}
           lineup={current.onPitch}
           bench={current.bench}
           used={current.substitutionsUsed}
@@ -139,7 +151,13 @@ const TeamSheet: React.FC<TeamSheetProps> = ({
         </div>
         <div className="player-grid">
           {sortByPosition(current.onPitch).map(p => (
-            <SheetCard key={p.playerId} player={p} opponent={!current.isHis} />
+            <SheetCard
+              key={p.playerId}
+              player={p}
+              team={current.team}
+              kitSide={current.kitSide}
+              opponent={!current.isHis}
+            />
           ))}
         </div>
       </div>
@@ -154,7 +172,14 @@ const TeamSheet: React.FC<TeamSheetProps> = ({
         </div>
         <div className="bench-grid">
           {sortByPosition(current.bench).map(p => (
-            <SheetCard key={p.playerId} player={p} isBench opponent={!current.isHis} />
+            <SheetCard
+              key={p.playerId}
+              player={p}
+              team={current.team}
+              kitSide={current.kitSide}
+              isBench
+              opponent={!current.isHis}
+            />
           ))}
         </div>
       </div>
@@ -164,6 +189,9 @@ const TeamSheet: React.FC<TeamSheetProps> = ({
 
 interface SheetCardProps {
   player: MatchPlayerDto;
+  /** The club he belongs to, so the shirt sits beside the name. */
+  team?: TeamDto;
+  kitSide?: 'Home' | 'Away';
   isBench?: boolean;
   opponent?: boolean;
 }
@@ -172,7 +200,13 @@ interface SheetCardProps {
  * One name on a team sheet, with the energy bar and whatever already happened to him. The
  * same information for both clubs, because a manager decides with the whole picture.
  */
-const SheetCard: React.FC<SheetCardProps> = ({ player, isBench = false, opponent = false }) => (
+const SheetCard: React.FC<SheetCardProps> = ({
+  player,
+  team,
+  kitSide,
+  isBench = false,
+  opponent = false,
+}) => (
   <div
     className={`player-card ${isBench ? 'bench-card' : ''} ${player.redCard ? 'sent-off' : ''} ${
       player.injuredOff ? 'injured' : ''
@@ -183,6 +217,7 @@ const SheetCard: React.FC<SheetCardProps> = ({ player, isBench = false, opponent
         {player.emergencyGK ? 'GOL*' : positionLabel(player.position)}
       </span>
       <span className="player-card__name">
+        <KitChip team={team} side={kitSide} />
         <PlayerName playerId={player.playerId}>{player.name}</PlayerName>
         <HurtBadge player={player} />
         <span className="player-stars" style={{ color: 'var(--accent)', marginLeft: '6px' }}>{starsToString(player.stars)}</span>

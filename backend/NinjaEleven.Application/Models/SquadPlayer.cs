@@ -57,6 +57,17 @@ public class SquadPlayer
     /// </summary>
     public bool IsInLastSeason => Membership is null || Membership.IsInHisLastSeason(Season.Number);
 
+    /// <summary>
+    /// The number this man wears for this club, or null while nobody has dealt him one.
+    ///
+    /// It is read off the contract rather than stored beside it, for the same reason the
+    /// seasons left are: the membership is the thing that knows, and a second copy on the
+    /// squad row would be a number two screens could disagree about. A null here is a real
+    /// state and not a missing column — it is a world seeded before shirts existed, which the
+    /// seeder fills in on the next boot.
+    /// </summary>
+    public int? ShirtNumber => Membership?.ShirtNumber;
+
     /// <summary>What he is worth on the market, in limos.</summary>
     public decimal MarketValue => PlayerValuation.MarketValue(Player, SeasonState);
 

@@ -87,6 +87,25 @@ public interface IFinanceRepository
         Guid teamId,
         Guid? seasonId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every line a club wrote between two days of the season, oldest first.
+    ///
+    /// <para>
+    /// This is the read behind the weekly statement, and it is a read of a *span* rather than
+    /// a page because a statement that added up only the first twenty lines of a busy week
+    /// would be a statement about the wrong week. The two bounds are inclusive on both ends,
+    /// so a week of seven days is seven days and a single day is a single day, and the lines
+    /// that state a balance rather than moving one are left in: the caller decides what a
+    /// statement says about the capital a club was founded on.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<FinanceMovement>> ListBetweenMatchDaysAsync(
+        Guid teamId,
+        Guid seasonId,
+        int fromMatchDay,
+        int toMatchDay,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>What came in and what went out, in limos.</summary>

@@ -2145,6 +2145,21 @@ button { cursor: pointer; }
   font-size: 10px; letter-spacing: 0;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .2);
 }
+
+/* A badge the club has drawn carries its own border — the shield is stroked in the club's own
+   primary colour, which is the thing that makes it recognisable at twenty pixels — so the box
+   the initials placeholder wears has to come off, or every drawn crest would be a shield inside
+   a second rounded rectangle. Everything else about the size stays where it was, because the
+   seventeen places that size a crest are not the business of how a crest is drawn. */
+.club-crest--drawn {
+  display: inline-block;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+.club-crest--drawn.mini-crest { vertical-align: middle; }
 .club-page__identity { flex: 1 1 220px; min-width: 0; }
 .club-page__identity .profile-name { margin-bottom: 4px; }
 .club-page__tag { margin: 0; color: var(--muted); font-size: 14px; }
@@ -3342,3 +3357,425 @@ button { cursor: pointer; }
   font-size: 11px; color: var(--muted);
   border: 1px dashed var(--line); border-radius: 7px;
 }
+
+/* ---------------------------------------------------------------------------
+   The club's own identity: the badge and the two shirts, drawn rather than
+   described. Everything below belongs to the two editors and to the places a
+   shirt is shown beside a name.
+   --------------------------------------------------------------------------- */
+
+/* A shirt at the size of a name. A row of players is a column of names, and a
+   column of names in one club's colours is a column that can be read without
+   reading it — which is what says which side of a match a name belongs to. It
+   is a shirt and not a swatch because the cut is half of the recognition: four
+   thin white stripes are not a solid white. */
+.kit-chip {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  width: 15px;
+  height: 15px;
+  margin-right: 5px;
+  flex: 0 0 auto;
+}
+.kit-chip .kit { margin: 0; gap: 0; }
+.kit-chip .kit__shirt {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .45));
+}
+
+.kit-wall__edit { margin-left: 10px; font-size: 12px; padding: 2px 10px; }
+.kit-wall__none { margin: 0; color: var(--muted); font-size: 14px; max-width: 34ch; }
+
+/* The editors. Both are wide, because both are a drawing and a list of choices
+   side by side: an editor that hides the drawing behind a tab is an editor a
+   manager draws from memory. */
+.crest-editor,
+.kit-editor { max-width: 880px; width: min(92vw, 880px); }
+
+.crest-editor__body,
+.kit-editor__body {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 20px;
+  align-items: start;
+  margin-top: 12px;
+}
+
+.crest-editor__stage,
+.kit-editor__stage { text-align: center; }
+
+.crest-editor__canvas {
+  position: relative;
+  width: 200px;
+  height: 240px;
+  margin: 0 auto;
+}
+/* The drawing fills the canvas exactly, because a drag is measured against the canvas and a
+   crest drawn at some other size would put the handle somewhere the element is not. The
+   canvas is the shield's own 100x120 proportion at twice the size. */
+.crest-editor__canvas > .club-crest--drawn { width: 100%; height: 100%; display: block; }
+
+/* The two elements are dragged on the shield rather than placed at a number,
+   because "a bit higher" is a thing a manager can see and "0.62 of the way
+   down" is not. The handle is the element's own name: what is being moved has
+   to say what it is while it is being moved. */
+.crest-editor__handle {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 96%;
+  padding: 2px 8px;
+  border: 1px dashed rgba(255, 255, 255, .7);
+  border-radius: 999px;
+  background: rgba(6, 12, 20, .78);
+  color: #f2f6fb;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: grab;
+  touch-action: none;
+}
+.crest-editor__handle.is-held { cursor: grabbing; border-style: solid; background: rgba(6, 12, 20, .95); }
+
+.crest-editor__hint,
+.kit-editor__warning {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.kit-editor__warning { color: #f2c14f; }
+.kit-editor__empty { color: var(--muted); font-size: 13px; line-height: 1.5; max-width: 30ch; }
+
+.crest-editor__controls,
+.kit-editor__controls { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.crest-editor__colours { display: flex; gap: 14px; flex-wrap: wrap; }
+
+.identity-colour { display: flex; flex-direction: column; gap: 4px; }
+.identity-colour__label { font-size: 12px; color: var(--muted); }
+.identity-colour__row { display: flex; align-items: center; gap: 6px; }
+.identity-colour__row input[type='color'] {
+  width: 40px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, .25);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+.identity-colour__hex { width: 96px; }
+.identity-colour__hint { font-size: 11px; color: var(--muted); }
+
+.identity-group {
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 0;
+}
+.identity-group legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
+
+.identity-shapes,
+.identity-patterns,
+.identity-figures {
+  display: grid;
+  gap: 8px;
+}
+.identity-shapes { grid-template-columns: repeat(5, 1fr); }
+.identity-patterns { grid-template-columns: repeat(4, 1fr); }
+.identity-figures { grid-template-columns: repeat(4, 1fr); }
+
+.identity-shape,
+.identity-pattern {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .03);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.3;
+  text-align: center;
+  cursor: pointer;
+}
+.identity-shape .club-crest--drawn,
+.identity-pattern .kit__shirt { width: 34px; height: 34px; }
+.identity-pattern .kit { gap: 0; }
+.identity-shape.is-picked,
+.identity-pattern.is-picked,
+.identity-figure.is-picked {
+  border-color: var(--accent);
+  background: rgba(53, 194, 255, .12);
+}
+
+.identity-figure {
+  padding: 5px 6px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .03);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.identity-check { display: flex; align-items: center; gap: 7px; font-size: 13px; margin-top: 8px; }
+.identity-element { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 10px 22px; }
+.identity-element .ctrl { max-width: 220px; }
+
+.kit-editor__tabs { display: flex; gap: 8px; margin-top: 10px; }
+.kit-editor__tabs .ctrl.is-picked { border-color: var(--accent); background: rgba(53, 194, 255, .12); }
+
+/* On a phone the drawing and the controls stack, and the drawing stays first:
+   a manager who cannot see what he is changing is editing nothing. */
+@media (max-width: 720px) {
+  .crest-editor__body,
+  .kit-editor__body { grid-template-columns: 1fr; }
+  .identity-shapes { grid-template-columns: repeat(3, 1fr); }
+  .identity-patterns { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ---------------------------------------------------------------------------
+   The shirt a man wears.
+
+   The number is the one number in a squad list that is a decision rather than a
+   measurement, so it leads the row and it is the only cell in the table that
+   opens an editor. Everything here exists to keep that from turning a list of
+   twenty-three men into a list of twenty-three input boxes.
+   --------------------------------------------------------------------------- */
+
+/* It is two digits wide whatever it holds, so a column of numbers does not move
+   sideways as the manager sorts it. */
+.club-squad-table th.shirt-col,
+.club-squad-table td.shirt-col { width: 46px; min-width: 46px; }
+
+.shirt-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* The shirt and the number it carries. It is one object at a glance rather than a
+   number with an icon beside it, because a squad list is read down a column and the
+   thing that makes a column of numbers legible as shirts is the shirt itself. */
+.shirt-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  justify-content: flex-end;
+  min-width: 34px;
+  padding: 2px 5px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+.shirt-number__icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+/* A man who wears no number is not number zero, and a zero here would read as a
+   fact about him rather than as the absence of one. */
+.shirt-number--empty { color: var(--muted); font-weight: 400; }
+.shirt-number--empty .shirt-number__icon { color: var(--muted); opacity: 0.5; }
+
+/* Somebody else's club is a document: the shirt is on it, and nothing about it is
+   a control. It is a span and not a disabled button, because a control that looks
+   pressable and does nothing is worse than one that is obviously not there. */
+.shirt-number--static { color: var(--text); }
+
+/* The button only exists for a manager's own club, so its hover is the whole
+   invitation to renumber a man. */
+button.shirt-number { cursor: pointer; }
+button.shirt-number:hover {
+  border-color: var(--accent);
+  background: #122334;
+  color: var(--accent);
+}
+button.shirt-number:hover .shirt-number__icon { color: var(--accent); opacity: 1; }
+
+.shirt-input {
+  width: 52px;
+  padding: 2px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--panel2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  text-align: right;
+}
+
+/* The refusal sits beside the row that caused it. A message about a number in the
+   corner of the screen is a message about somebody else's problem. */
+.shirt-refusal {
+  position: absolute;
+  z-index: 3;
+  margin-left: 8px;
+  padding: 3px 8px;
+  border: 1px solid var(--red);
+  border-radius: 6px;
+  background: #2a1119;
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.club-squad-table td.shirt-col { position: relative; }
+
+/* The badge beside a name on a player's card. It is a shirt because a bare number
+   on a card reads as a rating, and the icon is what says "this is the number he
+   plays in" rather than "this is how good he is". */
+.shirt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  padding: 1px 6px 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #122334;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.shirt-badge__number { font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------------------
+   Filtering a squad.
+
+   The bar is a row of controls above the table and not a screen of its own: a
+   manager filters a list he is already reading, and sending him away to filter it
+   and back to read it is two screens for one question.
+   --------------------------------------------------------------------------- */
+
+.squad-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel2);
+}
+
+.squad-filters__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.squad-filters__label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.squad-filters__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.squad-filters__count { color: var(--muted); font-size: 12px; }
+
+/* A chosen line stays lit, because a filter whose state cannot be seen from the
+   controls is a filter a manager has to open to find out what it did. */
+.filter-chip {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.filter-chip:hover { border-color: var(--accent); }
+
+.filter-chip.active {
+  border-color: var(--accent);
+  background: #122334;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.filter-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.filter-range > span {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.filter-range input,
+.filter-range select {
+  width: 78px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.filter-range select { width: 150px; }
+
+.filter-range input:focus,
+.filter-range select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.filter-clear {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.filter-clear:hover { border-color: var(--red); color: var(--red); }

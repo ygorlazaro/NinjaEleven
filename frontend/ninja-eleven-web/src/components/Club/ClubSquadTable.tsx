@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import type { SquadPlayerDto } from '@/types';
+import type { SquadPlayerDto, TeamDto } from '@/types';
 import { positionLabel } from '@/services/formatters';
 import { formatLimo } from '@/services/limo';
 import { PlayerName } from '@/components/Common/Names';
 import { starsToString, attributeToneClass } from '@/services/formatters';
+import KitChip from '@/components/Club/KitChip';
+import ShirtNumberCell from '@/components/Club/ShirtNumberCell';
 
 /**
  * The columns a manager sorts a squad by. Each one is a number the engine decided, so
@@ -11,8 +13,8 @@ import { starsToString, attributeToneClass } from '@/services/formatters';
  * that already arrived.
  */
 type SortKey =
-  | 'position' | 'name' | 'age' | 'energy' | 'speed' | 'accuracy' | 'dribbling' | 'heading'
-  | 'strength' | 'goalkeeperPower' | 'reflexes' | 'goals' | 'saves'
+  | 'shirtNumber' | 'position' | 'name' | 'age' | 'energy' | 'speed' | 'accuracy'
+  | 'dribbling' | 'heading' | 'strength' | 'goalkeeperPower' | 'reflexes' | 'goals' | 'saves'
   | 'yellowCards' | 'redCards' | 'stars'
   | 'marketValue' | 'askingPrice' | 'salary' | 'seasonsLeft';
 
@@ -43,6 +45,9 @@ function energyTextClass(energy: number): string {
  * they appear when the club has a keeper at all, and hold their place for everyone else.
  */
 const commonColumns: Column[] = [
+  // The shirt leads the row, the way it leads the fixture list a manager reads on a Saturday.
+  // It is the one number about a man that is a decision rather than a measurement.
+  { key: 'shirtNumber', label: 'Nº', className: 'num shirt-col' },
   { key: 'position', label: 'Pos' },
   { key: 'name', label: 'Jogador', className: 'squad-name' },
   { key: 'age', label: 'Idade', className: 'num' },
@@ -93,6 +98,15 @@ interface ClubSquadTableProps {
   squad: SquadPlayerDto[];
 
   /**
+   * The club these men play for, so the shirt sits beside the name.
+   *
+   * A squad table is a column of names in one colour, and the colour is half of what says
+   * whose club this is — a manager reading another club's squad is reading names he will not
+   * see on Saturday. Left out on a screen that has no club to show, the column is simply names.
+   */
+  team?: TeamDto | null;
+
+  /**
    * When a row is something a manager picks, the row is the button. A screen that is
    * choosing an eleven is not reading a table, it is filling one in, and a screen that only
    * offers fifteen small targets for that is fifteen chances to miss the right man.
@@ -123,6 +137,20 @@ interface ClubSquadTableProps {
    * news belongs to the club that owns him, so the same rule applies as for a release.
    */
 
+  /**
+   * Puts a man in a shirt. Left out, the number is a number and not a control: the squad
+   * screen belongs to somebody else's club as often as to the manager's own, and a table
+   * that offered to renumber the whole league would be offering it to a reader who cannot.
+   */
+  onEditShirtNumber?: (player: SquadPlayerDto, shirtNumber: number) => void;
+
+  /**
+   * What the server said about the last number asked for, by player id, so the row that was
+   * refused is the row that says so. A refusal shown in the corner of the screen is a refusal
+   * about somebody else's problem.
+   */
+  shirtRefusals?: Readonly<Record<string, string>>;
+
   /** The caption above the table. Nothing when there is no caption to give. */
   caption?: string;
 }
@@ -137,11 +165,14 @@ interface ClubSquadTableProps {
  */
 const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
   squad,
+  team,
   onToggle,
   selectedIds,
   elsewhereIds,
   describeAbsence,
   onRelease,
+  onEditShirtNumber,
+  shirtRefusals,
   caption
 }) => {
   const [sort, setSort] = useState<{ key: SortKey; ascending: boolean }>({
@@ -167,6 +198,10 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
     const valueOf = (player: SquadPlayerDto, key: SortKey): number | string => {
       if (key === 'position') return POSITION_RANK[player.position] ?? 9;
       if (key === 'name') return player.name;
+
+      // A man who wears none is not number zero, so he sits below every man who wears one
+      // in both directions rather than sorting above the whole squad as "—0" would.
+      if (key === 'shirtNumber') return player.shirtNumber ?? Number.MAX_SAFE_INTEGER;
       return player[key] as number;
     };
 
@@ -239,6 +274,18 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
                 title={describeAbsence?.(player)}
                 onClick={onToggle ? () => onToggle(player) : undefined}
               >
+                <td className="num shirt-col">
+                  <ShirtNumberCell
+                    value={player.shirtNumber ?? null}
+                    playerName={player.name}
+                    onChange={
+                      onEditShirtNumber
+                        ? number => onEditShirtNumber(player, number)
+                        : undefined
+                    }
+                    refusal={shirtRefusals?.[player.id] ?? null}
+                  />
+                </td>
                 <td>{positionLabel(player.position)}</td>
                 {/* The name is the door, and only the name — unless the whole row is a pick,
                     in which case the row is the door and the name is part of it. */}
@@ -249,6 +296,7 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
                   {!selectedIds?.has(player.id) && elsewhereIds?.has(player.id) && (
                     <span className="pick-mark" title="Está no outro grupo">⇤</span>
                   )}
+                   <KitChip team={team} />
                    <PlayerName playerId={player.id}>{player.name}</PlayerName>
                    {player.retiring && (
                      <span className="retiring-mark" title="Aposentadoria declarada">🏁</span>

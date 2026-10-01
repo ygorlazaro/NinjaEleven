@@ -1,6 +1,7 @@
 import React from 'react';
 import type { FeedEvent } from '@/state';
-import type { MatchLineupDto, MatchPlayerDto } from '@/types';
+import type { KitSide, MatchLineupDto, MatchPlayerDto, TeamDto } from '@/types';
+import KitChip from '@/components/Club/KitChip';
 
 /**
  * The goals a club has scored, written under its name on the scoreline.
@@ -113,13 +114,20 @@ type GoalHistoryProps = {
   feed: FeedEvent[];
   teamId?: string;
   lineup: MatchLineupDto;
+  /**
+   * The club whose goals these are and which of its two shirts it is playing in, so the
+   * strip of names is a strip of one colour rather than a column of eleven names with
+   * nothing saying which of the two clubs scored them.
+   */
+  team?: TeamDto | null;
+  side?: KitSide;
 };
 
 /**
  * The strip under one club's name. Empty renders nothing at all rather than an empty box,
  * so a club that has not scored does not carry a frame where its name used to be.
  */
-export default function GoalHistory({ feed, teamId, lineup }: GoalHistoryProps) {
+export default function GoalHistory({ feed, teamId, lineup, team, side }: GoalHistoryProps) {
   const lines = scorerLines(feed, teamId, namesOf(lineup));
 
   if (lines.length === 0) return null;
@@ -131,6 +139,7 @@ export default function GoalHistory({ feed, teamId, lineup }: GoalHistoryProps) 
           <span className={`ball ${line.ownGoal ? 'ball--own' : 'ball--scored'}`} aria-hidden="true">
             ⚽
           </span>
+          <KitChip team={team} side={side} />
           <span className="goal-history__name">{line.name}</span>
           <span className="goal-history__minutes">
             {line.goals.map((goal, index) => (

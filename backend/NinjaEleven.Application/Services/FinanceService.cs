@@ -417,12 +417,12 @@ public class FinanceService
     /// two lines can never be written from the same balance, which is the only way the running
     /// balance in a book could be wrong.
     ///
-    /// **Every line the engine writes is reported to the manager's box from here.** The seam
-    /// is this one method rather than the four callers, because a line that was written and
-    /// not reported is a club whose manager hears about the money from a spreadsheet — and a
-    /// fifth writer added later would then be a fifth thing the box does not know about. The
-    /// message is built from the line itself, so the numbers in it cannot disagree with the
-    /// numbers in the book.
+    /// **Which of these lines reach the manager's box is asked here and not by the caller.**
+    /// The seam is this one method rather than the four callers for the same reason it always
+    /// was: a writer added later must not be able to forget, and a writer that remembered
+    /// would be a second opinion about what a manager should be interrupted for. What it asks
+    /// is <see cref="FinanceMovement.IsWorthAMessage"/>, so a gate receipt and a slice of the
+    /// wage bill are written into the book and into the weekly statement and nowhere else.
     /// </summary>
     private async Task<FinanceMovement> AppendAsync(
         Guid teamId,
@@ -449,7 +449,10 @@ public class FinanceService
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        await _inbox.PostFinanceAsync(line, mentions, cancellationToken);
+        if (FinanceMovement.IsWorthAMessage(kind))
+        {
+            await _inbox.PostPrizeAsync(line, cancellationToken);
+        }
 
         return line;
     }
@@ -501,30 +504,6 @@ public class FinanceService
 
         return line;
     }
-
-    /// <summary>
-    /// Reports a line that has already been committed to the manager's box.
-    ///
-    /// <para>
-    /// Separate from <see cref="StageMovementAsync"/> because the report has to come after the
-    /// commit: a manager who is told about a payment that then failed to be written has been
-    /// told something false, and a message about a line that does not exist is a message that
-    /// names a balance the club does not have.
-    /// </para>
-    /// </summary>
-    /// <param name="line">The committed line, as it was written.</param>
-    /// <param name="mentions">The people the message is about.</param>
-    /// <param name="cancellationToken">Cancellation.</param>
-    public async Task ReportAsync(
-        FinanceMovement line,
-        IEnumerable<InboxPersonDto>? mentions = null,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(line);
-
-        await _inbox.PostFinanceAsync(line, mentions, cancellationToken);
-    }
-
 
     /// <summary>
     /// The day of the season a fixture was played on, which is the day a line of money is

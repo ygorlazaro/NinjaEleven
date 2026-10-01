@@ -262,17 +262,27 @@ public class SponsorOfferServiceTests
 
         await service.SignAsync(_teamId, _seasonId, sponsor.Id, contractMatches: length);
 
+        // Signing is one of the two moments the box carries about a shirt deal: the money only
+        // arrives a match at a time, so a deal that was never announced would be a deal the
+        // manager finds out about from a statement with a name on his shirt he cannot place.
+        var signing = Assert.Single(written);
+        Assert.Equal(InboxCategory.Club, signing.Category);
+        Assert.Contains(sponsor.Name, signing.Subject);
+        Assert.Equal($"sponsor:{_contractsInDb.First().Id}:signed", signing.Reference);
+
         for (var match = 1; match < length; match++)
         {
             await service.PayPerMatchAsync(_teamId, Guid.NewGuid(), _seasonId, match);
         }
 
-        // Only the payments so far: the deal has not run out yet.
-        Assert.DoesNotContain(written, message => message.Category == InboxCategory.Club);
+        // The instalments are the statement's, not the box's: a message per matchday saying a
+        // number the manager signed up for is the redundancy the weekly statement removed.
+        Assert.Single(written);
 
         await service.PayPerMatchAsync(_teamId, Guid.NewGuid(), _seasonId, length);
 
-        var expiry = Assert.Single(written.Where(message => message.Category == InboxCategory.Club));
+        var expiry = written.Single(message => message.Category == InboxCategory.Club
+            && message.Reference.EndsWith(":expired", StringComparison.Ordinal));
         Assert.Contains(sponsor.Name, expiry.Subject);
         Assert.Equal($"sponsor:{_contractsInDb.First().Id}:expired", expiry.Reference);
     }

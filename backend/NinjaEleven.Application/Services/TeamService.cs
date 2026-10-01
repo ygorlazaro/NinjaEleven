@@ -206,6 +206,69 @@ public class TeamService
         return team;
     }
 
+    /// <summary>
+    /// Puts one of his own men in a shirt.
+    ///
+    /// <para>
+    /// Three refusals, and each of them says which of the three things went wrong: a club that
+    /// is not the manager's own, a player the club does not hold, and a number that is either
+    /// outside one to ninety-nine or already on somebody else's back. The third is the one
+    /// worth being precise about — "the number is taken" and "the number is not a number" are
+    /// both refusals, and a manager who changed 9 to 100 and 9 to 10 needs to be told which
+    /// of the two he did.
+    /// </para>
+    ///
+    /// <para>
+    /// The clash is asked of the club's whole set of live contracts rather than of a lookup by
+    /// number, because the question is not "who has this number" but "is this number free",
+    /// and a query that answered the first could not answer the second without also asking
+    /// whether it found anybody. One read of the dressing room settles both.
+    /// </para>
+    /// </summary>
+    public async Task<int> UpdateShirtNumberAsync(
+        Guid teamId,
+        Guid playerId,
+        int shirtNumber,
+        CancellationToken cancellationToken = default)
+    {
+        var team = await GetDrawableClubAsync(teamId, cancellationToken);
+
+        if (!ShirtNumberRules.IsValid(shirtNumber))
+        {
+            throw new DomainValidationException(
+                ShirtNumberRules.OutOfRangeCode,
+                $"O número da camisa vai de {ShirtNumberRules.Lowest} a {ShirtNumberRules.Highest}.");
+        }
+
+        // The live contracts are the dressing room: an ended one keeps the number it was
+        // given for the history, and does not stop anybody wearing it today.
+        var contracts = await _teamRepository.GetLiveContractsAsync(teamId, cancellationToken);
+
+        var contract = contracts.FirstOrDefault(membership => membership.PlayerId == playerId);
+        if (contract is null)
+        {
+            throw new DomainValidationException(
+                "PlayerNotContracted",
+                "Esse jogador não está no elenco deste clube.");
+        }
+
+        var clash = contracts.FirstOrDefault(membership =>
+            membership.Id != contract.Id && membership.ShirtNumber == shirtNumber);
+
+        if (clash is not null)
+        {
+            throw new DomainValidationException(
+                ShirtNumberRules.AlreadyTakenCode,
+                $"A camisa {shirtNumber} já está em uso no elenco.");
+        }
+
+        contract.WearNumber(shirtNumber);
+        _teamRepository.UpdateMembership(contract);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return shirtNumber;
+    }
+
     public async Task<IReadOnlyList<SquadPlayer>> GetSquadAsync(
         Guid teamId,
         Guid seasonId,

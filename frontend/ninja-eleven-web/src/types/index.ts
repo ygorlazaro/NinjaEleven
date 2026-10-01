@@ -179,6 +179,14 @@ export interface SquadPlayerDto {
   seasonsLeft: number;
   isInLastSeason: boolean;
 
+  /**
+   * The number he wears for this club, or null when he wears none.
+   *
+   * It belongs to the contract and not to the man, so it travels with the squad row rather
+   * than with the player: the same player under a new club wears a different number, and a
+   * number that lived on the person would follow him between clubs.
+   */
+  shirtNumber?: number | null;
   isAvailable: boolean;
   /** Whether the player has declared he will retire at the end of the season. */
   retiring: boolean;
@@ -198,7 +206,128 @@ export interface TeamDto {
   stadium?: StadiumDto | null;
   /** True if the club has a human manager, false if NPC-controlled, null if no manager row exists. */
   controlledBy?: boolean | null;
+  /**
+   * The club's badge, or null when nobody has drawn one — in which case a screen draws the
+   * initials placeholder rather than an empty space.
+   */
+  crest?: CrestDto | null;
+  /** The club's first shirt, or null. A club with neither still has two: its own colours. */
+  homeKit?: KitDto | null;
+  awayKit?: KitDto | null;
 }
+
+/**
+ * The ten shields a club may be given.
+ *
+ * The names are the domain's own, because the whole game serialises its enums as names: a
+ * screen that compared against a number would be the one place in the project that had to know
+ * how the transport happens to be configured.
+ */
+export type CrestShape =
+  | 'Round'
+  | 'Oval'
+  | 'Shield'
+  | 'EaredShield'
+  | 'Hexagon'
+  | 'Squircle'
+  | 'Pennant'
+  | 'Banner'
+  | 'Diamond'
+  | 'Star';
+
+/** The figures a crest may carry, or none at all. */
+export type CrestFigureKind = 'None' | 'Ball' | 'Star' | 'Flame' | 'Bolt' | 'Crown' | 'Wave' | 'Sword' | 'Anchor';
+
+/**
+ * An element on a crest, and where on the shield it stands.
+ *
+ * The colour is the club's third one and is deliberately not one of its other two: a red and
+ * black club writing itself in white is the ordinary case, and a lettering colour picked from
+ * the club's own pair would make that club impossible to draw.
+ *
+ * The position is a fraction of the shield's field rather than a pixel, because the same crest
+ * is drawn at twenty pixels in a table and at a hundred and sixty on the club's own page, and
+ * the same fraction has to mean the same place in both.
+ */
+export interface CrestElementPosition {
+  color: string;
+  verticalPosition: number;
+}
+
+export interface CrestTextDto extends CrestElementPosition {
+  content: string;
+}
+
+export interface CrestEmblemDto extends CrestElementPosition {
+  kind: CrestFigureKind;
+}
+
+export interface CrestDto {
+  shape: CrestShape;
+  /** The club's first colour: everything in the foreground — the border and the lettering. */
+  primaryColor: string;
+  /** The club's second colour: the field the elements sit on. */
+  secondaryColor: string;
+  text?: CrestTextDto | null;
+  emblem?: CrestEmblemDto | null;
+}
+
+/** The cuts a shirt may be made in. */
+export type KitPattern =
+  | 'Solid'
+  | 'SolidSeparateSleeves'
+  | 'VerticalStripe'
+  | 'HorizontalStripe'
+  | 'ThinStripes'
+  | 'Sash'
+  | 'Halves'
+  | 'Checkered';
+
+/** One of a club's shirts: two colours, a cut, and an optional third for the number. */
+export interface KitDto {
+  primaryColor: string;
+  secondaryColor: string;
+  pattern: KitPattern;
+  /** The collar and the number, or null when the club has not chosen one. */
+  trimColor?: string | null;
+}
+
+/**
+ * A crest as it is sent back from the editor.
+ *
+ * Every field travels even when the manager did not touch it. The editor is what decides what
+ * a crest is, and a request that left a field out would be asking the server to invent a
+ * decision the manager did not make — and a server that invented one would store a crest the
+ * manager never saw.
+ */
+export interface UpdateTeamCrestRequestDto extends CrestDto {}
+
+export interface UpdateTeamKitsRequestDto {
+  homeKit: KitDto;
+  awayKit: KitDto | null;
+}
+
+/**
+ * The shirt a manager puts a man in, and the number he ended up wearing.
+ *
+ * The response is the domain's own answer and not an echo of the request. The server refuses
+ * a number outside one to ninety-nine and a number another man is already wearing under the
+ * same contract, so the client sends a wish and is told what actually happened — and a client
+ * that painted its own guess would put "10" on a row whose change had been refused.
+ */
+export interface UpdateShirtNumberResponseDto {
+  playerId: Guid;
+  shirtNumber: number;
+}
+
+/**
+ * Which of a club's two shirts a match was played in.
+ *
+ * It is a fact about the fixture and not about the club, which is why it is on the lineup and
+ * not on the team: the same club plays its first shirt at home and its second when the two
+ * colours on the pitch would be impossible to tell apart.
+ */
+export type KitSide = 'Home' | 'Away';
 
 export interface StadiumDto {
   id: Guid;
@@ -966,6 +1095,9 @@ export interface MatchLineupDto {
   awayLineup: MatchPlayerDto[];
   homeBench: MatchPlayerDto[];
   awayBench: MatchPlayerDto[];
+  /** Which of each club's two shirts this match was played in, as the backend drew it. */
+  homeKitSide: KitSide;
+  awayKitSide: KitSide;
 }
 
 /** One leg of a cup tie, as the scoreboard shows it under the score of the other one. */
@@ -1208,6 +1340,12 @@ export type PlayerProfileDto = {
   reflexesStars: number;
   seasonId?: Guid | null;
   teamId?: Guid | null;
+  /**
+   * The number he wears for his current club, or null when he wears none. It is the same
+   * number the squad table shows and comes from the same contract, so a card and a roster
+   * cannot show two different shirts for one man.
+   */
+  shirtNumber?: number | null;
   teamName: string;
   teamPrimaryColor?: string | null;
   teamSecondaryColor?: string | null;

@@ -1617,6 +1617,10 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("player_id");
 
+                    b.Property<int?>("ShirtNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("shirt_number");
+
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date")
                         .HasColumnName("start_date");
@@ -1636,6 +1640,11 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("PlayerId")
                         .HasDatabaseName("ix_team_memberships_player_id");
+
+                    b.HasIndex("TeamId", "ShirtNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_team_memberships_team_id_shirt_number")
+                        .HasFilter("\"end_date\" IS NULL AND \"shirt_number\" IS NOT NULL");
 
                     b.HasIndex("TeamId", "StartDate")
                         .HasDatabaseName("ix_team_memberships_team_id_start_date");

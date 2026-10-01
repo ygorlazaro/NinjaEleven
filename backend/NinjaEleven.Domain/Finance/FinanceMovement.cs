@@ -196,6 +196,30 @@ public class FinanceMovement
     public static bool StatesABalance(FinanceMovementKind kind) =>
         kind is FinanceMovementKind.Seed or FinanceMovementKind.CarryOver;
 
+    /// <summary>
+    /// Whether a line of this kind is worth interrupting a manager for.
+    ///
+    /// <para>
+    /// One kind is, and the rule for saying so is not "it is large" — it is "the ledger
+    /// already says it and the box would only be saying it again in worse words". A gate
+    /// receipt, a slice of the wage bill and a training fee arrive on every matchday and every
+    /// one of them is a line in a statement that is already on its own screen, so telling the
+    /// manager about them one at a time is thirty identical messages a week about money the
+    /// game is already accounting for. A manager reads the week in one statement, which is why
+    /// the rule is asked here rather than left to each writer.
+    /// </para>
+    ///
+    /// <para>
+    /// A prize is the opposite case: it arrives twice or three times a season, it is the
+    /// competition paying the club rather than the club paying itself, and there is no other
+    /// screen that says the money arrived. Same for nothing else, deliberately — a sponsor's
+    /// deal is reported by the sponsor, and a transfer by the market, because what a manager
+    /// wants to know about those is who and why, not what the line was called.
+    /// </para>
+    /// </summary>
+    public static bool IsWorthAMessage(FinanceMovementKind kind) =>
+        kind is FinanceMovementKind.PrizeMoney;
+
     /// <summary>Whether this line is money coming in, ignoring the two that state a balance.</summary>
     public bool IsIncome => !StatesABalance(Kind) && Amount > 0m;
 

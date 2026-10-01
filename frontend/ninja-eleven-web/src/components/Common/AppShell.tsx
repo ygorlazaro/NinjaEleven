@@ -155,6 +155,10 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { search } = useLocation();
   const trainingTabOpen = new URLSearchParams(search).get('tab') === 'training';
 
+  // And the same for the squad: the two tabs of a club share one route, so the path alone
+  // cannot say which of them is open.
+  const squadTabOpen = !trainingTabOpen;
+
   return (
     <div className={`shell${bare ? ' shell--bare' : ''}`}>
       {!bare && (
@@ -181,6 +185,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         {selectedTeam && (
           <Link to="/club" className="sidebar-club-card">
             <ClubCrest
+              crest={selectedTeam.crest}
               primary={selectedTeam.primaryColor}
               secondary={selectedTeam.secondaryColor}
               name={selectedTeam.name}
@@ -294,6 +299,28 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               a link whose active state is the path alone would light up for the squad too,
               and a manager standing on the roster could not tell which of the club's two
               screens he was on. */}
+          {/* The club's twenty-three men, which is the first thing a manager opens after a
+              match and the thing the training sheet acts upon. It is a link of its own for
+              the same reason the training sheet is: the roster is where the answers are, and
+              a manager who has to reach the club through a crest on the sidebar to ask "who
+              is fit" is not asking it.
+
+              Being active is decided by the tab rather than by the path alone, because the
+              two share a route — otherwise this link would light up for the training sheet
+              too, and the manager could not tell which of the club's two screens he was on. */}
+          {selectedTeam && (
+            <NavLink
+              to={`/team/${selectedTeam.id}`}
+              end
+              className={({ isActive }) =>
+                `sidebar-link ${isActive && squadTabOpen ? 'active' : ''}`
+              }
+            >
+              <span className="sidebar-link__icon">👥</span>
+              <span className="sidebar-link__label">Elenco</span>
+            </NavLink>
+          )}
+
           {selectedTeam && (
             <NavLink
               to={`/team/${selectedTeam.id}?tab=training`}

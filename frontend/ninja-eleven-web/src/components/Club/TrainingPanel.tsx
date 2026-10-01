@@ -1,8 +1,9 @@
 import React from 'react';
-import type { SquadTrainingQuotesDto, TrainingQuoteDto, PlayerAttribute } from '@/types';
+import type { SquadTrainingQuotesDto, TrainingQuoteDto, PlayerAttribute, TeamDto } from '@/types';
 import { positionLabel } from '@/services/formatters';
 import { formatLimo } from '@/services/limo';
 import { PlayerName } from '@/components/Common/Names';
+import KitChip from '@/components/Club/KitChip';
 
 /**
  * The eight, in the order the squad table reads them, with the short labels it already uses.
@@ -30,6 +31,8 @@ function energyTextClass(energy: number): string {
 }
 
 interface TrainingPanelProps {
+  /** The club these men belong to, so the shirt sits beside the name. */
+  team?: TeamDto | null;
   quotes: SquadTrainingQuotesDto | null;
   loading: boolean;
   error: string | null;
@@ -64,6 +67,7 @@ interface TrainingPanelProps {
  * </para>
  */
 const TrainingPanel: React.FC<TrainingPanelProps> = ({
+  team,
   quotes,
   loading,
   error,
@@ -115,6 +119,7 @@ const TrainingPanel: React.FC<TrainingPanelProps> = ({
             anyBusy={busyPlayerId !== null}
             allowanceSpent={quotes.sessionsSpent >= quotes.sessionsAllowed}
             onTrain={onTrain}
+            team={team}
           />
         ))}
       </ul>
@@ -137,7 +142,9 @@ const PlayerSheet: React.FC<{
   /** The club's day is over. A cell is greyed for it as surely as for a broken leg. */
   allowanceSpent: boolean;
   onTrain: (playerId: string, attribute: PlayerAttribute) => void;
-}> = ({ player, busy, anyBusy, allowanceSpent, onTrain }) => (
+  /** The club the man belongs to, so the shirt sits beside his name. */
+  team?: TeamDto | null;
+}> = ({ player, busy, anyBusy, allowanceSpent, onTrain, team }) => (
   <li
     className={[
       'training__player',
@@ -150,6 +157,7 @@ const PlayerSheet: React.FC<{
     <div className="training__who">
       <span className="squad-preview__pos">{positionLabel(player.position)}</span>
       <span className="training__name">
+        <KitChip team={team} />
         <PlayerName playerId={player.playerId}>{player.name}</PlayerName>
       </span>
       <span className="training__meta">{player.age} anos</span>

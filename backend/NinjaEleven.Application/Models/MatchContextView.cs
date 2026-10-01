@@ -27,6 +27,40 @@ public class MatchContextView
     /// <summary>"Copa do Brasil", "Campeonato Brasileiro", "Supercopa Nacional".</summary>
     public string CompetitionName { get; init; } = string.Empty;
 
+    /// <summary>
+    /// The edition this match belongs to, and the round of it.
+    ///
+    /// <para>
+    /// They are here because this is the one reader that already had all of them in local
+    /// variables — the window knows the edition, the window knows its own number, and the
+    /// rounds of the edition are one more read of a table this service has open. A caller
+    /// that wanted to say "the tenth place went to the seventh" was having to go and
+    /// re-derive the whole chain of ids to find out which table to look at, which is the
+    /// shape of work that ends with two screens disagreeing about a table.
+    /// </para>
+    /// </summary>
+    public Guid CompetitionSeasonId { get; init; }
+
+    /// <summary>The round this match was, counted from one inside its own competition.</summary>
+    public int RoundNumber { get; init; }
+
+    /// <summary>How many rounds the edition has, which is what "rounds remaining" is read against.</summary>
+    public int TotalRounds { get; init; }
+
+    /// <summary>1 is the top of the pyramid, null for a competition that is not a division.</summary>
+    public int? Tier { get; init; }
+
+    /// <summary>
+    /// Whether a two-legged tie was decided by this match, and by whom.
+    ///
+    /// A cup tie is over when its window closes, so a report written one tick after the
+    /// whistle cannot yet say the club is through — and saying it anyway would be telling a
+    /// manager he is in the next round before the rules have said so.
+    /// </summary>
+    public bool TieResolved { get; init; }
+
+    public Guid? TieWinnerTeamId { get; init; }
+
     public CompetitionType CompetitionType { get; init; }
 
     /// <summary>

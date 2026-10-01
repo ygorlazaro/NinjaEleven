@@ -146,6 +146,23 @@ public class SponsorOfferService
             "{TeamName} signed a shirt deal with {SponsorName}: {Fee} limos per match for {Length} matches.",
             team.Name, sponsor.Name, fee, length);
 
+        // The deal is announced the day it is signed rather than the day the first instalment
+        // lands. A sponsor pays per match, so the money would otherwise only show up in the
+        // statement a week later, with a name on the shirt the manager cannot place — and the
+        // two halves of the same news, the contract and the expiry, belong in the same box.
+        await _inbox.PostSponsorSignedAsync(
+            new SponsorSignedFacts
+            {
+                RecipientTeamId = teamId,
+                ClubName = team.Name,
+                SponsorId = sponsor.Id,
+                SponsorName = sponsor.Name,
+                ContractId = contract.Id,
+                PerMatchFee = fee,
+                ContractMatches = length
+            },
+            cancellationToken);
+
         return await GetBookAsync(teamId, seasonId, cancellationToken);
     }
 
@@ -208,11 +225,11 @@ public class SponsorOfferService
         await _finance.AddAsync(line, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        // The shirt deal is the one piece of the club's income that is not a crowd and not a
-        // result, so it is the one a manager is least likely to notice happening: it is
-        // reported here rather than left to the ledger, where a line that arrives on its own
-        // every matchday is a line nobody reads.
-        await _inbox.PostFinanceAsync(line, cancellationToken: cancellationToken);
+        // The instalment itself is not a message. A sponsor pays per match, so reporting it
+        // would be one message per matchday saying a number the manager signed up for, and it
+        // is in the statement with the gate and the wages. What the box does carry is the
+        // deal itself — signed above, expired below — because those are the two moments a
+        // manager cannot work out from a balance.
 
         if (justExpired)
         {

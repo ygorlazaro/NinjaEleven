@@ -79,3 +79,35 @@ public class UpdateTeamKitsRequestDto
     public KitDto HomeKit { get; init; } = new();
     public KitDto? AwayKit { get; init; }
 }
+
+/// <summary>
+/// A player being put in a different shirt.
+///
+/// <para>
+/// Both halves travel together because neither one means anything without the other: a
+/// player id without a number is a man the manager did not choose, and a number without a
+/// player is a shirt nobody is wearing. The service refuses a number outside one to
+/// ninety-nine and a number another man is already wearing, so the client does not have to
+/// be the thing that decides what a valid number is.
+/// </para>
+/// </summary>
+public class UpdateShirtNumberRequestDto
+{
+    public Guid PlayerId { get; init; }
+    public int ShirtNumber { get; init; }
+}
+
+/// <summary>
+/// The number a man is wearing after the change, said back rather than read again.
+///
+/// <para>
+/// It is the number the domain decided, not the one the request asked for, and that is the
+/// whole reason it travels: a client that painted the number it sent would be showing its own
+/// guess on a row whose value is a fact about a dressing room.
+/// </para>
+/// </summary>
+public class UpdateShirtNumberResponseDto
+{
+    public Guid PlayerId { get; init; }
+    public int ShirtNumber { get; init; }
+}

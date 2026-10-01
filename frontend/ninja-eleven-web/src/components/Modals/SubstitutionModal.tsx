@@ -8,6 +8,8 @@ interface SubstitutionModalProps {
   lineup: MatchPlayerDto[];
   bench: MatchPlayerDto[];
   substitutionsUsed: number;
+  /** Which of the club's two shirts this match was played in. */
+  kitSide?: 'Home' | 'Away';
   /**
    * A player already chosen to come off, because the manager reached him by clicking his
    * card under the scoreboard. He only has to say who replaces him.
@@ -36,6 +38,7 @@ const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
   lineup,
   bench,
   substitutionsUsed,
+  kitSide,
   preselectOut = null,
   forcedFor = null,
   busy = false,
@@ -61,6 +64,8 @@ const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
             sheet, so the pick the manager made there is the pick the panel opens with. */}
         <SubstitutionPanel
           key={preselectOut ?? 'none'}
+          team={team}
+          kitSide={kitSide}
           lineup={lineup}
           bench={bench}
           used={substitutionsUsed}

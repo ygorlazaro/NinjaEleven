@@ -50,6 +50,15 @@ public class PlayerProfile
     public int InjuryMatchesRemaining { get; set; }
 
     /// <summary>
+    /// The number he wears for the club on this card, or null when he is on nobody's books.
+    ///
+    /// It travels with the contract rather than with the player, so the same man shown on
+    /// two cards for two clubs is wearing two numbers — and a profile of a free agent says
+    /// nothing at all rather than repeating the last shirt he happened to wear.
+    /// </summary>
+    public int? ShirtNumber { get; set; }
+
+    /// <summary>
     /// What he is worth on the market and what the club owes for his contract, in limos.
     ///
     /// They are read off the same season state the market reads, so the price on a profile

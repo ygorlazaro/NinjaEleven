@@ -711,6 +711,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
                 the matchday carry. A scoreboard says two names; a manager recognises a club
                 by its colours before he has finished reading them. */}
             <ClubCrest
+              crest={homeTeam.crest}
               primary={homeTeam.primaryColor}
               secondary={homeTeam.secondaryColor}
               name={homeTeam.name}
@@ -721,7 +722,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
             {/* The goals under the name they belong to. A score says how many; the manager
                 watching this match reads who, and an own goal and a penalty are not the same
                 goal as any other. */}
-            <GoalHistory feed={feed} teamId={homeTeam.id} lineup={lineup!} />
+            <GoalHistory feed={feed} teamId={homeTeam.id} lineup={lineup!} team={homeTeam} side={lineup!.homeKitSide} />
           </div>
           <div>
             <div className={`score ${scoringFlash ? 'score--flash' : ''}`} id="score">{score}</div>
@@ -732,6 +733,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
           </div>
           <div className={`team-name away ${userTeamIdx === 1 ? 'user-team team-colored' : 'team-colored'}`}>
             <ClubCrest
+              crest={awayTeam.crest}
               primary={awayTeam.primaryColor}
               secondary={awayTeam.secondaryColor}
               name={awayTeam.name}
@@ -739,7 +741,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
             />
             <ClubName teamId={awayTeam.id}>{awayTeam.name}</ClubName>
             <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(awayTeam.stars)}</span>
-            <GoalHistory feed={feed} teamId={awayTeam.id} lineup={lineup!} />
+            <GoalHistory feed={feed} teamId={awayTeam.id} lineup={lineup!} team={awayTeam} side={lineup!.awayKitSide} />
           </div>
 
           {/*
@@ -804,6 +806,12 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
           </div>
           <OnPitchList
             players={isInThisMatch ? userLineup : lineup.homeLineup}
+            team={isInThisMatch ? (userTeamIdx === 0 ? homeTeam : awayTeam) : homeTeam}
+            side={
+              isInThisMatch
+                ? userTeamIdx === 0 ? lineup.homeKitSide : lineup.awayKitSide
+                : lineup.homeKitSide
+            }
             onSelect={canSubstitute ? openSubstitutionFor : undefined}
             ballCarrierId={isInThisMatch && ballIsOurs ? state?.possession?.playerId : null}
           />
@@ -999,6 +1007,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
         lineup={userLineup}
         bench={userBench}
         substitutionsUsed={userSubstitutionsUsed}
+        kitSide={userTeamIdx === 0 ? lineup.homeKitSide : lineup.awayKitSide}
         busy={substituting}
         onSubstitute={substitute}
         onContinue={continueSecondHalf}
@@ -1010,6 +1019,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
       <SubstitutionModal
         show={isInThisMatch && (showSubstitutionModal || !!state?.injury?.awaitingSubstitution)}
         team={userTeamIdx === 0 ? homeTeam : awayTeam}
+        kitSide={userTeamIdx === 0 ? lineup.homeKitSide : lineup.awayKitSide}
         lineup={userLineup}
         bench={userBench}
         substitutionsUsed={userSubstitutionsUsed}

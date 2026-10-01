@@ -104,6 +104,7 @@ public class PlayerService
                 var contractSeason = await _seasonRepository.GetAsync(state.SeasonId, cancellationToken);
                 if (contract is not null && contractSeason is not null)
                 {
+                    profile.ShirtNumber = contract.ShirtNumber;
                     profile.ContractSeasons = contract.ContractSeasons;
                     profile.SeasonsLeft = contract.SeasonsLeft(contractSeason.Number);
                     profile.IsInLastSeason = contract.IsInHisLastSeason(contractSeason.Number);

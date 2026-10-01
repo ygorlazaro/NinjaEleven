@@ -1,5 +1,9 @@
 import { SeasonApi, TeamApi, SponsorApi, ManagerApi } from '@/api';
 import KitShirt from '@/components/Club/KitShirt';
+import ClubCrest from '@/components/Club/ClubCrest';
+import CrestEditor from '@/components/Club/CrestEditor';
+import KitEditor from '@/components/Club/KitEditor';
+import { kitOf } from '@/services/clubKits';
 import ClubOwnershipIcon from '@/components/Common/ClubOwnershipIcon';
 import DivisionTrophy from '@/components/League/DivisionTrophy';
 import { mockClubProfile } from '@/mock/clubProfile';
@@ -35,35 +39,6 @@ const TROPHIES: Record<ClubTrophyDto['kind'], { icon: string; label: string }> =
   RunnerUp: { icon: '🥈', label: 'Vice' },
   Third: { icon: '🥉', label: 'Terceiro' }
 };
-
-/**
- * A club's shield, drawn as a placeholder in the club's own colours.
- *
- * The shape and the two colours are all there is: the real badge is a piece of artwork the
- * game does not have yet, and a blank space would leave the page looking broken rather than
- * unfinished. So the shield is a shield, wearing the colours the club wears, and when the
- * artwork arrives it replaces this and nothing else on the page moves.
- */
-const ClubCrest: React.FC<{ primary: string; secondary: string; name: string }> = ({
-  primary,
-  secondary,
-  name
-}) => (
-  <span
-    className="club-crest"
-    style={{ background: primary, borderColor: secondary, color: secondary }}
-    role="img"
-    aria-label={`Escudo do ${name}`}
-    title="Escudo ainda não existe: um placeholder nas cores do clube"
-  >
-    {name
-      .split(' ')
-      .filter(word => word.length > 2)
-      .slice(0, 2)
-      .map(word => word[0])
-      .join('')}
-  </span>
-);
 
 /**
  * One number the page says about the club, as a pair of words and a figure.
@@ -182,6 +157,7 @@ const TrophyShelf: React.FC<{ trophies: ClubTrophyDto[] }> = ({ trophies }) => {
  */
 const ClubScreen: React.FC = () => {
   const selectedTeam = useGameState((s) => s.selectedTeam);
+  const setSelectedTeam = useGameState((s) => s.setSelectedTeam);
   const yourClubId = useAuthStore((s) => s.teamId);
   const returnedAfterDismissal = useAuthStore((s) => s.returnedAfterDismissal);
   const clearReturnedAfterDismissal = useAuthStore((s) => s.clearReturnedAfterDismissal);
@@ -196,6 +172,15 @@ const ClubScreen: React.FC = () => {
   const [editingCoach, setEditingCoach] = useState(false);
   const [coachInput, setCoachInput] = useState('');
   const [coachError, setCoachError] = useState<string | null>(null);
+  /**
+   * Which of the two editors is open, if one is.
+   *
+   * It is screen state and not a route because neither editor is a place: both are a dialog
+   * over the club's own page, opened from it and closed back onto it. A route would make the
+   * editor something a manager could be linked to, and a badge that cannot be reached by a
+   * link is a badge nobody has drawn.
+   */
+  const [editor, setEditor] = useState<'crest' | 'kits' | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -318,6 +303,7 @@ const ClubScreen: React.FC = () => {
             at a glance, so it goes where the eye lands first and the name comes with it. */}
         <header className="club-page__head">
           <ClubCrest
+            crest={selectedTeam?.crest}
             primary={club.primaryColor}
             secondary={club.secondaryColor}
             name={club.name}
@@ -364,6 +350,8 @@ const ClubScreen: React.FC = () => {
             </p>
           </div>
           <div className="club-page__actions">
+            <button className="ctrl" onClick={() => setEditor('crest')}>Escudo</button>
+            <button className="ctrl" onClick={() => setEditor('kits')}>Uniformes</button>
             <Link className="ctrl" to={`/team/${club.teamId}`}>
               Elenco
             </Link>
@@ -417,7 +405,19 @@ const ClubScreen: React.FC = () => {
           )}
         </section>
 
-        <KitWall team={selectedTeam} />
+        <KitWall team={selectedTeam} onEdit={() => setEditor('kits')} />
+
+        {editor === 'crest' && (
+          <CrestEditor
+            team={selectedTeam}
+            onClose={() => setEditor(null)}
+            onSaved={setSelectedTeam}
+          />
+        )}
+
+        {editor === 'kits' && (
+          <KitEditor team={selectedTeam} onClose={() => setEditor(null)} onSaved={setSelectedTeam} />
+        )}
 
         <TrophyShelf trophies={club.trophies} />
 
@@ -442,17 +442,20 @@ const ClubScreen: React.FC = () => {
 };
 
 /**
- * The two shirts, side by side, in the club's colours.
+ * The two shirts, side by side, in the club's own colours and cuts.
  *
- * A club's colours are the game's own (`teams.primary_color` and `secondary_color`) and a
- * manager recognises his club by them long before he reads its name, which is why they are
- * the one thing on this page that is not a stand-in. Everything else about a kit is invented:
- * the game keeps no shirt, no pattern and no squad number, so the cut is drawn from the club's
- * id and the number is too. The home shirt wears the master sponsor's name because that is
- * what a shirt is for, and the away shirt does not, because a strip that is only there to be a
- * different shape is a real thing too.
+ * A manager recognises his club by its colours long before he reads its name, which is why they
+ * are the one thing on this page that is not a stand-in — and the cut is the other half of that
+ * recognition: a club in four thin white stripes is not the club in a solid white. Both shirts
+ * are shown because both exist: the second one is there to be changed into when the first one
+ * clashes with somebody else's, and a manager who has never been told that has no idea why his
+ * visitors came out in yellow.
+ *
+ * The home shirt wears the master sponsor's name because that is what a shirt is for, and the
+ * away shirt does not, because a strip that is only there to be a different shape is a real
+ * thing too.
  */
-const KitWall: React.FC<{ team: TeamDto }> = ({ team }) => {
+const KitWall: React.FC<{ team: TeamDto; onEdit: () => void }> = ({ team, onEdit }) => {
   const seed = [...team.id].reduce((sum, character) => sum + character.charCodeAt(0), 0);
   const [sponsorName, setSponsorName] = useState('');
 
@@ -475,27 +478,40 @@ const KitWall: React.FC<{ team: TeamDto }> = ({ team }) => {
     };
   }, [team]);
 
-  const { primaryColor, secondaryColor } = team;
+  const home = kitOf(team, 'Home');
+  const away = team.awayKit ?? null;
 
   return (
     <section className="kit-wall">
-      <h3 className="club-section-title">Uniformes</h3>
+      <h3 className="club-section-title">
+        Uniformes
+        <button className="ctrl kit-wall__edit" onClick={onEdit}>
+          Editar
+        </button>
+      </h3>
       <div className="kit-wall__row">
-        <KitShirt
-          variant="home"
-          primary={primaryColor}
-          secondary={secondaryColor}
-          seed={team.id}
-          number={(seed % 20) + 1}
-          sponsor={sponsorName}
-        />
-        <KitShirt
-          variant="away"
-          primary={secondaryColor}
-          secondary={primaryColor}
-          seed={team.id}
-          number={((seed * 7) % 20) + 1}
-        />
+        {home && (
+          <KitShirt
+            kit={home}
+            number={(seed % 20) + 1}
+            sponsor={sponsorName}
+            caption="Casa"
+            label={`Uniforme principal do ${team.name}`}
+          />
+        )}
+        {away ? (
+          <KitShirt
+            kit={away}
+            number={((seed * 7) % 20) + 1}
+            caption="Fora"
+            label={`Uniforme reserva do ${team.name}`}
+          />
+        ) : (
+          <p className="kit-wall__none">
+            Sem uniforme de reserva — é o que o jogo troca quando as duas cores do confronto se
+            confundem.
+          </p>
+        )}
       </div>
     </section>
   );

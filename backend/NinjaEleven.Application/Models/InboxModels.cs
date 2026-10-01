@@ -1,3 +1,5 @@
+using NinjaEleven.Domain.Competitions;
+using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Inbox;
 
 namespace NinjaEleven.Application.Models;
@@ -79,6 +81,33 @@ public class MatchReportFacts
     public required int ClubGoals { get; init; }
     public required int OpponentGoals { get; init; }
 
+    /// <summary>
+    /// What the match was, worked out from the order the goals went in.
+    ///
+    /// It travels as a fact rather than as a sentence because a comeback is a fact about a
+    /// match: the same 3 x 1 read from four different goal sequences is four different
+    /// evenings, and the desk that writes the lead needs to be able to tell them apart.
+    /// </summary>
+    public MatchShape Shape { get; init; } = MatchShape.Ordinary;
+
+    /// <summary>
+    /// Every goal of the match, in the order it happened, for the manager's club and the
+    /// other one alike — a report that listed only his own goals would be a report of half
+    /// the match.
+    /// </summary>
+    public IReadOnlyList<MatchGoal> Goals { get; init; } = Array.Empty<MatchGoal>();
+
+    /// <summary>
+    /// Where the result left the club, and where it found him.
+    ///
+    /// <para>
+    /// Nulls are meaningful and are not missing data: a cup tie has no table, so both
+    /// positions and both gaps are absent, and a report that wrote "7º lugar" about a
+    /// quarter-final would be reporting a table nobody is keeping.
+    /// </para>
+    /// </summary>
+    public CompetitionContext? Competition { get; init; }
+
     public string ClubFormation { get; init; } = string.Empty;
     public string OpponentFormation { get; init; } = string.Empty;
 
@@ -97,6 +126,15 @@ public class MatchReportFacts
     public IReadOnlyList<InboxPersonDto> GoalScorers { get; init; } = Array.Empty<InboxPersonDto>();
 
     public IReadOnlyList<InboxPersonDto> Booked { get; init; } = Array.Empty<InboxPersonDto>();
+
+    /// <summary>
+    /// Who is out of the next match and why, or null when the whole eleven will be there.
+    ///
+    /// It travels as facts because a manager reading his box in the morning has to build an
+    /// eleven, and a suspension he was not told about is a player he picks on Saturday
+    /// afternoon.
+    /// </summary>
+    public MatchAbsence? Absence { get; init; }
 
     /// <summary>Where the club plays next, and against whom.</summary>
     public Guid? NextFixtureId { get; init; }
@@ -215,4 +253,175 @@ public class TransferDecisionFacts
 
     /// <summary>The proposal this answers. The outcome is folded into the written reference.</summary>
     public required string Reference { get; init; }
+}
+
+/// <summary>
+/// The club's week, in the words the treasurer would use.
+///
+/// <para>
+/// The facts arrive already added up — the four buckets and the balance — because the service
+/// that owns the book is the one that can read it, and a statement composed by a second reader
+/// of the same table would be a second set of numbers for the same week. What is left to the
+/// inbox is the writing.
+/// </para>
+/// </summary>
+public class StatementFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+
+    /// <summary>The first day of the season this statement covers.</summary>
+    public required int FromMatchDay { get; init; }
+
+    /// <summary>The last day of the season this statement covers, the day it was written on.</summary>
+    public required int ToMatchDay { get; init; }
+
+    public required decimal GateRevenue { get; init; }
+    public required decimal Signings { get; init; }
+    public required decimal Sales { get; init; }
+    public required decimal OtherIncome { get; init; }
+
+    public required decimal Wages { get; init; }
+    public required decimal Training { get; init; }
+    public required decimal OtherExpenses { get; init; }
+
+    /// <summary>What the club had when the week opened.</summary>
+    public required decimal OpeningBalance { get; init; }
+
+    /// <summary>What the club has now, which is the last line's own balance.</summary>
+    public required decimal ClosingBalance { get; init; }
+
+    /// <summary>
+    /// The gate count, so the statement can say whether a full house or an empty one paid for
+    /// it. A manager looking at L$ 40.000 of receipts wants to know whether that was a crowd
+    /// or a ticket price, and those are two different decisions.
+    /// </summary>
+    public int HomeMatches { get; init; }
+
+    /// <summary>The reference the statement is written once under.</summary>
+    public required string Reference { get; init; }
+}
+
+/// <summary>
+/// A sponsor has signed with the club, in the words a manager reads it in.
+///
+/// <para>
+/// A deal is signed by hand and a deal that ends is signed by nobody, which is why the two
+/// are separate messages and neither is folded into the money: what a manager needs to know
+/// about a sponsor is the name on the shirt and the number of matches it lasts, and both are
+/// facts about a contract rather than about a line of the book.
+/// </para>
+/// </summary>
+public class SponsorSignedFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+    public required Guid SponsorId { get; init; }
+    public required string SponsorName { get; init; }
+    public required Guid ContractId { get; init; }
+
+    /// <summary>What the sponsor pays per match, which is the shape of the whole deal.</summary>
+    public required decimal PerMatchFee { get; init; }
+
+    /// <summary>How many matches the shirt carries the name for.</summary>
+    public required int ContractMatches { get; init; }
+}
+
+/// <summary>
+/// Where a result left the club, in the words a manager reads it in.
+///
+/// <para>
+/// The four numbers a report needs and the four sentences it cannot invent: the position the
+/// club held before the whistle, the one it is holding now, how far it is from the place it
+/// wants and how far from the place it does not want to be. Every one of them is read from
+/// the table as it stands, and every one of them is absent for a competition that has no
+/// table — a cup tie is decided by the tie, not by a position.
+/// </para>
+/// </summary>
+public class CompetitionContext
+{
+    /// <summary>"Campeonato", "Copa", "Supercopa" — what kind of competition this was.</summary>
+    public required CompetitionType Kind { get; init; }
+
+    /// <summary>True when the competition keeps a table of sixteen clubs.</summary>
+    public bool HasTable { get; init; }
+
+    /// <summary>Where the club stood before this match, counted from one.</summary>
+    public int? PositionBefore { get; init; }
+
+    /// <summary>Where it stands now, counted from one.</summary>
+    public int? PositionAfter { get; init; }
+
+    /// <summary>Places climbed, or the number of places dropped.</summary>
+    public int PositionChange { get; init; }
+
+    public int? Points { get; init; }
+
+    /// <summary>
+    /// The points that separate the club from the last place that goes up, and from the
+    /// first place that goes down. Null when there is no such place — a club already inside
+    /// the promotion places is not a fixed number of points away from qualifying, it is
+    /// there.
+    /// </summary>
+    public int? PointsToPromotion { get; init; }
+
+    public int? PointsToRelegation { get; init; }
+
+    /// <summary>How many rounds of the championship are still to be played.</summary>
+    public int? RoundsRemaining { get; init; }
+
+    /// <summary>The round this match was, counted from one, when the competition keeps rounds.</summary>
+    public int? RoundNumber { get; init; }
+
+    /// <summary>
+    /// Whether the tie was won on the night — decided on the aggregate, or on penalties —
+    /// and null when it was not decided by this match.
+    /// </summary>
+    public bool? Advanced { get; init; }
+}
+
+/// <summary>
+/// Why a man will not be there next week, kept apart because a manager acts on them
+/// differently: a red and an accumulation of yellows are both decided, and an injury is the
+/// one thing about which the only decision left is who replaces him.
+/// </summary>
+public enum AbsenceCause
+{
+    /// <summary>A straight red. Two matches.</summary>
+    RedCard,
+
+    /// <summary>Three yellows in one match. Two matches, and the count starts again.</summary>
+    AccumulatedYellows,
+
+    /// <summary>Hurt in the match, and hurt enough to have come off.</summary>
+    Injury
+}
+
+/// <summary>One man out of the next match.</summary>
+public class PlayerAbsence
+{
+    public required Guid PlayerId { get; init; }
+    public required AbsenceCause Cause { get; init; }
+
+    /// <summary>
+    /// How many matches he is out, or zero when the number is not the engine's to say — a
+    /// knock drawn in the match itself is measured in days the club does not control.
+    /// </summary>
+    public int Matches { get; init; }
+}
+
+/// <summary>
+/// The men who will be missing from the next match, and why.
+///
+/// <para>
+/// A report that names them matters more than a report that says "the referee was busy": a
+/// manager reading his box on the morning after has to build an eleven, and a suspension he
+/// was not told about is a player he picks on Saturday afternoon. The two causes that carry
+/// a number are the ones that decide the shape of that eleven, so the number is carried too
+/// rather than left for the manager to go and count.
+/// </para>
+/// </summary>
+public class MatchAbsence
+{
+    public IReadOnlyList<PlayerAbsence> Players { get; init; } = Array.Empty<PlayerAbsence>();
 }

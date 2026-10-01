@@ -92,6 +92,16 @@ public class MatchContextService
 
         var home = await _teamRepository.GetAsync(match.HomeTeamId, cancellationToken);
 
+        // The round count and the tie are read here rather than by whoever wants them: this is
+        // the one service that has the window open, so a caller asking "how many rounds are
+        // left" would otherwise have to walk the fixture, the round and the whole round list
+        // again, and two callers doing it on the same afternoon is two chances to read the
+        // table a tick apart and print two different "rounds remaining".
+        var rounds = await _roundRepository.ListByCompetitionSeasonAsync(
+            window.CompetitionSeasonId, cancellationToken) ?? [];
+
+        var tie = await _cupTieRepository.GetByLegAsync(fixture.Id, cancellationToken);
+
         return new MatchContextView
         {
             SeasonName = season?.Name ?? string.Empty,
@@ -99,8 +109,14 @@ public class MatchContextService
             CompetitionName = edition.CompetitionName,
             CompetitionType = edition.Type,
             EditionName = edition.Name,
+            CompetitionSeasonId = window.CompetitionSeasonId,
+            RoundNumber = window.Number,
+            TotalRounds = rounds.Count == 0 ? window.Number : rounds.Max(round => round.Number),
+            Tier = edition.Tier,
+            TieResolved = tie is { IsResolved: true },
+            TieWinnerTeamId = tie?.WinnerTeamId,
             PhaseName = PhaseOf(edition, window),
-            LegLabel = LegLabelOf(edition, await _cupTieRepository.GetByLegAsync(fixture.Id, cancellationToken), fixture.Id),
+            LegLabel = LegLabelOf(edition, tie, fixture.Id),
             StadiumName = home?.Stadium?.Name ?? string.Empty,
             StadiumCapacity = home?.Stadium?.Capacity ?? 0,
             FirstLeg = await ReadTheOtherLegAsync(match.FixtureId, edition.Type, cancellationToken)

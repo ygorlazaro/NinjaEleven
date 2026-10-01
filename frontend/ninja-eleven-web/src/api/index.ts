@@ -7,6 +7,7 @@ import type {
   TrainingResultDto,
   SquadTrainingQuotesDto,
   PlayerDto, CompetitionDto, CompetitionEditionDto, SeasonDto, TeamDto,
+  CrestDto, CrestShape, KitDto,
   FixtureDto, NextFixtureDto, RoundDto, StandingDto, CompetitionStandingsDto, ScorerDto, LeagueSetupResult,
   MatchDto, MatchEventDto, MatchLineupDto, MatchStateDto, MatchContextDto, LiveMatchDto,
   MatchCommandResult, MatchEngineEventDto, MatchResult, RoundSimulationResult, TacticDto, Guid, MatchdayReportDto,
@@ -41,6 +42,9 @@ import type {
     ChangePasswordRequestDto,
     UpdateTeamNameRequestDto,
     UpdateTeamColorsRequestDto,
+  UpdateTeamCrestRequestDto,
+  UpdateShirtNumberResponseDto,
+  UpdateTeamKitsRequestDto,
     ClubRankingDto,
     ClubBalanceDto,
     DivisionRecentTransfersDto,
@@ -57,6 +61,20 @@ const SCORER_POOL = 250;
  * Every route is singular, as the backend contract requires: /team, /player,
  * /competition, /season, /round, /fixture, /match, /league.
  */
+/**
+ * The request that says "this club has no crest".
+ *
+ * The backend reads a crest with neither a letter nor a figure as a clearing rather than as a
+ * refusal, so the editor can offer "sem escudo" without inventing a shape to send instead.
+ */
+const clearTheCrest = () => ({
+  shape: 'Shield' as CrestShape,
+  primaryColor: '#1f3c56',
+  secondaryColor: '#f5f5f5',
+  text: null,
+  emblem: null,
+});
+
 export const TeamApi = {
   list: () => api.get<TeamDto[]>('/team').then(r => r.data),
   get: (id: string) => api.get<TeamDto>(`/team/${id}`).then(r => r.data),
@@ -149,7 +167,40 @@ export const TeamApi = {
   /** Changes the kit colours of the club the manager has taken charge of. */
   updateColors: (id: string, primaryColor: string, secondaryColor: string) =>
     api.put<TeamDto>(`/team/${id}/colors`, { primaryColor, secondaryColor } as UpdateTeamColorsRequestDto).then(r => r.data),
+
+  /**
+   * Draws the club's crest. A null crest clears the badge rather than leaving it half drawn:
+   * the shield goes back to the initials placeholder, which is what a club that never had one
+   * has always looked like.
+   */
+  updateCrest: (id: string, crest: CrestDto | null) =>
+    api.put<TeamDto>(`/team/${id}/crest`, crest ?? clearTheCrest()).then(r => r.data),
+
+  /**
+   * Draws both shirts at once.
+   *
+   * The second shirt exists for exactly one reason — to be changed into when the first one
+   * clashes — so a club that has decided what it will wear when it clashes has decided both.
+   * A null away shirt is a club that has decided it has no second one.
+   */
+  updateKits: (id: string, homeKit: KitDto, awayKit: KitDto | null) =>
+    api.put<TeamDto>(`/team/${id}/kits`, { homeKit, awayKit } as UpdateTeamKitsRequestDto).then(r => r.data),
+
+  /**
+   * Puts a man in a shirt, and answers with the number he ended up wearing.
+   *
+   * The answer is the backend's number rather than the one that was asked for, and the caller
+   * paints what comes back: a client that trusted its own input would show a row saying 10
+   * on a man the server had refused to give 10 to, and the refusal would only surface on the
+   * next reload. The response carries one man rather than the whole squad because the screen
+   * sending this already holds the squad and wants to change one cell of it.
+   */
+  updateShirtNumber: (id: string, playerId: string, shirtNumber: number) =>
+    api
+      .put<UpdateShirtNumberResponseDto>(`/team/${id}/shirt-number`, { playerId, shirtNumber })
+      .then(r => r.data),
 };
+
 
 export const PlayerApi = {
   list: () => api.get<PlayerDto[]>('/player').then(r => r.data),

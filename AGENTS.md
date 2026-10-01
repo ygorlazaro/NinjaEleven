@@ -105,6 +105,9 @@ GET /competition/{editionId}/top-scorer-prize
 
 GET  /world/due?wave=          POST /world/advance?teamId=
 POST /world/play-due?wave=&teamId=
+
+PUT  /team/{id}/name                          PUT  /team/{id}/crest
+PUT  /team/{id}/colors                        PUT  /team/{id}/kits
 ```
 
 Domain errors return RFC 7807 with a stable `code` (e.g. `TeamNotFound`,
@@ -729,6 +732,47 @@ A player has a face, it is drawn once, and it is the same face every time:
 - **Resuming a seeded world still has work to do.** The seeder skips a world that already has
   teams, so a pool that arrives later would leave everybody faceless; `DatabaseSeeder` gives a
   face to every player whose `face` is null before it returns.
+
+## The Club's Colours
+
+A club's badge and its two shirts are drawn by its manager and read off his club everywhere, and
+the rules below are the ones the code cannot be allowed to drift on.
+
+- **The two colours have one job each.** On a crest the primary is everything in the foreground —
+  the border and the lettering — and the secondary is the field the elements sit on. A crest is
+  stroked in the primary on all ten shapes, because the border is what makes a badge recognisable
+  at twenty pixels in a table.
+- **A third colour belongs to an element and not to the club.** `CrestText` and `CrestEmblem` each
+  carry their own colour, and a red and black club writing itself in white is the ordinary case: a
+  colour picked from the club's own pair would make that club impossible to draw. A kit's third
+  colour is the one the number and the collar are read in.
+- **The position of an element is a fraction of the field, not a pixel**, and it is clamped to a
+  range per element kind (`CrestText.LowestPosition`, `CrestEmblem.LowestPosition`). The badge is
+  drawn at twenty pixels in a table and a hundred and sixty on the club's own page, so the same
+  fraction has to mean the same place in both — and because the position is the *middle* of the
+  element, an unclamped 0 would hang half of a figure out of the top of the shield.
+- **A badge is the JSON of a choice and never a second copy of the design's shape.** `teams` holds
+  `crest_json`, `home_kit_json` and `away_kit_json` as `jsonb`, and `CrestDesign.Parse` /
+  `KitDesign.Parse` answer null rather than throwing: a club whose column was written by hand is a
+  club whose shield is the initials placeholder again, which is what it was before crests existed.
+- **A club is drawn, not asked.** `ClubIdentityDefaults` works a badge and two shirts out of the
+  club's name with FNV-1a, so it is the same every time a world is seeded, and the seeder gives one
+  to every club that has none. The default never overwrites a manager's drawing — it fills a gap.
+- **The two shirts exist because one of them clashes, and which one is drawn from the match.**
+  `KitClash.AreIndistinguishable` compares the two *bodies* by WCAG contrast and nothing else: two
+  dark bodies are one dark mass however differently they are trimmed, and a trim is not what tells
+  two teams apart. `KitClash.Decide` then draws over the pairs that can be told apart and not over
+  all four combinations — a coin between two unreadable shirts decides nothing.
+- **A match remembers the two shirts it was played in.** `Match.HomeKitSide` and
+  `Match.AwayKitSide` are stamped at the kick-off that drew them, from the match's own seed, so a
+  reload at minute seventy shows the same two shirts and an abandoned fixture replayed changes
+  shirt the same way twice.
+- **Only the club a manager is running may be drawn**, and the check is in `TeamService` rather
+  than in the controller: the club screen, the club card and a background service all reach it
+  through the same door, and a rule in the controller is a rule the other two walk past.
+- **A crest with neither a letter nor a figure is a clearing, not a refusal.** It is a club whose
+  shield goes back to the initials; the editor offers "sem escudo" rather than inventing a shape to
+  send instead.
 
 ## Sound
 

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
+using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Finance;
 using NinjaEleven.Domain.Inbox;
 
@@ -154,104 +155,89 @@ public class InboxService
     // ---------------------------------------------------------------- writing
 
     /// <summary>
-    /// Reports a line of the club's book as news.
+    /// Reports a competition's money as news.
     ///
-    /// Every movement the engine writes comes through here, whatever wrote it: the gate, the
-    /// wage bill, a sponsor, a signing, a prize. The message is composed from the line itself
-    /// and from the club's name, so a writer in another service cannot report the money
-    /// wrongly — the numbers in the message are the numbers in the book, by construction.
-    ///
-    /// The two lines that state a balance rather than moving one are not news. "Capital
-    /// inicial" and the balance carried from last season are the club's starting position, not
-    /// something that happened to it, and a box that reported them would open the season with
-    /// two messages about money the club already had.
+    /// <para>
+    /// A prize is the only line of a club's book that is worth a message of its own, and the
+    /// reason is in <see cref="FinanceMovement.IsWorthAMessage"/>: a gate receipt and a slice
+    /// of the wage bill arrive every matchday and are already on the statement, while a purse
+    /// arrives twice a season and nowhere else. The message says what the prize was for and
+    /// what it did to the balance, and it is composed from the line itself so the number in
+    /// the message is the number in the book.
+    /// </para>
     /// </summary>
-    public async Task PostFinanceAsync(
+    public async Task PostPrizeAsync(
         FinanceMovement line,
-        IEnumerable<InboxPersonDto>? mentions = null,
         CancellationToken cancellationToken = default)
     {
-        if (FinanceMovement.StatesABalance(line.Kind))
-        {
-            return;
-        }
-
         var club = await _teams.GetAsync(line.TeamId, cancellationToken);
         if (club is null || !club.IsManagerClub)
         {
             return;
         }
 
-        var amount = Math.Abs(line.Amount);
-        var money = Limo(amount);
+        var money = Limo(Math.Abs(line.Amount));
         var balance = Limo(line.BalanceAfter);
-        var day = line.MatchDayNumber is { } number ? $"no dia {number}" : "fora de um dia de jogo";
-
-        var subject = line.Amount >= 0m
-            ? $"{club.Name} em alta: {money} entram no caixa {day}"
-            : $"{club.Name} em baixa: {money} saem do caixa {day}";
-
-        var headline = line.Amount >= 0m
-            ? $"O caixa do {club.Name} ganhou {money}. A entrada veio de \"{line.Description}\" e deixou a Tesouraria com {balance} em mãos."
-            : $"O caixa do {club.Name} perdeu {money}. A saída foi \"{line.Description}\" e deixou a Tesouraria com {balance} em mãos.";
 
         var body = new StringBuilder()
-            .AppendLine(headline)
+            .AppendLine($"O {club.Name} recebeu {money} da competição: \"{line.Description}\". O prêmio entrou no caixa e a Tesouraria ficou com {balance}.")
             .AppendLine()
-            .Append(CommentOn(line.Kind, money, amount));
+            .Append(CommentOnThePrize(line.Description, money));
 
         await DeliverAsync(
             InboxMessage.Create(
                 line.TeamId,
                 InboxCategory.Finance,
-                subject,
+                $"Prêmio para o {club.Name}: {money} — \"{line.Description}\"",
                 $"Tesouraria do {club.Name}",
                 body.ToString(),
-                // The line's own id: a line is written once, so the message that reports it
-                // can only be written once, whatever tries to write it a second time.
-                reference: $"finance:{line.Id}",
+                // The line's own reference is what makes it once: the same prize asked about
+                // twice — a season closed again, a cup tie settled twice — is one purse.
+                reference: $"prize:{line.Reference ?? line.Id.ToString()}",
                 linkLabel: "Ver o extrato",
                 linkRoute: "/financeiro",
-                mentions: ToMentions(mentions)),
+                mentions: ToMentions(null)),
             cancellationToken);
     }
 
     /// <summary>
-    /// The sentence under the headline of a money message, said the way a page says it.
+    /// The sentence under a prize, said the way a desk says it.
     ///
-    /// It is one sentence, and it exists because a subject line of "Salário -120.000" is a
-    /// number and a number is not a story. What a manager wants to know about a movement is
-    /// what kind of thing it is — a receipt that arrives every matchday, a cost decided once,
-    /// a prize nobody can ask to be deferred — and that is what the kind of the line knows.
+    /// It reads the description rather than branching on a kind, because the three prizes a
+    /// club can win in a season are told apart by what they are for — a place in a table, a
+    /// trophy, a run of goals — and the description is the one place that already knows.
     /// </summary>
-    private static string CommentOn(FinanceMovementKind kind, string money, decimal amount) => kind switch
+    private static string CommentOnThePrize(string description, string money)
     {
-        FinanceMovementKind.GateRevenue =>
-            "A receita do estádio é repartida entre os dois clubes: o mandante fica com a maior parte e o visitante com o que sobrou. É a mesma entrada em todo jogo, e o tamanho dela é o tamanho do público.",
-        FinanceMovementKind.Wages =>
-            "A folha é paga uma vez por rodada do campeonato, e é a maior despesa fixa do ano. O que sai hoje é uma das fatias iguais da conta da temporada.",
-        FinanceMovementKind.Sponsorship =>
-            "O patrocínio é a receita que não depende de o time jogar bem: vem na data, vai para o caixa e continua enquanto o contrato estiver vigente.",
-        FinanceMovementKind.TransferOut =>
-            "Contratação é a única despesa do clube que se anuncia antes de acontecer — e a única que a torcida só aprova depois de ver o jogador jogar.",
-        FinanceMovementKind.TransferIn =>
-            "Venda é o avesso da contratação: o caixa recebe hoje e asportiva se cobra amanhã, com o mesmo nome em campo ou não.",
-        FinanceMovementKind.PrizeMoney =>
-            "Prêmio é o dinheiro que a competição paga, e é a única entrada do caixa que ninguém pode pedir para ser adiada.",
-        _ => $"O lançamento entrou no livro como \"{money}\", e o saldo do clube é o que a linha deixa."
-    };
+        if (description.Contains("Artilharia", StringComparison.OrdinalIgnoreCase))
+        {
+            var what = description.Split('—')[0].Trim();
+            return $"A artilharia se paga ao artilheiro e vai para o clube junto com ele: foi {money} que o {what} ganhou na competição.";
+        }
+
+        return description.Contains("copa", StringComparison.OrdinalIgnoreCase)
+            ? "A copa paga uma vez por campanha e paga o vice também, porque chegar à final já custou uma temporada inteira."
+            : "A premiação da divisão é paga a todas as posições, e é o preço de terminar a tabela onde ela terminou.";
+    }
 
     /// <summary>
     /// Writes up how a match ended, for the club the manager is running.
     ///
-    /// The facts arrive resolved (see <see cref="MatchReportFacts"/>) because the service that
-    /// settled the match is the one that knows them. What is written here is the account: the
-    /// headline a page would print, the goals in the sentences the match announced them with,
-    /// the eleven in the order the pitch had them, the cards, and the next commitment.
+    /// <para>
+    /// It is written as a sports page rather than as a match receipt, and the difference is
+    /// what it leads with. A receipt says "venceu por 3 x 1" and stops; a page says what kind
+    /// of 3 x 1 it was — a turnaround, a collapse, a whitewash, a goalless afternoon — and
+    /// then says what it did to the season, because a result in isolation is a fact about
+    /// ninety minutes and a manager reads a box to find out about the other thirty rounds.
+    /// </para>
     ///
-    /// The next opponent is in the message because a result on its own is half a story: what
-    /// a manager does with the news of a defeat is read the next fixture, and a message that
-    /// stopped at the whistle would make him go and look.
+    /// <para>
+    /// The facts arrive resolved (see <see cref="MatchReportFacts"/>) because the service that
+    /// settled the match is the one that knows them: the shape of the result, the two
+    /// positions in the table, the goals with their minutes, the men who will be missing. What
+    /// is written here is the account, and the account cannot disagree with the facts because
+    /// it is made of them.
+    /// </para>
     /// </summary>
     public async Task PostMatchReportAsync(
         MatchReportFacts facts,
@@ -282,7 +268,37 @@ public class InboxService
 
         body.AppendLine(ReportHeadline(facts));
         body.AppendLine();
-        body.AppendLine($"Gols: {(facts.GoalLines.Count > 0 ? string.Join(" ", facts.GoalLines) : "ninguém achou a rede.")}");
+
+        var table = TableParagraph(facts);
+        if (table is not null)
+        {
+            body.AppendLine(table);
+            body.AppendLine();
+        }
+
+        var cup = CupParagraph(facts);
+        if (cup is not null)
+        {
+            body.AppendLine(cup);
+            body.AppendLine();
+        }
+
+        body.AppendLine(GoalsParagraph(facts));
+
+        var absences = AbsenceParagraph(facts);
+        if (absences is not null)
+        {
+            body.AppendLine();
+            body.AppendLine(absences);
+        }
+
+        var cards = CardsParagraph(facts);
+        if (cards is not null)
+        {
+            body.AppendLine();
+            body.AppendLine(cards);
+        }
+
         body.AppendLine();
         body.AppendLine(LineupParagraph(facts));
 
@@ -291,9 +307,6 @@ public class InboxService
             body.AppendLine();
             body.Append($"Entraram: {List(facts.Substitutes.Select(person => person.Name))}.");
         }
-
-        body.AppendLine();
-        body.AppendLine(CardsParagraph(facts));
 
         var next = NextParagraph(facts);
         if (next is not null)
@@ -317,29 +330,266 @@ public class InboxService
     }
 
     /// <summary>
-    /// The subject of a result, in the words a sports desk would use for it.
+    /// The subject, in the words a sports desk would put above the fold.
     ///
-    /// It is the whole message on a narrow column, so it carries the score, both clubs and
-    /// the size of the result — a line that only said "Fim de jogo" is a line a manager has
-    /// to open to find out whether to be pleased.
+    /// <para>
+    /// It carries the shape of the result before it carries the score, because the score is
+    /// the part every subject can say and the shape is the part that makes a manager open it:
+    /// a 3 x 1 and a 3 x 1 where the club was two down at half time are the same two numbers
+    /// and two entirely different evenings.
+    /// </para>
+    ///
+    /// <para>
+    /// The table move is in the subject when there is one, because "subiu três posições" is
+    /// the half of the news a manager cannot work out from the score.
+    /// </para>
     /// </summary>
     private static string ReportSubject(MatchReportFacts facts)
     {
-        var margin = facts.ClubGoals - facts.OpponentGoals;
-        var score = $"{facts.ClubGoals} x {facts.OpponentGoals}";
         var club = facts.ClubName;
         var opponent = facts.OpponentName;
+        var score = $"{facts.ClubGoals} x {facts.OpponentGoals}";
+        var margin = facts.ClubGoals - facts.OpponentGoals;
 
-        return (margin, facts.ClubGoals, facts.OpponentGoals) switch
+        // The move is appended to every one of them, and not only to the ordinary ones. A
+        // turnaround that leaves the club where it was is a different piece of news from a
+        // turnaround that lifts it two places, and the whole difference is one clause.
+        var lead = facts.Shape switch
         {
-            (>= 3, _, _) => $"Goleada do {club}: {score} e o {opponent} não teveChance",
-            (2, _, _) => $"Vitória por {score}: o {club} vira a chave contra o {opponent}",
-            (1, _, _) => $"Sucesso do {club} por {score} sobre o {opponent}",
-            (0, 0, 0) => $"Nada de gols: {club} e {opponent} empatam em {score}",
-            (0, _, _) => $"Empate por {score}: {club} e {opponent} não saem do zero",
-            (_, 0, _) => $"Derrota do {club}: o {opponent} vence por {score} sem sofrer gol",
-            _ => $"Derrota por {score}: o {opponent} vira o jogo contra o {club}"
+            MatchShape.Comeback =>
+                $"Virada do {club}: saiu atrás e venceu o {opponent} por {score}",
+
+            MatchShape.GreatComeback =>
+                $"Virada histórica do {club}: dois ou mais gols de desvantagem e {score}",
+
+            MatchShape.Rescued =>
+                $"O {opponent} abre o jogo e o {club} empata em {score} e salva um ponto",
+
+            MatchShape.Collapse =>
+                $"O {club} entrega jogo e perde por {score} para o {opponent}",
+
+            MatchShape.Rout =>
+                $"Estava ganhando e deixou ir: o {club} perde por {score}",
+
+            MatchShape.Squandered =>
+                $"O {club} tinha dois ou mais gols na mão e empatou em {score}",
+
+            MatchShape.Whitewash when margin > 0 =>
+                $"Goleada do {club}: {score} e o {opponent} não teve chance",
+
+            MatchShape.Whitewash =>
+                $"O {opponent} goleia o {club} por {score}",
+
+            MatchShape.Goalless =>
+                $"Nada de gols: {club} e {opponent} empatam em {score}",
+
+            MatchShape.BalancedDraw when facts.ClubGoals > 0 =>
+                $"Empate por {score} entre {club} e {opponent}",
+
+            MatchShape.GoalFest =>
+                $"Noite de gols e empate {score} entre {club} e {opponent}",
+
+            _ when margin > 0 => $"Vitória do {club} por {score} sobre o {opponent}",
+
+            _ when margin < 0 => $"Derrota do {club}: o {opponent} vence por {score}",
+
+            _ => $"Empate por {score}: {club} e {opponent} não saem do zero"
         };
+
+        return lead + MovementClause(facts.Competition);
+    }
+
+    /// <summary>
+    /// Where the result left the club, told as a movement rather than as a position.
+    ///
+    /// It is null for a competition with no table, and for a table the club did not move on:
+    /// a report that says "seventh, unchanged" every week is noise that trains a manager to
+    /// stop reading the line that matters.
+    /// </summary>
+    private static string? TableParagraph(MatchReportFacts facts)
+    {
+        var context = facts.Competition;
+        if (context is not { HasTable: true })
+        {
+            return null;
+        }
+
+        var parts = new List<string>();
+
+        if (context.PositionBefore is { } before && context.PositionAfter is { } after)
+        {
+            parts.Add(before == after
+                ? $"O {facts.ClubName} continua em {Ordinal(after)} lugar, com {context.Points} pontos."
+                : after < before
+                    ? $"A vitória levou o {facts.ClubName} de {Ordinal(before)} para {Ordinal(after)} lugar na tabela — {before - after} posição{(before - after == 1 ? string.Empty : "ões")} a mais, com {context.Points} pontos."
+                    : $"A derrota derrubou o {facts.ClubName} de {Ordinal(before)} para {Ordinal(after)} lugar na tabela, agora com {context.Points} pontos.");
+        }
+
+        if (context.PointsToPromotion is { } toPromotion)
+        {
+            parts.Add($"Faltam {toPromotion} {(toPromotion == 1 ? "ponto" : "pontos")} para a zona de classificação.");
+        }
+
+        if (context.PointsToRelegation is { } toRelegation)
+        {
+            parts.Add($"A zona de rebaixamento está a {toRelegation} {(toRelegation == 1 ? "ponto" : "pontos")} — a distância que uma vitória costuma pagar.");
+        }
+
+        if (parts.Count == 0)
+        {
+            return null;
+        }
+
+        var rounds = context.RoundsRemaining is { } left
+            ? left == 0
+                ? " É a última rodada."
+                : left == 1
+                    ? " Falta uma rodada."
+                    : $" Faltam {left} rodadas."
+            : string.Empty;
+
+        return string.Join(" ", parts) + rounds;
+    }
+
+    /// <summary>
+    /// The knockout, told the way a cup is decided: by the tie and not by the ninety minutes.
+    ///
+    /// A single-leg tie that decided the champion has no next round to prepare for, so it is
+    /// the whole story. A two-legged tie that is not finished says so, because a manager
+    /// reading "classificado" over a 1 x 0 away would be planning for a game that is still to
+    /// be played.
+    /// </summary>
+    private static string? CupParagraph(MatchReportFacts facts)
+    {
+        if (facts.Competition is not { HasTable: false } context)
+        {
+            return null;
+        }
+
+        return context.Advanced switch
+        {
+            true => $"A {facts.CompetitionName} é do {facts.ClubName}: a vaga é conquistada e a campanha continua.",
+            false => $"O {facts.ClubName} está fora da {facts.CompetitionName}. É o fim da campanha.",
+            null => null
+        };
+    }
+
+    /// <summary>
+    /// The goals, quoted in the words the match itself used.
+    ///
+    /// <para>
+    /// The narration is read out of the match's own events rather than written again here,
+    /// and that is the whole reason this paragraph is not a sentence about the goals. A match
+    /// that said "GOL! João da Silva 0" is a match that said it, and a report that reworded
+    /// the same afternoon would be the one place in the game where the same fixture could be
+    /// told two ways. The minute and the man are in the narration already, because the engine
+    /// put them there when the goal happened.
+    /// </para>
+    ///
+    /// <para>
+    /// A replayed match whose events carry no description has no narration to quote, so the
+    /// structured goals are read out directly instead. That is a fallback and not a second
+    /// voice: it only ever runs when the first one has nothing to say.
+    /// </para>
+    /// </summary>
+    private static string GoalsParagraph(MatchReportFacts facts)
+    {
+        if (facts.ClubGoals == 0 && facts.OpponentGoals == 0)
+        {
+            return "Os gols da partida: ninguém achou a rede nos noventa minutos. Um ponto que valeu por um ponto, e um ponto é pouco.";
+        }
+
+        var narrated = facts.GoalLines.Where(line => !string.IsNullOrWhiteSpace(line)).ToList();
+
+        if (narrated.Count > 0)
+        {
+            return $"Os gols da partida: {string.Join(" | ", narrated)}.";
+        }
+
+        if (facts.Goals.Count == 0)
+        {
+            return $"Os gols da partida: {facts.ClubGoals} x {facts.OpponentGoals}.";
+        }
+
+        var clauses = facts.Goals.Select(goal =>
+        {
+            var minute = $"aos {goal.Minute}'";
+            var against = goal.TeamId != facts.ClubId ? " contra" : string.Empty;
+
+            return goal.Kind switch
+            {
+                GoalKind.Penalty => $"{goal.PlayerName}{against} {minute}, de pênalti",
+                GoalKind.OwnGoal => $"{minute}, contra, na errada de {goal.PlayerName}",
+                GoalKind.Rebound => $"{goal.PlayerName}{against} {minute}, na segunda jogada",
+                _ => $"{goal.PlayerName}{against} {minute}"
+            };
+        });
+
+        return $"Os gols da partida: {string.Join("; ", clauses)}.";
+    }
+
+    /// <summary>
+    /// The men who will be missing next week, and the reason in the order a manager cares
+    /// about them.
+    ///
+    /// A suspension is said first because it is the one he can do nothing about and a
+    /// replacement does not fix. A knock is said as bad news rather than as a fact, because
+    /// it is bad news and a manager who has just been told his centre back is out for three
+    /// weeks needs it said plainly rather than filed.
+    /// </summary>
+    private static string? AbsenceParagraph(MatchReportFacts facts)
+    {
+        if (facts.Absence is not { Players.Count: > 0 } absence)
+        {
+            return null;
+        }
+
+        var names = facts.Lineup.Concat(facts.Substitutes)
+            .ToDictionary(person => person.Id, person => person.Name);
+
+        var sentenceOn = absence.Players
+            .Where(player => !names.TryGetValue(player.PlayerId, out var name) || !string.IsNullOrWhiteSpace(name))
+            .Select(player =>
+            {
+                var name = names.TryGetValue(player.PlayerId, out var found) && !string.IsNullOrWhiteSpace(found)
+                    ? found
+                    : "um jogador";
+
+                return player.Cause switch
+                {
+                    AbsenceCause.RedCard => $"{name} ({player.Matches} jogos por expulsão)",
+                    AbsenceCause.AccumulatedYellows => $"{name} ({player.Matches} jogos por três amarelos)",
+                    _ => $"{name} ({DescribeKnock(player.Matches)})"
+                };
+            })
+            .ToList();
+
+        if (sentenceOn.Count == 0)
+        {
+            return null;
+        }
+
+        var anyKnock = absence.Players.Any(player => player.Cause == AbsenceCause.Injury);
+
+        return anyKnock
+            ? $"Fora da próxima: {List(sentenceOn)}."
+            : $"Pendurados para a próxima: {List(sentenceOn)}.";
+    }
+
+    /// <summary>How long a knock keeps a man out, in the words a manager would use for it.</summary>
+    private static string DescribeKnock(int matches) => matches > 0
+        ? $"{matches} {(matches == 1 ? "jogo" : "jogos")} por lesão"
+        : "lesão";
+
+    /// <summary>The cards, and the men who took them — or null when there were none.</summary>
+    private static string? CardsParagraph(MatchReportFacts facts)
+    {
+        if (facts.Booked.Count == 0)
+        {
+            return "Nenhum cartão no confronto.";
+        }
+
+        return $"Cartões: {List(facts.Booked.Select(person => person.Name))}.";
     }
 
     /// <summary>
@@ -362,9 +612,29 @@ public class InboxService
         var where = facts.IsHome ? "em casa" : "fora de casa";
         var leg = string.IsNullOrWhiteSpace(facts.LegLabel) ? string.Empty : $", {facts.LegLabel}";
         var day = facts.MatchDayNumber is { } number ? $", dia {number}" : string.Empty;
+        var opening = OpeningOf(facts);
 
-        return $"{facts.ClubName} {verb} {facts.OpponentName} por {facts.ClubGoals} x {facts.OpponentGoals} {where} — {facts.PhaseName} da {facts.CompetitionName}{leg}{day}.";
+        return $"{opening}{facts.ClubName} {verb} {facts.OpponentName} por {facts.ClubGoals} x {facts.OpponentGoals} {where} — {facts.PhaseName} da {facts.CompetitionName}{leg}{day}.";
     }
+
+    /// <summary>
+    /// The two words a sports desk opens a piece with, when the match earned them.
+    ///
+    /// "Que jogo" for a turnaround, because the phrase is the sound a manager makes; a
+    /// whitewash gets its own word rather than borrowing one, because "que jogo" in front of
+    /// a 4 x 0 conceded would be saying the wrong thing enthusiastically.
+    /// </summary>
+    private static string OpeningOf(MatchReportFacts facts) => facts.Shape switch
+    {
+        MatchShape.Comeback => "Que jogo: ",
+        MatchShape.GreatComeback => "Que jogo: ",
+        MatchShape.Rescued => "Que jogo: ",
+        MatchShape.Whitewash when facts.ClubGoals > facts.OpponentGoals => "Golada: ",
+        MatchShape.Whitewash => "Sofrida: ",
+        MatchShape.Collapse => "Derruba: ",
+        MatchShape.Rout => "Derruba: ",
+        _ => string.Empty
+    };
 
     /// <summary>
     /// The eleven, in the order the pitch had them, and the shape they made of it.
@@ -384,24 +654,6 @@ public class InboxService
         return facts.Lineup.Count > 0
             ? $"Escalação do {facts.ClubName}{shape}: {names}."
             : $"O {facts.ClubName} não tem linha de jogo registrada para esta partida.";
-    }
-
-    /// <summary>
-    /// The cards, and the men who took them.
-    ///
-    /// A red is called out on its own because it is not a yellow that was worse: it is a man
-    /// who will not be there next week, and a manager reading this at breakfast needs to
-    /// know that before he reads anything else.
-    /// </summary>
-    private static string CardsParagraph(MatchReportFacts facts)
-    {
-        if (facts.Booked.Count == 0)
-        {
-            return "Nenhum cartão no confronto.";
-        }
-
-        var names = List(facts.Booked.Select(person => person.Name));
-        return $"Cartões: {names}.";
     }
 
     /// <summary>
@@ -428,6 +680,43 @@ public class InboxService
             : $", no {facts.NextStadiumName}";
 
         return $"No próximo compromisso o {facts.ClubName} {verb} o {facts.NextOpponentName}{day}{competition}{ground}.";
+    }
+
+    /// <summary>Ordinal in Portuguese, the way a table is read: 1º, 2º, 13º.</summary>
+    private static string Ordinal(int position) => $"{position}º";
+
+    /// <summary>
+    /// "uma posição", "três posições".
+    ///
+    /// <para>
+    /// The plural is a whole word rather than a suffix on "posição", because appending "ões"
+    /// to a word already ending in "ção" produces "posiçãoões" — and it is a suffix here
+    /// because the line says "{count} posição a mais", where the count is the subject and
+    /// therefore has to agree with the noun that follows it.
+    /// </para>
+    /// </summary>
+    private static string Places(int count) => count == 1
+        ? "uma posição"
+        : $"{count} posições";
+
+    /// <summary>
+    /// The half of the subject that is about the season rather than about the match.
+    ///
+    /// It is here and not in the table paragraph because a move of three places is the single
+    /// most useful thing on a subject line, and a subject line is the only line of the message
+    /// a manager is certain to read.
+    /// </summary>
+    private static string MovementClause(CompetitionContext? context)
+    {
+        if (context is not { HasTable: true } || context.PositionChange == 0)
+        {
+            return string.Empty;
+        }
+
+        var places = Places(Math.Abs(context.PositionChange));
+        return context.PositionChange > 0
+            ? $" e sobe {places} na tabela"
+            : $" e cai {places} na tabela";
     }
 
     /// <summary>
@@ -604,6 +893,171 @@ public class InboxService
                 $"Marketing do {facts.ClubName}",
                 body.ToString(),
                 reference: $"sponsor:{facts.ContractId}:expired",
+                linkLabel: "Ver os patrocinadores",
+                linkRoute: "/estadio",
+                mentions: ToMentions(
+                [
+                    Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team)
+                ])),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes the club's week: everything that came in, everything that went out, and what
+    /// is left.
+    ///
+    /// <para>
+    /// This is the replacement for the message-per-line the box used to send, and the shape
+    /// of it is the argument. A manager does not want to be told about the gate of Tuesday,
+    /// the wages of Tuesday, the sponsor's instalment of Tuesday and the training fee of
+    /// Wednesday in four separate messages; he wants to be told, once a week, what the week
+    /// cost and what it was worth. Four messages is four chances to not open the fifth one
+    /// that matters, and the four that arrived every matchday are the four a manager learns
+    /// to swipe past without reading.
+    /// </para>
+    ///
+    /// <para>
+    /// The buckets are the four the manager already thinks in — bilheteria, compras, vendas
+    /// e salários — because a statement in somebody else's categories is a statement nobody
+    /// reconciles against the ledger they are trying to understand. Anything that is none of
+    /// those four goes in an "outros" line rather than being dropped: a training fee the
+    /// manager paid is money he spent, and a statement that silently omitted it would not add
+    /// up to the balance printed at the bottom.
+    /// </para>
+    /// </summary>
+    public async Task PostStatementAsync(
+        StatementFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await DeliverableAsync(facts.RecipientTeamId, cancellationToken))
+        {
+            return;
+        }
+
+        var income = facts.GateRevenue + facts.Signings + facts.Sales + facts.OtherIncome;
+        var expenses = facts.Wages + facts.Training + facts.OtherExpenses;
+        var difference = income - expenses;
+
+        var body = new StringBuilder()
+            .AppendLine($"Resumo dos dias {facts.FromMatchDay} a {facts.ToMatchDay}: {Limo(income)} entraram e {Limo(expenses)} saíram, uma diferença de {Limo(Math.Abs(difference))} {(difference >= 0 ? "a favor" : "contra")} do {facts.ClubName}.")
+            .AppendLine()
+            .AppendLine(StatementLines(facts))
+            .AppendLine()
+            .AppendLine($"O caixa começou a semana com {Limo(facts.OpeningBalance)} e fecha com {Limo(facts.ClosingBalance)}.");
+
+        if (difference < 0m)
+        {
+            body.AppendLine();
+            body.Append("Semana de despesa acima da receita: é a folha fazendo o que faz, mas um clube que repete essa conta fecha o ano no vermelho.");
+        }
+        else if (difference > 0m)
+        {
+            body.AppendLine();
+            body.Append("A receita segurou a despesa da semana, e é o que permite planejar a próxima.");
+        }
+
+        await DeliverAsync(
+            InboxMessage.Create(
+                facts.RecipientTeamId,
+                InboxCategory.Finance,
+                $"Extrato da semana ({facts.FromMatchDay}–{facts.ToMatchDay}) — " +
+                $"{(difference >= 0 ? "sobrou" : "faltou")} {Limo(Math.Abs(difference))}",
+                $"Tesouraria do {facts.ClubName}",
+                body.ToString(),
+                reference: facts.Reference,
+                linkLabel: "Ver o extrato",
+                linkRoute: "/financeiro",
+                mentions: ToMentions(null)),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The week's own lines, one per bucket, and only the buckets that moved.
+    ///
+    /// A line of zero is not information: a club with no sales that week does not need to be
+    /// told it did not sell anybody, and four empty lines make the two real ones harder to
+    /// find on a screen a manager reads on a phone.
+    /// </summary>
+    private static string StatementLines(StatementFacts facts)
+    {
+        var entries = new (string Label, decimal Amount, string Verb)[]
+        {
+            (facts.HomeMatches > 0
+                ? $"Bilheteria ({facts.HomeMatches} {(facts.HomeMatches == 1 ? "jogo em casa" : "jogos em casa")})"
+                : "Bilheteria",
+                facts.GateRevenue, "Entrou"),
+            ("Vendas de jogadores", facts.Sales, "Entrou"),
+            ("Compras de jogadores", facts.Signings, "Saiu"),
+            ("Salários", facts.Wages, "Saiu"),
+            ("Treinos", facts.Training, "Saiu")
+        };
+
+        var written = new List<string>();
+
+        foreach (var (label, amount, verb) in entries)
+        {
+            if (amount == 0m)
+            {
+                continue;
+            }
+
+            written.Add(verb == "Entrou"
+                ? $"{label}: {Limo(amount)} entraram"
+                : $"{label}: {Limo(amount)} saíram");
+        }
+
+        if (facts.OtherIncome != 0m)
+        {
+            written.Add($"Outras entradas: {Limo(facts.OtherIncome)} entraram");
+        }
+
+        if (facts.OtherExpenses != 0m)
+        {
+            written.Add($"Outras despesas: {Limo(facts.OtherExpenses)} saíram");
+        }
+
+        return written.Count == 0
+            ? "Nenhuma entrada nem saída no período."
+            : string.Join("\n", written);
+    }
+
+    /// <summary>
+    /// Announces a shirt deal somebody has just signed.
+    ///
+    /// <para>
+    /// It is the counterpart of the expiry and it is worth a message for the same reason: the
+    /// money only arrives a match at a time, so a deal that was signed and never announced is
+    /// a deal the manager finds out about from the statement seven days later, with a name on
+    /// his shirt he cannot place.
+    /// </para>
+    /// </summary>
+    public async Task PostSponsorSignedAsync(
+        SponsorSignedFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await DeliverableAsync(facts.RecipientTeamId, cancellationToken))
+        {
+            return;
+        }
+
+        var fee = Limo(facts.PerMatchFee);
+        var played = facts.ContractMatches;
+
+        var body = new StringBuilder()
+            .AppendLine($"O {facts.ClubName} fechou com o {facts.SponsorName}: são {fee} por jogo, por {played} jogos.")
+            .AppendLine()
+            .AppendLine($"São {Limo(facts.PerMatchFee * played)} no contrato inteiro, e cada partida paga a sua parte na hora em que é jogada — não adiantado, não no fim do mês: junto com a bilheteria.")
+            .AppendLine()
+            .Append($"O nome do {facts.SponsorName} entra na camisa a partir da próxima partida em casa. Se o clube for eliminado ou rebaixado antes de {played} jogos, o que sobrou do contrato é perdido.");
+
+        await DeliverAsync(
+            InboxMessage.Create(
+                facts.RecipientTeamId,
+                InboxCategory.Club,
+                $"{facts.ClubName} assina com o {facts.SponsorName}: {fee} por jogo",
+                $"Marketing do {facts.ClubName}",
+                body.ToString(),
+                reference: $"sponsor:{facts.ContractId}:signed",
                 linkLabel: "Ver os patrocinadores",
                 linkRoute: "/estadio",
                 mentions: ToMentions(

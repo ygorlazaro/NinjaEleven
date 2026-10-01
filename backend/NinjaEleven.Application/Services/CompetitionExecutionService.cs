@@ -57,6 +57,7 @@ public class CompetitionExecutionService
     private readonly ISeasonCloser _seasonCloser;
     private readonly IManagedClubReader _managedClubs;
     private readonly ISeasonCalendarBuilder _calendar;
+    private readonly StatementService _statements;
     private readonly IOptions<WorldExecutionOptions> _options;
     private readonly ILogger<CompetitionExecutionService> _logger;
 
@@ -76,6 +77,7 @@ public class CompetitionExecutionService
         ISeasonCloser seasonCloser,
         IManagedClubReader managedClubs,
         ISeasonCalendarBuilder calendar,
+        StatementService statements,
         IOptions<WorldExecutionOptions> options,
         ILogger<CompetitionExecutionService> logger)    {
         _clock = clock;
@@ -89,6 +91,7 @@ public class CompetitionExecutionService
         _claims = claims;
         _managedClubs = managedClubs;
         _calendar = calendar;
+        _statements = statements;
         _player = player;
         _cleaner = cleaner;
         _unitOfWork = unitOfWork;
@@ -342,6 +345,11 @@ public class CompetitionExecutionService
             runs.Add(await PlayRoundAsync(round.Id, managerTeamId, cancellationToken));
         }
 
+        // The books are closed on the day that just finished, before anything else looks at
+        // the world again: a statement is about a week that is over, and the week's last gate
+        // and last wage bill are on the book now and not a window later.
+        await CloseTheBooksOfTheWeekAsync(season, day, cancellationToken);
+
         _logger.LogInformation(
             "Advanced by hand: day {Number} ({Date}), the {Wave} window, {Rounds} window(s) played.",
             day.Number,
@@ -361,6 +369,41 @@ public class CompetitionExecutionService
             runs,
             closed.SeasonClosed,
             closed.SeasonOpened);
+    }
+
+    /// <summary>
+    /// Writes the treasurer's statement when the day that was just walked ends one.
+    ///
+    /// <para>
+    /// It lives here rather than in the matchday service because this is the one place every
+    /// way of moving the world goes through: a hand pressing the button and the scheduler's
+    /// cron both arrive at this method, so a club's week is closed the same whether somebody
+    /// is watching or not. A statement that only appeared when a manager walked the world by
+    /// hand would be a statement a manager playing a normal game never received.
+    /// </para>
+    ///
+    /// <para>
+    /// The club comes from the world rather than from the walk, and the season is the one that
+    /// was walked. A week is a week of that season's book, and another season's lines would
+    /// be another club's history being summarised under this one's name.
+    /// </para>
+    /// </summary>
+    private async Task CloseTheBooksOfTheWeekAsync(
+        Season season,
+        MatchDay day,
+        CancellationToken cancellationToken)
+    {
+        if (!StatementService.ClosesTheWeekOn(day.Number))
+        {
+            return;
+        }
+
+        var clubs = await _managedClubs.ListManagedClubsAsync(cancellationToken);
+
+        foreach (var clubId in clubs)
+        {
+            await _statements.CloseTheWeekAsync(clubId, season.Id, day.Number, cancellationToken);
+        }
     }
 
     /// <summary>

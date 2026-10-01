@@ -304,11 +304,25 @@ public class MatchServiceTests
             _seasons.Object,
             _cupTies.Object,
             _teams.Object),
+        CreateStandingsService(),
         MatchTestContext.Host,
         MatchTestContext.World(),
         MatchTestContext.Clock,
         NullLogger<MatchService>.Instance);
     }
+
+    /// <summary>
+    /// The real standings service over the same loose mocks, so a test that finishes a match
+    /// reaches the table the report reads without standing up a division behind it. The
+    /// competition repository is loose, so the table comes back empty and the report is
+    /// written without one — which is the same answer a manager would get from a Supercup.
+    /// </summary>
+    private StandingsService CreateStandingsService() => new(
+        _rounds.Object,
+        _fixtures.Object,
+        _matches.Object,
+        _competitions.Object,
+        _teams.Object);
 
     private MatchdayService CreateMatchdayService() => new(
         _matchDays.Object,
@@ -1341,6 +1355,54 @@ public class MatchServiceTests
             // travel can never be given the same recovery as a man who sat on the bench.
             Assert.InRange(after.Energy, 1 + EnergyRecoveryRules.MinFullRest, 100);
         }
+    }
+
+    /// <summary>
+    /// Two dark shirts on one pitch are two dark shirts, and the second shirt a club drew is
+    /// what the game changes into when that happens.
+    ///
+    /// The decision is stamped on the match rather than worked out when the lineup is read, so
+    /// a manager who reloads his own match at minute seventy is looking at the same two shirts
+    /// he was looking at before. The assertion is that the two shirts the fixture was actually
+    /// played in can be told apart, rather than which of the two clubs changed: the draw is over
+    /// the answers that work, and pinning one of them here would pin a coin.
+    /// </summary>
+    [Fact]
+    public async Task Two_dark_clubs_do_not_turn_out_in_two_shirts_that_look_the_same()
+    {
+        // Both clubs dark, and each of them with a second shirt that is nothing like its first.
+        _home.SetHomeKit(new KitDesign("#123a8f", "#ffffff", KitPattern.Solid));
+        _home.SetAwayKit(new KitDesign("#ffd700", "#123a8f", KitPattern.HorizontalStripe));
+        _away.SetHomeKit(new KitDesign("#0d5c2e", "#ffd700", KitPattern.Solid));
+        _away.SetAwayKit(new KitDesign("#ffffff", "#0d5c2e", KitPattern.HorizontalStripe));
+
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        var lineup = await service.GetLineupAsync(matchId, _home.Id);
+
+        var worn = new[] { (lineup.HomeKitSide, lineup.HomeTeam), (lineup.AwayKitSide, lineup.AwayTeam) }
+            .Select(pair => pair.Item1 is KitSide.Away ? pair.Item2.AwayKit : pair.Item2.HomeKit)
+            .ToArray();
+
+        Assert.All(worn, kit => Assert.NotNull(kit));
+        Assert.False(KitClash.AreIndistinguishable(worn[0]!, worn[1]!));
+    }
+
+    /// <summary>
+    /// A fixture is played in the shirts the clubs turn out in, and says so on the lineup, so a
+    /// screen can put the right one beside a name without working it out for itself.
+    /// </summary>
+    [Fact]
+    public async Task A_fixture_between_two_clubs_that_never_drew_a_kit_is_played_in_their_own_colours()
+    {
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        var lineup = await service.GetLineupAsync(matchId, _home.Id);
+
+        Assert.Equal(KitSide.Home, lineup.HomeKitSide);
+        Assert.Equal(KitSide.Home, lineup.AwayKitSide);
     }
 
     private async Task<Guid> StartAsync(MatchService service)

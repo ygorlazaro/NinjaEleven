@@ -47,6 +47,8 @@ public class CompetitionExecutionServiceTests
     private readonly Mock<IMatchCleaner> _cleaner = new(MockBehavior.Loose);
     private readonly Mock<IManagedClubReader> _managedClubs = new(MockBehavior.Loose);
     private readonly Mock<ISeasonCalendarBuilder> _calendarBuilder = new(MockBehavior.Loose);
+    private readonly Mock<ITeamRepository> _teams = new(MockBehavior.Loose);
+    private readonly Mock<IFinanceRepository> _finance = new(MockBehavior.Loose);
 
     private readonly Guid _seasonId = Guid.NewGuid();
     private readonly Guid _matchDayId = Guid.NewGuid();
@@ -127,8 +129,30 @@ public class CompetitionExecutionServiceTests
             _closer.Object,
             _managedClubs.Object,
             _calendarBuilder.Object,
+            BuildTheStatementService(),
             options,
             NullLogger<CompetitionExecutionService>.Instance);
+    }
+
+    /// <summary>
+    /// The real statement service over loose mocks, so a test that walks a window can reach
+    /// the treasurer without standing up a week of football behind it. The managed-club
+    /// reader returns nothing here, so it never reaches the book.
+    /// </summary>
+    private StatementService BuildTheStatementService()
+    {
+        var messages = new Mock<IInboxMessageRepository>(MockBehavior.Loose);
+        var inbox = new InboxService(
+            messages.Object,
+            _teams.Object,
+            _unitOfWork.Object,
+            NullLogger<InboxService>.Instance);
+
+        return new StatementService(
+            _finance.Object,
+            _teams.Object,
+            inbox,
+            NullLogger<StatementService>.Instance);
     }
 
     [Fact]

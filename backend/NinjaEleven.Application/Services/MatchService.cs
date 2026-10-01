@@ -97,6 +97,14 @@ public class MatchService : IMatchCleaner
     private readonly InboxService _inbox;
     private readonly MatchContextService _matchContext;
 
+    /// <summary>
+    /// The table a result is read against, so that a report can say where the result left
+    /// the club rather than only what it was. It is the same reader the standings screen
+    /// uses, deliberately: a report saying "sétimo" beside a table saying "décimo" would be
+    /// two opinions about one division.
+    /// </summary>
+    private readonly StandingsService _standings;
+
     public MatchService(
         IMatchRepository matchRepository,
         ITeamRepository teamRepository,
@@ -114,6 +122,7 @@ public class MatchService : IMatchCleaner
         SponsorOfferService sponsorService,
         InboxService inbox,
         MatchContextService matchContext,
+        StandingsService standings,
         IMatchHost host,
         IOptions<WorldExecutionOptions> world,
         IClock clock,
@@ -135,6 +144,7 @@ public class MatchService : IMatchCleaner
         _sponsorService = sponsorService;
         _inbox = inbox;
         _matchContext = matchContext;
+        _standings = standings;
         _host = host;
         _world = world;
         _clock = clock;
@@ -2092,6 +2102,12 @@ public class MatchService : IMatchCleaner
         var isHome = match.HomeTeamId == club.Id;
         var opponent = sides.FirstOrDefault(side => side.Id != club.Id);
 
+        // The club's own two numbers, once, because everything below reads them from the
+        // club's side rather than from home and away: a report that mixed the two would put
+        // a 0 x 2 next to the word "venceu" and mean it.
+        var clubGoals = isHome ? match.HomeScore : match.AwayScore;
+        var opponentGoals = isHome ? match.AwayScore : match.HomeScore;
+
         if (context is null || opponent is null)
         {
             return;
@@ -2134,6 +2150,17 @@ public class MatchService : IMatchCleaner
 
         var next = await ReadTheNextCommitmentAsync(club.Id, seasonId, cancellationToken);
 
+        // The goals, as facts rather than as sentences, so the report can say who scored what
+        // minute and whether it came from eleven metres. The narration each goal was announced
+        // with travels separately and is quoted separately: the list is what a manager scans
+        // and the narration is what a match said about itself.
+        var goalFacts = ReadTheGoalsOf(events, people, match);
+
+        var absence = ReadTheAbsenceOf(lines);
+
+        var competition = await ReadTheCompetitionContextAsync(
+            match, context, club.Id, cancellationToken);
+
         var facts = new MatchReportFacts
         {
             MatchId = match.Id,
@@ -2147,13 +2174,17 @@ public class MatchService : IMatchCleaner
             PhaseName = context.PhaseName,
             LegLabel = context.LegLabel,
             MatchDayNumber = context.MatchDayNumber > 0 ? context.MatchDayNumber : null,
-            ClubGoals = isHome ? match.HomeScore : match.AwayScore,
-            OpponentGoals = isHome ? match.AwayScore : match.HomeScore,
+            ClubGoals = clubGoals,
+            OpponentGoals = opponentGoals,
             ClubFormation = isHome
                 ? statistics?.HomeFormation ?? string.Empty
                 : statistics?.AwayFormation ?? string.Empty,
+            Shape = MatchShapeRules.ShapeOf(club.Id, clubGoals, opponentGoals, goalFacts),
+            Goals = goalFacts,
             Lineup = eleven,
             Substitutes = substitutes,
+            Absence = absence,
+            Competition = competition,
             GoalLines = events
                 .Where(IsGoal)
                 .Select(NarrationOf)
@@ -2172,6 +2203,326 @@ public class MatchService : IMatchCleaner
         };
 
         await _inbox.PostMatchReportAsync(facts, cancellationToken);
+    }
+
+    /// <summary>
+    /// Every goal of the match, in the order it happened, as facts rather than as prose.
+    ///
+    /// <para>
+    /// The minute, the man and how the ball went in are all already on the event — they are
+    /// what the event is for. Reading them back here rather than re-deriving them is what
+    /// lets a report say "Ciclano, aos 28, de pênalti" and be right: the eleven metres came
+    /// from the engine's own decision at the time, not from the report noticing that a penalty
+    /// event was nearby.
+    /// </para>
+    ///
+    /// <para>
+    /// Both sides are included. A list of only the manager's own goals is half a match, and a
+    /// comeback cannot be described without knowing when the other side went in front.
+    /// </para>
+    /// </summary>
+    private static IReadOnlyList<MatchGoal> ReadTheGoalsOf(
+        IReadOnlyList<MatchEvent> events,
+        IReadOnlyDictionary<Guid, Domain.Players.Player> people,
+        Match match)
+    {
+        var goals = new List<MatchGoal>();
+
+        foreach (var goal in events.Where(IsGoal))
+        {
+            if (goal.TeamId is not { } teamId || goal.PlayerId is not { } playerId)
+            {
+                continue;
+            }
+
+            var name = people.TryGetValue(playerId, out var player)
+                ? player.Name
+                : goal.PlayerName ?? string.Empty;
+
+            goals.Add(new MatchGoal(
+                teamId,
+                playerId,
+                name,
+                goal.Minute,
+                KindOf(goal)));
+        }
+
+        return goals;
+    }
+
+    /// <summary>
+    /// How a goal was scored, read out of the event's own payload.
+    ///
+    /// <para>
+    /// Three kinds and not four: an own goal is a defender's mistake and never the scorer's
+    /// credit, a penalty is a decision about how the ball went in, and everything else is a
+    /// goal. A rebound is not among them because the engine does not store it as a fact of its
+    /// own — it is inside the sentence the goal was announced with, and that sentence is
+    /// quoted separately rather than flattened into a flag here.
+    /// </para>
+    /// </summary>
+    private static GoalKind KindOf(MatchEvent goal) => goal.Type switch
+    {
+        MatchEventType.OwnGoalScored => GoalKind.OwnGoal,
+        _ when ReadPenaltyFlag(goal.Payload) => GoalKind.Penalty,
+        _ => GoalKind.Goal
+    };
+
+    private static bool ReadPenaltyFlag(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(payload);
+            return document.RootElement.TryGetProperty("fromPenalty", out var flag)
+                && flag.ValueKind == System.Text.Json.JsonValueKind.True;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // A payload that will not parse is a broken record, not a reason to refuse the
+            // report. A goal read as an ordinary goal is a report that says slightly less.
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Who is out of the next match and for how long, worked out from the lines of this one.
+    ///
+    /// <para>
+    /// The three causes are kept apart because a manager acts on them differently. A red is
+    /// two matches and is already decided. Three yellows is also two matches, and it is
+    /// decided too — the counter the engine keeps resets when it fires, so the next card
+    /// starts a new count rather than adding to an old one. An injury is the one a manager
+    /// cannot do anything about except replace the man, which is why it is the one the report
+    /// says "infelizmente" about.
+    /// </para>
+    ///
+    /// <para>
+    /// A light knock is not here: the man stayed on and will be there next week, and a report
+    /// that listed him as an absence would be telling a manager to change a team over a
+    /// knock that did not take anybody off the pitch.
+    /// </para>
+    /// </summary>
+    private static MatchAbsence? ReadTheAbsenceOf(IReadOnlyList<MatchPlayerStatistics> lines)
+    {
+        var absences = new List<PlayerAbsence>();
+
+        foreach (var line in lines)
+        {
+            // The cards first, and only one of them: a man sent off straight has not also
+            // "accumulated three yellows", and a report naming both reasons for the same
+            // two-match ban is a report that counted the ban twice.
+            if (line.RedCards > 0)
+            {
+                absences.Add(new PlayerAbsence
+                {
+                    PlayerId = line.PlayerId,
+                    Cause = AbsenceCause.RedCard,
+                    Matches = 2
+                });
+
+                continue;
+            }
+
+            if (line.YellowCards >= 3)
+            {
+                absences.Add(new PlayerAbsence
+                {
+                    PlayerId = line.PlayerId,
+                    Cause = AbsenceCause.AccumulatedYellows,
+                    Matches = 2
+                });
+
+                continue;
+            }
+
+            // Only a knock that took him off. A man who was hurt and stayed on will be there
+            // next week, and a report that listed him as missing would be sending a manager
+            // to replace a player who is fit.
+            if (line.InjuredOff)
+            {
+                absences.Add(new PlayerAbsence
+                {
+                    PlayerId = line.PlayerId,
+                    Cause = AbsenceCause.Injury,
+                    Matches = line.InjuryMatchesOut
+                });
+            }
+        }
+
+        return absences.Count == 0
+            ? null
+            : new MatchAbsence { Players = absences };
+    }
+
+    /// <summary>
+    /// Where the result left the club: the two positions, the two gaps and the rounds left.
+    ///
+    /// <para>
+    /// The table is read twice from one collection rather than read twice from the database:
+    /// the "before" table is the same table with this match's own result row taken out, which
+    /// is the only way to say "saiu de décimo para sétimo" without a second set of results
+    /// being asked for and possibly disagreeing with the first. The subtraction is one row
+    /// out of a list already in memory, not a query.
+    /// </para>
+    ///
+    /// <para>
+    /// A cup tie and a Supercup have no table, and neither has a competition the club's
+    /// division is not in. All three answer with a context that says so rather than with
+    /// nothing, because a report that printed no position at all about a quarter-final would
+    /// look like a bug rather than like a competition without a league.
+    /// </para>
+    ///
+    /// <para>
+    /// A failure here is a report without a table, never a report about no match: the window
+    /// is caught and the match is still written up. A result a manager reads is worth more
+    /// than a position he also gets.
+    /// </para>
+    /// </summary>
+    private async Task<CompetitionContext?> ReadTheCompetitionContextAsync(
+        Match match,
+        MatchContextView context,
+        Guid clubId,
+        CancellationToken cancellationToken)
+    {
+        var roundsRemaining = (int?)Math.Max(0, context.TotalRounds - context.RoundNumber);
+        var isLeague = context.CompetitionType == CompetitionType.League && context.Tier is not null;
+
+        if (!isLeague)
+        {
+            return new CompetitionContext
+            {
+                Kind = context.CompetitionType,
+                HasTable = false,
+                RoundNumber = context.RoundNumber,
+                RoundsRemaining = roundsRemaining,
+                Advanced = context.TieResolved
+                    ? context.TieWinnerTeamId == clubId
+                    : null
+            };
+        }
+
+        try
+        {
+            var edition = await _competitionRepository.GetSeasonViewByIdAsync(
+                context.CompetitionSeasonId, cancellationToken);
+
+            var collection = await _standings.CollectAsync(
+                context.CompetitionSeasonId, edition, cancellationToken);
+
+            if (edition is null || collection.Seeds.Count == 0)
+            {
+                return new CompetitionContext
+                {
+                    Kind = context.CompetitionType,
+                    HasTable = false,
+                    RoundNumber = context.RoundNumber,
+                    RoundsRemaining = roundsRemaining
+                };
+            }
+
+            // The "after" table is the one the world already has; the "before" is the same
+            // table with this fixture's result row put back, which is the only way to name a
+            // move without asking the database to disagree with itself.
+            var thisResult = new MatchResultRow(
+                match.HomeTeamId,
+                match.AwayTeamId,
+                match.HomeScore,
+                match.AwayScore);
+
+            var after = StandingTable.Build(collection.Seeds, collection.Finished);
+            var before = StandingTable.Build(
+                collection.Seeds,
+                collection.Finished.Where(row => row != thisResult).ToList());
+
+            var rowBefore = before.FirstOrDefault(entry => entry.TeamId == clubId);
+            var rowAfter = after.FirstOrDefault(entry => entry.TeamId == clubId);
+
+            if (rowBefore is null || rowAfter is null)
+            {
+                return null;
+            }
+
+            var tier = edition.Tier!.Value;
+
+            return new CompetitionContext
+            {
+                Kind = context.CompetitionType,
+                HasTable = true,
+                PositionBefore = rowBefore.Position,
+                PositionAfter = rowAfter.Position,
+                PositionChange = rowBefore.Position - rowAfter.Position,
+                Points = rowAfter.Points,
+                PointsToPromotion = GapTo(tier, rowAfter, after, promotion: true),
+                PointsToRelegation = GapTo(tier, rowAfter, after, promotion: false),
+                RoundNumber = context.RoundNumber,
+                RoundsRemaining = roundsRemaining
+            };
+        }
+        catch (Exception error)
+        {
+            _logger.LogWarning(
+                error,
+                "Could not read the table around match {MatchId}; the report will be written without one.",
+                match.Id);
+
+            return new CompetitionContext
+            {
+                Kind = context.CompetitionType,
+                HasTable = false,
+                RoundNumber = context.RoundNumber,
+                RoundsRemaining = roundsRemaining
+            };
+        }
+    }
+
+    /// <summary>
+    /// How many points separate a club from the edge of the promotion places, or from the
+    /// edge of the relegation places.
+    ///
+    /// <para>
+    /// The gap is read to the *last* club in the band rather than to the first: "três pontos
+    /// da classificação" has to mean "três pontos e você empata com o pior clube que sobe",
+    /// because a manager planning the last five rounds is planning to be that club's rival,
+    /// not to overtake a team two places above him.
+    /// </para>
+    ///
+    /// <para>
+    /// Null when the club is already inside the band, and null when the band is empty at that
+    /// end of the pyramid: the top division sends nobody up and the bottom sends nobody
+    /// down. A gap to nowhere is not a small gap, it is no gap at all, and the report stays
+    /// silent about it rather than inventing a promotion race the season does not contain.
+    /// </para>
+    /// </summary>
+    private static int? GapTo(
+        int tier,
+        StandingEntry row,
+        IReadOnlyList<StandingEntry> table,
+        bool promotion)
+    {
+        var clubs = table.Count;
+        var lowestTier = CompetitionRules.DivisionCount;
+
+        var slots = promotion
+            ? tier > 1 ? CompetitionRules.PromotionSlots : 0
+            : tier < lowestTier ? CompetitionRules.RelegationSlots : 0;
+
+        if (clubs == 0 || slots == 0 || slots >= clubs)
+        {
+            return null;
+        }
+
+        if (promotion ? row.Position <= slots : row.Position > clubs - slots)
+        {
+            return null;
+        }
+
+        var edge = promotion ? table[slots - 1] : table[clubs - slots - 1];
+        return Math.Max(0, edge.Points - row.Points);
     }
 
     /// <summary>

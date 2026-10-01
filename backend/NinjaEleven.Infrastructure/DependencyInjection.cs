@@ -157,6 +157,9 @@ public static class DependencyInjection
         // what lets the ledger, the market and the match all tell the manager something without
         // any of them having to know who else does.
         services.AddScoped<InboxService>();
+        // The treasurer's weekly statement, which is the one message a manager gets about a
+        // gate receipt or a wage bill — read in a week rather than one line at a time.
+        services.AddScoped<StatementService>();
 
         services.AddSingleton<IMatchSessionRegistry, MatchSessionRegistry>();
 

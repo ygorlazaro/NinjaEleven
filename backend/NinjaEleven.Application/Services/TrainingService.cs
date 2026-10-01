@@ -365,21 +365,12 @@ public class TrainingService
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        // Reported after the commit and not before, so the box cannot announce a payment that
-        // then failed to be written — and a failure to report is not a failure to train. The
-        // session is spent, the point is gained and the money is gone by this point; raising
-        // the request over a notification would hand the manager an error for work that
-        // succeeded, and the retry that follows would spend a second session and a second fee
-        // on a man who had already had one.
-        try
-        {
-            await _financeService.ReportAsync(line, cancellationToken: cancellationToken);
-        }
-        catch (Exception reportFailed)
-        {
-            Debug.WriteLine(
-                $"Treino de {player.Id} committed; the report to the box failed: {reportFailed}");
-        }
+        // Nothing is reported to the box. A training fee is one of the club's weekly outgoings
+        // and it is in the statement with the wages and the gate beside it; a message per
+        // session would be four a week about a number the manager chose on purpose and can
+        // see the cost of on the button he pressed. The session is spent, the point is gained
+        // and the money is gone by this point, and none of that is news.
+        Debug.Assert(line.Amount < 0m, "A training fee is a payment, so it leaves the club.");
 
         return new TrainingResult(
             player.Id,
