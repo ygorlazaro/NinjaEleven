@@ -281,6 +281,12 @@ public sealed class MatchLoopService : BackgroundService
             using var scope = _scopeFactory.CreateScope();
             var matchService = scope.ServiceProvider.GetRequiredService<MatchService>();
 
+            // A claim nobody is answering is given back before anything below decides the
+            // match is waiting. The two decisions that hold the clock for a manager are worth
+            // waiting for a person and not worth waiting for a closed tab, and the loop is
+            // the only thing that keeps looking at the match while nobody does.
+            await matchService.ReleaseAStaleClaimAsync(matchId, cancellationToken);
+
             var state = await matchService.GetStateAsync(matchId, cancellationToken);
 
             if (state.IsFinished || state.IsPaused)

@@ -16,16 +16,25 @@ namespace NinjaEleven.Scheduler;
 public static class SchedulerRegistration
 {
     /// <summary>
-    /// The three windows a matchday can have. Each one is a job and a cron expression, and
-    /// the expression is read from configuration rather than written here: a schedule that
-    /// lives in code is a schedule that can only be changed by a rebuild, and a world being
-    /// played on somebody's laptop has to be playable on a different laptop.
+    /// The triggers this process owns: the three windows a matchday can have, and the sweep
+    /// that hands back the clubs of managers who have gone quiet.
+    ///
+    /// Each one is a job and a cron expression, and the expression is read from configuration
+    /// rather than written here: a schedule that lives in code is a schedule that can only be
+    /// changed by a rebuild, and a world being played on somebody's laptop has to be playable
+    /// on a different laptop.
+    ///
+    /// The three waves are typed with the competition they play, because that is what makes
+    /// them interchangeable. The sweep is not a wave and has no competition at all — it is a
+    /// question asked of the accounts rather than of the calendar — so it carries its own
+    /// entry here rather than pretending to be a fourth window.
     /// </summary>
-    private static readonly (Type Job, string Identity, Func<SchedulerOptions, string> Cron)[] Waves =
+    private static readonly (Type Job, string Identity, Func<SchedulerOptions, string> Cron)[] Triggers =
     [
         (typeof(LeagueRoundJob), "league-round", options => options.LeagueRoundCron),
         (typeof(CupRoundJob), "cup-round", options => options.CupRoundCron),
-        (typeof(SuperCupRoundJob), "supercup-round", options => options.SuperCupRoundCron)
+        (typeof(SuperCupRoundJob), "supercup-round", options => options.SuperCupRoundCron),
+        (typeof(ManagerDormancyJob), "manager-dormancy", options => options.ManagerDormancyCron)
     ];
 
     /// <summary>
@@ -34,7 +43,7 @@ public static class SchedulerRegistration
     /// internals, and so a log line and a trigger can be tied together by name.
     /// </summary>
     public static IReadOnlyList<string> RegisteredIdentities =>
-        Waves.Select(wave => wave.Identity).ToList();
+        Triggers.Select(trigger => trigger.Identity).ToList();
 
     /// <summary>
     /// Adds the jobs and their triggers.
@@ -80,9 +89,9 @@ public static class SchedulerRegistration
             quartz.UseInMemoryStore();
             quartz.UseDefaultThreadPool();
 
-            foreach (var wave in Waves)
+            foreach (var trigger in Triggers)
             {
-                Register(quartz, wave.Job, wave.Identity, wave.Cron(options), options);
+                Register(quartz, trigger.Job, trigger.Identity, trigger.Cron(options), options);
             }
         });
 

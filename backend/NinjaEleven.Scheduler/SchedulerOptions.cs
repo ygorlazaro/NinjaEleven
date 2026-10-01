@@ -42,6 +42,16 @@ public sealed class SchedulerOptions
     public string SuperCupRoundCron { get; set; } = "0 5 13 * * *";
 
     /// <summary>
+    /// When to look for managers who have not signed in for long enough to be dismissed.
+    ///
+    /// Daily, and early, for one reason: the sweep hands clubs back to the world, and a club
+    /// that is handed back at night has a whole day of NPC-managed football behind it before
+    /// anybody is looking. The threshold it measures against is in days, so a fire an hour
+    /// earlier would find exactly the same managers and say exactly the same thing.
+    /// </summary>
+    public string ManagerDormancyCron { get; set; } = "0 17 3 * * *";
+
+    /// <summary>
     /// Whether to play whatever is already due a few seconds after this process starts.
     ///
     /// It is the restart path. A scheduler that was down when a window went out has a matchday

@@ -61,6 +61,10 @@ public static class DependencyInjection
         services.AddScoped<IManagedClubReader, ManagedClubReader>();
         services.AddScoped<IInboxMessageRepository, InboxMessageRepository>();
         services.AddScoped<IRoundExecutionStore, RoundExecutionStore>();
+        // The plan a manager lays for his club's next match. The kick-off asks it for a club
+        // whose manager is not there, which is the whole reason it is a row rather than a pair
+        // of arguments that arrive with the request.
+        services.AddScoped<ITeamMatchPlanRepository, TeamMatchPlanRepository>();
 
         return services;
     }
@@ -68,6 +72,11 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddScoped<TeamService>();
+        // The board a manager reads before a match and the order he leaves on it. The
+        // kick-off asks it for the order, which is why it is a service and not a pair of
+        // arguments that arrive with the request: a match opened by the world's schedule has
+        // no request to arrive with.
+        services.AddScoped<TacticsService>();
         services.AddScoped<FinanceService>();
         services.AddScoped<PlayerService>();
         services.AddScoped<SeasonService>();

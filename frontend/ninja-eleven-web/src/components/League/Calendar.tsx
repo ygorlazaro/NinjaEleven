@@ -102,7 +102,7 @@ const Calendar: React.FC<CalendarProps> = ({ fixtures, rounds, currentRoundId, u
             const link = f.matchId
               ? `/match/${f.matchId}`
               : f.status === 'Scheduled' && isUserFixture
-                ? `/match/lineup/${f.id}`
+                ? '/tactics'
                 : null;
 
             return (

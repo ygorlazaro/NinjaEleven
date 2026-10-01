@@ -20,17 +20,20 @@ public class ManagerService
     private readonly ITeamRepository _teams;
     private readonly IManagerRepository _managers;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IClock _clock;
     private readonly ILogger<ManagerService> _logger;
 
     public ManagerService(
         ITeamRepository teams,
         IManagerRepository managers,
         IUnitOfWork unitOfWork,
+        IClock clock,
         ILogger<ManagerService> logger)
     {
         _teams = teams;
         _managers = managers;
         _unitOfWork = unitOfWork;
+        _clock = clock;
         _logger = logger;
     }
 
@@ -92,5 +95,70 @@ public class ManagerService
         _logger.LogInformation("Manager of {TeamName} renamed to {ManagerName}.", manager.TeamId, name);
 
         return manager;
+    }
+
+    /// <summary>
+    /// Walks the world and dismisses the managers who have stopped turning up.
+    ///
+    /// The whole point is that a club is never left waiting: a manager who has gone quiet
+    /// hands the club back to the world, an NPC manager keeps the chair, and the season
+    /// carries on without a person in the way. The alternative is a calendar that stops at
+    /// the fixture of an account nobody opens, which is the failure this exists to prevent.
+    ///
+    /// It is asked of the whole world at once, in two passes. The first is a read of every
+    /// manager in the world and a decision about each; the second is a read of the clubs
+    /// actually being let go, and only those are written. A sweep that asked the repository
+    /// for a club per manager would be a query per career on earth to produce a log line, and
+    /// a sweep that cleared the mark on every club it looked at would be a write per career
+    /// on earth to say nothing.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> DismissTheManagersWhoHaveGoneQuietAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var now = _clock.UtcNow;
+        var managed = await _managers.ListManagedWithTheirAccountsAsync(cancellationToken);
+
+        // The sweep only ever looks at managers a person is behind, so an account that is
+        // already gone is not overdue — it has been dealt with.
+        var overdue = managed
+            .Where(manager => manager.User is { IsActive: true }
+                              && manager.User.HasBeenAwayFor(ManagerDormancy.MaxDaysAway, now))
+            .ToList();
+
+        if (overdue.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        // One read of the clubs being let go, for the names the log and the caller answer
+        // with. A club that cannot be read is still let go: the manager is the fact, and a
+        // missing name is a worse log line rather than a reason to keep a chair warm.
+        var clubs = await _teams.ListByIdsAsync(overdue.Select(manager => manager.TeamId), cancellationToken);
+        var names = clubs.ToDictionary(club => club.Id, club => club.Name);
+
+        var dismissed = new List<string>();
+
+        foreach (var manager in overdue)
+        {
+            var account = manager.User!;
+            var clubName = names.GetValueOrDefault(manager.TeamId, manager.TeamId.ToString());
+
+            account.Dismiss(now, manager.TeamId);
+            manager.ClearUserId();
+            await _teams.ClearManagerClubAsync(manager.TeamId, cancellationToken);
+
+            _managers.Update(manager);
+
+            _logger.LogWarning(
+                "Dismissed the manager of {ClubName}: no sign-in since {LastSeen:yyyy-MM-dd}. The club is NPC-run again.",
+                clubName,
+                account.LastLoginAt ?? account.CreatedAt);
+
+            dismissed.Add(clubName);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return dismissed;
     }
 }

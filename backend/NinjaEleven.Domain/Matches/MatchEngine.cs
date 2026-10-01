@@ -1770,6 +1770,54 @@ public class MatchEngine
     /// beats a better outfielder every time, and that preference is in
     /// <see cref="EnsureGoalkeeper"/> so the two paths can never disagree about it.
     /// </summary>
+    /// <summary>
+    /// Hands a pending decision back to the engine and answers it.
+    ///
+    /// <para>
+    /// The clock is held for a manager who claimed the match, and that is right while he is
+    /// there. A manager who closes the tab leaves the match holding its clock on a question
+    /// nobody is going to answer, and the world waits behind it: the fixture stays owed, the
+    /// window never closes, and the season stops. So a claim expires. When it does, the two
+    /// things the manager could have been asked for are decided the way they are decided for
+    /// every match nobody is watching — the engine names the taker and the engine names who
+    /// comes on — and the match carries on being a match.
+    /// </para>
+    ///
+    /// <para>
+    /// It answers both open questions rather than only one, because they cannot both be open
+    /// at once and a method that quietly ignored the second would leave a match stuck on the
+    /// occasion it did not happen.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<MatchEngineEvent> ReleaseTheManager(MatchState state)
+    {
+        var events = new List<MatchEngineEvent>();
+
+        if (state.PenaltyAwaitingSelection)
+        {
+            TakeAutomaticPenalty(state, events);
+        }
+
+        if (state.InjuryAwaitingSubstitution)
+        {
+            var home = state.InjuryTeam == 1;
+            var lineup = home ? state.HomeLineup : state.AwayLineup;
+            var outgoing = lineup.FirstOrDefault(player => player.PlayerId == state.InjuryPlayerId);
+
+            state.InjuryAwaitingSubstitution = false;
+            state.InjuryPlayerId = null;
+
+            if (outgoing is not null)
+            {
+                outgoing.Injure(Injury.Grave, state.PendingInjuryMatchesOut, state.Minute);
+                Hold(state);
+                ForceInjurySubstitution(state, events, home, outgoing);
+            }
+        }
+
+        return events;
+    }
+
     private void ForceInjurySubstitution(
         MatchState state,
         List<MatchEngineEvent> events,

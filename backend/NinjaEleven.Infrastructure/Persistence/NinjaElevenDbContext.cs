@@ -86,6 +86,7 @@ public class NinjaElevenDbContext : DbContext
     public DbSet<MatchEvent> MatchEvents => Set<MatchEvent>();
     public DbSet<MatchStatistics> MatchStatistics => Set<MatchStatistics>();
     public DbSet<MatchPlayerStatistics> MatchPlayerStatistics => Set<MatchPlayerStatistics>();
+    public DbSet<Domain.Matches.TeamMatchPlan> TeamMatchPlans => Set<Domain.Matches.TeamMatchPlan>();
 
     public DbSet<Name> Names => Set<Name>();
     public DbSet<Surname> Surnames => Set<Surname>();

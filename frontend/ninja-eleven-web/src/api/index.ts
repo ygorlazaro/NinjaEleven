@@ -32,6 +32,9 @@ import type {
    TransferSearchFilters,
    TransferHistoryLineDto,
    ReleaseResultDto,
+  TacticsBoardDto,
+  TacticsPlanDto,
+  SaveTacticsPlanRequestDto,
    AuthResponseDto,
    AuthRegisterRequestDto,
    AuthLoginRequestDto,
@@ -555,4 +558,30 @@ export const InboxApi = {
   /** Empties the unread badge in one go, for a manager who has caught up. */
   markAllRead: (teamId: string) =>
     api.post<number>(`/inbox/${teamId}/read-all`).then(r => r.data),
+};
+
+/**
+ * The board a manager lays his club's next match out on, and the order he leaves on it.
+ *
+ * It is its own client and not part of the match one because the kick-off is no longer
+ * something a manager opens: the world's schedule opens a match, so what a manager writes
+ * here has to be somewhere the match can find without him.
+ */
+export const TacticsApi = {
+  /**
+   * The fixture, the opponent, the squad and the order left on it — in one call, because a
+   * board assembled from three requests could show a squad that disagrees with the one the
+   * kick-off is about to use.
+   */
+  board: (teamId: string, seasonId: string) =>
+    api
+      .get<TacticsBoardDto>('/tactics/board', { params: { teamId, seasonId } })
+      .then(r => r.data),
+
+  /**
+   * Writes the order down. It is a POST because what is stored is the manager's decision and
+   * the moment he took it — a plan written twice is the last decision, not the merge of two.
+   */
+  savePlan: (request: SaveTacticsPlanRequestDto) =>
+    api.post<TacticsPlanDto>('/tactics/plan', request).then(r => r.data),
 };

@@ -132,7 +132,6 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // still resolved here because the box is a card and the calendar is where a manager goes
   // when there is nothing to play.
   const { next } = useNextFixture(selectedTeam?.id, currentSeasonId);
-  const lineupTarget = next ? `/match/lineup/${next.fixture.id}` : '/calendar';
 
   // The same season the next match is read against, so the two numbers in the column are
   // about the same world and one of them cannot be last season's answer to a question about
@@ -235,6 +234,22 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 {unreadMessages}
               </span>
             )}
+          </NavLink>
+
+          {/* His own order. It sits directly under his mail because it is the other thing
+              the game makes him decide rather than merely show him: everything else on this
+              column reports, and this one is written down and then acted on without him.
+
+              It is above the competitions rather than among them because it applies to all
+              of them — a shape is not a championship shape or a cup shape, it is how his
+              club plays, and the fixture it applies to is read from the calendar when the
+              match opens. */}
+          <NavLink
+            to="/tactics"
+            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+          >
+            <span className="sidebar-link__icon">📋</span>
+            <span className="sidebar-link__label">Táticas</span>
           </NavLink>
 
           <NavLink

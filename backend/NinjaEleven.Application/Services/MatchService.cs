@@ -22,8 +22,8 @@ namespace NinjaEleven.Application.Services;
 /// </summary>
 public class MatchService : IMatchCleaner
 {
-    private const int SquadSize = 11;
-    private const int BenchSize = 7;
+    private const int SquadSize = MatchRules.SquadSize;
+    private const int BenchSize = MatchRules.BenchSize;
     private const string DefaultFormation = "4-3-3";
 
     /// <summary>
@@ -76,6 +76,7 @@ public class MatchService : IMatchCleaner
     /// about starting a match, and a match is started from this service.
     /// </summary>
     private readonly MatchdayService _matchday;
+    private readonly TacticsService _tactics;
 
     /// <summary>
     /// A club's money. It is here rather than inside the season progress because the gate is
@@ -108,6 +109,7 @@ public class MatchService : IMatchCleaner
         IUnitOfWork unitOfWork,
         CupProgressionService cupProgression,
         MatchdayService matchday,
+        TacticsService tactics,
         FinanceService financeService,
         SponsorOfferService sponsorService,
         InboxService inbox,
@@ -128,6 +130,7 @@ public class MatchService : IMatchCleaner
         _unitOfWork = unitOfWork;
         _cupProgression = cupProgression;
         _matchday = matchday;
+        _tactics = tactics;
         _financeService = financeService;
         _sponsorService = sponsorService;
         _inbox = inbox;
@@ -309,16 +312,30 @@ public class MatchService : IMatchCleaner
                 $"Tática desconhecida: '{tacticCode}'. Use um código de {string.Join(", ", Tactics.All.Select(option => option.Code))}.");
         }
 
-        // The tactic is the manager's order about his own club. The opposition is picked the
-        // way its own manager would have picked it, and giving the opponent the visitor's
-        // shape would make an away game an exercise in copying the home team.
-        var isHomeManager = tactic is not null && userTeamId == homeTeam.Id;
-        var isAwayManager = tactic is not null && userTeamId == awayTeam.Id;
+        // The kick-off is no longer the manager's: the world's own schedule opens a match, not
+        // a hand opening a screen. So the order left on the board is read here, for each club,
+        // and it is what that club goes out in whether anybody is watching or not. It is read
+        // per club rather than for "the manager's club" because the world walk starts a
+        // manager's match with nobody named at all — which is exactly the case the plan exists
+        // for, and a plan applied only when a person was present would be a plan that only ever
+        // worked while the manager was online.
+        //
+        // An order that arrives with the request still wins, because a manager standing at the
+        // touchline is answering a question about this match rather than about the season.
+        var orderHome = await _tactics.TheOrderAtTheKickOffAsync(homeTeam.Id, seasonId, cancellationToken);
+        var orderAway = await _tactics.TheOrderAtTheKickOffAsync(awayTeam.Id, seasonId, cancellationToken);
 
-        var homeSquad = await BuildSquadAsync(
-            homeTeam, seasonId, isHomeManager ? tactic : null, cancellationToken);
-        var awaySquad = await BuildSquadAsync(
-            awayTeam, seasonId, isAwayManager ? tactic : null, cancellationToken);
+        var askedForHome = starterIds is { Count: > 0 } && userTeamId == homeTeam.Id;
+        var askedForAway = starterIds is { Count: > 0 } && userTeamId == awayTeam.Id;
+
+        // The shape each club goes out in. A club with neither an order of its own nor a
+        // manager to ask is given the shape read off its squad, which is what the engine would
+        // have done on its own — the same answer, arrived at by asking.
+        var homeTactic = askedForHome ? tactic : Tactics.Find(orderHome?.TacticCode);
+        var awayTactic = askedForAway ? tactic : Tactics.Find(orderAway?.TacticCode);
+
+        var homeSquad = await BuildSquadAsync(homeTeam, seasonId, homeTactic, cancellationToken);
+        var awaySquad = await BuildSquadAsync(awayTeam, seasonId, awayTactic, cancellationToken);
 
         if (homeSquad.Lineup.Count < SquadSize || awaySquad.Lineup.Count < SquadSize)
         {
@@ -329,24 +346,47 @@ public class MatchService : IMatchCleaner
 
         // The manager's eleven is validated by the backend; the opponent is picked by
         // the same rules the engine would use on its own.
-        if (userTeamId is { } managerTeamId && starterIds is { Count: > 0 })
+        if (askedForHome)
         {
             // Only pass benchIds if explicitly provided; otherwise let SelectStartingEleven use automatic bench
             var explicitBenchIds = benchIds is { Count: > 0 } ? benchIds : null;
-            
-            if (managerTeamId == homeTeam.Id)
+
+            homeSquad = SelectStartingEleven(homeSquad, starterIds!, explicitBenchIds);
+        }
+        else if (askedForAway)
+        {
+            var explicitBenchIds = benchIds is { Count: > 0 } ? benchIds : null;
+
+            awaySquad = SelectStartingEleven(awaySquad, starterIds!, explicitBenchIds);
+        }
+        else if (starterIds is { Count: > 0 } && userTeamId is not null)
+        {
+            // A command that names a club, and the club is one of the other four hundred in the
+            // country. This is a manager who followed the wrong fixture, and being told so is
+            // the whole answer — there is nothing to apply it to and nothing to guess. An
+            // eleven that arrived naming no club at all is not a command and is applied to
+            // neither side, and a club named with no eleven behind it is not one either: both
+            // are walked over rather than refused, because the walk that opens a match carries
+            // none of these arguments and a bug in one caller must not be able to stop the
+            // world's football.
+            throw new DomainValidationException(
+                "TeamNotInMatch",
+                "O time não está disputando esta partida.");
+        }
+        else
+        {
+            // A standing order, answered against the squad as it is on the day. A man who was
+            // available when the manager wrote it and is not today is replaced rather than the
+            // whole order refused: the plan was not wrong, the world moved under it, and a
+            // match the world could not start because of a suspension is a match nobody sees.
+            if (orderHome?.StarterIds is { Count: > 0 } homeStarterIds)
             {
-                homeSquad = SelectStartingEleven(homeSquad, starterIds, explicitBenchIds);
+                homeSquad = ApplyTheStandingOrder(homeSquad, homeStarterIds, orderHome.BenchIds);
             }
-            else if (managerTeamId == awayTeam.Id)
+
+            if (orderAway?.StarterIds is { Count: > 0 } awayStarterIds)
             {
-                awaySquad = SelectStartingEleven(awaySquad, starterIds, explicitBenchIds);
-            }
-            else
-            {
-                throw new DomainValidationException(
-                    "TeamNotInMatch",
-                    "O time não está disputando esta partida.");
+                awaySquad = ApplyTheStandingOrder(awaySquad, awayStarterIds, orderAway.BenchIds);
             }
         }
 
@@ -364,6 +404,13 @@ public class MatchService : IMatchCleaner
         var competition = await ResolveCompetitionAsync(fixture, cancellationToken);
         var competitionType = competition.Type;
         var match = Match.Create(fixtureId, homeTeam.Id, awayTeam.Id, competitionType, competition.Window);
+
+        // The shape each club actually went out in, recorded on the match rather than in the
+        // plan. A plan is what somebody intends; this is what happened, and it is the only one
+        // of the two that can be read back as the club's football a fortnight later when the
+        // plan has been restated twice since.
+        match.RecordTactic(homeTactic?.Code ?? string.Empty);
+        match.RecordAwayTactic(awayTactic?.Code ?? string.Empty);
 
         // The squad strength behind the crowd is the eleven that is about to play and the bench
         // behind it, because that is the team the supporters are coming to watch on the day.
@@ -1620,6 +1667,7 @@ public class MatchService : IMatchCleaner
 
             session.State.ManagerTeamId = userTeamId;
             session.AutoContinue = false;
+            session.ManagerClaimedAt = _clock.UtcNow;
 
             // And it is his match now: the world left it on the touchline for him and the
             // background loop was told to keep off it, so the claim is what hands the clock
@@ -1627,6 +1675,80 @@ public class MatchService : IMatchCleaner
             // is watching — a match that never moves while he watches it.
             session.Driver = MatchDriver.None;
         }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Gives a claim that nobody is answering back to the engine, and answers it.
+    ///
+    /// <para>
+    /// A manager's claim stops the engine substituting for his side and gives him the two
+    /// decisions worth giving a person: who takes a penalty, and who comes on for a man who
+    /// cannot carry on. Both hold the clock. A claim that is never answered therefore holds
+    /// the match there for ever, and the world behind it stops with it: the fixture is owed
+    /// and the window never closes.
+    /// </para>
+    ///
+    /// <para>
+    /// So a claim is honoured while it is being answered and expires after
+    /// <see cref="MatchRules.ManagerDecisionTimeoutSeconds"/> of silence. The match then goes
+    /// on being a match nobody is managing: the engine picks the taker and the replacement,
+    /// the loop is handed the clock back, and a manager who comes back afterwards finds a
+    /// game that kept moving rather than one frozen since the afternoon.
+    /// </para>
+    ///
+    /// <para>
+    /// It only ever fires while a decision is actually open. A manager who is watching a
+    /// match that is not waiting on him is left alone, because the whole point of the claim
+    /// was that he is there.
+    /// </para>
+    /// </summary>
+    public async Task<bool> ReleaseAStaleClaimAsync(Guid matchId, CancellationToken cancellationToken = default)
+    {
+        if (!_sessions.TryGet(matchId, out var session))
+        {
+            return false;
+        }
+
+        var waitingOnTheManager =
+            session.State.ManagerTeamId is not null
+            && (session.State.PenaltyAwaitingSelection || session.State.InjuryAwaitingSubstitution);
+
+        if (!waitingOnTheManager || session.ManagerClaimedAt is not { } claimedAt)
+        {
+            return false;
+        }
+
+        if (_clock.UtcNow - claimedAt < TimeSpan.FromSeconds(MatchRules.ManagerDecisionTimeoutSeconds))
+        {
+            return false;
+        }
+
+        var events = new List<MatchEngineEvent>();
+
+        lock (session.Gate)
+        {
+            if (session.State.PenaltyAwaitingSelection || session.State.InjuryAwaitingSubstitution)
+            {
+                session.State.ManagerTeamId = null;
+                session.AutoContinue = true;
+                session.ManagerClaimedAt = null;
+                session.Driver = MatchDriver.WalkedByTheWorld;
+
+                events.AddRange(session.Engine.ReleaseTheManager(session.State));
+            }
+        }
+
+        if (events.Count == 0)
+        {
+            return false;
+        }
+
+        DrainFeed(session.State);
+
+        var match = await GetMatchAsync(matchId, cancellationToken);
+        await PersistEventsAsync(match, events, cancellationToken);
 
         return true;
     }
@@ -2696,6 +2818,103 @@ public class MatchService : IMatchCleaner
     private static int OverallRating(MatchPlayerSnapshot player) =>
         player.Speed + player.Accuracy + player.Dribbling + player.Heading + player.Strength
         + player.GoalkeeperPower + player.Reflexes;
+
+    /// <summary>
+    /// Answers a standing order against the squad as it is on the day of the match.
+    ///
+    /// <para>
+    /// The order is a statement made days ago about men who have since been suspended, injured
+    /// or sent away. It is applied as far as it still holds: every man the manager named who is
+    /// available today keeps his place, in the manager's own order, and the gaps are filled
+    /// from the eleven the staff would have picked — which is the best available man for the
+    /// shape, rather than any man at all.
+    /// </para>
+    ///
+    /// <para>
+    /// It never refuses, and that is the whole difference from <see cref="SelectStartingEleven"/>.
+    /// An order that arrives with the request is a person standing there being told no, and
+    /// being told no is right. A standing order is nobody standing there: a match that cannot
+    /// start because a left-back named a suspended man eight days ago is a match the world
+    /// stops for, and the world does not stop.
+    /// </para>
+    /// </summary>
+    private static SquadSelection ApplyTheStandingOrder(
+        SquadSelection squad,
+        IReadOnlyCollection<Guid> starterIds,
+        IReadOnlyCollection<Guid>? benchIds)
+    {
+        var available = squad.All.ToDictionary(player => player.PlayerId);
+
+        // The eleven the staff would have picked is the fallback and not a second opinion: a
+        // man who has to come in is a man the manager would have chosen had he known, and the
+        // staff's eleven is the club's own answer to that.
+        var fallback = new List<MatchPlayerSnapshot>(squad.Lineup);
+
+        var eleven = starterIds
+            .Select(id => available.GetValueOrDefault(id))
+            .Where(player => player is not null)
+            .Cast<MatchPlayerSnapshot>()
+            .Take(SquadSize)
+            .ToList();
+
+        eleven.AddRange(fallback
+            .Where(player => !eleven.Contains(player))
+            .Take(SquadSize - eleven.Count));
+
+        // One goalkeeper is the rule that survives everything, because a club that plays with
+        // nobody in goal is punished for a suspension rather than for football. The keeper is
+        // taken from the bench before an outfielder is promoted into the eleven.
+        if (eleven.Count(player => player.Position == Position.GK) == 0)
+        {
+            var keeper = squad.All
+                .Where(player => player.Position == Position.GK && !eleven.Contains(player))
+                .OrderByDescending(player => PlayerMetric.KeeperAbility(player))
+                .FirstOrDefault();
+
+            if (keeper is not null)
+            {
+                var displaced = eleven.LastOrDefault(player => player.Position != Position.GK);
+                if (displaced is not null)
+                {
+                    eleven.Remove(displaced);
+                }
+
+                eleven.Add(keeper);
+            }
+        }
+
+        // The bench is the manager's bench as far as it holds, and the rest of the squad after
+        // it — the same filling rule the automatic bench uses, so a plan with a short bench is
+        // a plan about the men who matter rather than a refusal.
+        var bench = (benchIds ?? [])
+            .Select(id => available.GetValueOrDefault(id))
+            .Where(player => player is not null && !eleven.Contains(player))
+            .Cast<MatchPlayerSnapshot>()
+            .Take(BenchSize)
+            .ToList();
+
+        bench.AddRange(squad.All
+            .Where(player => !eleven.Contains(player) && !bench.Contains(player))
+            .OrderByDescending(player => PlayerMetric.Metric(player))
+            .Take(BenchSize - bench.Count));
+
+        return new SquadSelection(
+            squad.Team,
+            OrderForTheLineup(eleven),
+            OrderForTheLineup(bench),
+            squad.All);
+    }
+
+    /// <summary>
+    /// Puts a list of men in the order a formation strip reads: by position, and inside a
+    /// position by name, with the men promoted to goal last.
+    /// </summary>
+    private static List<MatchPlayerSnapshot> OrderForTheLineup(IEnumerable<MatchPlayerSnapshot> players) =>
+        players
+            .OrderBy(player => PositionOrder.Of(player.Position))
+            .ThenBy(player => player.EmergencyGK ? 1 : 0)
+            .ThenBy(player => player.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     private static TeamInfo ToTeamInfo(Team team, double stars) =>
         new(team.Id, team.Name, team.ShortName, team.PrimaryColor, team.SecondaryColor, (int)Math.Round(stars * 20));

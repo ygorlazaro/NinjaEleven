@@ -1,10 +1,12 @@
 import { SeasonApi, TeamApi, SponsorApi, ManagerApi } from '@/api';
 import KitShirt from '@/components/Club/KitShirt';
+import ClubOwnershipIcon from '@/components/Common/ClubOwnershipIcon';
 import DivisionTrophy from '@/components/League/DivisionTrophy';
 import { mockClubProfile } from '@/mock/clubProfile';
 import { useClubWindow } from '@/services/clubColors';
 import { formatLimo } from '@/services/limo';
 import { useGameState } from '@/state';
+import { useAuthStore } from '@/state/auth';
 import type { ClubHistoryEventDto, ClubProfileDto, ClubTrophyDto, TeamDto } from '@/types';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -180,6 +182,9 @@ const TrophyShelf: React.FC<{ trophies: ClubTrophyDto[] }> = ({ trophies }) => {
  */
 const ClubScreen: React.FC = () => {
   const selectedTeam = useGameState((s) => s.selectedTeam);
+  const yourClubId = useAuthStore((s) => s.teamId);
+  const returnedAfterDismissal = useAuthStore((s) => s.returnedAfterDismissal);
+  const clearReturnedAfterDismissal = useAuthStore((s) => s.clearReturnedAfterDismissal);
   const clubWindow = useClubWindow(selectedTeam);
   const [seasonId, setSeasonId] = useState<string>('');
   const [balance, setBalance] = useState<number | null>(null);
@@ -293,6 +298,22 @@ const ClubScreen: React.FC = () => {
   return (
     <div className="app">
       <div className="card team-view-card club-modal club-page" style={clubWindow}>
+        {returnedAfterDismissal && (
+          <div className="returned-note" role="status">
+            <p>
+              Você ficou mais de 30 dias sem entrar e foi demitido. Ao voltar, ganhou um clube
+              novo — este aqui é <strong>{club.name}</strong>.
+            </p>
+            <button
+              className="ctrl returned-note__close"
+              onClick={clearReturnedAfterDismissal}
+              title="Entendi"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* The shield and the name, side by side: the badge is how a manager recognises a club
             at a glance, so it goes where the eye lands first and the name comes with it. */}
         <header className="club-page__head">
@@ -303,6 +324,11 @@ const ClubScreen: React.FC = () => {
           />
           <div className="club-page__identity">
             <h2 className="profile-name">{club.name}</h2>
+            <ClubOwnershipIcon
+              clubId={club.teamId}
+              controlledBy={selectedTeam?.controlledBy}
+              yourClubId={yourClubId}
+            />
             <p className="club-page__tag">
               {club.shortName} •
               <span className="coach-inline">

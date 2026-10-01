@@ -74,6 +74,14 @@ public class TeamRepository : ITeamRepository
         return club;
     }
 
+    public async Task ClearManagerClubAsync(Guid teamId, CancellationToken cancellationToken = default)
+    {
+        var club = await _dbContext.Teams
+            .FirstOrDefaultAsync(team => team.Id == teamId, cancellationToken);
+
+        club?.ClearManagerClub();
+    }
+
     public async Task<IReadOnlyList<Team>> ListByIdsAsync(
         IEnumerable<Guid> ids,
         CancellationToken cancellationToken = default) =>

@@ -495,16 +495,6 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
     }
   }, [feed, loadLineup]);
 
-  const pause = async () => {
-    if (!matchId) return;
-    await MatchHubClient.pause(matchId);
-  };
-
-  const resume = async () => {
-    if (!matchId) return;
-    await MatchHubClient.resume(matchId);
-  };
-
   /**
    * A player clicked under the scoreboard opens the substitution screen with him already
    * picked to come off: the manager has said who is tired, and only has to say who replaces
@@ -913,9 +903,6 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
           {!state?.isFinished && (
             <>
               <MatchControls
-                isPaused={isPaused}
-                onPause={pause}
-                onResume={resume}
                 speed={state?.speed ?? 1}
                 muted={muted}
                 onToggleMuted={toggleMuted}

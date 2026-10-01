@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NinjaEleven.Infrastructure.Persistence;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NinjaEleven.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NinjaElevenDbContext))]
-    partial class NinjaElevenDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260930224555_ManagerDormancy")]
+    partial class ManagerDormancy
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -643,12 +646,6 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("away_score");
 
-                    b.Property<string>("AwayTacticCode")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)")
-                        .HasColumnName("away_tactic_code");
-
                     b.Property<Guid>("AwayTeamId")
                         .HasColumnType("uuid")
                         .HasColumnName("away_team_id");
@@ -727,8 +724,7 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("TacticCode")
                         .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)")
+                        .HasColumnType("text")
                         .HasColumnName("tactic_code");
 
                     b.Property<decimal>("TicketPrice")

@@ -37,3 +37,34 @@ public class TeamMatchRecord
     // Stadium info
     public string? StadiumName { get; init; }
 }
+
+/// <summary>
+/// The whole story of one rivalry, counted.
+///
+/// <para>
+/// It is not the last few meetings added up: those are a page the manager reads to remember
+/// the fixture, and a rivalry's ledger is every meeting ever played. A club that has beaten
+/// someone nine times out of ten and lost the last four has a record of six wins and a
+/// recent run of four defeats, and a screen that printed the second one as the first would
+/// be answering a question nobody asked.
+/// </para>
+/// </summary>
+public class HeadToHeadSummary
+{
+    /// <summary>Meetings the two clubs have played, all of them, in any competition.</summary>
+    public int Played { get; init; }
+
+    public int Wins { get; init; }
+    public int Draws { get; init; }
+    public int Losses { get; init; }
+
+    public int GoalsFor { get; init; }
+    public int GoalsAgainst { get; init; }
+
+    /// <summary>
+    /// Goals for less goals against, computed rather than carried. A stored difference is a
+    /// number that can be wrong; a difference of two numbers that are both on the same row
+    /// cannot.
+    /// </summary>
+    public int GoalDifference => GoalsFor - GoalsAgainst;
+}

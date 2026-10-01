@@ -534,7 +534,14 @@ public class MatchShootoutServiceTests
     /// </summary>
     private const int FirstLegRound = 1;
 
-    private MatchService CreateService() => new(
+    // The match reads the standing order off the board, and the board reads the calendar off
+    // the matchday, so the shared service is built once and handed to both rather than
+    // written out twice and left to drift apart.
+    private MatchService CreateService()
+    {
+        var matchday = CreateMatchdayService();
+
+        return new MatchService(
         _matches.Object,
         _teams.Object,
         _players.Object,
@@ -576,43 +583,21 @@ public class MatchShootoutServiceTests
             InboxTestFactory.Create(_teams),
             _teams.Object,
             new Random()),
-        new MatchdayService(
-            _matchDays.Object,
-            _rounds.Object,
+        matchday,
+        new TacticsService(
+            Mock.Of<NinjaEleven.Application.Repositories.ITeamMatchPlanRepository>(),
+            _teams.Object,
             _fixtures.Object,
-            _competitions.Object,
             _matches.Object,
-            new ScorerPrizeService(
-                _competitions.Object,
-                _players.Object,
-                _teams.Object,
-                new FinanceService(
-                    _finance.Object,
-                    _teams.Object,
-                    _players.Object,
-                    _fixtures.Object,
-                    _rounds.Object,
-                    _matchDays.Object,
-                    _seasons.Object,
-                    InboxTestFactory.Create(_teams),
-                    _unitOfWork.Object,
-                    Microsoft.Extensions.Logging.Abstractions.NullLogger<FinanceService>.Instance),
-                InboxTestFactory.Create(_teams),
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<ScorerPrizeService>.Instance),
-            new TransferService(
-                Mock.Of<NinjaEleven.Application.Repositories.ITransferRepository>(),
+            new TeamService(
                 _teams.Object,
                 _players.Object,
                 _seasons.Object,
-                _competitions.Object,
-                _rounds.Object,
                 _matches.Object,
-                _finance.Object,
-                InboxTestFactory.Create(_teams),
-                _unitOfWork.Object,
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<TransferService>.Instance),
+                _unitOfWork.Object),
+            matchday,
             _unitOfWork.Object,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchdayService>.Instance),
+            MatchTestContext.Clock),
         new FinanceService(
             _finance.Object,
             _teams.Object,
@@ -647,4 +632,43 @@ public class MatchShootoutServiceTests
         MatchTestContext.World(),
         MatchTestContext.Clock,
         Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchService>.Instance);
+    }
+
+    private MatchdayService CreateMatchdayService() => new(
+        _matchDays.Object,
+        _rounds.Object,
+        _fixtures.Object,
+        _competitions.Object,
+        _matches.Object,
+        new ScorerPrizeService(
+            _competitions.Object,
+            _players.Object,
+            _teams.Object,
+            new FinanceService(
+                _finance.Object,
+                _teams.Object,
+                _players.Object,
+                _fixtures.Object,
+                _rounds.Object,
+                _matchDays.Object,
+                _seasons.Object,
+                InboxTestFactory.Create(_teams),
+                _unitOfWork.Object,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<FinanceService>.Instance),
+            InboxTestFactory.Create(_teams),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ScorerPrizeService>.Instance),
+        new TransferService(
+            Mock.Of<NinjaEleven.Application.Repositories.ITransferRepository>(),
+            _teams.Object,
+            _players.Object,
+            _seasons.Object,
+            _competitions.Object,
+            _rounds.Object,
+            _matches.Object,
+            _finance.Object,
+            InboxTestFactory.Create(_teams),
+            _unitOfWork.Object,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<TransferService>.Instance),
+        _unitOfWork.Object,
+        Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchdayService>.Instance);
 }

@@ -33,6 +33,7 @@ public class AuthService
     private readonly StandingsService _standings;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IClock _clock;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
@@ -45,6 +46,7 @@ public class AuthService
         StandingsService standings,
         IPasswordHasher passwordHasher,
         IUnitOfWork unitOfWork,
+        IClock clock,
         ILogger<AuthService> logger)
     {
         _users = users;
@@ -56,6 +58,7 @@ public class AuthService
         _standings = standings;
         _passwordHasher = passwordHasher;
         _unitOfWork = unitOfWork;
+        _clock = clock;
         _logger = logger;
     }
 
@@ -90,8 +93,8 @@ public class AuthService
         var user = User.Create(email, passwordHash);
 
         // Auto-assign a club
-        var assignedTeam = await AutoAssignClubAsync(cancellationToken);
-        
+        var assignedTeam = await AutoAssignClubAsync(null, cancellationToken);
+
         // Check if the assigned team already has a manager (shouldn't happen but handle it)
         var existingManager = await _managers.GetByTeamAsync(assignedTeam.Id, cancellationToken);
         if (existingManager is not null)
@@ -99,7 +102,7 @@ public class AuthService
             _logger.LogWarning("Assigned club {ClubName} already has a manager, removing existing manager", assignedTeam.Name);
             _managers.Remove(existingManager);
         }
-        
+
         var manager = Manager.Create(assignedTeam.Id, coachName ?? "Técnico");
         manager.SetUserId(user.Id);
         user.SetManager(manager);
@@ -120,9 +123,18 @@ public class AuthService
     }
 
     /// <summary>
-    /// Automatically assigns a club to a new user.
+    /// Automatically assigns a club, following the current rule.
     /// </summary>
-    private async Task<Team> AutoAssignClubAsync(CancellationToken cancellationToken)
+    /// <param name="notThisClub">
+    /// A club the account must not be given. A manager who was dismissed is owed a club, and
+    /// the one rule the reactivation cannot bend is that it is not the club they just lost:
+    /// handing it straight back would answer "you were fired" with the same job, and the
+    /// dismissal would be a piece of bookkeeping rather than an event.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    private async Task<Team> AutoAssignClubAsync(
+        Guid? notThisClub,
+        CancellationToken cancellationToken)
     {
         // Get current season
         var currentSeason = await _seasons.GetCurrentAsync(cancellationToken)
@@ -130,13 +142,35 @@ public class AuthService
 
         // Get all clubs without human manager in current season (participating in league)
         var clubsWithoutManager = await _teams.ListClubsWithoutManagerInSeasonAsync(currentSeason.Id, cancellationToken);
-        
+
         // Fallback: if no clubs are enrolled in league competitions yet, use all clubs without managers
         if (clubsWithoutManager.Count == 0)
         {
             clubsWithoutManager = await _teams.ListClubsWithoutManagerAsync(cancellationToken);
         }
-        
+
+        // The club just lost is offered back only if it is the last club on earth. Excluding it
+        // is what makes a dismissal mean something, but a world that has run out of other
+        // clubs cannot honour "a different one", and refusing the sign-in over it would lock a
+        // person out of a game they have an account for. So the exclusion is tried first and
+        // the whole pool is the answer when the first one is empty.
+        if (notThisClub is Guid previous)
+        {
+            var withoutTheOldClub = clubsWithoutManager.Where(club => club.Id != previous).ToList();
+
+            if (withoutTheOldClub.Count > 0)
+            {
+                _logger.LogInformation(
+                    "A club is being chosen for a returning manager; the one they were dismissed from is not offered back.");
+                clubsWithoutManager = withoutTheOldClub;
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Every other club in the world already has a manager, so the club the returning manager was dismissed from is being offered back rather than leaving them with none.");
+            }
+        }
+
         if (clubsWithoutManager.Count == 0)
         {
             throw new DomainValidationException("NoAvailableClubs", "All clubs already have human managers.");
@@ -238,6 +272,11 @@ public class AuthService
 
     /// <summary>
     /// Signs a user in by email and password, returning the claims needed for a JWT.
+    ///
+    /// Signing in is what tells the world a manager is still here, so this is the one place
+    /// the sign-in is recorded — and a manager whose account was dismissed for going quiet is
+    /// given a club again on the way in, because a person who came back has answered the only
+    /// question the dismissal asked.
     /// </summary>
     public async Task<AuthResult> LoginAsync(
         string email,
@@ -253,12 +292,106 @@ public class AuthService
             throw new DomainValidationException(
                 "InvalidCredentials", "The email or password is incorrect.");
 
+        var wasDismissed = !user.IsActive;
+
+        // Read before the reactivation clears it: the log line that says a returning manager
+        // was dismissed on some day must not read a day that has just been erased.
+        var dismissedOn = user.DismissedAt;
+
+        // The club the account was dismissed from. It is read off the account rather than off
+        // the manager link because a dismissal is the act of clearing that link — the row on
+        // the other side no longer points at anybody, so a navigation built on it answers
+        // nothing at all, and the reactivation would be free to hand back the very club the
+        // person was just dismissed from.
+        var previousClubId = user.DismissedTeamId ?? user.Manager?.TeamId;
+
+        if (wasDismissed)
+        {
+            await ReactivateAsync(user, previousClubId, dismissedOn, cancellationToken);
+        }
+        else
+        {
+            user.RecordLogin(_clock.UtcNow);
+        }
+
         var coachName = user.Manager?.Name;
         var teamId = user.Manager?.TeamId;
 
-        _logger.LogInformation("User logged in: {Email}.", email);
+        _logger.LogInformation(
+            "User logged in: {Email}.{Return}",
+            email,
+            wasDismissed
+                ? $" Dismissed on {dismissedOn:yyyy-MM-dd}, so this is a return: they have been given a club again."
+                : string.Empty);
 
-        return new AuthResult(user.Id, user.Email, teamId, coachName);
+        return new AuthResult(user.Id, user.Email, teamId, coachName, wasDismissed);
+    }
+
+    /// <summary>
+    /// Gives a dismissed account its life and a club again.
+    ///
+    /// The club is chosen by the same rule that gives a new account one, because there is
+    /// only one rule about who runs which club and a returning manager is not a special case
+    /// of a manager. The old club is the single exception and it is excluded by the caller.
+    /// </summary>
+    private async Task ReactivateAsync(
+        User user,
+        Guid? previousClubId,
+        DateTimeOffset? dismissedOn,
+        CancellationToken cancellationToken)
+    {
+        user.Reactivate(_clock.UtcNow);
+
+        // The name the manager chose is not on the account — it is on the manager row, and a
+        // dismissal is the act of clearing that row's link to the account, so the name is read
+        // off the club they were let go from before anything else happens. Reading it after
+        // would hand the person a new career under a name they never picked.
+        var coachName = previousClubId is Guid previous
+            ? (await _managers.GetByTeamAsync(previous, cancellationToken))?.Name
+            : null;
+
+        Team assignedTeam;
+        try
+        {
+            assignedTeam = await AutoAssignClubAsync(previousClubId, cancellationToken);
+        }
+        catch (DomainValidationException refused) when (refused.Code == "NoAvailableClubs")
+        {
+            // A world where every club already has a person in it cannot also give this one
+            // back. The account is alive and holds nothing, which is exactly what an account
+            // with no club is, and the StartScreen is where a person without one is sent.
+            _logger.LogWarning(
+                "Dismissed account {Email} signed in again but no club is free, so it has been reactivated without one.",
+                user.Email);
+
+            _users.Update(user);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        // The club chosen is somebody else's NPC chair, and a club has one manager: the NPC
+        // steps aside for the person, the same way it does the day an account is created.
+        var existingManager = await _managers.GetByTeamAsync(assignedTeam.Id, cancellationToken);
+        if (existingManager is not null)
+        {
+            _managers.Remove(existingManager);
+        }
+
+        var manager = Manager.Create(assignedTeam.Id, coachName ?? user.Manager?.Name ?? "Técnico");
+        manager.SetUserId(user.Id);
+        user.SetManager(manager);
+
+        await _teams.MarkAsManagerClubAsync(assignedTeam.Id, cancellationToken);
+        await _managers.AddAsync(manager, cancellationToken);
+        _users.Update(user);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Account {Email} was dismissed on {DismissedOn:yyyy-MM-dd} and has come back; it now runs {ClubName}.",
+            user.Email,
+            dismissedOn,
+            assignedTeam.Name);
     }
 
     /// <summary>
@@ -296,8 +429,14 @@ public class AuthService
 }
 
 /// <summary>The result of a login or registration: enough to mint a JWT.</summary>
+/// <param name="WasDismissed">
+/// True when this sign-in brought a dismissed account back. The account is alive and holds a
+/// club, but the club is not the one it had, and a client that kept the old club in a store
+/// has to be told rather than left to discover it on a screen that no longer loads.
+/// </param>
 public record AuthResult(
     Guid UserId,
     string Email,
     Guid? TeamId,
-    string? CoachName);
+    string? CoachName,
+    bool WasDismissed = false);

@@ -191,6 +191,55 @@ public class InjuryDecisionTests
     }
 
     [Fact]
+    public void AManagerWhoNeverAnswersIsReplacedByTheEngine()
+    {
+        // The clock is held for a manager who claimed the match. A manager who closes the tab
+        // leaves it held for ever, and the world behind it stops: the fixture stays owed and
+        // the window never closes. So the engine answers the question itself, exactly as it
+        // does for a match nobody ever claimed.
+        var running = FindHeldMatch();
+        Assert.NotNull(running);
+
+        var state = running!.State;
+        Assert.True(state.InjuryAwaitingSubstitution);
+
+        var outgoing = state.HomeLineup.Single(player => player.PlayerId == state.InjuryPlayerId);
+        var matchesOut = state.PendingInjuryMatchesOut;
+
+        var events = running.Engine.ReleaseTheManager(state);
+
+        // The wait is over, the man who cannot carry on is off, and the eleven under the
+        // scoreboard is a whole eleven rather than a club one man short and standing still.
+        // Which man the engine sent on is its own business — the point is that it sent one,
+        // so it is not asserted which: a test that named the replacement would break the day
+        // the engine's own choice improved.
+        Assert.False(state.InjuryAwaitingSubstitution);
+        Assert.Null(state.InjuryPlayerId);
+        Assert.True(outgoing.InjuredOff);
+        Assert.Equal(matchesOut, outgoing.InjuryMatchesOut);
+        Assert.DoesNotContain(outgoing, state.HomeLineup);
+        Assert.Equal(11, state.HomeLineup.Count);
+        Assert.NotEmpty(events);
+    }
+
+    [Fact]
+    public void AClaimIsOnlyHandedBackWhenThereIsSomethingWaitingOnIt()
+    {
+        // A manager who is watching a match that is not waiting on him is left alone. The
+        // whole point of the claim was that he is there, and taking it away from him because
+        // he is thinking would rob him of the very decisions the claim was for.
+        var running = FindHeldMatch();
+        Assert.NotNull(running);
+
+        var state = running!.State;
+        var hurt = state.HomeLineup.Single(player => player.PlayerId == state.InjuryPlayerId);
+        state.ResolvePendingInjury(hurt);
+
+        Assert.False(state.InjuryAwaitingSubstitution);
+        Assert.Empty(running.Engine.ReleaseTheManager(state));
+    }
+
+    [Fact]
     public void NamingTheReplacementEndsTheWaitAndRecordsTheInjury()
     {
         var running = FindHeldMatch();

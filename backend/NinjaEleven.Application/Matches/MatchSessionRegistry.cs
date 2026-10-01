@@ -36,11 +36,28 @@ public sealed class LiveMatch
     ///
     /// Set to false the moment a manager lays claim to a match: the match keeps on the
     /// clock it already had, but the interval becomes the manager's and the engine stops
-    /// substituting for his side. It is never flipped back — a manager who leaves mid
-    /// match is expected to come back to the screen he left, the same as a match he
-    /// started himself.
+    /// substituting for his side.
+    ///
+    /// <para>
+    /// It is flipped back when the claim goes stale. A manager who leaves mid match was
+    /// expected to come back, and most of the time he does — but the two decisions that hold
+    /// the clock for him (who takes the penalty, who comes on for the man who cannot carry
+    /// on) would then hold it for ever, and a world that waits for ever plays nothing at
+    /// all. So a claim is honoured while it is being answered and expires after
+    /// <see cref="MatchRules.ManagerDecisionTimeoutSeconds"/> of a manager not answering,
+    /// at which point the engine answers for him.
+    /// </para>
     /// </summary>
     public bool AutoContinue { get; set; }
+
+    /// <summary>
+    /// When the manager claimed this match, or null for a match nobody has claimed.
+    ///
+    /// It is what makes the claim expire. The wait is measured from the moment he took the
+    /// keyboard, so a match claimed by a tab that was closed the moment it opened cannot sit
+    /// on a question for the length of a match.
+    /// </summary>
+    public DateTimeOffset? ManagerClaimedAt { get; set; }
 
     /// <summary>
     /// Who is moving this match's clock, when the answer is not simply "the loop".

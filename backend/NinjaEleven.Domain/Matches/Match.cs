@@ -82,6 +82,29 @@ namespace NinjaEleven.Domain.Matches;
         /// </summary>
         public string SessionHost { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// The shape this match was played in, from the <see cref="Tactics"/> catalogue, or empty
+    /// for a match that was played in whatever the club is made of.
+    ///
+    /// <para>
+    /// It is recorded because "the last tactic this club used" is a question a manager asks
+    /// before the next match and cannot be answered from a plan that was never made: with no
+    /// plan there is nothing to repeat, and a club that changed nothing is a club that should
+    /// come out the same way as last time. So the match carries the fact rather than the plan
+    /// carrying a copy of it, and the two can never disagree about what was played.
+    /// </para>
+    /// </summary>
+    public string TacticCode { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// The shape the visiting club went out in, for the same reason as the home club's.
+    ///
+    /// It is a second column rather than a row per club because a match is one row and the
+    /// question it is asked — "what did these two clubs do" — is about the match, not about a
+    /// side of it.
+    /// </summary>
+    public string AwayTacticCode { get; private set; } = string.Empty;
+
         /// <summary>
         /// The last moment this match was ticked. It is the lease that lets another process
         /// take a match over once its owner has gone quiet: a process that dies mid-match does
@@ -140,6 +163,15 @@ namespace NinjaEleven.Domain.Matches;
         SessionHost = host ?? string.Empty;
         SessionHeartbeatAt = now;
     }
+
+    /// <summary>
+    /// Records the shape the match kicked off in. Written once, at the kick-off that decided
+    /// it, and read by every match after this one when a manager has no plan of his own.
+    /// </summary>
+    public void RecordTactic(string tacticCode) => TacticCode = tacticCode ?? string.Empty;
+
+    /// <summary>Records the shape the visiting club kicked off in.</summary>
+    public void RecordAwayTactic(string tacticCode) => AwayTacticCode = tacticCode ?? string.Empty;
 
     /// <summary>Renews the lease on a match that has just been advanced.</summary>
     public void TouchSession(DateTimeOffset now) => SessionHeartbeatAt = now;

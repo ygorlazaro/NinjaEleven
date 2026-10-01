@@ -250,7 +250,7 @@ const LeagueScreen: React.FC = () => {
 
   const openLineup = () => {
     if (!userFixture) return;
-    navigate(`/match/lineup/${userFixture.id}`);
+    navigate('/tactics');
   };
 
   const openFixture = (fixture: FixtureDto) => {
@@ -260,7 +260,7 @@ const LeagueScreen: React.FC = () => {
     }
 
     if (isScheduled(fixture) && involves(fixture, selectedTeam?.id)) {
-      navigate(`/match/lineup/${fixture.id}`);
+      navigate('/tactics');
     }
   };
 

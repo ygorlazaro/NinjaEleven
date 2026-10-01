@@ -384,6 +384,26 @@ public static class MatchRules
     public const int MaxSubstitutions = 5;
 
     /// <summary>
+    /// How long a manager's claim on a match is honoured before the engine answers for him.
+    ///
+    /// <para>
+    /// Two decisions hold the clock still for a manager: who takes a penalty of his club's,
+    /// and who comes on for a man who cannot carry on. Both are worth waiting for a person
+    /// to answer. Neither is worth waiting for ever, because a manager who closes the tab
+    /// leaves a match that stops mid-afternoon and takes the whole world down with it — the
+    /// fixture stays owed and the window never closes.
+    /// </para>
+    ///
+    /// <para>
+    /// It is measured in seconds of waiting and not in match minutes, because the clock is
+    /// the thing that has stopped: a rule counted in minutes would never be reached by a
+    /// match that is not advancing. It is long enough that a manager thinking about the right
+    /// man is not robbed of the choice.
+    /// </para>
+    /// </summary>
+    public const int ManagerDecisionTimeoutSeconds = 45;
+
+    /// <summary>
     /// A tired player is worth replacing below this energy; a team running on fumes is a
     /// bad look and a worse second half.
     /// </summary>
@@ -453,4 +473,16 @@ public static class MatchRules
     /// manager is not allowed to pick.
     /// </summary>
     public const double LineJobWeight = 0.55;
+
+    /// <summary>
+    /// The eleven, and the seven behind it.
+    ///
+    /// They live here rather than beside the service that fills them because they are now two
+    /// rules and not one: the kick-off fills them, and a manager writing an order before a
+    /// match is checked against them. A second copy of "eleven" in the screen would be a
+    /// screen that accepts ten men and a kick-off that then refuses to start.
+    /// </summary>
+    public const int SquadSize = 11;
+
+    public const int BenchSize = 7;
 }

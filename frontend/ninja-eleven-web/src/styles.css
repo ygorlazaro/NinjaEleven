@@ -2148,6 +2148,36 @@ button { cursor: pointer; }
 .club-page__identity { flex: 1 1 220px; min-width: 0; }
 .club-page__identity .profile-name { margin-bottom: 4px; }
 .club-page__tag { margin: 0; color: var(--muted); font-size: 14px; }
+
+/* Who runs this club. The mark sits between the name and the tag because the name is what
+   the eye lands on and this is the first question about it — a rename button on somebody
+   else's club is a mistake this mark exists to make impossible, and it cannot do that from
+   the bottom of the page. */
+.club-owner {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin: 0 0 6px; padding: 2px 9px 2px 7px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: #0a1520; color: var(--muted);
+  font-size: 12px; line-height: 1.5; white-space: nowrap;
+}
+.club-owner__icon { font-size: 12px; }
+.club-owner--mine { border-color: var(--accent); color: var(--accent); }
+.club-owner--human { border-color: #2c5c8a; color: #7fb3e0; }
+.club-owner--npc { border-style: dashed; }
+
+/* The note a returning manager meets on the club page. It is a notice rather than a dialog
+   because the club behind it is the club he is looking at, and the screen he has to read is
+   the one telling him. */
+.returned-note {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin: 0 0 16px; padding: 10px 12px;
+  border: 1px solid var(--accent); border-radius: 9px;
+  background: rgba(46, 196, 182, .08);
+  font-size: 14px;
+}
+.returned-note p { margin: 0; flex: 1 1 auto; }
+.returned-note__close { flex: 0 0 auto; padding: 2px 8px; }
+
 .club-page__actions { display: flex; gap: 8px; flex: 0 0 auto; }
 .club-page__actions .ctrl { text-decoration: none; }
 
@@ -3053,4 +3083,262 @@ button { cursor: pointer; }
 .training__cell-cost {
   grid-column: 2; grid-row: 1 / span 2; align-self: center;
   font-size: 12px; color: var(--orange); font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- Táticas
+   The board a manager lays his club's next match out on.
+
+   It is three columns rather than one because the decision has three parts and each is
+   read differently: the eleven is short and is checked against a count, the bench is short
+   too, and the squad behind them is twenty-three names the manager is choosing <i>out
+   of</i>. Laying them side by side means a swap is a glance rather than a scroll, which is
+   the whole job of a lineup screen. */
+
+.tactics-page { display: flex; flex-direction: column; gap: 16px; }
+
+.tactics-page > header h1 { margin: 0 0 4px; font-size: 22px; }
+.tactics-page > header .page-subtitle { margin: 0; color: var(--muted); font-size: 13px; max-width: 70ch; }
+
+/* The fixture the order is about. It is the first thing on the screen because the whole
+   screen is about one match, and the same eleven is right for a derby and wrong for a
+   relegation game — neither of them wrong on its own. */
+.tactics-next {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line); border-radius: 10px; background: #0a1520;
+}
+
+.tactics-next__fixture { display: flex; flex-direction: column; gap: 2px; }
+.tactics-next__label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.tactics-next__competition { font-size: 12px; color: var(--muted); }
+.tactics-next__teams { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 800; }
+.tactics-next__vs { color: var(--muted); font-weight: 400; }
+.tactics-next__venue { font-size: 12px; color: var(--muted); }
+
+.tactics-next__closed {
+  margin: 0; padding: 6px 10px; border-radius: 8px;
+  border: 1px solid var(--line); color: var(--muted); font-size: 12px;
+}
+
+/* Head-to-head, counted over every meeting rather than the last few — a club that has
+   beaten this one nine times in ten and lost the last four has two different records and
+   only one of them is the season. */
+.tactics-h2h {
+  display: grid; grid-template-columns: repeat(6, auto); gap: 2px 14px;
+  margin: 0; padding: 0 0 0 16px; border-left: 1px solid var(--line);
+  font-size: 12px;
+}
+.tactics-h2h dt { color: var(--muted); }
+.tactics-h2h dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.tactics-panel {
+  border: 1px solid var(--line); border-radius: 10px; background: #0a1520;
+  padding: 12px 14px;
+}
+
+.tactics-panel__title {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted);
+}
+
+.tactics-count {
+  margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text);
+  text-transform: none; letter-spacing: 0;
+}
+
+/* The shape, as a row of buttons rather than a dropdown: a manager picks between ten
+   familiar shapes, and a dropdown that hides nine of them behind one is a screen making
+   him work to find the thing he came for. */
+.tactics-selector { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.tactics-option {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  padding: 7px 11px; border: 1px solid var(--line); border-radius: 8px;
+  background: #08111a; color: var(--text); cursor: pointer;
+}
+.tactics-option:hover { border-color: #46657d; }
+.tactics-option.active { border-color: var(--accent); color: var(--accent); }
+.tactics-option__name { font-size: 13px; font-weight: 800; }
+.tactics-option__shape { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tactics-option.active .tactics-option__shape { color: inherit; }
+
+/* Every row is now as wide as its attribute strip, so the columns are sized by the strip and
+   not by the names. Eight tags are about two hundred and forty pixels; a column narrower than
+   that either clips a third digit or wraps the strip, and a strip that wraps makes some rows
+   three lines and some two — which is worse than a column that is too narrow. Three columns of
+   320 plus the gaps need about a thousand, so the row of three is kept down to 1180 and the
+   stack below it, where each row has the whole page and the question does not arise. */
+.tactics-columns {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(3, minmax(290px, 1fr));
+  align-items: start;
+}
+
+@media (max-width: 1180px) {
+  .tactics-columns { grid-template-columns: 1fr; }
+}
+
+.tactics-group + .tactics-group { margin-top: 8px; }
+
+.tactics-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+
+/* A row is two lines tall on purpose. Eight attributes beside a name made every row a single
+   line of twenty things, and the eye could not find the name any more — which is the one
+   thing on the row that is not a number. Split, the name gets a line to itself and the
+   numbers get the one below it, and the two are read in two passes instead of one. */
+/* The row is a two-line grid rather than a flex row with a wrap.
+
+   It is explicit areas rather than a flex column because the strip has to reach across the
+   button column as well: eight tags need about two hundred and fifty pixels, and a column
+   that leaves room for a name and two buttons has about a hundred and sixty. Confined to
+   that, the strip wrapped and made some rows three lines tall and some two, which is worse
+   than either. It gets the whole width of the row underneath instead, so every row is the
+   same shape and the column can be scanned. */
+.tactics-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "pos  line    buttons"
+    "pos  strip   strip";
+  align-items: center;
+  column-gap: 8px; row-gap: 3px;
+  padding: 6px 8px; border-radius: 7px; border: 1px solid transparent;
+  font-size: 13px;
+}
+
+.tactics-row__line {
+  grid-area: line;
+  display: flex; align-items: baseline; gap: 8px; min-width: 0;
+}
+
+.tactics-row__pos { grid-area: pos; }
+.tactics-row__buttons { grid-area: buttons; }
+.tactics-row__out { grid-area: buttons; justify-self: end; }
+.tactics-attrs { grid-area: strip; }
+
+/* The position, down the left of every row.
+   It is the one column that never changes within a group and never has to be read as a
+   number, so it is where the eye goes when scanning a column for "who is the striker" — and
+   a shape is a claim about which men play which line, so the line a man is being offered is
+   part of the offer. */
+.tactics-row__pos {
+  align-self: start;
+  font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); text-align: center;
+  padding: 3px 0; border-radius: 5px;
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+}
+
+/* A man already in the order is still shown in the squad, marked rather than hidden: a
+   squad that hid the chosen eleven would be a squad a manager could not check his own
+   choice against. */
+.tactics-row--chosen { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.tactics-row--picked { background: #08111a; border-color: var(--line); }
+
+/* Out for the match: still listed, refused if named. A manager needs to see who is out
+   as much as who is on, and a plan that quietly lost two players would be read on the day
+   as the eleven he chose. */
+.tactics-row--out { opacity: .5; }
+.tactics-row--out .tactics-row__name { cursor: not-allowed; }
+.tactics-row__gone { color: var(--muted); font-style: italic; }
+
+.tactics-row__name {
+  flex: 1; text-align: left; background: none; border: 0; padding: 0;
+  color: inherit; font: inherit; cursor: pointer; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tactics-row__line .tactics-row__meta { flex: none; }
+.tactics-row__name:disabled { cursor: not-allowed; }
+
+.tactics-row__meta { display: flex; gap: 8px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tactics-row__out { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+.tactics-row__buttons { display: flex; gap: 3px; }
+
+.tactics-row__move {
+  min-width: 22px; height: 22px; padding: 0 5px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: #08111a; color: var(--muted); font-size: 11px; cursor: pointer;
+}
+.tactics-row__move:hover:not(:disabled) { border-color: #46657d; color: var(--text); }
+.tactics-row__move:disabled { opacity: .3; cursor: not-allowed; }
+
+.tactics-hint { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+
+.tactics-footer {
+  display: flex; align-items: center; gap: 12px;
+  padding-top: 4px;
+}
+.tactics-footer__status { font-size: 12px; color: var(--muted); flex: 1; }
+
+.tactics-form { list-style: none; margin: 0; padding: 0; }
+.tactics-form__row {
+  display: grid; grid-template-columns: 130px 1fr 70px 60px 70px;
+  gap: 10px; align-items: center;
+  padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px;
+}
+.tactics-form__comp, .tactics-form__venue { color: var(--muted); font-size: 12px; }
+.tactics-form__score { font-weight: 800; font-variant-numeric: tabular-nums; }
+.tactics-form__link { color: var(--muted); font-size: 12px; }
+.tactics-form__link:hover { color: var(--accent); }
+
+/* The eight attributes beside a name. They are the reason the decision on this screen can be
+   made at all: stars say how good a man is and energy says how much he has left, and neither
+   says at what. A strip of bare digits would be a column of numbers with no headings, so each
+   one carries the same short label the squad table already uses. */
+.tactics-attrs {
+  display: flex; flex-wrap: nowrap; gap: 2px;
+  font-size: 10px; font-variant-numeric: tabular-nums; line-height: 1.5;
+  min-width: 0;
+}
+
+.tactics-attr {
+  display: inline-flex; align-items: baseline; gap: 1px;
+  padding: 0 3px; border-radius: 4px;
+  background: color-mix(in srgb, var(--line) 55%, transparent);
+}
+.tactics-attr__label { opacity: .55; font-size: 9px; text-transform: uppercase; }
+
+/* The same bands the squad table uses, so a number means the same thing wherever it is read. */
+.tactics-attr.attr-red { color: var(--red); }
+.tactics-attr.attr-yellow { color: #d8b13c; }
+.tactics-attr.attr-green { color: var(--accent); }
+
+/* A shape being filled by the staff. The buttons stop answering rather than queueing, because
+   a manager who clicks 4-3-3 and then 4-4-2 has said two things and the second one is the one
+   he meant; a queue would apply the first after the second. */
+.tactics-option:disabled { opacity: .5; cursor: progress; }
+
+/* ------------------------------------------------- Arrastar entre colunas
+
+   Three columns, one order, and a man who belongs in a different one of them. Dragging is the
+   natural way to say that on a screen with a pitch-shaped question, and the buttons that were
+   already there stay: a drag is unreachable from a keyboard, so removing them would take the
+   only way some managers can do this at all. */
+
+.tactics-row { cursor: grab; }
+.tactics-row--picked { cursor: grab; }
+.tactics-row--out { cursor: not-allowed; }
+
+/* The row being dragged is drawn at half. The browser's own drag image is a snapshot taken at
+   mousedown, which is a picture of the row before it moved — so without this the manager is
+   dragging an image of where the man used to be. */
+.tactics-row--dragging { opacity: .4; }
+
+/* Where the man will land. A dashed edge on the column and not on a row, because the decision
+   is "he is a starter now" and not "he is fourth in the eleven" — the columns are the answer
+   and the rows inside them are only where the answer is written down. */
+.tactics-panel--over {
+  outline: 2px dashed var(--accent);
+  outline-offset: 3px;
+}
+
+/* An empty column still has to be droppable, and it is the column a manager is most likely to
+   need: a club whose first-choice keeper is suspended has a hole, and a hole with no visible
+   target is a hole the manager cannot fill. */
+.tactics-list:empty::after {
+  content: 'Arraste para cá';
+  display: block; padding: 10px; text-align: center;
+  font-size: 11px; color: var(--muted);
+  border: 1px dashed var(--line); border-radius: 7px;
 }

@@ -82,7 +82,8 @@ public class AuthController : ControllerBase
             UserId = result.UserId,
             Email = result.Email,
             TeamId = result.TeamId,
-            CoachName = result.CoachName
+            CoachName = result.CoachName,
+            WasDismissed = result.WasDismissed
         });
     }
 

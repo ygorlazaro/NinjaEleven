@@ -57,6 +57,17 @@ public class MatchConfiguration : IEntityTypeConfiguration<Match>
             .IsRequired();
         builder.Property(m => m.Window).IsRequired().HasDefaultValue(CompetitionRules.ChampionshipWindow);
 
+        // The shape the club actually went out in, recorded rather than remembered.
+        //
+        // It is what lets a manager who says nothing for a week still be answered with the
+        // football he has been playing: without this column the club's habit exists only in
+        // the club's plan, and a plan that was never written leaves the kick-off with nothing
+        // to repeat. Empty is the honest value for a match played before this was recorded —
+        // a shape read off the squad is not a shape anybody chose, and writing one there would
+        // be inventing a habit for a club that has not got one.
+        builder.Property(m => m.TacticCode).HasMaxLength(16).IsRequired();
+        builder.Property(m => m.AwayTacticCode).HasMaxLength(16).IsRequired();
+
         // The gate, in three numbers rather than one. A club's books need to know what it took
         // and what it gave away, and one gross figure cannot answer that.
         builder.Property(m => m.Attendance).IsRequired().HasDefaultValue(0);

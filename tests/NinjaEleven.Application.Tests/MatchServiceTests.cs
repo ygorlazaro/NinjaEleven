@@ -232,7 +232,14 @@ public class MatchServiceTests
             _competitions.Object,
             _teams.Object));
 
-    private MatchService CreateService() => new(
+    private MatchService CreateService()
+    {
+        // Two services want each other here — the match reads the standing order off the
+        // board, and the board reads the calendar off the matchday — so the shared one is
+        // built once and handed to both rather than written out twice and left to drift.
+        var matchday = CreateMatchdayService();
+
+        return new MatchService(
         _matches.Object,
         _teams.Object,
         _players.Object,
@@ -265,33 +272,8 @@ public class MatchServiceTests
             InboxTestFactory.Create(_teams),
             _teams.Object,
             new Random()),
-        new MatchdayService(
-            _matchDays.Object,
-            _rounds.Object,
-            _fixtures.Object,
-            _competitions.Object,
-            _matches.Object,
-            new ScorerPrizeService(
-                _competitions.Object,
-                _players.Object,
-                _teams.Object,
-                CreateFinance(),
-                InboxTestFactory.Create(_teams),
-                NullLogger<ScorerPrizeService>.Instance),
-            new TransferService(
-                Mock.Of<ITransferRepository>(),
-                _teams.Object,
-                _players.Object,
-                _seasons.Object,
-                _competitions.Object,
-                _rounds.Object,
-                _matches.Object,
-                _finance.Object,
-                InboxTestFactory.Create(_teams),
-                _unitOfWork.Object,
-                NullLogger<TransferService>.Instance),
-            _unitOfWork.Object,
-            NullLogger<MatchdayService>.Instance),
+        matchday,
+        CreateTacticsService(matchday),
         new FinanceService(
             _finance.Object,
             _teams.Object,
@@ -326,6 +308,50 @@ public class MatchServiceTests
         MatchTestContext.World(),
         MatchTestContext.Clock,
         NullLogger<MatchService>.Instance);
+    }
+
+    private MatchdayService CreateMatchdayService() => new(
+        _matchDays.Object,
+        _rounds.Object,
+        _fixtures.Object,
+        _competitions.Object,
+        _matches.Object,
+        new ScorerPrizeService(
+            _competitions.Object,
+            _players.Object,
+            _teams.Object,
+            CreateFinance(),
+            InboxTestFactory.Create(_teams),
+            NullLogger<ScorerPrizeService>.Instance),
+        new TransferService(
+            Mock.Of<ITransferRepository>(),
+            _teams.Object,
+            _players.Object,
+            _seasons.Object,
+            _competitions.Object,
+            _rounds.Object,
+            _matches.Object,
+            _finance.Object,
+            InboxTestFactory.Create(_teams),
+            _unitOfWork.Object,
+            NullLogger<TransferService>.Instance),
+        _unitOfWork.Object,
+        NullLogger<MatchdayService>.Instance);
+
+    private TacticsService CreateTacticsService(MatchdayService matchday) => new(
+        Mock.Of<ITeamMatchPlanRepository>(),
+        _teams.Object,
+        _fixtures.Object,
+        _matches.Object,
+        new TeamService(
+            _teams.Object,
+            _players.Object,
+            _seasons.Object,
+            _matches.Object,
+            _unitOfWork.Object),
+        matchday,
+        _unitOfWork.Object,
+        MatchTestContext.Clock);
 
     private FinanceService CreateFinance() => new(
         _finance.Object,

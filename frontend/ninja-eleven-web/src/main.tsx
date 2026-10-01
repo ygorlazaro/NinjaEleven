@@ -12,7 +12,6 @@ import RegisterScreen from '@/pages/RegisterScreen';
 import StartScreen from '@/pages/StartScreen';
 import LeagueScreen from '@/pages/LeagueScreen';
 import CupScreen from '@/pages/CupScreen';
-import LineupScreen from '@/pages/LineupScreen';
 import TeamViewScreen from '@/pages/TeamViewScreen';
 import MatchScreen from '@/pages/MatchScreen';
 import CalendarScreen from '@/pages/CalendarScreen';
@@ -24,6 +23,7 @@ import SponsorsScreen from '@/pages/SponsorsScreen';
 import ScorersScreen from '@/pages/ScorersScreen';
 import PlayerProfileScreen from '@/pages/PlayerProfileScreen';
 import TransferScreen from '@/pages/TransferScreen';
+import TacticsScreen from '@/pages/TacticsScreen';
 import RankingScreen from '@/pages/RankingScreen';
 import '@/styles.css';
 
@@ -77,6 +77,14 @@ function App() {
           path="/caixa"
           element={<RequireAuth><InboxScreen /></RequireAuth>}
         />
+        {/* The order, not the lineup. The kickoff is opened by the world's calendar rather
+            than by a manager sitting in front of a screen, so what he decides has to be
+            written down to be used — and the screen that is about writing it down is the
+            manager's own, not something reached through a particular fixture. */}
+        <Route
+          path="/tactics"
+          element={<RequireAuth><TacticsScreen /></RequireAuth>}
+        />
         <Route
           path="/club"
           element={<RequireAuth><ClubScreen /></RequireAuth>}
@@ -100,10 +108,6 @@ function App() {
           <Route
             path="/transfer"
           element={<RequireAuth><TransferScreen /></RequireAuth>}
-        />
-        <Route
-          path="/match/lineup/:fixtureId"
-          element={<RequireAuth><LineupScreen /></RequireAuth>}
         />
         <Route
           path="/team/:teamId"

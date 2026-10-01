@@ -313,6 +313,66 @@ public class MatchRepository : IMatchRepository
             .Take(limit)
             .ToListAsync(cancellationToken);
 
+    public async Task<string?> GetLastTacticCodeAsync(
+        Guid teamId,
+        CancellationToken cancellationToken = default) =>
+        await (
+                from match in _dbContext.Matches.AsNoTracking()
+                join fixture in _dbContext.Fixtures.AsNoTracking()
+                    on match.FixtureId equals fixture.Id
+                where (fixture.HomeTeamId == teamId || fixture.AwayTeamId == teamId)
+                    && match.Status == MatchStatus.Finished
+                    && match.TacticCode != ""
+                orderby match.CreatedAt descending, match.Id descending
+                select match.TacticCode)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<Application.Models.HeadToHeadSummary> GetHeadToHeadSummaryAsync(
+        Guid teamId,
+        Guid opponentId,
+        CancellationToken cancellationToken = default)
+    {
+        // Counted in the database over every meeting ever played. Each meeting is first
+        // flipped into the club's own point of view, because a summary that counted the
+        // fixture's home goals as "for" would report a different history depending on which of
+        // the two clubs the manager happens to manage.
+        var row = await (
+                from match in _dbContext.Matches.AsNoTracking()
+                join fixture in _dbContext.Fixtures.AsNoTracking()
+                    on match.FixtureId equals fixture.Id
+                where match.Status == MatchStatus.Finished
+                    && (
+                        (fixture.HomeTeamId == teamId && fixture.AwayTeamId == opponentId) ||
+                        (fixture.HomeTeamId == opponentId && fixture.AwayTeamId == teamId)
+                    )
+                select new
+                {
+                    GoalsFor = fixture.HomeTeamId == teamId ? match.HomeScore : match.AwayScore,
+                    GoalsAgainst = fixture.HomeTeamId == teamId ? match.AwayScore : match.HomeScore
+                })
+            .GroupBy(meeting => 1)
+            .Select(group => new
+            {
+                Played = group.Count(),
+                Wins = group.Count(meeting => meeting.GoalsFor > meeting.GoalsAgainst),
+                Draws = group.Count(meeting => meeting.GoalsFor == meeting.GoalsAgainst),
+                Losses = group.Count(meeting => meeting.GoalsFor < meeting.GoalsAgainst),
+                GoalsFor = group.Sum(meeting => meeting.GoalsFor),
+                GoalsAgainst = group.Sum(meeting => meeting.GoalsAgainst)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return new Application.Models.HeadToHeadSummary
+        {
+            Played = row?.Played ?? 0,
+            Wins = row?.Wins ?? 0,
+            Draws = row?.Draws ?? 0,
+            Losses = row?.Losses ?? 0,
+            GoalsFor = row?.GoalsFor ?? 0,
+            GoalsAgainst = row?.GoalsAgainst ?? 0
+        };
+    }
+
     public async Task<IReadOnlyList<Application.Models.TeamMatchRecord>> GetHeadToHeadAsync(
         Guid teamId,
         Guid opponentId,

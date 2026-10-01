@@ -29,6 +29,14 @@ public class ManagerRepository : IManagerRepository
     public async Task<bool> AnyAsync(CancellationToken cancellationToken = default) =>
         await _dbContext.Managers.AnyAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<Manager>> ListManagedWithTheirAccountsAsync(
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.Managers
+            .Include(manager => manager.User)
+            .Where(manager => manager.UserId != null)
+            .OrderBy(manager => manager.TeamId)
+            .ToListAsync(cancellationToken);
+
     public async Task AddAsync(Manager manager, CancellationToken cancellationToken = default) =>
         await _dbContext.Managers.AddAsync(manager, cancellationToken);
 

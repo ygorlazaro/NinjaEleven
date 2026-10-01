@@ -8,6 +8,7 @@ import type { TeamDto } from '@/types';
 const LoginScreen: React.FC = () => {
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
+  const markReturnedAfterDismissal = useAuthStore((s) => s.markReturnedAfterDismissal);
   const setSelectedTeam = useGameState((s) => s.setSelectedTeam);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,6 +24,14 @@ const LoginScreen: React.FC = () => {
     try {
       const res = await AuthApi.login({ email, password });
       setAuth(res.token, res.userId, res.email, res.teamId ?? null, res.coachName ?? null);
+
+      // A dismissed account is given a different club on the way in, so the club this browser
+      // remembers is not the one the answer carries. The news is shown on the club page the
+      // manager lands on, not here: a line that scrolls away while the screen changes is a
+      // line nobody reads.
+      if (res.wasDismissed) {
+        markReturnedAfterDismissal();
+      }
 
       if (res.teamId) {
         try {

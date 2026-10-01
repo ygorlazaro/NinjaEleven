@@ -23,6 +23,17 @@ public interface ITeamRepository
     Task<Team> MarkAsManagerClubAsync(Guid teamId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Takes the mark off a club, for the club that no longer has a manager.
+    ///
+    /// It is the other half of <see cref="MarkAsManagerClubAsync"/> and it exists because a
+    /// dismissal is not the same event as a takeover. A career beginning moves the mark to
+    /// the club that was just claimed; a manager being dismissed leaves the mark on a club
+    /// that nobody is running, and a world that keeps handing out a manager's inbox to a
+    /// club whose manager was let go is a world reading a stale row as a fact.
+    /// </summary>
+    Task ClearManagerClubAsync(Guid teamId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// A set of clubs by their identifiers, in the order asked for. Reading a set of clubs one
     /// at a time is a query per club to answer a question about a division.
     /// </summary>

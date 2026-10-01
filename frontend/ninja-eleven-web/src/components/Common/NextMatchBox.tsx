@@ -107,7 +107,11 @@ const NextMatchBox: React.FC<{ team: TeamDto; next: NextFixture | null }> = ({
   const stadium = host?.stadium?.name;
 
   return (
-    <NavLink className="next-match" to={`/match/lineup/${fixture.id}`}>
+    // The board, not the fixture. The order a manager leaves is his club's order and
+    // applies to whichever match is next, so there is no screen per fixture to go to — a
+    // door that led to one would be a door to a decision about a match that has already
+    // been played.
+    <NavLink className="next-match" to="/tactics">
       <span className="next-match__label">
         Próxima partida
         {/* The round and the day of the season, said together: "R9" on its own is a number

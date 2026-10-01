@@ -170,6 +170,27 @@ public interface IMatchRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The shape a club last put on the pitch with, or null when it has not finished a match
+    /// that recorded one.
+    ///
+    /// <para>
+    /// This is a standing order's memory. A manager who wrote nothing this week has still been
+    /// playing a shape all season, and a club that kicks off with no order is better off
+    /// repeating the last one than repeating nothing — the difference between a habit and an
+    /// accident.
+    /// </para>
+    ///
+    /// <para>
+    /// It is asked of finished matches only, and of the club's own games in any competition, so
+    /// a club whose last football was in the cup is not handed back the shape it happened to
+    /// use in the league that week.
+    /// </para>
+    /// </summary>
+    Task<string?> GetLastTacticCodeAsync(
+        Guid teamId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Head-to-head matches between two clubs, newest first. A club's history against a
     /// specific rival is a different question from its general run, and the screen that asks
     /// for it has a different purpose: it is the story of this particular rivalry.
@@ -178,5 +199,20 @@ public interface IMatchRepository
         Guid teamId,
         Guid opponentId,
         int limit,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every meeting two clubs have ever played, counted.
+    ///
+    /// <para>
+    /// It is a different question from <see cref="GetHeadToHeadAsync"/>, which is a page of
+    /// the most recent ones, and it is asked in the database rather than in a loop over that
+    /// page: a rivalry of forty years is forty rows summed and not forty queries read, and a
+    /// limit on the page must not quietly become a limit on the record.
+    /// </para>
+    /// </summary>
+    Task<Application.Models.HeadToHeadSummary> GetHeadToHeadSummaryAsync(
+        Guid teamId,
+        Guid opponentId,
         CancellationToken cancellationToken = default);
 }

@@ -1772,6 +1772,12 @@ export interface AuthResponseDto {
   email: string;
   teamId?: Guid | null;
   coachName?: string | null;
+  /**
+   * True when this sign-in brought a dismissed account back. The account is alive and holds a
+   * club, but it is not the club it had — so a client still holding the old one has to say so
+   * rather than keep a screen the backend no longer agrees with.
+   */
+  wasDismissed?: boolean;
 }
 
 export interface AuthRegisterRequestDto {
@@ -1894,4 +1900,109 @@ export interface InboxBoxDto {
   totalItems: number;
   totalPages: number;
   unreadCount: number;
+}
+
+/**
+ * The board a manager lays his club's next match out on.
+ *
+ * It is one object and not four because the kick-off reads the same one thing: a screen that
+ * assembled its own fixture, squad and opponent would be free to disagree with the match it
+ * is arranging, and the disagreement would only be visible on the day of the match.
+ */
+export interface TacticsBoardDto {
+  teamId: Guid;
+  teamName: string;
+  seasonId: Guid;
+  /** Null when the season has nothing left to play. The squad is still there. */
+  next?: TacticsNextFixtureDto | null;
+  opponent?: TacticsOpponentDto | null;
+  headToHead?: TacticsHeadToHeadDto | null;
+  recentForm: TacticsRecentMatchDto[];
+  squad: TacticsSquadRowDto[];
+  /** Null for a manager who has never set one — which is not the same as an empty one. */
+  plan?: TacticsPlanDto | null;
+}
+
+export interface TacticsNextFixtureDto {
+  fixtureId: Guid;
+  roundNumber: number;
+  matchDayNumber?: number | null;
+  competitionName: string;
+  competitionType: string;
+  /**
+   * Whether the window this fixture sits in has kicked off yet. It is the difference between
+   * an order that will be used and one written after the whistle.
+   */
+  waveOpen: boolean;
+}
+
+export interface TacticsOpponentDto {
+  id: Guid;
+  name: string;
+  rating: number;
+  /** Whether the *opponent* is the home side, which is which way round the two names go. */
+  isHome: boolean;
+}
+
+export interface TacticsHeadToHeadDto {
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
+}
+
+export interface TacticsRecentMatchDto {
+  matchId: Guid;
+  opponentTeamId: Guid;
+  opponentName: string;
+  isHome: boolean;
+  goalsFor: number;
+  goalsAgainst: number;
+  roundNumber: number;
+  competitionName?: string | null;
+  phaseName?: string | null;
+  playedAt: string;
+}
+
+export interface TacticsSquadRowDto {
+  playerId: Guid;
+  name: string;
+  age: number;
+  position: string;
+  stars: number;
+  energy: number;
+  /**
+   * Whether he can be named in an order today. A suspended or injured man is still listed —
+   * a manager needs to see who is out — and naming him is refused rather than quietly
+   * dropped, so a plan never loses two players without saying so.
+   */
+  isAvailable: boolean;
+  /**
+   * The eight on the canonical 1..100 scale, in the order every other table in the game reads
+   * them: speed, finishing, dribbling, heading, strength, goalkeeper, reflexes, stamina.
+   *
+   * A positional list and not named values: the label belongs to the screen, exactly as the
+   * squad table and the training sheet already have it. One order, shared, is what lets both
+   * read the same array without either being told the order again.
+   */
+  attributes: number[];
+}
+
+export interface TacticsPlanDto {
+  tacticCode: string;
+  starterIds: Guid[];
+  benchIds: Guid[];
+  updatedAt: string;
+}
+
+export interface SaveTacticsPlanRequestDto {
+  teamId: Guid;
+  seasonId: Guid;
+  /** Empty means "the shape this club last went out in". */
+  tacticCode?: string | null;
+  starterIds: Guid[];
+  benchIds: Guid[];
 }
