@@ -68,6 +68,13 @@ public class MatchConfiguration : IEntityTypeConfiguration<Match>
         builder.Property(m => m.TacticCode).HasMaxLength(16).IsRequired();
         builder.Property(m => m.AwayTacticCode).HasMaxLength(16).IsRequired();
 
+        // The two shirts the match was played in. Both default to the club's first shirt,
+        // because that is what a match that was created and never kicked off was going to be
+        // played in, and because a column added to a world full of matches has to have an
+        // answer for every one of them.
+        builder.Property(m => m.HomeKitSide).HasDefaultValue(KitSide.Home);
+        builder.Property(m => m.AwayKitSide).HasDefaultValue(KitSide.Home);
+
         // The gate, in three numbers rather than one. A club's books need to know what it took
         // and what it gave away, and one gross figure cannot answer that.
         builder.Property(m => m.Attendance).IsRequired().HasDefaultValue(0);

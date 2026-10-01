@@ -52,6 +52,22 @@ namespace NinjaEleven.Domain.Matches;
         /// <summary>Which window of the matchday it was played in.</summary>
         public int Window { get; private set; }
 
+        /// <summary>
+        /// Which of the home club's two shirts was on the pitch.
+        ///
+        /// <para>
+        /// It is stamped on the match rather than worked out whenever a screen asks, because
+        /// two dark shirts are a decision somebody has to make and the answer has to be the same
+        /// one at the whistle and at the final whistle. A matchscreen that redrew the draw on
+        /// every reload would change a visitor's shirt under the manager halfway through the
+        /// second half.
+        /// </para>
+        /// </summary>
+        public KitSide HomeKitSide { get; private set; }
+
+        /// <summary>Which of the visiting club's two shirts was on the pitch.</summary>
+        public KitSide AwayKitSide { get; private set; }
+
         /// <summary>How many people turned up, worked out from the ground and the match.</summary>
         public int Attendance { get; private set; }
 
@@ -139,8 +155,20 @@ namespace NinjaEleven.Domain.Matches;
             Seed = 0,
             CreatedAt = DateTimeOffset.UtcNow,
             CompetitionType = competitionType,
-            Window = window
+            Window = window,
+            HomeKitSide = KitSide.Home,
+            AwayKitSide = KitSide.Home
         };
+    }
+
+    /// <summary>
+    /// Records the two shirts this match was played in. Written once, at the kick-off that
+    /// drew them, and never drawn again.
+    /// </summary>
+    public void RecordKits(KitSide home, KitSide away)
+    {
+        HomeKitSide = home;
+        AwayKitSide = away;
     }
 
     public bool IsFinished => Status is MatchStatus.Finished or MatchStatus.Abandoned;

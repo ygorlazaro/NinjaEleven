@@ -1,5 +1,6 @@
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Matches;
+using NinjaEleven.Domain.Teams;
 
 namespace NinjaEleven.Api.Contracts;
 
@@ -57,6 +58,19 @@ public class MatchLineupDto
     public IReadOnlyList<MatchPlayerDto> AwayLineup { get; init; } = Array.Empty<MatchPlayerDto>();
     public IReadOnlyList<MatchPlayerDto> HomeBench { get; init; } = Array.Empty<MatchPlayerDto>();
     public IReadOnlyList<MatchPlayerDto> AwayBench { get; init; } = Array.Empty<MatchPlayerDto>();
+
+    /// <summary>
+    /// Which of the home club's two shirts this match was played in.
+    ///
+    /// It is on the match and not on the club because "which shirt" is a fact about this
+    /// fixture: the same club plays its first shirt at home and its second when the two colours
+    /// on the pitch would be impossible to tell apart, and a screen that asked the club which
+    /// shirt it is wearing would be asking a question with two answers.
+    /// </summary>
+    public KitSide HomeKitSide { get; init; }
+
+    /// <summary>Which of the visiting club's two shirts this match was played in.</summary>
+    public KitSide AwayKitSide { get; init; }
 }
 
 /// <summary>

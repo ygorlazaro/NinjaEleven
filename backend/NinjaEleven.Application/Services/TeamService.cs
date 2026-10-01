@@ -139,6 +139,73 @@ public class TeamService
         return team;
     }
 
+    /// <summary>
+    /// Draws the club's crest, or takes the one it has away.
+    ///
+    /// <para>
+    /// Only the club a manager is running may be drawn. That check is here rather than in the
+    /// controller because "the club a manager is running" is a fact about the world and not
+    /// about the transport: the club screen, the club card and a background service all reach
+    /// the same rule through the same door, and a rule that lived in the controller would be a
+    /// rule the other two could walk past.
+    /// </para>
+    /// </summary>
+    public async Task<Team> UpdateCrestAsync(
+        Guid teamId,
+        CrestDesign? crest,
+        CancellationToken cancellationToken = default)
+    {
+        var team = await GetDrawableClubAsync(teamId, cancellationToken);
+
+        team.SetCrest(crest);
+        _teamRepository.Update(team);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return team;
+    }
+
+    /// <summary>
+    /// Draws the club's two shirts.
+    ///
+    /// <para>
+    /// A second shirt that clashes with the first is still accepted. The club's manager decides
+    /// what his club wears and the game decides when it is changed, and the screen is told why
+    /// afterwards rather than being refused: a manager who is told his away shirt is too close
+    /// to somebody else's home shirt learns something, and a manager whose drawing is refused
+    /// learns that the editor is not his.
+    /// </para>
+    /// </summary>
+    public async Task<Team> UpdateKitsAsync(
+        Guid teamId,
+        KitDesign homeKit,
+        KitDesign? awayKit,
+        CancellationToken cancellationToken = default)
+    {
+        var team = await GetDrawableClubAsync(teamId, cancellationToken);
+
+        team.SetHomeKit(homeKit);
+        team.SetAwayKit(awayKit);
+        _teamRepository.Update(team);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return team;
+    }
+
+    private async Task<Team> GetDrawableClubAsync(Guid teamId, CancellationToken cancellationToken)
+    {
+        var team = await _teamRepository.GetAsync(teamId, cancellationToken)
+            ?? throw new EntityNotFoundException(nameof(Team), teamId);
+
+        if (!team.IsManagerClub)
+        {
+            throw new DomainValidationException(
+                "NotTheManagerClub",
+                "Só o clube que você comanda pode ter escudo e uniforme desenhados.");
+        }
+
+        return team;
+    }
+
     public async Task<IReadOnlyList<SquadPlayer>> GetSquadAsync(
         Guid teamId,
         Guid seasonId,

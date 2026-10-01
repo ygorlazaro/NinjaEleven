@@ -275,6 +275,7 @@ public class DatabaseSeeder : IDataSeeder
         {
             _logger.LogInformation("Seeding skipped: the world already contains teams.");
             await GiveFacesToTheWorldAlreadySeededAsync(random, cancellationToken);
+            await GiveIdentitiesToTheWorldAlreadySeededAsync(cancellationToken);
             await GiveManagersToTheWorldAlreadySeededAsync(random, cancellationToken);
             await OpenTheBooksOfTheWorldAlreadySeededAsync(cancellationToken);
             return;
@@ -282,6 +283,7 @@ public class DatabaseSeeder : IDataSeeder
 
         await SeedStartingWorldAsync(random, cancellationToken);
         await GiveFacesToTheWorldAlreadySeededAsync(random, cancellationToken);
+        await GiveIdentitiesToTheWorldAlreadySeededAsync(cancellationToken);
         await GiveManagersToTheWorldAlreadySeededAsync(random, cancellationToken);
         await OpenTheBooksOfTheWorldAlreadySeededAsync(cancellationToken);
     }
@@ -469,11 +471,62 @@ public class DatabaseSeeder : IDataSeeder
         (string Name, string ShortName, string Primary, string Secondary) definition,
         Random random)
     {
-        return Team.Create(
+        var team = Team.Create(
             definition.Name,
             definition.ShortName,
             definition.Primary,
             definition.Secondary);
+
+        // A new world is given every club a badge and two shirts before a manager has been asked
+        // anything, because a club that has to be drawn before it can be shown is a club that is
+        // a blank space in every table on the way there.
+        team.SetCrest(ClubIdentityDefaults.CrestFor(team));
+        team.SetHomeKit(ClubIdentityDefaults.HomeKitFor(team));
+        team.SetAwayKit(ClubIdentityDefaults.AwayKitFor(team));
+
+        return team;
+    }
+
+    /// <summary>
+    /// Gives a crest and two shirts to every club that has none.
+    ///
+    /// The same thing the faces do and for the same reason: the seeder skips a world that
+    /// already has teams, so a world written before kits existed would keep its clubs in two
+    /// colours and nothing else for ever. A club that has already been drawn by its manager is
+    /// left alone — the default fills a gap and never overwrites a choice.
+    /// </summary>
+    private async Task GiveIdentitiesToTheWorldAlreadySeededAsync(CancellationToken cancellationToken)
+    {
+        var bare = await _dbContext.Teams
+            .Where(team => team.CrestJson == null || team.HomeKitJson == null || team.AwayKitJson == null)
+            .ToListAsync(cancellationToken);
+
+        if (bare.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var team in bare)
+        {
+            if (team.CrestJson is null)
+            {
+                team.SetCrest(ClubIdentityDefaults.CrestFor(team));
+            }
+
+            if (team.HomeKitJson is null)
+            {
+                team.SetHomeKit(ClubIdentityDefaults.HomeKitFor(team));
+            }
+
+            if (team.AwayKitJson is null)
+            {
+                team.SetAwayKit(ClubIdentityDefaults.AwayKitFor(team));
+            }
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Gave a crest and two shirts to {Count} clubs that had none.", bare.Count);
     }
 
     private (List<Player> Players, List<PlayerSeasonState> SeasonStates, List<TeamMembership> Memberships) CreateSquad(

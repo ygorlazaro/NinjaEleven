@@ -2,8 +2,10 @@ using NinjaEleven.Api.Contracts;
 using NinjaEleven.Api.Mappings;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Services;
+using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Finance;
+using NinjaEleven.Domain.Teams;
 using Microsoft.AspNetCore.Mvc;
 
 namespace NinjaEleven.Api.Controllers;
@@ -204,6 +206,81 @@ public class TeamController : ControllerBase
             id, request.PrimaryColor, request.SecondaryColor, cancellationToken);
         return Ok(team.ToDto());
     }
+
+    /// <summary>
+    /// Draws the crest of the club the manager has taken charge of.
+    ///
+    /// <para>
+    /// A request with neither a letter nor a figure is refused rather than stored as a blank
+    /// shield: a crest is what a club is called by, and a coloured shape is not one. The refusal
+    /// is <c>CrestWithoutElement</c>, which the editor shows without losing what was drawn.
+    /// </para>
+    /// </summary>
+    [HttpPut("{id:guid}/crest")]
+    public async Task<ActionResult<TeamDto>> UpdateCrest(
+        Guid id,
+        [FromBody] UpdateTeamCrestRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        CrestDesign? crest;
+
+        try
+        {
+            crest = request.Text is null && request.Emblem is null
+                ? null
+                : new CrestDesign(
+                    request.Shape,
+                    request.PrimaryColor,
+                    request.SecondaryColor,
+                    request.Text is { } text
+                        ? new CrestText(text.Content, text.Color, text.VerticalPosition)
+                        : null,
+                    request.Emblem is { } emblem
+                        ? new CrestEmblem(emblem.Kind, emblem.Color, emblem.VerticalPosition)
+                        : null);
+        }
+        catch (ArgumentException error)
+        {
+            throw new DomainValidationException("InvalidCrest", error.Message);
+        }
+
+        var team = await _teamService.UpdateCrestAsync(id, crest, cancellationToken);
+        return Ok(team.ToDto());
+    }
+
+    /// <summary>
+    /// Draws the two shirts of the club the manager has taken charge of.
+    /// </summary>
+    [HttpPut("{id:guid}/kits")]
+    public async Task<ActionResult<TeamDto>> UpdateKits(
+        Guid id,
+        [FromBody] UpdateTeamKitsRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        KitDesign homeKit;
+        KitDesign? awayKit;
+
+        try
+        {
+            homeKit = ToKit(request.HomeKit);
+            awayKit = request.AwayKit is null ? null : ToKit(request.AwayKit);
+        }
+        catch (ArgumentException error)
+        {
+            throw new DomainValidationException("InvalidKit", error.Message);
+        }
+
+        var team = await _teamService.UpdateKitsAsync(id, homeKit, awayKit, cancellationToken);
+        return Ok(team.ToDto());
+    }
+
+    /// <summary>
+    /// The wire's kit as the domain's, with the domain doing the refusing. The controller maps
+    /// and nothing else: a colour that is not a colour is a fact about the request, and the
+    /// domain is where a club's clothes are a rule.
+    /// </summary>
+    private static KitDesign ToKit(KitDto kit) =>
+        new(kit.PrimaryColor, kit.SecondaryColor, kit.Pattern, kit.TrimColor);
 
     /// <summary>
     /// Changes the name of the manager (coach) of a club.

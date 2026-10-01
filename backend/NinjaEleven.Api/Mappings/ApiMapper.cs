@@ -97,7 +97,45 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
         } : null,
         ControlledBy = team.Managers.Any()
             ? (bool?) team.Managers.Any(m => m.UserId.HasValue)
-            : null
+            : null,
+        // The badge and the two shirts travel with the club rather than through an endpoint of
+        // their own. A crest is who a club is, not a question a screen has to remember to ask
+        // in a second call before it may draw a table cell: an answer that arrives late is an
+        // answer that arrives after the cell has already been drawn blank.
+        Crest = team.Crest is { } crest ? crest.ToDto() : null,
+        HomeKit = team.HomeKit is { } homeKit ? homeKit.ToDto() : null,
+        AwayKit = team.AwayKit is { } awayKit ? awayKit.ToDto() : null
+    };
+
+    /// <summary>
+    /// A club's badge as the screens draw it. Null in, null out: a club with no crest is drawn
+    /// from its initials rather than from an empty shape.
+    /// </summary>
+    public static CrestDto? ToDto(this Domain.Teams.CrestDesign? crest) => crest is null ? null : new CrestDto
+    {
+        Shape = crest.Shape,
+        PrimaryColor = crest.PrimaryColor,
+        SecondaryColor = crest.SecondaryColor,
+        Text = crest.Text is { } text ? new CrestTextDto
+        {
+            Content = text.Content,
+            Color = text.Color,
+            VerticalPosition = text.VerticalPosition
+        } : null,
+        Emblem = crest.Emblem is { } emblem ? new CrestEmblemDto
+        {
+            Kind = emblem.Kind,
+            Color = emblem.Color,
+            VerticalPosition = emblem.VerticalPosition
+        } : null
+    };
+
+    public static KitDto ToDto(this Domain.Teams.KitDesign kit) => new()
+    {
+        PrimaryColor = kit.PrimaryColor,
+        SecondaryColor = kit.SecondaryColor,
+        Pattern = kit.Pattern,
+        TrimColor = kit.TrimColor
     };
 
     public static IReadOnlyList<TeamDto> ToDtos(this IEnumerable<Domain.Teams.Team> teams) =>
@@ -606,7 +644,9 @@ public static MatchLineupDto ToDto(this Application.Models.MatchLineup lineup)
         HomeLineup = lineup.HomeLineup.Select(player => player.ToDto()).ToList(),
         AwayLineup = lineup.AwayLineup.Select(player => player.ToDto()).ToList(),
         HomeBench = lineup.HomeBench.Select(player => player.ToDto()).ToList(),
-        AwayBench = lineup.AwayBench.Select(player => player.ToDto()).ToList()
+        AwayBench = lineup.AwayBench.Select(player => player.ToDto()).ToList(),
+        HomeKitSide = lineup.HomeKitSide,
+        AwayKitSide = lineup.AwayKitSide
     };
 }
 

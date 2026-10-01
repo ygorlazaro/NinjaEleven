@@ -67,6 +67,12 @@ public class MatchLineup
     public IReadOnlyList<MatchPlayerSnapshot> AwayLineup { get; init; } = Array.Empty<MatchPlayerSnapshot>();
     public IReadOnlyList<MatchPlayerSnapshot> HomeBench { get; init; } = Array.Empty<MatchPlayerSnapshot>();
     public IReadOnlyList<MatchPlayerSnapshot> AwayBench { get; init; } = Array.Empty<MatchPlayerSnapshot>();
+
+    /// <summary>Which of the home club's two shirts was worn, as stamped on the match.</summary>
+    public KitSide HomeKitSide { get; init; }
+
+    /// <summary>Which of the visiting club's two shirts was worn.</summary>
+    public KitSide AwayKitSide { get; init; }
 }
 
 /// <summary>

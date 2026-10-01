@@ -20,6 +20,18 @@ public class TeamConfiguration : IEntityTypeConfiguration<Team>
         builder.Property(t => t.Rating).IsRequired();
         builder.Property(t => t.IsManagerClub).IsRequired();
 
+        // The crest and the two shirts are a manager's choices rather than a club's facts about
+        // itself, so they are stored as the JSON of the choice and never as a second copy of the
+        // design's shape. A club with no crest has NULL rather than an empty document, because
+        // an empty string is not JSON and a jsonb column cannot hold one. The three computed
+        // properties are how a screen reads them back and they have nothing to map.
+        builder.Property(t => t.CrestJson).HasColumnType("jsonb");
+        builder.Property(t => t.HomeKitJson).HasColumnType("jsonb");
+        builder.Property(t => t.AwayKitJson).HasColumnType("jsonb");
+        builder.Ignore(t => t.Crest);
+        builder.Ignore(t => t.HomeKit);
+        builder.Ignore(t => t.AwayKit);
+
         builder.HasOne(t => t.Stadium)
             .WithOne()
             .HasForeignKey<Team>(t => t.StadiumId)

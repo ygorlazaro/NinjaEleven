@@ -412,6 +412,18 @@ public class MatchService : IMatchCleaner
         match.RecordTactic(homeTactic?.Code ?? string.Empty);
         match.RecordAwayTactic(awayTactic?.Code ?? string.Empty);
 
+        // The two shirts, drawn once from the match's own seed and stamped on the match. It is
+        // here rather than in the engine because it is not football: the same eleven is the same
+        // eleven whichever shirt it is in, and a screen that redrew the draw on every read would
+        // change a visitor's colours under the manager in the middle of the second half.
+        var (homeKitSide, awayKitSide) = KitClash.Decide(
+            homeTeam.KitInUse(KitSide.Home),
+            homeTeam.AwayKit,
+            awayTeam.KitInUse(KitSide.Home),
+            awayTeam.AwayKit,
+            matchSeed);
+        match.RecordKits(homeKitSide, awayKitSide);
+
         // The squad strength behind the crowd is the eleven that is about to play and the bench
         // behind it, because that is the team the supporters are coming to watch on the day.
         var homeStars = PlayerRating.CalculateTeamStarsFromSnapshots(
@@ -1029,6 +1041,8 @@ public class MatchService : IMatchCleaner
                 UserTeamIndex = ResolveUserTeamIndex(match, userTeamId),
                 HomeTeam = ToTeam(await _teamRepository.GetAsync(match.HomeTeamId, cancellationToken)),
                 AwayTeam = ToTeam(await _teamRepository.GetAsync(match.AwayTeamId, cancellationToken)),
+                HomeKitSide = match.HomeKitSide,
+                AwayKitSide = match.AwayKitSide,
                 HomeLineup = session.State.HomeLineup,
                 AwayLineup = session.State.AwayLineup,
                 HomeBench = session.State.HomeBench,
@@ -1050,6 +1064,8 @@ public class MatchService : IMatchCleaner
             UserTeamIndex = ResolveUserTeamIndex(match, userTeamId),
             HomeTeam = homeSquad.Team,
             AwayTeam = awaySquad.Team,
+            HomeKitSide = match.HomeKitSide,
+            AwayKitSide = match.AwayKitSide,
             HomeLineup = homeSquad.Lineup,
             AwayLineup = awaySquad.Lineup,
             HomeBench = homeSquad.Bench,

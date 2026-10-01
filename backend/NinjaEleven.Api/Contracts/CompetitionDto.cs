@@ -21,6 +21,18 @@ public class TeamDto
     /// row exists but has no user (NPC-controlled).
     /// </summary>
     public bool? ControlledBy { get; init; }
+
+    /// <summary>
+    /// The club's crest, or null when it has not been given one — in which case a screen draws
+    /// the initials placeholder rather than an empty space.
+    /// </summary>
+    public CrestDto? Crest { get; init; }
+
+    /// <summary>The club's first shirt, or null when it has never been given one.</summary>
+    public KitDto? HomeKit { get; init; }
+
+    /// <summary>The club's second shirt, or null when it has never been given one.</summary>
+    public KitDto? AwayKit { get; init; }
 }
 
 /// <summary>Updates a club's display name.</summary>
