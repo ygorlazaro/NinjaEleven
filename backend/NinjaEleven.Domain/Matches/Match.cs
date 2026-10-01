@@ -204,6 +204,27 @@ namespace NinjaEleven.Domain.Matches;
     /// <summary>Renews the lease on a match that has just been advanced.</summary>
     public void TouchSession(DateTimeOffset now) => SessionHeartbeatAt = now;
 
+    /// <summary>
+    /// Gives the match up on the way out: the lease stops being renewed, so the next process
+    /// may take it at once rather than after the lease runs out.
+    ///
+    /// <para>
+    /// This is a process saying goodbye to a match it was playing, not a match being given up:
+    /// the status, the minute and the score all stay exactly where they were, and the fixture
+    /// is not reopened, because the football that was played was played. What ends is the
+    /// claim — a claim on a match whose memory is about to stop existing.
+    /// </para>
+    ///
+    /// <para>
+    /// Without it, a process that stops cleanly looks exactly like one that was killed: the
+    /// row keeps the last heartbeat, and the next process waits out a five-minute lease over a
+    /// match nobody is playing. A manager watching that match watches a frozen scoreboard for
+    /// five minutes because the API was restarted, which is a cost nobody was told about and
+    /// the restart itself caused.
+    /// </para>
+    /// </summary>
+    public void ReleaseTheSession() => SessionHeartbeatAt = null;
+
     /// <summary>Whether this process is the one holding the match's working memory.</summary>
     public bool IsOwnedBy(string host) =>
         !string.IsNullOrEmpty(SessionHost)

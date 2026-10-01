@@ -5,8 +5,6 @@ import type { FixtureDto, LeagueSetupResult, TeamDto } from '@/types';
 export function useLeagueSetup() {
   const setLeagueTeams = useGameState((s) => s.setLeagueTeams);
   const setStandings = useGameState((s) => s.setStandings);
-  const setFixtures = useGameState((s) => s.setFixtures);
-  const setScorers = useGameState((s) => s.setScorers);
   const setLeagueSetup = useGameState((s) => s.setLeagueSetup);
   const setSelectedTeam = useGameState((s) => s.setSelectedTeam);
 
@@ -14,13 +12,6 @@ export function useLeagueSetup() {
     const setup: LeagueSetupResult = await LeagueApi.setup(competitionId, seasonId, teamIds);
     setLeagueSetup(setup);
     return setup;
-  };
-
-  const loadSeasonData = async (seasonId: string) => {
-    const [scorers] = await Promise.all([
-      LeagueApi.getScorers(seasonId),
-    ]);
-    setScorers(scorers);
   };
 
   // Both tables travel together, so the store is handed both. A store that kept only the
@@ -31,5 +22,12 @@ export function useLeagueSetup() {
     setStandings(standings);
   };
 
-  return { initializeLeague, loadSeasonData, refreshStandings };
+  // There is deliberately no "load the season's scorers" here. A season is four divisions
+  // and a cup, so a chart asked of a season alone is a chart of the whole country, and the
+  // store field it would fill is the one the league screen renders — a helper that wrote it
+  // would replace the manager's own division's artilharia with a table mixing all ninety-six
+  // clubs, and the manager would be reading the wrong chart without anything looking broken.
+  // The league screen asks for its division; the cup screen asks for the cup.
+
+  return { initializeLeague, refreshStandings };
 }

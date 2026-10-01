@@ -5,37 +5,48 @@ using Xunit;
 namespace NinjaEleven.Domain.Tests;
 
 /// <summary>
-/// The two numbers a club's training day turns on: how many sessions it has, and what one
-/// costs it.
+/// The two numbers a training day turns on: how many sessions a man has, and what one costs
+/// the club.
 /// </summary>
 public class TrainingAllowanceRulesTests
 {
     [Fact]
-    public void AClubPlayingHasOneSessionAndAClubAtRestHasTwo()
+    public void AManPlayingHasOneSessionAndAManAtRestHasTwo()
     {
         // The whole rule in two lines. One on a matchday, two without: a rest day is a
         // doubling and not a holiday, because the day a first team does not play is the day
-        // its reserve side does.
+        // its reserve side does. The budget is the man's and not the club's, which is why
+        // nothing here mentions a squad: a club-wide budget means the second man a manager
+        // trains is told there is nothing left.
         Assert.Equal(1, TrainingRules.DailyBudget(hasMatch: true));
         Assert.Equal(2, TrainingRules.DailyBudget(hasMatch: false));
+
+        Assert.Equal(TrainingRules.SessionsOnAMatchDay, TrainingRules.DailyBudget(hasMatch: true));
+        Assert.Equal(TrainingRules.SessionsOnARestDay, TrainingRules.DailyBudget(hasMatch: false));
     }
 
     [Fact]
-    public void ASessionCostsTheClubAFifteenthOfTheMansWage()
+    public void ASessionCostsTheClubHalfOfTheWageOnTheContract()
     {
         // The fee is a share of a wage and not a number of its own, so a club's whole
         // development bill is a share of its wage bill and a manager can check one against
         // the other on the same screen.
-        Assert.Equal(1_800m, TrainingRules.SessionFee(12_000m));
+        //
+        // Half, and not a token: a fee small enough to be ignorable makes development a
+        // decision nobody ever has to think about, and the wage bill it is a share of is the
+        // one number a club is already watching.
+        Assert.Equal(0.50m, TrainingRules.SessionFeeRate);
+        Assert.Equal(6_000m, TrainingRules.SessionFee(12_000m));
     }
 
     [Fact]
-    public void AFreeAgentWithNoWageIsTrainedForNothing()
+    public void AContractWithNoWageIsTrainedForNothing()
     {
-        // Zero, and not a refusal: a man with no contract is not a cost to anybody. The
-        // session is refused further up, by the rule that only a contracted man has a club to
-        // spend an allowance on, and this is here so that the arithmetic never has to invent
-        // a wage to divide.
+        // Zero, and not a refusal: a man on no contract is not a cost to anybody. The session
+        // is refused further up, by the rule that only a contracted man has a club to spend an
+        // allowance on, and this is here so that the arithmetic never has to invent a wage to
+        // divide. It is the wage on the contract that is read, so a world whose contracts
+        // carry no wage is a world whose development is free rather than one that is broken.
         Assert.Equal(0m, TrainingRules.SessionFee(0m));
     }
 
@@ -45,8 +56,8 @@ public class TrainingAllowanceRulesTests
         // Money is money and not a fraction of it: a statement that carried fifteen figures
         // behind the comma would not add up to the balance printed on the same page, and a
         // fee of 0.015 is a fee nobody can pay.
-        Assert.Equal(0.02m, TrainingRules.SessionFee(0.1m));
-        Assert.Equal(1_851.85m, TrainingRules.SessionFee(12_345.67m));
+        Assert.Equal(0.05m, TrainingRules.SessionFee(0.1m));
+        Assert.Equal(6_172.84m, TrainingRules.SessionFee(12_345.67m));
     }
 
     [Fact]
@@ -59,11 +70,15 @@ public class TrainingAllowanceRulesTests
             Guid.NewGuid(),
             PlayerAttribute.Accuracy,
             energyCost: 12,
-            fee: 1_800m);
+            fee: 6_000m);
 
         Assert.Equal(new DateOnly(2026, 3, 10), session.Day);
         Assert.Equal(12, session.EnergyCost);
-        Assert.Equal(1_800m, session.Fee);
+
+        // The fee is held, not recomputed: a session that re-derived its own price from the
+        // man on the day it is read back would be a session that changed its mind about what
+        // it cost whenever the man changed.
+        Assert.Equal(6_000m, session.Fee);
     }
 
     [Fact]
@@ -87,7 +102,8 @@ public class TrainingAllowanceRulesTests
     {
         // Its own place in the day's allowance, so the count and the rows cannot drift: a
         // second session claiming a place already taken cannot be written, whatever a read
-        // of the allowance said a moment before.
+        // of the allowance said a moment before. The place is the man's and not the club's,
+        // which is the same width as the rule the count enforces.
         var first = TrainingSession.Create(
             Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
             new DateOnly(2026, 3, 10), DateTimeOffset.UnixEpoch,

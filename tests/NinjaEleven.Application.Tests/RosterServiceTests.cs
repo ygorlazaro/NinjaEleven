@@ -65,6 +65,7 @@ public class RosterServiceTests
         _teams.Object,
         _transfers.Object,
         _unitOfWork.Object,
+        InboxTestFactory.Create(_teams),
         NullLogger<RosterService>.Instance);
 
     private Player APlayerOfAge(int age, string name = "Jogador")

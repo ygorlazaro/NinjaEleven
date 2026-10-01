@@ -71,10 +71,18 @@ const LeagueScreen: React.FC = () => {
   }, []);
 
   const refresh = useCallback(
-    async (competitionSeasonId: string, seasonId: string, fixtureData: FixtureDto[]) => {
+    async (
+      competitionSeasonId: string,
+      seasonId: string,
+      fixtureData: FixtureDto[],
+      divisionId?: string | null,
+    ) => {
       // The artilharia is asked of the division being shown, so the money under the table is the
       // money of that table. A prize panel that did not follow the dropdown would be paying a
-      // third-division striker a first-division cheque on the first division's page.
+      // third-division striker a first-division cheque on the first division's page — and so
+      // would a chart that did not follow it, which is the same mistake told with goals instead
+      // of money: the league is four divisions, so a chart asked of "the league" alone is a
+      // chart of the country and the top line on it is nobody in this division.
       //
       // The fixture list arrives as an argument because it is read once by the caller and used
       // twice: the calendar and the round that is being looked at are the same rows, and a
@@ -82,7 +90,7 @@ const LeagueScreen: React.FC = () => {
       // on every load.
       const [standingData, scorerData, prizeData] = await Promise.all([
         LeagueApi.getStandings(competitionSeasonId),
-        LeagueApi.getScorers(seasonId),
+        LeagueApi.getScorers(seasonId, undefined, undefined, divisionId ?? undefined),
         CompetitionApi.getTopScorerPrizes(competitionSeasonId).catch(() => null),
       ]);
 
@@ -173,7 +181,10 @@ const LeagueScreen: React.FC = () => {
         setRounds(roundList);
         setCurrentRoundId(pickCurrentRound(roundList, fixtureData));
 
-        await refresh(division.id, seasonId, fixtureData);
+        // The division comes with it, because the artilharia is that division's and not the
+        // country's. The screen knows which edition it is showing; the chart is asked of that
+        // edition's division rather than of "the league", which is four of them.
+        await refresh(division.id, seasonId, fixtureData, division.divisionId);
       } catch (err: any) {
         const code = err?.response?.data?.code;
         if (!cancelled) {
@@ -415,7 +426,15 @@ const LeagueScreen: React.FC = () => {
           </div>
 
           <div className="league-panel">
-            <h3>🥅 Artilheiros</h3>
+            {/* The division is named in the title because the chart below it is that
+                division's and not the country's: a manager reading the 3ª Divisão's table with
+                a heading that says only "Artilheiros" cannot tell a list of his own division
+                from a list of everybody's, and a chart that could be either is a chart he has
+                to check against something else before he trusts a name on it. */}
+            <h3>
+              🥅 Artilheiros
+              {activeDivision?.name ? ` — ${activeDivision.name}` : ''}
+            </h3>
             <div id="scorersWrap">
               {/* Ten names: the artilharia of a championship is a top ten a manager reads whole,
                   and a table of fifteen is the season's list rather than its chart. */}
@@ -423,6 +442,7 @@ const LeagueScreen: React.FC = () => {
                 scorers={scorers}
                 userTeamId={selectedTeam?.id}
                 userTeamName={selectedTeam?.name}
+                allLabel={activeDivision?.name ?? 'Campeonato'}
                 limit={10}
               />
             </div>

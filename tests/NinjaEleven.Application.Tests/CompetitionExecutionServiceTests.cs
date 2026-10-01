@@ -145,6 +145,7 @@ public class CompetitionExecutionServiceTests
         var inbox = new InboxService(
             messages.Object,
             _teams.Object,
+            new ManagedClubs(),
             _unitOfWork.Object,
             NullLogger<InboxService>.Instance);
 
@@ -242,6 +243,39 @@ public class CompetitionExecutionServiceTests
         Assert.Equal(RoundClaim.Claimed, run.Claim);
         Assert.Equal(4, run.Played);
         Assert.True(run.IsComplete);
+    }
+
+    [Fact]
+    public async Task A_poll_puts_the_lost_fixtures_back_on_the_schedule_before_it_closes_any_orphan()
+    {
+        // The order is the argument. The orphan sweep believes a decided fixture was decided by
+        // a match that reached the final whistle, and that is only true once the fixtures that
+        // were closed over a matchday nobody played have been put back. Run the other way round
+        // the sweep reads the same broken column and closes an orphan above the hole, which is
+        // how the second division's six missing results became permanent.
+        _matchDays.Setup(repository => repository.ListUntilAsync(
+                It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MatchDay>());
+
+        var repaired = false;
+        _cleaner.Setup(cleaner => cleaner.ReopenTheFixturesNobodyDecidedAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                repaired = true;
+                return 6;
+            });
+        _cleaner.Setup(cleaner => cleaner.AbandonMatchesOnDecidedFixturesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                Assert.True(repaired, "a fixture closed over a hole must be reopened before the hole is read as settled");
+                return 0;
+            });
+
+        await CreateService().PlayDueRoundsAsync(CompetitionType.League);
+
+        _cleaner.Verify(
+            cleaner => cleaner.ReopenTheFixturesNobodyDecidedAsync(It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -776,11 +810,26 @@ public class CompetitionExecutionServiceTests
     /// The player marks each fixture finished as it plays it, because that is what the match
     /// service does when a match reaches full time — and without it the world's own record of
     /// what has been played would never move and every advance would offer the same window.
+    ///
+    /// <para>
+    /// It goes in as <c>BuildWithStore</c>'s own player rather than as a second setup of the
+    /// mock. The builder sets the mock up itself, and Moq answers with the last matching setup,
+    /// so a setup made here was quietly overwritten by the builder's and the marking never ran
+    /// — a test world where no fixture was ever played, which is exactly why the walk used to
+    /// decide a window from the window's own row: with nothing marking anything finished, only
+    /// the row could tell it what had been done.
+    /// </para>
     /// </summary>
     private CompetitionExecutionService CreateAdvanceService()
     {
-        _player.Setup(player => player.PlayAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .Returns((Guid fixtureId, CancellationToken _) =>
+        var store = new InMemoryRoundExecutionStore(
+            _calendar.ToDictionary(round => round.Id),
+            id => _fixturesByRound.GetValueOrDefault(id) ?? new List<Fixture>());
+
+        return BuildWithStore(
+            store,
+            MatchTestContext.World(),
+            fixtureId =>
             {
                 _fixturesByRound.Values
                     .SelectMany(fixtures => fixtures)
@@ -790,12 +839,6 @@ public class CompetitionExecutionServiceTests
                 return Task.FromResult(
                     new HeadlessMatchResult(true, Guid.NewGuid(), MatchRefusal.None, null, 1, 0));
             });
-
-        var store = new InMemoryRoundExecutionStore(
-            _calendar.ToDictionary(round => round.Id),
-            id => _fixturesByRound.GetValueOrDefault(id) ?? new List<Fixture>());
-
-        return BuildWithStore(store, MatchTestContext.World());
     }
 
     [Fact]
@@ -894,6 +937,45 @@ public class CompetitionExecutionServiceTests
         Assert.True(advance.SeasonClosed);
         Assert.Equal(nextSeasonId, advance.SeasonOpened);
         Assert.Equal(season.Id, advance.SeasonId);
+    }
+
+    [Fact]
+    public async Task A_hand_reaches_back_for_a_window_that_was_closed_over_a_matchday_nobody_played()
+    {
+        // The other half of the repair, and without it the repair is a note in a log. The world
+        // had a window, the window was written up as played, and one of its fixtures was a
+        // matchday nobody finished — so the window owed a match. This filter used to read the
+        // window's own row for that, which is a record of the window having been *closed* and
+        // not of its fixtures having been played, and it skipped exactly the windows the
+        // fixtures said were owed. Six fixtures of a second division sat there for a season:
+        // owed to the world, and unreachable by a hand walking it.
+        GivenASeasonWith(2, 3);
+        var service = CreateAdvanceService();
+
+        await service.AdvanceTheWorldAsync();
+        await service.AdvanceTheWorldAsync();
+
+        // The world has walked both days, and the window of the first day now says it was
+        // played — which is the claim this walk used to believe. Both divisions drew a round
+        // for that day, and one of them is the one about to owe a match.
+        var firstWindow = _calendar.First(round => round.Number == 2);
+        Assert.True(firstWindow.HasBeenExecuted);
+
+        // A fixture of the first day goes back on the schedule, which is what the integrity
+        // sweep does when it finds a window closed over a matchday nobody finished.
+        _fixturesByRound[firstWindow.Id][0].Reopen();
+
+        var back = await service.AdvanceTheWorldAsync();
+
+        Assert.Equal(2, back.MatchDayNumber);
+        // Day two, not day three and not nothing: the window the fixtures say is owed is the
+        // window the world owes, whichever day it fell on. And only the one fixture is played
+        // again — the other three of that day are decided, and a decided fixture is never
+        // started.
+        Assert.Equal(2, back.MatchDayNumber);
+        Assert.Equal(CompetitionType.League, back.Wave);
+        Assert.Contains(back.Rounds, run => run.RoundId == firstWindow.Id && run.Played == 1);
+        Assert.Equal(FixtureStatus.Finished, _fixturesByRound[firstWindow.Id][0].Status);
     }
 
     [Fact]

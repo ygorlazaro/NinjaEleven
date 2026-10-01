@@ -1,4 +1,5 @@
 using NinjaEleven.Application.Repositories;
+using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Matches;
 using NinjaEleven.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -66,6 +67,18 @@ public class FixtureRepository : IFixtureRepository
                 where (fixture.HomeTeamId == teamId || fixture.AwayTeamId == teamId)
                       && matchDay.Date == date
                 select fixture)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<Fixture>> ListFinishedWithoutAFinishedMatchAsync(
+        CancellationToken cancellationToken = default) =>
+        await (
+                from fixture in _dbContext.Fixtures.AsNoTracking()
+                join match in _dbContext.Matches.AsNoTracking() on fixture.Id equals match.FixtureId
+                where fixture.Status == FixtureStatus.Finished
+                group match by fixture
+                into matches
+                where !matches.Any(match => match.Status == MatchStatus.Finished)
+                select matches.Key)
             .ToListAsync(cancellationToken);
 
     public async Task AddAsync(Fixture fixture, CancellationToken cancellationToken = default) =>

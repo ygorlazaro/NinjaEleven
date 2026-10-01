@@ -159,6 +159,7 @@ public class MatchdayWaveTests
         _matches.Object,
         _finance.Object,
         InboxTestFactory.Create(_teams),
+        new ManagedClubs(),
         _unitOfWork.Object,
         NullLogger<TransferService>.Instance);
 

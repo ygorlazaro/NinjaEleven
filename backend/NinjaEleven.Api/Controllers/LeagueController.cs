@@ -99,15 +99,26 @@ public class LeagueController : ControllerBase
     public ActionResult<IReadOnlyList<DivisionPurseDto>> GetPrizes() =>
         Ok(_leagueService.GetChampionshipPurses().ToDtos());
 
+    /// <summary>
+    /// A season's scoring chart, of one kind of competition and of one division of it.
+    ///
+    /// The division is a filter and not a detail, because the championship is four editions of
+    /// one kind: asked for "the league" without one, the answer is a chart of the country, and a
+    /// division's artilharia read off it is topped by a striker from a division whose purse the
+    /// prize list under that same page does not use. The prize panel beside it is already
+    /// per division, so a chart that was not would be the one panel on the screen paying a
+    /// first-division cheque for a second division's football.
+    /// </summary>
     [HttpGet("scorer/{seasonId:guid}")]
     public async Task<ActionResult<IReadOnlyList<ScorerDto>>> GetScorers(
         Guid seasonId,
         [FromQuery] int? topN,
         [FromQuery] CompetitionType? competition,
+        [FromQuery] Guid? divisionId,
         CancellationToken cancellationToken)
     {
         var scorers = await _leagueService.GetScorersAsync(
-            seasonId, topN ?? DefaultTopScorers, competition, cancellationToken);
+            seasonId, topN ?? DefaultTopScorers, competition, divisionId, cancellationToken);
 
         return Ok(scorers.ToDtos());
     }

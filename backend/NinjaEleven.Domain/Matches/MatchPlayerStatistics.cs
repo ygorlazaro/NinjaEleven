@@ -65,7 +65,48 @@ namespace NinjaEleven.Domain.Matches;
 
         public int Goals { get; private set; }
         public int OwnGoals { get; private set; }
+
+        /// <summary>
+        /// Passes that set a goal up, and only those.
+        /// </summary>
+        /// <para>
+        /// The column existed and nothing ever wrote to it, which is the worst kind of missing
+        /// value: not a null that said "nobody knows", but a zero that said this striker has
+        /// never created a goal in his life, read by a scorers table and a profile as though
+        /// somebody had checked. It is the pass that a goal came from directly, so a goal off
+        /// a rebound has no assist — the ball was already loose, and crediting the man whose
+        /// shot it was would be an assist for a shot that had already missed.
+        /// </para>
+        /// </summary>
         public int Assists { get; private set; }
+
+        // --- The tally -----------------------------------------------------------
+        //
+        // What he did, as opposed to what it was worth. These are kept so that the rating
+        // below can be read rather than believed: a card saying 8.1 is a claim, and a card
+        // saying 8.1 next to two goals and four shots on target is evidence.
+
+        public int ShotsOnTarget { get; private set; }
+        public int ShotsOffTarget { get; private set; }
+        public int DuelsWon { get; private set; }
+        public int DuelsLost { get; private set; }
+        public int FoulsCommitted { get; private set; }
+        public int CornersWon { get; private set; }
+
+        /// <summary>
+        /// What the match was worth to him, out of ten, or null when he did not play enough
+        /// of it to have one.
+        /// </summary>
+        /// <para>
+        /// Stored rather than recomputed on demand, and that is a deliberate choice against
+        /// the alternative. A rating is a reading of a tally, and the tally is a fact about a
+        /// match that has been played; recomputing it later would mean recomputing it from a
+        /// column that a later balance change had moved, so the same match would carry two
+        /// different numbers depending on when it was asked for. A manager's history is not
+        /// allowed to change because the engine was tuned.
+        /// </para>
+        /// </summary>
+        public double? Rating { get; private set; }
 
         /// <summary>Goals kept out, which is what a goalkeeper's match is made of.</summary>
         public int Saves { get; private set; }
@@ -133,5 +174,16 @@ namespace NinjaEleven.Domain.Matches;
         InjuredOff = player.InjuredOff;
         InjuryMatchesOut = player.InjuryMatchesOut;
         MinutesPlayed = player.MinutesPlayed(finalMinute);
+        Assists = player.Performance.Assists;
+        ShotsOnTarget = player.Performance.ShotsOnTarget;
+        ShotsOffTarget = player.Performance.ShotsOffTarget;
+        DuelsWon = player.Performance.DuelsWon;
+        DuelsLost = player.Performance.DuelsLost;
+        FoulsCommitted = player.Performance.FoulsCommitted;
+        CornersWon = player.Performance.CornersWon;
+
+        // Read at the whistle, once, from the tally as it stands. The match is over, so this
+        // is the only moment at which the whole of it exists.
+        Rating = MatchRating.Of(player, MinutesPlayed, finalMinute);
     }
 }

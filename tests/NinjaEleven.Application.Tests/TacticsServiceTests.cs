@@ -136,6 +136,33 @@ public class TacticsServiceTests
     }
 
     [Fact]
+    public async Task A_plan_naming_two_goalkeepers_is_refused()
+    {
+        var service = CreateService();
+
+        // A club with two keepers in it, which is what a squad looks like whenever a reserve
+        // has been signed and the screen lets a manager put him in the eleven.
+        var squad = AFullSquad();
+        squad.Add(APlayer("GK 99", Position.GK));
+        SquadIs(squad);
+
+        var order = squad
+            .Where(player => player.Position == Position.GK)
+            .Select(player => player.Id)
+            .Concat(squad.Where(player => player.Position != Position.GK)
+                .Take(MatchRules.SquadSize - 2).Select(player => player.Id))
+            .ToList();
+
+        var error = await Assert.ThrowsAsync<DomainValidationException>(() =>
+            service.SavePlanAsync(_teamId, _seasonId, "433", order, []));
+
+        Assert.Equal("GoalkeeperRequired", error.Code);
+        // The refusal says how many were named, because "a team needs a goalkeeper" is not an
+        // answer to a screen holding two of them.
+        Assert.Contains("2", error.Message);
+    }
+
+    [Fact]
     public async Task A_manager_who_said_nothing_still_gets_the_shape_his_club_last_played()
     {
         var service = CreateService();
@@ -322,6 +349,7 @@ public class TacticsServiceTests
                 _matches.Object,
                 Mock.Of<IFinanceRepository>(),
                 inbox,
+                new ManagedClubs(),
                 _unitOfWork.Object,
                 NullLogger<TransferService>.Instance),
             _unitOfWork.Object,
@@ -340,6 +368,14 @@ public class TacticsServiceTests
 
         _teams
             .Setup(repo => repo.GetSquadAsync(_teamId, _seasonId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<TeamMembership>)squad
+                .Select(player => TeamMembership.Create(player.Id, _teamId, new DateOnly(2026, 1, 1)))
+                .ToList());
+
+        // The contracts the club holds right now, which is where a match reads the number on a
+        // player's back.
+        _teams
+            .Setup(repo => repo.GetLiveContractsAsync(_teamId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<TeamMembership>)squad
                 .Select(player => TeamMembership.Create(player.Id, _teamId, new DateOnly(2026, 1, 1)))
                 .ToList());

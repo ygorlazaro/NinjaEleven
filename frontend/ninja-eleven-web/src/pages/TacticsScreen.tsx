@@ -439,8 +439,20 @@ const TacticsScreen: React.FC = () => {
   const next = board?.next;
   const opponent = board?.opponent;
   const hasFixture = Boolean(next && opponent);
+
+  // Exactly one goalkeeper, and the count is read off the eleven rather than off the squad:
+  // a team sheet with two names in that band is two goalkeepers on the pitch, because a
+  // replacement for one of them comes from the line the man plays and a keeper's line has
+  // nobody to replace it from. The backend refuses it, and a save button that offers a save
+  // the backend will refuse is a control the server has already said no to.
+  const keeperCount = starters.filter(playerId =>
+    (board?.squad ?? []).some(player => player.playerId === playerId && player.position === 'GK')
+  ).length;
+  const completeEleven = starters.length === STARTERS;
+  const oneGoalkeeper = keeperCount === 1;
+
   const canSave =
-    starters.length === STARTERS && !saving && (touched || starters.length > 0);
+    completeEleven && oneGoalkeeper && !saving && (touched || starters.length > 0);
 
   return (
     <div className="page tactics-page">
@@ -606,6 +618,13 @@ const TacticsScreen: React.FC = () => {
           {starters.length < STARTERS && (
             <p className="tactics-hint">
               Faltam {STARTERS - starters.length} para fechar o time.
+            </p>
+          )}
+          {completeEleven && !oneGoalkeeper && (
+            <p className="tactics-hint">
+              {keeperCount === 0
+                ? 'Falta um goleiro no time.'
+                : `O time tem ${keeperCount} goleiros. Só um joga.`}
             </p>
           )}
         </section>

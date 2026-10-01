@@ -9,7 +9,7 @@ using Xunit;
 namespace NinjaEleven.IntegrationTests;
 
 /// <summary>
-/// A club's training day: how many sessions it has, what each one costs, and the fact that
+/// A club's training day: how many sessions a man has, what each one costs, and the fact that
 /// both come out of the club rather than out of the manager's goodwill.
 ///
 /// <para>
@@ -17,13 +17,20 @@ namespace NinjaEleven.IntegrationTests;
 /// holding: a rule kept in a counter can be out of step with the thing it counts, and a rule
 /// out of step with its own history hands out a session nobody paid for.
 /// </para>
+///
+/// <para>
+/// The allowance belongs to the man, not to the club. A club-wide allowance is a limit that
+/// stops mattering the moment a club has a squad: training the striker spends the same session
+/// training the reserve goalkeeper would have, so the second man a manager trains is told there
+/// is nothing left. The rule has to be per man for the day's work to be the day's work.
+/// </para>
 /// </summary>
 public class TrainingAllowanceTests
 {
     private static readonly DateOnly Today = new(2026, 3, 10);
 
     [Fact]
-    public async Task ARestDayBuysTheClubTwoSessionsAndAMatchdayOne()
+    public async Task ARestDayBuysEachManTwoSessionsAndAMatchdayOne()
     {
         // The two halves of the rule, which is one number with a condition on it and not two
         // numbers: a club that has not drawn its calendar is a club at rest, and a club on a
@@ -43,63 +50,75 @@ public class TrainingAllowanceTests
     }
 
     [Fact]
-    public async Task TheAllowanceIsTheClubsAndNotThePlayers()
+    public async Task TheWholeSquadTrainsOnTheSameDayBecauseTheAllowanceIsEachMans()
     {
-        // The squad of one: twenty-three men share two sessions, and training the striker has
-        // spent the same one that training the reserve goalkeeper would have. An allowance per
-        // man would be a limit that stopped mattering the moment a club had a squad.
+        // The property the rule rests on. Every man of the eleven holds his own allowance, so
+        // the day's work is the day's work and not the first click of the morning: a club-wide
+        // allowance means that training one striker has spent the goalkeeper's session too, and
+        // a manager who opens the squad screen on a rest day cannot train anybody.
         using var world = await AWorldAsync();
         var squad = (await world.Training().QuoteAsync(TrainingWorld.TheClub)).Players;
 
-        var first = squad[0];
-        var second = squad[1];
+        Assert.Equal(12, squad.Count);
 
-        await TrainAsync(world, first.PlayerId, PlayerAttribute.Speed);
-        await TrainAsync(world, second.PlayerId, PlayerAttribute.Speed);
+        foreach (var player in squad)
+        {
+            await TrainAsync(world, player.PlayerId, PlayerAttribute.Speed);
+        }
 
+        // Each man has his own place left on the day, and nobody has run out of his own. The
+        // club has spent twelve sessions and still has a full day's work in front of it, which
+        // is the whole difference between an allowance per man and one for the squad: the
+        // quote counts what the day has cost the club, and each man's own column says what he
+        // may still do.
         var after = await world.Training().QuoteAsync(TrainingWorld.TheClub);
 
-        Assert.Equal(2, after.SessionsSpent);
-        Assert.Equal(0, after.SessionsAllowed - after.SessionsSpent);
+        Assert.All(
+            after.Players,
+            player => Assert.Equal(TrainingRules.SessionsOnARestDay - 1, player.SessionsLeft));
+        Assert.Equal(squad.Count, after.SessionsSpent);
     }
 
     [Fact]
     public async Task ASpentAllowanceIsRefusedRatherThanChargedFor()
     {
-        // The refusal is the feature. A club on a matchday has one session; the second click
-        // on a different man is refused, and refused before the man is told what it would
-        // have cost — because he is not being offered anything.
+        // The refusal is the feature. A man who has had both of a rest day's sessions is told
+        // so, and told before he is billed for it — because he is not being offered anything.
         using var world = await AWorldAsync();
-        await world.GivenAMatchOnAsync(Today);
 
-        var squad = (await world.Training().QuoteAsync(TrainingWorld.TheClub)).Players;
-        var first = squad[0];
-        var second = squad[1];
+        var man = (await world.Training().QuoteAsync(TrainingWorld.TheClub)).Players[0];
 
-        await TrainAsync(world, first.PlayerId, PlayerAttribute.Speed);
+        await TrainAsync(world, man.PlayerId, PlayerAttribute.Speed);
+        await TrainAsync(world, man.PlayerId, PlayerAttribute.Dribbling);
+
+        // Read him as he is after his day's two sessions, not as he was this morning: a
+        // refusal that held his energy still would be worth nothing if the sessions he was
+        // allowed had not moved it.
+        var spent = (await world.Training().QuoteAsync(TrainingWorld.TheClub)).Players
+            .Single(player => player.PlayerId == man.PlayerId);
 
         var error = await Assert.ThrowsAsync<DomainValidationException>(
-            () => TrainAsync(world, second.PlayerId, PlayerAttribute.Speed));
+            () => TrainAsync(world, man.PlayerId, PlayerAttribute.Strength));
 
         Assert.Equal("TrainingAllowanceSpent", error.Code);
 
-        // And nothing was written: the man refused is as he was, and the club's book has one
-        // line in it rather than two.
+        // And nothing was written: the man refused is as he was, and the club's book has two
+        // lines in it rather than three.
         var refused = (await world.Training().QuoteAsync(TrainingWorld.TheClub)).Players
-            .Single(player => player.PlayerId == second.PlayerId);
+            .Single(player => player.PlayerId == man.PlayerId);
 
-        Assert.Equal(second.Energy, refused.Energy);
+        Assert.Equal(spent.Energy, refused.Energy);
 
-        var sessions = await world.Sessions.ListByTeamAndDayAsync(TrainingWorld.TheClub, Today);
-        Assert.Single(sessions);
+        var sessions = await world.Sessions.ListByPlayerAsync(man.PlayerId);
+        Assert.Equal(2, sessions.Count);
     }
 
     [Fact]
     public async Task TomorrowTheAllowanceIsWholeAgain()
     {
         // A day's allowance is a day's allowance. Nothing is carried, nothing is owed, and a
-        // club that spent yesterday's is not invoiced for it: the count is read from the
-        // sessions of the day in question and from no other day.
+        // man who spent yesterday's is not invoiced for it: the count is read from the sessions
+        // of the day in question and from no other day.
         using var world = await AWorldAsync();
         var squad = (await world.Training().QuoteAsync(TrainingWorld.TheClub)).Players;
 
@@ -115,7 +134,7 @@ public class TrainingAllowanceTests
     }
 
     [Fact]
-    public async Task ASessionCostsTheClubAFifteenthOfTheMansWage()
+    public async Task ASessionCostsTheClubHalfOfTheContractWage()
     {
         // The two numbers on the sheet are the two numbers charged. A manager who reads a fee
         // and is billed another one has been told a price he could not rely on, and the only
@@ -133,19 +152,21 @@ public class TrainingAllowanceTests
     }
 
     [Fact]
-    public async Task ATrainedManCostsTheClubWhatHisOwnWageWouldHaveSaid()
+    public async Task ATrainedManCostsTheClubWhatHisOwnContractWouldHaveSaid()
     {
-        // Worked out from the man rather than from the quote, because the fee is a share of a
-        // wage and a fee that is only ever checked against itself proves nothing.
+        // Worked out from the contract rather than from the quote, because the fee is a share
+        // of a wage and a fee that is only ever checked against itself proves nothing. The
+        // wage is read off the membership the man is on, which is the whole reason it lives
+        // there: two men of the same ability under two contracts are two fees, and only one of
+        // them is the man the club actually signed.
         using var world = await AWorldAsync();
         await world.GivenAnOpenedBookAsync();
 
         var quoted = (await world.Training().QuoteAsync(TrainingWorld.TheClub)).Players.First();
-        var player = await world.Players.GetAsync(quoted.PlayerId);
-        var state = (await world.Players.ListSeasonStatesAsync(world.SeasonId, TrainingWorld.TheClub))
-            .Single(candidate => candidate.PlayerId == quoted.PlayerId);
+        var contract = (await world.Teams.GetSquadAsync(TrainingWorld.TheClub, world.SeasonId))
+            .Single(membership => membership.PlayerId == quoted.PlayerId);
 
-        var expected = PlayerValuation.SeasonWage(player, state) * TrainingRules.SessionFeeRate;
+        var expected = contract.Wage * TrainingRules.SessionFeeRate;
 
         await TrainAsync(world, quoted.PlayerId, PlayerAttribute.Speed);
 
@@ -184,21 +205,22 @@ public class TrainingAllowanceTests
     {
         // The property the whole rule rests on. A session inserted into the history — by a
         // migration, a backfill, a process that crashed between writing the row and raising
-        // the point — is a session the club has had, and a tally that had not heard of it
+        // the point — is a session the man has had, and a tally that had not heard of it
         // would hand out one more.
         using var world = await AWorldAsync();
         await world.GivenAMatchOnAsync(Today);
 
-        var squad = (await world.Training().QuoteAsync(TrainingWorld.TheClub)).Players;
+        var man = (await world.Training().QuoteAsync(TrainingWorld.TheClub)).Players[0];
 
         await world.Sessions.AddAsync(TrainingSession.Create(
-            squad[0].PlayerId, TrainingWorld.TheClub, world.SeasonId, Today,
+            man.PlayerId, TrainingWorld.TheClub, world.SeasonId, Today,
             new DateTimeOffset(2026, 3, 10, 8, 0, 0, TimeSpan.Zero),
             null, PlayerAttribute.Speed, 6, 100m));
         await world.UnitOfWork.SaveChangesAsync();
 
+        // The matchday leaves him one session, and the inserted row is that one.
         var error = await Assert.ThrowsAsync<DomainValidationException>(
-            () => TrainAsync(world, squad[1].PlayerId, PlayerAttribute.Speed));
+            () => TrainAsync(world, man.PlayerId, PlayerAttribute.Speed));
 
         Assert.Equal("TrainingAllowanceSpent", error.Code);
     }
@@ -206,19 +228,41 @@ public class TrainingAllowanceTests
     [Fact]
     public async Task ASessionsAreNumberedInTheOrderTheDayWasSpentInIt()
     {
-        // The second session of a rest day is the second one, and a day's sessions carry their
-        // own places. This is the property the unique index over club, day and place rests
-        // on: a session that claimed a place already taken cannot be written at all, so two
-        // clicks arriving together cannot both be told yes.
+        // A man's second session of a rest day is his second one, and a day's sessions carry
+        // their own places. This is the property the unique index over man, day and place
+        // rests on: a session that claimed a place already taken cannot be written at all, so
+        // two clicks arriving together cannot both be told yes. The index is per man rather
+        // than per club because the allowance is, and an index wider than the rule would hand
+        // the eleventh man a place the tenth had taken.
+        using var world = await AWorldAsync();
+        var man = (await world.Training().QuoteAsync(TrainingWorld.TheClub)).Players[0];
+
+        await TrainAsync(world, man.PlayerId, PlayerAttribute.Speed);
+        await TrainAsync(world, man.PlayerId, PlayerAttribute.Dribbling);
+
+        var sessions = await world.Sessions.ListByPlayerAsync(man.PlayerId);
+
+        Assert.Equal(new[] { 0, 1 }, sessions.Select(session => session.Ordinal).Order().ToArray());
+    }
+
+    [Fact]
+    public async Task TwoMenOfOneDayDoNotShareTheirPlaces()
+    {
+        // The companion to the numbering: the places are numbered inside a man's own day, so
+        // every man's first session is his zeroth. A shared counter would make the squad's
+        // second starter his second session and refuse him a session he had not had.
         using var world = await AWorldAsync();
         var squad = (await world.Training().QuoteAsync(TrainingWorld.TheClub)).Players;
 
-        await TrainAsync(world, squad[0].PlayerId, PlayerAttribute.Speed);
-        await TrainAsync(world, squad[1].PlayerId, PlayerAttribute.Speed);
+        foreach (var player in squad)
+        {
+            await TrainAsync(world, player.PlayerId, PlayerAttribute.Speed);
+        }
 
         var sessions = await world.Sessions.ListByTeamAndDayAsync(TrainingWorld.TheClub, Today);
 
-        Assert.Equal(new[] { 0, 1 }, sessions.Select(session => session.Ordinal).Order().ToArray());
+        Assert.Equal(12, sessions.Count);
+        Assert.All(sessions, session => Assert.Equal(0, session.Ordinal));
     }
 
     [Fact]
@@ -247,13 +291,20 @@ public class TrainingAllowanceTests
 
     // --- Helpers ------------------------------------------------------------------
 
+    /// <summary>
+    /// A squad of a whole eleven and a keeper in reserve, because a rule about what a man may
+    /// spend can only be held against a club that has more men than sessions: a squad of three
+    /// would pass a club-wide allowance exactly as happily as a per-man one.
+    /// </summary>
     private static Task<TrainingWorld> AWorldAsync() =>
-        TrainingWorld.GivenAsync(new[]
-        {
-            TrainingWorld.APlayer("Zagueiro", 23, Position.DEF, 78),
-            TrainingWorld.APlayer("Meia", 26, Position.MID, 84),
-            TrainingWorld.APlayer("Goleiro", 29, Position.GK, 80)
-        });
+        TrainingWorld.GivenAsync(
+            new[] { TrainingWorld.APlayer("Goleiro", 29, Position.GK, 80) }
+                .Concat(Enumerable.Range(1, 4).Select(number =>
+                    TrainingWorld.APlayer($"Zagueiro {number}", 23 + number, Position.DEF, 74 + number)))
+                .Concat(Enumerable.Range(1, 4).Select(number =>
+                    TrainingWorld.APlayer($"Meia {number}", 26 + number, Position.MID, 80 + number)))
+                .Concat(Enumerable.Range(1, 3).Select(number =>
+                    TrainingWorld.APlayer($"Atacante {number}", 22 + number, Position.ATT, 82 + number))));
 
     private static Task<TrainingResult> TrainAsync(TrainingWorld world, Guid playerId, PlayerAttribute attribute) =>
         world.Training().TrainAsync(playerId, attribute);

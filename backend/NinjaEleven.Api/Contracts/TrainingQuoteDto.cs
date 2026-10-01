@@ -28,13 +28,20 @@ public class TrainingQuoteDto
     public bool IsAvailable { get; init; }
     public string Injury { get; init; } = string.Empty;
 
-    /// <summary>What one session on this man costs the club, being a share of his season wage.</summary>
+    /// <summary>What one session on this man costs the club, being half his season wage.</summary>
     public decimal SessionFee { get; init; }
+
+    /// <summary>
+    /// How many sessions this man still has on the sheet's day. It is per man because the
+    /// day's allowance is counted per body, so a squad can be worked all at once and each man
+    /// is still refused once his own day is used.
+    /// </summary>
+    public int SessionsLeft { get; init; }
 
     public List<TrainingAttributeQuoteDto> Attributes { get; init; } = new();
 }
 
-/// <summary>The club's whole sheet, with what the squad has left between them.</summary>
+/// <summary>The club's whole sheet, and what the day is worth to each man on it.</summary>
 public class SquadTrainingQuotesDto
 {
     public Guid TeamId { get; init; }
@@ -47,10 +54,10 @@ public class SquadTrainingQuotesDto
     /// <summary>Whether the club has a fixture on that day, which is one session or two.</summary>
     public bool PlaysToday { get; init; }
 
-    /// <summary>How many sessions the club has that day.</summary>
+    /// <summary>How many sessions each man has that day.</summary>
     public int SessionsAllowed { get; init; }
 
-    /// <summary>How many of them have been spent.</summary>
+    /// <summary>How many of the squad have used theirs.</summary>
     public int SessionsSpent { get; init; }
 
     public List<TrainingQuoteDto> Players { get; init; } = new();

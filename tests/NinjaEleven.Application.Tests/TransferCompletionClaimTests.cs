@@ -102,6 +102,7 @@ public class TransferCompletionClaimTests
         _matches.Object,
         _finance.Object,
         InboxTestFactory.Create(_teams, _inbox),
+        new ManagedClubs(),
         _unitOfWork.Object,
         NullLogger<TransferService>.Instance);
 

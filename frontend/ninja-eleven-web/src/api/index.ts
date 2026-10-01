@@ -341,15 +341,27 @@ export const LeagueApi = {
    * the league's best forward is.
    */
   /**
-   * The scoring chart, optionally restricted to one kind of competition.
+   * The scoring chart, optionally restricted to one kind of competition and to one division.
    *
    * The competition is the backend's filter and not a column the client narrows: only the round
    * knows whether a tie was a division match, a cup tie or a Supercup, so a cup's chart counted
    * from the season total would be the league's goals wearing the cup's name.
+   *
+   * The division is the same walk one step further, and the artilharia needs it: the league is
+   * four divisions of one kind, so a chart without one is a chart of the country — the first
+   * division's own top scorer sitting below a fourth-division forward, on the first division's
+   * page, next to the first division's money.
    */
-  getScorers: (seasonId: string, topN = SCORER_POOL, competition?: CompetitionFilter) =>
+  getScorers: (
+    seasonId: string,
+    topN = SCORER_POOL,
+    competition?: CompetitionFilter,
+    divisionId?: string | null,
+  ) =>
     api.get<ScorerDto[]>(
-      `/league/scorer/${seasonId}?topN=${topN}${competition ? `&competition=${competition}` : ''}`
+      `/league/scorer/${seasonId}?topN=${topN}` +
+        `${competition ? `&competition=${competition}` : ''}` +
+        `${divisionId ? `&divisionId=${divisionId}` : ''}`
     ).then(r => r.data),
 
   /**

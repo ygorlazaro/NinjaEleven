@@ -852,6 +852,22 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("came_on");
 
+                    b.Property<int>("CornersWon")
+                        .HasColumnType("integer")
+                        .HasColumnName("corners_won");
+
+                    b.Property<int>("DuelsLost")
+                        .HasColumnType("integer")
+                        .HasColumnName("duels_lost");
+
+                    b.Property<int>("DuelsWon")
+                        .HasColumnType("integer")
+                        .HasColumnName("duels_won");
+
+                    b.Property<int>("FoulsCommitted")
+                        .HasColumnType("integer")
+                        .HasColumnName("fouls_committed");
+
                     b.Property<int>("Goals")
                         .HasColumnType("integer")
                         .HasColumnName("goals");
@@ -880,6 +896,11 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("player_id");
 
+                    b.Property<double?>("Rating")
+                        .HasPrecision(4, 1)
+                        .HasColumnType("double precision")
+                        .HasColumnName("rating");
+
                     b.Property<int>("RedCards")
                         .HasColumnType("integer")
                         .HasColumnName("red_cards");
@@ -891,6 +912,14 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("SeasonId")
                         .HasColumnType("uuid")
                         .HasColumnName("season_id");
+
+                    b.Property<int>("ShotsOffTarget")
+                        .HasColumnType("integer")
+                        .HasColumnName("shots_off_target");
+
+                    b.Property<int>("ShotsOnTarget")
+                        .HasColumnType("integer")
+                        .HasColumnName("shots_on_target");
 
                     b.Property<bool>("Started")
                         .HasColumnType("boolean")
@@ -1304,18 +1333,18 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                     b.HasIndex("MatchDayId")
                         .HasDatabaseName("ix_training_sessions_match_day_id");
 
-                    b.HasIndex("PlayerId")
-                        .HasDatabaseName("ix_training_sessions_player_id");
+                    b.HasIndex("PlayerId", "Day")
+                        .HasDatabaseName("ix_training_sessions_player_id_day");
 
                     b.HasIndex("TeamId", "Day")
                         .HasDatabaseName("ix_training_sessions_team_id_day");
 
+                    b.HasIndex("PlayerId", "Day", "Ordinal")
+                        .IsUnique()
+                        .HasDatabaseName("ix_training_sessions_player_id_day_ordinal");
+
                     b.HasIndex("SeasonId", "TeamId", "Day")
                         .HasDatabaseName("ix_training_sessions_season_id_team_id_day");
-
-                    b.HasIndex("TeamId", "Day", "Ordinal")
-                        .IsUnique()
-                        .HasDatabaseName("ix_training_sessions_team_id_day_ordinal");
 
                     b.ToTable("training_sessions", (string)null);
                 });
@@ -1634,6 +1663,12 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TeamId")
                         .HasColumnType("uuid")
                         .HasColumnName("team_id");
+
+                    b.Property<decimal>("Wage")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(14,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("wage");
 
                     b.HasKey("Id")
                         .HasName("pk_team_memberships");

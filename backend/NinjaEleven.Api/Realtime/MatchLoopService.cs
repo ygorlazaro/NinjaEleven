@@ -48,6 +48,30 @@ public sealed class MatchLoopService : BackgroundService
     private const int ShootoutTickIntervalMs = BaseTickIntervalMs * 3;
 
     /// <summary>
+    /// How often the loop goes looking for a match whose owner stopped answering.
+    ///
+    /// <para>
+    /// A lease is five minutes, and the sweep has to be slower than the moment a lease runs
+    /// out rather than faster than it: reclaiming a live match would take the football away
+    /// from the process playing it, and a sweep faster than the lease is a race the reclaim
+    /// wins. Thirty seconds puts the worst case — a match nobody is playing, sitting on a
+    /// dead owner's name — at about half a minute past the lease rather than never.
+    /// </para>
+    ///
+    /// <para>
+    /// It repeats because a process that is already running is the normal case, not the
+    /// exception. Rescuing interrupted matches only at startup rescues a match whose owner
+    /// died <i>before</i> this one started: a host that goes away while the API is up leaves a
+    /// match frozen at the minute it was on, its fixture held, and its window reporting a
+    /// match "played by another process" for ever, with nobody left to play it. The owner
+    /// stops being its owner five minutes after it dies, whether or not anybody was looking.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan RecoverySweepInterval = TimeSpan.FromSeconds(30);
+
+    private DateTimeOffset _lastRecoverySweep = DateTimeOffset.MinValue;
+
+    /// <summary>
     /// How far a foreign match has been republished. A match is first seen at whatever
     /// sequence it is on, and everything after that is what this process has not told its
     /// clients yet — so a manager who opens a match at minute sixty is sent the state at
@@ -119,9 +143,18 @@ public sealed class MatchLoopService : BackgroundService
             }
 
             // The matches somebody else is playing, read rather than played. It is on the same
-            // pass as the loop's own because a client watching a matchday should not be able
-            // to tell which process is playing which of its fixtures.
+            // pass as the loop's own because a client watching a matchday should not be able to
+            // tell which process is playing which of its fixtures.
             await PublishForeignMatchesAsync(stoppingToken);
+
+            // And the matches nobody is playing any more, on a slower beat than the loop's
+            // own. This is the pass that notices an owner that went away while this process
+            // was already up.
+            if (DateTimeOffset.UtcNow - _lastRecoverySweep >= RecoverySweepInterval)
+            {
+                _lastRecoverySweep = DateTimeOffset.UtcNow;
+                await RecoverInterruptedMatchesAsync(stoppingToken);
+            }
 
             try
             {
@@ -233,19 +266,62 @@ public sealed class MatchLoopService : BackgroundService
     /// fixture goes back on the schedule. Without this a restart would leave a fixture
     /// that reports "already started" and can neither be played nor watched.
     /// </summary>
+    /// <summary>
+    /// Hands back every match this process is playing before it goes.
+    ///
+    /// <para>
+    /// The loop is the only thing that knows which matches this process is driving, so it is
+    /// the only place that can say goodbye to them. A process that stops without doing this
+    /// looks exactly like one that was killed, and the next one waits out a five-minute lease
+    /// on a match nobody is playing — which is charged to whoever was watching it, as a frozen
+    /// scoreboard, for a restart that was supposed to cost nothing.
+    /// </para>
+    /// </summary>
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var matchService = scope.ServiceProvider.GetRequiredService<MatchService>();
+
+            await matchService.ReleaseTheMatchesOfThisHostAsync(cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            // A shutdown that cannot reach the database is still a shutdown. The matches fall
+            // back to waiting out their lease, which is what happened before this existed.
+            _logger.LogError(exception, "Failed to release the matches of this host on the way out.");
+        }
+
+        await base.StopAsync(cancellationToken);
+    }
+
     private async Task RecoverInterruptedMatchesAsync(CancellationToken cancellationToken)
     {
         try
         {
             using var scope = _scopeFactory.CreateScope();
             var matchService = scope.ServiceProvider.GetRequiredService<MatchService>();
-            var recovered = await matchService.RecoverInterruptedMatchesAsync(cancellationToken);
+            var recovered = await matchService.RecoverInterruptedMatchesAsync(
+                cancellationToken,
+                leaveRunningMatchesAlone: true);
 
-            if (recovered > 0)
+            if (recovered.Count > 0)
             {
                 _logger.LogWarning(
                     "Abandoned {Count} match(es) interrupted by a restart; their fixtures are playable again.",
-                    recovered);
+                    recovered.Count);
+
+                // Told to whoever was watching them. A match that was given up on stops being
+                // driven, so without this the last thing its followers ever hear is a minute
+                // that never advances — a frozen scoreboard and no end to the match. The group
+                // is still theirs, the match is simply over, and the state they are sent says
+                // so.
+                foreach (var abandonedMatchId in recovered)
+                {
+                    var state = await matchService.GetStateAsync(abandonedMatchId, cancellationToken);
+                    await _broadcaster.PublishStateAsync(abandonedMatchId, state.ToDto(), cancellationToken);
+                }
             }
         }
         catch (Exception exception)

@@ -485,4 +485,167 @@ public static class MatchRules
     public const int SquadSize = 11;
 
     public const int BenchSize = 7;
+
+    // --- Player ratings ---------------------------------------------------------
+
+    /// <summary>
+    /// Where a man starts, and what a rating of nothing at all would be. It is not zero: a
+    /// footballer who played a full match and was not the worst man on a pitch full of
+    /// footballers did not play badly, and a scale that says he did is measuring the wrong
+    /// thing. Everything else is a move away from here.
+    /// </summary>
+    public const double RatingBaseline = 6.0;
+
+    public const double RatingFloor = 0.0;
+    public const double RatingCeiling = 10.0;
+
+    /// <summary>
+    /// Below this a man is told so, in red. The line is the baseline and not a number below
+    /// it, so "did not earn a good mark" and "was below what his own profile promised" are
+    /// the same statement rather than two nearby ones.
+    /// </summary>
+    public const double RatingRedBelow = 6.0;
+
+    /// <summary>
+    /// Where a good evening starts, and it is inclusive so that the number on the card and
+    /// the colour beside it agree: a man marked 8.0 is shown as a good evening rather than as
+    /// an ordinary one that happens to round to eight.
+    /// </summary>
+    public const double RatingGreen = 8.0;
+
+    /// <summary>
+    /// The blue diamond is the ceiling itself and not a band above it, so there is exactly
+    /// one way to wear it and a player is never told he was better than the best.
+    /// </summary>
+    public const double RatingDiamond = 10.0;
+
+    /// <summary>
+    /// How much of a reading survives being shrunk back towards the baseline.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A ninety-minute match is a small sample of a large number of things, and without this
+    /// a single extraordinary thirty minutes prints a 9.8 — a number that says a man was
+    /// flawless rather than that he had an excellent afternoon. It also keeps the bands honest:
+    /// the rare perfect on a shrinking scale is still 10, so the top of the scale is reachable,
+    /// but the middle of it belongs to ordinary days rather than to ordinary samples.
+    /// </para>
+    /// </remarks>
+    public const double RatingShrink = 0.85;
+
+    /// <summary>
+    /// What each thing that happened is worth, in points of rating.
+    /// </summary>
+    /// <remarks>
+    /// They are the volume, and they are deliberately blunt: a goal is a goal whether the man
+    /// who scored it was expected to or not, and the question of expectation is a separate
+    /// axis rather than a discount on this one. Charging a striker less for a goal because he
+    /// is good at them would mean the best striker in the world could not have a good match.
+    /// </remarks>
+    /// <summary>
+    /// The flat weight of a goal, and it is small because it is not the whole of a goal.
+    /// A goal also arrives as a shot on target and as the largest single surprise in a match,
+    /// and the three are counted separately, so a weight of its own large enough to carry the
+    /// occasion would count the same evening three times. Read on its own, it puts a single
+    /// goal in the middle of the ordinary band and leaves a hat-trick to reach the ceiling
+    /// through everything that came with it — which is where a hat-trick should be reached
+    /// from, rather than by a number big enough on its own.
+    /// </summary>
+    public const double RatingGoal = 0.95;
+    public const double RatingAssist = 0.70;
+    public const double RatingSave = 0.22;
+    public const double RatingShotOnTarget = 0.30;
+    public const double RatingShotOffTarget = -0.04;
+    public const double RatingDuelWon = 0.07;
+    public const double RatingDuelLost = -0.05;
+    public const double RatingFoul = -0.07;
+    public const double RatingCorner = 0.04;
+    public const double RatingYellowCard = -0.30;
+    public const double RatingRedCard = -1.4;
+    public const double RatingOwnGoal = -1.0;
+
+    /// <summary>
+    /// What one moment is worth when it was better or worse than the engine had already said
+    /// it would be.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the axis that answers "was he above his profile tonight" without double counting.
+    /// The engine has already rolled a probability for every duel and every shot — the
+    /// probability the carrier beats the marker, the probability the shot finds the target —
+    /// and has thrown it away. Comparing the roll against the chance is the whole measurement:
+    /// a striker who converts the chances he should have missed is playing above his profile, and
+    /// one who misses the ones he should have made is playing below it, and neither fact is
+    /// visible in the number of goals.
+    /// </para>
+    /// <para>
+    /// A duel is worth less than a shot because a duel is a smaller thing to have got right.
+    /// The sum is capped, so a long match of many small surprises cannot outvote a goal.
+    /// </para>
+    /// </remarks>
+    // A shot is very nearly a coin flip — the chance of finding the target sits around one in
+    // two — so every shot a striker takes is a large deviation from its own chance, positive
+    // or negative. A heavy weight therefore made a striker who missed three look worse than
+    // one who missed none by more than a goal is worth, and a man having three shots is an
+    // ordinary evening rather than a bad one. The weights are small for that reason and not
+    // because the measurement matters less.
+    public const double RatingDuelSurprise = 0.10;
+    public const double RatingShotSurprise = 0.15;
+    public const double RatingPenaltySurprise = 0.50;
+    public const double RatingMaxSurprise = 1.5;
+
+    /// <summary>
+    /// How much a man loses for being on the pitch and in nothing, and the involvement each
+    /// role is expected to have.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the "ten minutes without touching the ball" rule, and it is measured against
+    /// what the man's own job asks of him rather than against a clock. A centre-back being
+    /// unmarked is what playing well looks like for him; a ten minute gap in his match is his
+    /// ordinary Tuesday, and a flat penalty would make the best defenders in the world grade
+    /// below the worst strikers. The rate is also squared, so a man slightly below his role's
+    /// rate is barely marked and a man involved in nothing is.
+    /// </para>
+    /// <para>
+    /// The rates are per ninety and are the engine's own, not football's: this model resolves
+    /// about two events per player per match rather than the fifty touches a real match has,
+    /// so a rate drawn from real football would put every man in the world under water.
+    /// </para>
+    /// </remarks>
+    public const double RatingInactivityWeight = 0.8;
+
+    /// <summary>
+    /// The most a man can be marked down for being in nothing at all, and it is three numbers
+    /// rather than one because the complaint is not the same in four places.
+    /// </summary>
+    /// <remarks>
+    /// A forward who is on the pitch for ninety minutes and touches nothing is a real problem
+    /// and is marked as one. A centre-back in the same evening is doing the job, which is to
+    /// be unmarked; a goalkeeper who is barely involved is barely involved, and a rule that
+    /// said otherwise would be telling a manager his keeper had a bad night every time the
+    /// back line kept it quiet. One shared cap would make all four of them equal, and the
+    /// first thing anyone would say about the result is that it cannot tell those apart.
+    /// </remarks>
+    public const double RatingMaxInactivityOutfield = 0.60;
+    public const double RatingMaxInactivityDefense = 0.30;
+    public const double RatingMaxInactivityGoalkeeper = 0.10;
+    // The floors, measured rather than guessed: over a hundred played matches the median
+    // outfielder was involved in three things and the bottom quarter in one or none, so a
+    // floor of two leaves an ordinary evening unmarked and catches the tail. A goalkeeper has
+    // none, because he is measured on his saves.
+    public const double RatingInvolvementsPerNinetyAttack = 2.0;
+    public const double RatingInvolvementsPerNinetyMidfield = 2.0;
+    public const double RatingInvolvementsPerNinetyDefense = 2.0;
+    public const double RatingInvolvementsPerNinetyGoalkeeper = 0.0;
+
+    /// <summary>
+    /// The shortest match a man has to play to be given a rating at all.
+    /// </summary>
+    /// <remarks>
+    /// A man off the bench for the last five minutes has not had a performance, he has had a
+    /// cameo, and a number printed beside his name would be a number nobody could have earned
+    /// or deserved. This is a floor on the sample rather than a judgement about the player.
+    /// </remarks>
+    public const int RatingMinimumMinutes = 5;
 }

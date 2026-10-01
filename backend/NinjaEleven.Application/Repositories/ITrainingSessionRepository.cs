@@ -23,6 +23,20 @@ public interface ITrainingSessionRepository
         DateOnly day,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The sessions one man has already run on one day, which is his own daily allowance.
+    ///
+    /// <para>
+    /// The allowance is counted per man and not per club, and this is the read that says so.
+    /// A club-wide count would make a day worth one session to twenty-three bodies, which is
+    /// not a squad being developed — it is a manager choosing which nineteen to leave alone.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<TrainingSession>> ListByPlayerAndDayAsync(
+        Guid playerId,
+        DateOnly day,
+        CancellationToken cancellationToken = default);
+
     /// <summary>A player's own training history, most recent first.</summary>
     Task<IReadOnlyList<TrainingSession>> ListByPlayerAsync(
         Guid playerId,

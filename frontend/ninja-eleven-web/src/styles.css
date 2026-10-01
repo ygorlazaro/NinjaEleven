@@ -773,8 +773,62 @@ button { cursor: pointer; }
   box-shadow: 0 0 0 1px rgba(242, 211, 79, .28), 0 0 12px rgba(242, 211, 79, .16);
   background: #121d27;
 }
-.on-pitch-card .pc-pos { color: var(--accent); font-size: 11px; margin-right: 5px; }
-.on-pitch-card .pc-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The player card, in one place. The eleven under the scoreboard, the two sheets of the
+   matchday and the eleven a manager picks a substitute from are the same card, and these are
+   its rules — three copies meant three places where a name could be cut off or a shirt could
+   go missing. */
+.player-tile__name {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+.player-tile__name .name-link { color: inherit; }
+/* The shirt leads the line and never shares it with half a name. */
+.player-tile__name .kit-chip { flex: 0 0 auto; margin-top: -1px; }
+
+/* The second line: where he plays, what the evening has been worth, and how good he is. */
+.player-tile__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 7px;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+}
+.player-tile__meta > * + *::before {
+  content: "·";
+  margin-right: 7px;
+  opacity: .5;
+  font-weight: 400;
+}
+.player-tile__pos { color: var(--accent); }
+.player-tile__stars { color: var(--accent); }
+.player-tile__energy { color: #e8f2f7; margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.player-tile__icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+/* A card that is a button has to look like one that can be pressed. */
+.player-tile { font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.player-tile:not(.on-pitch-card) { font-size: 14px; }
+.player-tile .player-tile__meta { font-size: 12px; }
+/* The note the man is carrying at this point in the match, on its own line between what has
+   happened to him and how much he has left. It is absent rather than zero for a man who has
+   not played five minutes, because a cameo is not a match. */
+.player-tile .player-rating { font-size: 11px; padding: 0 5px; }
 .on-pitch-icons { display: flex; gap: 3px; margin-top: 3px; min-height: 13px; font-size: 11px; }
 .icon-goal { color: var(--text); }
 .icon-yellow { filter: saturate(1.15); }
@@ -1009,10 +1063,6 @@ button { cursor: pointer; }
 .player-card:hover { border-color: #46657d; transform: translateY(-1px); }
 .player-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(255, 207, 73, .25); background: #101e29; }
 .player-card.disabled { opacity: .48; cursor: not-allowed; }
-.player-top { display: flex; align-items: center; gap: 8px; }
-.player-pos { font-size: 15px; font-weight: 950; min-width: 34px; color: var(--accent); text-align: center; }
-.player-card .player-name, .player-card__name { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.player-energy { margin-left: auto; font-size: 17px; font-weight: 950; color: #e8f2f7; white-space: nowrap; }
 .player-status { font-size: 12px; margin-left: 42px; margin-top: 2px; color: var(--muted); }
 .player-stats { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; color: var(--muted); font-size: 12px; }
 .player-stats span { padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; background: #0d1a25; }
@@ -1220,7 +1270,6 @@ button { cursor: pointer; }
    happened to him: sent off, injured, or keeping the goal without being a goalkeeper. */
 .player-card.sent-off { border-color: var(--red); opacity: .7; }
 .player-card.injured { border-color: var(--orange); }
-.player-card .player-pos { color: var(--accent); }
 
 /* A name is always a door. It looks exactly like the text around it until the pointer
    goes over it, so a screen full of names does not turn into a screen full of buttons. */
@@ -2761,6 +2810,29 @@ button { cursor: pointer; }
 .attr-yellow { color: var(--orange); font-weight: 700; }
 .attr-green { color: var(--green); font-weight: 700; }
 
+/* Match ratings, on their own 0..10 scale and deliberately not the attribute bands above:
+   below 6 red, 6 to 8 yellow, above 8 green, and 10 the one blue diamond on a pitch. The
+   rule is in matchRatingClass; these are only what the four answers look like. */
+.rating-unrated { color: var(--muted); }
+.rating-red { color: var(--red); font-weight: 700; }
+.rating-yellow { color: var(--orange); font-weight: 700; }
+.rating-green { color: var(--green); font-weight: 700; }
+.rating-diamond { color: var(--blue); font-weight: 800; text-shadow: 0 0 8px rgba(87, 166, 255, .55); }
+
+/* The note a man is carrying at this point in the match, beside his energy on the card. */
+.player-rating {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #09141e;
+  white-space: nowrap;
+}
+
+.bench-card .player-rating { opacity: .8; }
+.sent-off .player-rating { opacity: .55; }
+
 /* Energy text colors (following the same pattern as energy bar fills) */
 .energy-green-text { color: var(--green); font-weight: 700; }
 .energy-yellow-text { color: var(--orange); font-weight: 700; }
@@ -3378,6 +3450,13 @@ button { cursor: pointer; }
   margin-right: 5px;
   flex: 0 0 auto;
 }
+/* A shirt with a number on it is drawn bigger. Fifteen pixels is a mark beside a name; it is
+   not a place to read a number, and a number too small to read is worse than no number at all
+   because the card says the shirt is numbered while the shirt says nothing. */
+.kit-chip--numbered { width: 24px; height: 24px; }
+/* On a match card the shirt is the mark a manager recognises a man by before reading a word,
+   so it is drawn at the size of the name rather than at the size of a footnote. */
+.kit-chip--large { width: 34px; height: 34px; }
 .kit-chip .kit { margin: 0; gap: 0; }
 .kit-chip .kit__shirt {
   width: 100%;

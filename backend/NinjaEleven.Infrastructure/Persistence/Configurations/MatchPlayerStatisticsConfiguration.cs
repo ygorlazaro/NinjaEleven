@@ -23,6 +23,12 @@ public class MatchPlayerStatisticsConfiguration : IEntityTypeConfiguration<Match
         // the sixtieth. See MatchPlayerStatistics.MinutesPlayed.
         builder.Property(s => s.MinutesPlayed).IsRequired();
 
+        // The rating is optional rather than zero-and-a-default because a man who came on for
+        // four minutes does not have one, and a zero on a scale that starts at zero would say
+        // he was the worst player on the pitch rather than that there was not enough of him to
+        // judge. See MatchRating.
+        builder.Property(s => s.Rating).HasPrecision(4, 1);
+
         builder.HasOne<Match>()
             .WithMany()
             .HasForeignKey(s => s.MatchId)

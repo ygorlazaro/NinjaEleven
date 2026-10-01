@@ -73,6 +73,14 @@ public class MatchLineup
 
     /// <summary>Which of the visiting club's two shirts was worn.</summary>
     public KitSide AwayKitSide { get; init; }
+
+    /// <summary>
+    /// How far the match had got when this was read, which is what a live rating is measured
+    /// against. Zero for a match that has not started, and it is on the lineup rather than
+    /// passed to each man separately because a rating cannot be worked out without it and a
+    /// snapshot does not know what minute it is.
+    /// </summary>
+    public int Minute { get; init; }
 }
 
 /// <summary>
@@ -186,6 +194,28 @@ public class MatchStateView
     /// scoreboard is his.
     /// </summary>
     public Guid? UserTeamId { get; init; }
+
+    /// <summary>
+    /// What the match is worth to each of the men on the pitch right now, and it is here
+    /// rather than left to a second call because this is the payload a client is already
+    /// receiving on every tick. A rating a screen had to go and fetch would be either a poll
+    /// or a stale number, and a stale number on the eleven under the scoreboard is worse than
+    /// no number at all: it looks like a settled reading of a match that is still being played.
+    /// </summary>
+    public IReadOnlyList<LiveRatingView> LiveRatings { get; init; } = Array.Empty<LiveRatingView>();
+}
+
+/// <summary>
+/// One man's card as the match stands at this tick: the note, the band it falls in, and the
+/// minutes behind it. Three numbers rather than a whole player, because the client already has
+/// the player and this is the part that moves.
+/// </summary>
+public class LiveRatingView
+{
+    public Guid PlayerId { get; init; }
+    public double? Rating { get; init; }
+    public MatchRatingBand RatingBand { get; init; } = MatchRatingBand.Unrated;
+    public int MinutesPlayed { get; init; }
 }
 
 /// <summary>

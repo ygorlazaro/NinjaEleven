@@ -93,12 +93,22 @@ public interface IPlayerRepository
     /// knows whether a tie was a division match, a cup tie or a Supercup — and a cup's chart
     /// counted from the season total would be a chart of the league's goals wearing the cup's
     /// name. Null counts every kind at once, which is the whole season.
+    ///
+    /// <para>
+    /// A kind is not a division. "League" is four editions, so the division is asked for
+    /// separately — one more step of the same walk, since only the round's edition knows which
+    /// of the four a tie was. It is the filter an artilharia needs: a chart of the kind is a
+    /// chart of the country, and a division's artilharia read off one is topped by a man from a
+    /// division whose purse the prize list does not use.
+    /// </para>
     /// </summary>
     /// <param name="seasonId">The season the goals are of.</param>
     /// <param name="competitionType">League, Cup or Supercup; null for every kind at once.</param>
+    /// <param name="divisionId">The division of the championship; null for every division at once.</param>
     Task<IReadOnlyList<ClubScorerLine>> ListSeasonScorerLinesAsync(
         Guid seasonId,
         CompetitionType? competitionType = null,
+        Guid? divisionId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

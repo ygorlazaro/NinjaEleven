@@ -242,7 +242,34 @@ public class TransferRepository : ITransferRepository
     public async Task AddAsync(Transfer transfer, CancellationToken cancellationToken = default) =>
         await _context.Transfers.AddAsync(transfer, cancellationToken);
 
-    public void Update(Transfer transfer) => _context.Transfers.Update(transfer);
+    /// <summary>
+    /// Marks a deal's row as changed.
+    ///
+    /// <para>
+    /// The same reason and the same fix as <c>MatchRepository.Update</c> and
+    /// <c>TeamRepository.UpdateMembership</c>: reads here are <c>AsNoTracking</c>, so the
+    /// context may already be holding this row, and EF refuses a second instance of a key it
+    /// is tracking. Expiring a season's unanswered proposals reads the list once and writes
+    /// every row of it, so any read earlier in the same request is enough to make it throw —
+    /// and a throw inside the season's close leaves the close half done.
+    /// </para>
+    /// </summary>
+    public void Update(Transfer transfer)
+    {
+        var tracked = _context.Transfers.Local
+            .FirstOrDefault(candidate => candidate.Id == transfer.Id);
+
+        if (tracked is null)
+        {
+            _context.Transfers.Update(transfer);
+            return;
+        }
+
+        if (!ReferenceEquals(tracked, transfer))
+        {
+            _context.Entry(tracked).CurrentValues.SetValues(transfer);
+        }
+    }
 
     /// <summary>
     /// Moves one deal from accepted to completed, and says whether this caller is the one that

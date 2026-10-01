@@ -75,6 +75,7 @@ public class TransferService
     private readonly IMatchRepository _matches;
     private readonly IFinanceRepository _finance;
     private readonly InboxService _inbox;
+    private readonly IManagedClubReader _managedClubs;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<TransferService> _logger;
 
@@ -88,6 +89,7 @@ public class TransferService
         IMatchRepository matches,
         IFinanceRepository finance,
         InboxService inbox,
+        IManagedClubReader managedClubs,
         IUnitOfWork unitOfWork,
         ILogger<TransferService> logger)
     {
@@ -100,6 +102,7 @@ public class TransferService
         _matches = matches;
         _finance = finance;
         _inbox = inbox;
+        _managedClubs = managedClubs;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -268,6 +271,7 @@ window.ArrivalRoundNumber);
                     // when the two are the same figure — what the book says the man is worth
                     // is, and it is the one the manager compares an offer against.
                     AskingPrice = marketValue,
+                    AnswerByRound = transfer.AnswerByRound,
                     Reference = $"offer:{transfer.Id}"
                 },
                 cancellationToken);
@@ -571,6 +575,36 @@ window.ArrivalRoundNumber);
         // which is a clash the world would discover as a failed window rather than as a shirt.
         var dealtShirts = new Dictionary<Guid, HashSet<int>>();
 
+        // The men signed earlier in this same window. The guard below asks the club's book
+        // whether it already holds the player, and that book is the database — which is
+        // exactly right for a player signed in an earlier window and exactly wrong for one
+        // signed four deals ago in this one, because the save happens once at the end of the
+        // loop. So a second deal for the same man passed the guard, wrote a second contract,
+        // and left a club holding one player twice: a squad of twenty-three that is
+        // twenty-four men with one of them in two shirts, and a squad screen that dies on a
+        // duplicate key instead of showing it. The same reason the shirts are tracked here.
+        //
+        // Keyed by the man and not by the club, because that is the shape of the rule: a
+        // player is signed once in a window, and two deals naming him to two different clubs
+        // are not a man moving twice, they are one move written down twice. Keyed by club,
+        // the two-club case slips through and the man ends up on two books at once — 51 of
+        // them were, in the season this was found.
+        var signedThisWindow = new HashSet<Guid>();
+
+        // Who is in charge of a club is a fact about the world and not about this window, so it
+        // is read once here and read at all: a window that moves forty men asks the question of
+        // nobody forty times, because the answer is a property of the world rather than of the
+        // deal. A world of nobody is the answer that ends the reporting below before it starts,
+        // so a world with no manager behind it never pays for a read it would not deliver.
+        var managed = (await _managedClubs.ListManagedClubsAsync(cancellationToken)).ToHashSet();
+
+        // The men this window moved out of a club, with the man named once so the message can
+        // say who rather than look him up per line. They are held rather than messaged in the
+        // loop because the message is a decision about a division, and a division is a fact
+        // about the whole window — one read of it, after the loop, instead of a question per
+        // deal about something that is the same answer for every one of them.
+        var departures = new List<CompletedDeparture>();
+
         foreach (var transfer in accepted)
         {
             if (transfer.ArrivalRoundNumber is null)
@@ -598,16 +632,17 @@ window.ArrivalRoundNumber);
             // agreed and being completed, and it is called off rather than kept, because the
             // alternative is a squad of twenty-three that is twenty-four men with one of them
             // twice — and a shirt number dealt to the second copy that nobody can see.
-            var alreadyHere = (await _teams.GetLiveContractsAsync(
-                transfer.BuyingClubId, cancellationToken))
-                .Any(contract => contract.PlayerId == transfer.PlayerId);
+            var alreadyHere = signedThisWindow.Contains(transfer.PlayerId)
+                || (await _teams.GetLiveContractsAsync(transfer.BuyingClubId, cancellationToken))
+                    .Any(contract => contract.PlayerId == transfer.PlayerId);
 
             if (alreadyHere)
             {
                 await CallOffTheDealAsync(transfer, arrivalSeason, calledOff, cancellationToken);
                 _logger.LogWarning(
-                    "Transfer {TransferId}: {BuyingClub} already holds player {PlayerId}. The deal is off.",
-                    transfer.Id, buyer?.Name, transfer.PlayerId);
+                    "Transfer {TransferId}: player {PlayerId} is already signed in this window. " +
+                    "The deal is off.",
+                    transfer.Id, transfer.PlayerId);
                 continue;
             }
 
@@ -669,6 +704,16 @@ window.ArrivalRoundNumber);
                 continue;
             }
 
+            // The man is moved to the buying club before the contract is written, because the
+            // contract carries a wage and a wage is worked out from the season he is arriving
+            // into. The two writes go in the same commit either way; the order is here so that
+            // the number on the contract is the number the rule produces for him today rather
+            // than a second reading of the same man.
+            var state = await MoveTheStateAsync(transfer, arrivalSeason, cancellationToken);
+            var player = await _players.GetAsync(transfer.PlayerId, cancellationToken);
+
+            signedThisWindow.Add(transfer.PlayerId);
+
             await _teams.AddMembershipAsync(
                 TeamMembership.Create(
                     transfer.PlayerId,
@@ -677,19 +722,25 @@ window.ArrivalRoundNumber);
                     contractSeasons: FinanceRules.DefaultContractSeasons,
                     startSeasonNumber: arrivalSeason.Number,
                     shirtNumber: await DealTheShirtAsync(
-                        transfer.BuyingClubId, transfer.PlayerId, dealtShirts, cancellationToken)),
+                        transfer.BuyingClubId, transfer.PlayerId, dealtShirts, cancellationToken),
+                    wage: player is null ? 0m : PlayerValuation.SeasonWage(player, state)),
                 cancellationToken);
-
-            await MoveTheStateAsync(transfer, arrivalSeason, cancellationToken);
 
             // The status was written by the claim, atomically and only once. This update is
             // here for the arrival round the deal records, which the claim does not set.
             transfer.Complete(DateOnly.FromDateTime(DateTime.Now));
             _transfers.Update(transfer);
             completed++;
+
+            departures.Add(new CompletedDeparture(
+                transfer,
+                transfer.SellingClubId,
+                transfer.BuyingClubId,
+                player));
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await ReportTheDeparturesAsync(departures, managed, arrivalSeason, cancellationToken);
         await ReportTheDecisionsAsync(calledOff, _ => InboxDecision.CalledOff, cancellationToken);
 
         _logger.LogInformation(
@@ -920,7 +971,7 @@ window.ArrivalRoundNumber);
     /// belongs to a club and cannot be picked, and the market refusing to complete the deal would
     /// only leave the world in that state for longer.
     /// </summary>
-    private async Task MoveTheStateAsync(
+    private async Task<PlayerSeasonState> MoveTheStateAsync(
         Transfer transfer,
         Season arrivalSeason,
         CancellationToken cancellationToken)
@@ -937,6 +988,8 @@ window.ArrivalRoundNumber);
 
         state.SetTeam(transfer.BuyingClubId);
         _players.UpdateSeasonState(state);
+
+        return state;
     }
 
     /// <summary>
@@ -1097,6 +1150,36 @@ window.ArrivalRoundNumber);
                     // has left the seller's book yet — a deal nobody has answered is not a
                     // departure — so the sizes are left alone.
                     await _transfers.AddAsync(proposal, cancellationToken);
+
+                    // And it is said out loud, rather than left on a screen the manager has to
+                    // remember to open. An offer that is only ever visible where he chose to look
+                    // is an offer that expires unanswered with nobody having decided anything: the
+                    // pending row is the same either way, and the difference is whether the
+                    // manager ever heard there was something to decide.
+                    //
+                    // The book value travels with it for the same reason the other path sends it:
+                    // a manager comparing an offer to a price is comparing two numbers, and one
+                    // of them is what the market thinks the man is worth rather than what this
+                    // particular club happens to have offered.
+                    await _inbox.PostTransferOfferAsync(
+                        new TransferOfferFacts
+                        {
+                            RecipientTeamId = sellingClub.Id,
+                            ClubName = sellingClub.Name,
+                            PlayerId = target.Player.Id,
+                            PlayerName = target.Player.Name,
+                            BiddingClubId = buyer.Id,
+                            BiddingClubName = buyer.Name,
+                            Fee = fee,
+                            AskingPrice = PlayerValuation.MarketValue(target.Player, state),
+                            // No deadline, and the message says so: nothing here is going to
+                            // expire this offer behind the manager's back, because a club that
+                            // has not answered has not refused.
+                            AnswerByRound = proposal.AnswerByRound,
+                            Reference = $"offer:{proposal.Id}"
+                        },
+                        cancellationToken);
+
                     liveDeals.Add(target.Player.Id);
                     result.ProposalsMade++;
                     made++;
@@ -2246,6 +2329,133 @@ return new TransferInbox
     /// <summary>
     /// A man a club has an eye on, and how badly it wants him.
     /// </summary>
+    /// <summary>
+    /// Which division of a season each of its clubs is in, counted from one at the top.
+    /// </summary>
+    /// <remarks>
+    /// A club is in a division for a season through the edition it is enrolled in rather than
+    /// by being one, which is what lets a club be relegated and still be the same club next
+    /// season. So the map is a walk of the season's four divisions and their enrolments — one
+    /// read for the whole window, because a window moves dozens of men and the division a man
+    /// crossed is a fact about the window and not about the man.
+    /// </remarks>
+    private async Task<Dictionary<Guid, int>> ReadTheDivisionsOfTheSeasonAsync(
+        Guid seasonId,
+        CancellationToken cancellationToken)
+    {
+        var divisions = new Dictionary<Guid, int>();
+
+        var views = await _competitions.ListSeasonViewsAsync(seasonId, cancellationToken);
+        foreach (var view in views.Where(view => view.Type == CompetitionType.League && view.Tier is not null))
+        {
+            var participants = await _competitions.ListParticipantsAsync(view.Id, cancellationToken);
+
+            foreach (var participant in participants)
+            {
+                divisions[participant.TeamId] = view.Tier!.Value;
+            }
+        }
+
+        return divisions;
+    }
+
+    /// <summary>
+    /// Tells a manager that one of his men signed a club in his own division.
+    ///
+    /// <para>
+    /// Only the same division, and that is the whole of what makes the message worth opening.
+    /// The manager did not sell and is not owed a bid — the bid was somebody else's, and it
+    /// was not addressed to him. He is owed to know that the forward he has been planning
+    /// around is now scoring against him in the table above his own, and a club two divisions
+    /// away is arithmetic the box need not carry.
+    /// </para>
+    ///
+    /// <para>
+    /// It is asked after the save, so a message is never written about a move that was then
+    /// rolled back, and it is keyed on the deal, so a window closed twice tells the same
+    /// departure once.
+    /// </para>
+    /// </summary>
+    private async Task ReportTheDeparturesAsync(
+        IReadOnlyList<CompletedDeparture> departures,
+        IReadOnlySet<Guid> managers,
+        Season arrivalSeason,
+        CancellationToken cancellationToken)
+    {
+        // A world of nobody, or a window that moved nobody out of a club, is the whole of the
+        // reason not to read a division: the report is owed to a person, and a world with no
+        // person in it is a world where the read has no answer to give.
+        if (departures.Count == 0 || managers.Count == 0)
+        {
+            return;
+        }
+
+        var divisionByClub = await ReadTheDivisionsOfTheSeasonAsync(arrivalSeason.Id, cancellationToken);
+
+        var clubNames = (await _teams.ListByIdsAsync(
+            departures
+                .SelectMany(departure => new[] { departure.SellingClubId, (Guid?)departure.BuyingClubId })
+                .Where(id => id is not null)
+                .Select(id => id!.Value)
+                .Concat(managers)
+                .Distinct(),
+            cancellationToken))
+            .ToDictionary(club => club.Id, club => club.Name);
+
+        var told = 0;
+
+        foreach (var departure in departures)
+        {
+            if (departure.SellingClubId is not { } sellerId || !managers.Contains(sellerId))
+            {
+                continue;
+            }
+
+            // Both clubs have to be in the season's table for "the same division" to be a
+            // question with an answer, and a club with no division is a club the pyramid has
+            // not said anything about this season.
+            if (!divisionByClub.TryGetValue(sellerId, out var tier) ||
+                !divisionByClub.TryGetValue(departure.BuyingClubId, out var buyerTier) ||
+                buyerTier != tier)
+            {
+                continue;
+            }
+
+            if (departure.Player is not { } player)
+            {
+                continue;
+            }
+
+            await _inbox.PostPlayerDepartureAsync(
+                new PlayerDepartureFacts
+                {
+                    RecipientTeamId = sellerId,
+                    ClubName = clubNames.GetValueOrDefault(sellerId, sellerId.ToString()),
+                    PlayerId = player.Id,
+                    PlayerName = player.Name,
+                    BuyingTeamId = departure.BuyingClubId,
+                    BuyingClubName = clubNames.GetValueOrDefault(departure.BuyingClubId),
+                    DivisionTier = tier,
+                    Fee = departure.Transfer.Fee,
+                    TransferId = departure.Transfer.Id
+                },
+                cancellationToken);
+
+            told++;
+        }
+
+        if (told > 0)
+        {
+            _logger.LogInformation(
+                "Told {Count} manager(s) about a signing in their own division at the start of {Season}.",
+                told,
+                arrivalSeason.Name);
+        }
+    }
+
+    /// <summary>
+    /// A man a club has an eye on, and how badly it wants him.
+    /// </summary>
     private readonly record struct NpcTarget(Player Player, Guid SellingClubId, double Score);
 
     /// <summary>
@@ -2256,6 +2466,24 @@ return new TransferInbox
         bool IsOpen,
         int ArrivalSeasonNumber,
         int ArrivalRoundNumber);
+
+    /// <summary>
+    /// One man who arrived somewhere in this window, kept until the window can say which
+    /// division he crossed.
+    /// </summary>
+    /// <remarks>
+    /// The seller is a field and not a property of the deal because a signing has nobody to
+    /// sell him to: the same window writes a free agent onto a club's books and a transfer out
+    /// of another, and only one of the two is a departure anybody is owed news about. The
+    /// player comes along because the loop already read him — he is the man the wage on the
+    /// new contract was worked out from — and a report that looked him up again would be a
+    /// second read of a man the window has already in its hand.
+    /// </remarks>
+    private readonly record struct CompletedDeparture(
+        Transfer Transfer,
+        Guid? SellingClubId,
+        Guid BuyingClubId,
+        Player? Player);
 
     #endregion
 }

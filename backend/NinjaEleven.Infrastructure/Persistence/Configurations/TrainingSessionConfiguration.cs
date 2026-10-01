@@ -40,17 +40,18 @@ public class TrainingSessionConfiguration : IEntityTypeConfiguration<TrainingSes
         builder.Property(s => s.Fee).HasPrecision(14, 2).IsRequired();
         builder.Property(s => s.EnergyCost).IsRequired();
 
-        // The daily allowance is counted by reading this club's rows for this day, so the index
+        // The daily allowance is counted by reading this man's rows for this day, so the index
         // is on exactly the pair the count asks about. It is the one query the rule makes on
         // every click, and it is a count over a table that grows for ever — a club's whole
         // training history is small, but a world's is not.
         builder.HasIndex(s => new { s.TeamId, s.Day });
+        builder.HasIndex(s => new { s.PlayerId, s.Day });
         builder.HasIndex(s => new { s.SeasonId, s.TeamId, s.Day });
 
         // And the count is the last line of defence rather than the only one. Two sessions
         // arriving at once would both read the same allowance and both be told yes; unique
-        // over the club, the day and the session's own place in it means the second one
-        // cannot be written, so the allowance holds whatever the read said.
-        builder.HasIndex(s => new { s.TeamId, s.Day, s.Ordinal }).IsUnique();
+        // over the man, the day and the session's own place in his day means the second one
+        // cannot be written, so his allowance holds whatever the read said.
+        builder.HasIndex(s => new { s.PlayerId, s.Day, s.Ordinal }).IsUnique();
     }
 }

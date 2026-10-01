@@ -147,6 +147,13 @@ interface KitShirtProps {
   kit: KitDto;
   /** The player's number, and the sponsor's name across the chest. */
   number?: number;
+  /**
+   * How big the number is drawn, in the shirt's own 120-unit space. A shirt on a wall and a
+   * shirt beside a name in a list are the same drawing at two sizes, and the number that reads
+   * across a room is a smudge at fifteen pixels — so the caller that draws it small asks for
+   * a number big enough to still be a number.
+   */
+  numberSize?: number;
   sponsor?: string;
   /** What the shirt is called underneath it: "Casa", "Fora", or nothing at all. */
   caption?: string;
@@ -170,7 +177,7 @@ interface KitShirtProps {
  * shoulders would be a rectangle with a shirt drawn on it.
  * </para>
  */
-const KitShirt: React.FC<KitShirtProps> = ({ kit, number, sponsor, caption, label, className }) => {
+const KitShirt: React.FC<KitShirtProps> = ({ kit, number, numberSize = 30, sponsor, caption, label, className }) => {
   const clipId = useId();
   const body = kit.primaryColor || '#3a6ea5';
   const trim = kit.trimColor || readableInk(body);
@@ -198,7 +205,7 @@ const KitShirt: React.FC<KitShirtProps> = ({ kit, number, sponsor, caption, labe
         <path d={COLLAR} fill={trim} />
 
         {number !== undefined && (
-          <text x="60" y="82" textAnchor="middle" fontSize="30" fontWeight="800" fill={trim}>
+          <text x="60" y="84" textAnchor="middle" fontSize={numberSize} fontWeight="800" fill={trim}>
             {number}
           </text>
         )}

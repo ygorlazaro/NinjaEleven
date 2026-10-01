@@ -46,6 +46,7 @@ public class MatchServiceTests
     private readonly List<FinanceMovement> _book = [];
     private readonly MatchDay _matchDay;
     private readonly Mock<ISeasonRepository> _seasons = new(MockBehavior.Loose);
+    private readonly Mock<ITeamMatchPlanRepository> _plans = new(MockBehavior.Loose);
     private readonly MatchSessionRegistry _sessions = new();
 
     private readonly Guid _seasonId = Guid.NewGuid();
@@ -118,12 +119,33 @@ public class MatchServiceTests
                 id == _home.Id ? _home : id == _away.Id ? _away : null));
         // Who is on each club's books, which is what the wage bill is worked out from: a
         // season state without a membership is a player on nobody's contract, and the club
-        // that has to pay for him is not a club at all.
+        // that has to pay for him is not a club at all. The membership carries a wage because
+        // that is where the wage lives: a salary worked out from the man on the day of the
+        // payday would be a second number, and a test about the books should be reading the
+        // one the club actually agreed.
         _teams.Setup(repo => repo.GetSquadAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns((Guid teamId, Guid _, CancellationToken __) => Task.FromResult<IReadOnlyList<TeamMembership>>(
                 _states
                     .Where(state => state.TeamId == teamId)
-                    .Select(state => TeamMembership.Create(state.PlayerId, teamId, new DateOnly(2026, 1, 1)))
+                    .Select(state => TeamMembership.Create(
+                        state.PlayerId,
+                        teamId,
+                        new DateOnly(2026, 1, 1),
+                        wage: WagesOf(state)))
+                    .ToList()));
+        // The same contracts read as the ones a club holds right now, which is what a match
+        // reads to put a number on a back. A squad is a season's book; a live contract is the
+        // deal that has not been called off, and they are not the same list for a player who
+        // arrived after the season opened.
+        _teams.Setup(repo => repo.GetLiveContractsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns((Guid teamId, CancellationToken __) => Task.FromResult<IReadOnlyList<TeamMembership>>(
+                _states
+                    .Where(state => state.TeamId == teamId)
+                    .Select(state => TeamMembership.Create(
+                        state.PlayerId,
+                        teamId,
+                        new DateOnly(2026, 1, 1),
+                        wage: WagesOf(state)))
                     .ToList()));
         // The same book read the way a table reads it: every club's squad in one go, and the
         // men behind them in another. A table that asked club by club would be a table that
@@ -257,6 +279,7 @@ public class MatchServiceTests
             _fixtures.Object,
             _matchDays.Object,
             _competitions.Object,
+            _seasons.Object,
             _unitOfWork.Object,
             new FinanceService(
                 _finance.Object,
@@ -347,13 +370,14 @@ public class MatchServiceTests
             _matches.Object,
             _finance.Object,
             InboxTestFactory.Create(_teams),
+            new ManagedClubs(),
             _unitOfWork.Object,
             NullLogger<TransferService>.Instance),
         _unitOfWork.Object,
         NullLogger<MatchdayService>.Instance);
 
     private TacticsService CreateTacticsService(MatchdayService matchday) => new(
-        Mock.Of<ITeamMatchPlanRepository>(),
+        _plans.Object,
         _teams.Object,
         _fixtures.Object,
         _matches.Object,
@@ -431,6 +455,18 @@ public class MatchServiceTests
     private List<Guid> HomeSquadIds() =>
         _states.Where(state => state.TeamId == _home.Id).Select(state => state.PlayerId).ToList();
 
+    /// <summary>
+    /// The wage a mock contract is signed on, read off the man as the rules would price him.
+    ///
+    /// It is deliberately the real formula rather than a round number: a test that paid a club
+    /// a made-up wage would pass whether or not the bill were read from the contract, and the
+    /// whole point of the wage living on the contract is that a bill can be checked against it.
+    /// </summary>
+    private decimal WagesOf(PlayerSeasonState state) =>
+        PlayerValuation.SeasonWage(
+            _roster.Single(player => player.Id == state.PlayerId),
+            state);
+
     private Guid HomeKeeperId() =>
         _states.Single(state =>
             state.TeamId == _home.Id
@@ -454,6 +490,89 @@ public class MatchServiceTests
         Assert.Equal(BenchSize, session.State.HomeBench.Count);
         Assert.Equal(FixtureStatus.InProgress, _fixture.Status);
     }
+
+    [Fact]
+    public async Task A_saved_plan_answered_against_a_thinner_squad_still_goes_out_in_its_own_shape()
+    {
+        // The bug this holds down: a plan of 4-3-3 whose striker and left-back were unavailable
+        // came out with two goalkeepers and two strikers missing. The gaps were filled from the
+        // head of the staff's eleven, and that list is ordered with the keeper first, so the
+        // first replacement was always a second keeper — and the shape the engine measures is
+        // read off the eleven, so a saved tactic arrived at the pitch as somebody else's eleven.
+        foreach (var position in new[] { Position.DEF, Position.ATT })
+        {
+            for (var extra = 0; extra < 2; extra++)
+            {
+                var player = Player.Create(
+                    $"{_home.ShortName} Cover {position} {extra}",
+                    27,
+                    position,
+                    speed: 11,
+                    accuracy: 11,
+                    dribbling: 11,
+                    heading: 11,
+                    strength: 11,
+                    goalkeeperPower: 0,
+                    reflexes: 0);
+
+                _roster.Add(player);
+                _states.Add(PlayerSeasonState.Create(player.Id, _seasonId, _home.Id, 90));
+            }
+        }
+
+        var plan = HomeIdsByPosition(Position.GK).Take(1)
+            .Concat(HomeIdsByPosition(Position.DEF).Take(4))
+            .Concat(HomeIdsByPosition(Position.MID).Take(3))
+            .Concat(HomeIdsByPosition(Position.ATT).Take(3))
+            .ToList();
+
+        Assert.Equal(SquadSize, plan.Count);
+
+        _plans
+            .Setup(repo => repo.GetAsync(_home.Id, _seasonId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(TeamMatchPlan.Create(_home.Id, _seasonId, "433", plan, [], MatchTestContext.Clock.UtcNow));
+
+        // Two of the men he named cannot play today: the world moved under the plan, which is
+        // exactly the case the plan exists to survive. One is a defender and one a striker,
+        // because a gap in one line is a gap in that line and not in the eleven at large.
+        _stateOf(plan[1]).AddInjury(Injury.Grave, 3);
+        _stateOf(plan[10]).AddInjury(Injury.Grave, 3);
+
+        var result = await CreateService().StartAsync(_fixture.Id, 7);
+
+        Assert.True(result.Accepted);
+        Assert.True(_sessions.TryGet(result.MatchId, out var session));
+
+        var eleven = session!.State.HomeLineup;
+
+        // One keeper, and the shape the manager saved rather than the shape two spare men
+        // happen to add up to.
+        Assert.Equal(SquadSize, eleven.Count);
+        Assert.Single(eleven.Where(player => player.Position == Position.GK));
+        Assert.Equal("4-3-3", Formation.FromComposition(eleven).ToString());
+
+        // Every man he named who can play is still there, and the two who cannot are the
+        // only two names that changed.
+        Assert.DoesNotContain(eleven, player => player.PlayerId == plan[1]);
+        Assert.DoesNotContain(eleven, player => player.PlayerId == plan[10]);
+        Assert.Equal(SquadSize - 2, plan.Count(id => eleven.Any(player => player.PlayerId == id)));
+
+        // The replacements came from the lines the gaps were in, which is what "the shape
+        // survived" means in names rather than in arithmetic.
+        Assert.Equal(4, eleven.Count(player => player.Position == Position.DEF));
+        Assert.Equal(3, eleven.Count(player => player.Position == Position.MID));
+        Assert.Equal(3, eleven.Count(player => player.Position == Position.ATT));
+    }
+
+    private PlayerSeasonState _stateOf(Guid playerId) =>
+        _states.Single(state => state.PlayerId == playerId);
+
+    private List<Guid> HomeIdsByPosition(Position position) =>
+        _states
+            .Where(state => state.TeamId == _home.Id
+                && _roster.Single(player => player.Id == state.PlayerId).Position == position)
+            .Select(state => state.PlayerId)
+            .ToList();
 
     [Fact]
     public async Task Start_refuses_an_eleven_without_a_goalkeeper()
@@ -761,6 +880,59 @@ public class MatchServiceTests
     }
 
     [Fact]
+    public async Task A_process_on_its_way_out_hands_back_the_match_it_was_playing()
+    {
+        // A restart is a thing that happens to a manager, not only to a process: the match he
+        // is watching is the one that stops. Without this the row keeps the last heartbeat of
+        // a process that is gone, and the next process waits out a five-minute lease over a
+        // match nobody is playing — a frozen scoreboard charged to whoever was watching it.
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+        var started = _started.Single(match => match.Id == matchId);
+        started.ClaimSession(MatchTestContext.Host.HostId, DateTimeOffset.UtcNow);
+
+        _matches.Setup(repo => repo.ListUnfinishedAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Match> { started });
+
+        var released = await service.ReleaseTheMatchesOfThisHostAsync();
+
+        Assert.Equal(1, released);
+        Assert.Null(started.SessionHeartbeatAt);
+        Assert.True(
+            started.CanBeReclaimedBy("outro-processo", DateTimeOffset.UtcNow, TimeSpan.FromMinutes(5)),
+            "a match nobody is playing may be taken at once, rather than after a lease nobody is renewing");
+
+        // The football that was played stays played. A handover is not a defeat.
+        Assert.Equal(MatchStatus.InProgress, started.Status);
+    }
+
+    [Fact]
+    public async Task A_sweep_leaves_alone_the_match_this_process_is_playing()
+    {
+        // The sweep that runs every thirty seconds is not the rescue that runs at a restart,
+        // and the difference is a match on the right now. A lease is a claim on a match and a
+        // process always holds the lease on its own, so a sweep that asked only about the
+        // lease closed every match the loop was driving — the manager's own match, abandoned
+        // at the minute he was watching it.
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        _matches.Setup(repo => repo.ListUnfinishedAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Match> { _started.Single(match => match.Id == matchId) });
+
+        _rounds.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Round>());
+
+        var abandoned = await service.RecoverInterruptedMatchesAsync(
+            CancellationToken.None,
+            leaveRunningMatchesAlone: true);
+
+        Assert.Empty(abandoned);
+        Assert.True(_sessions.TryGet(matchId, out _), "the match on the pitch is not a corpse");
+        Assert.NotEqual(MatchStatus.Abandoned, _started.Single(match => match.Id == matchId).Status);
+    }
+
+    [Fact]
     public async Task A_match_left_running_on_a_decided_fixture_is_abandoned_and_the_fixture_stays_decided()
     {
         // A live match holds its fixture: the database refuses a second one while the first is
@@ -793,6 +965,49 @@ public class MatchServiceTests
             .ReturnsAsync(new List<Match>());
 
         Assert.Equal(0, await CreateService().AbandonMatchesOnDecidedFixturesAsync());
+    }
+
+    [Fact]
+    public async Task A_fixture_closed_over_a_matchday_nobody_finished_goes_back_on_the_schedule()
+    {
+        // The bug this holds down. A fixture's own column is a claim about a match, and three
+        // readers believed it without checking: the window that closes itself, the claim that
+        // completes it, and the orphan sweep. A fixture that reached "finished" with nothing but
+        // an abandoned match under it was therefore closed over, completed, and read as
+        // settled — while the table above it was a game short, for the rest of the season. Six
+        // fixtures of a second division sat in that state and eleven of its sixteen clubs
+        // finished the campaign short a match each.
+        var service = CreateService();
+        var lost = Fixture.Create(_round.Id, _home.Id, _away.Id);
+        lost.MarkFinished();
+
+        _fixtures.Setup(repo => repo.ListFinishedWithoutAFinishedMatchAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Fixture> { lost });
+
+        Assert.Equal(1, await service.ReopenTheFixturesNobodyDecidedAsync());
+
+        // Back on the schedule, which is the whole repair: the claim reads the fixtures rather
+        // than its own columns, so a window with a fixture owed is a window the world walks
+        // again.
+        Assert.Equal(FixtureStatus.Scheduled, lost.Status);
+    }
+
+    [Fact]
+    public async Task A_fixture_whose_match_reached_the_final_whistle_is_left_decided()
+    {
+        // The other half of the same rule, and the one that would be expensive to get wrong.
+        // Reopening a fixture that really was played puts a finished matchday back on the
+        // schedule and has the world play all thirty-four of them twice — so the repair is
+        // asked of the matches rather than of the column, and a fixture with a result behind
+        // it is never in the answer.
+        var service = CreateService();
+        _fixture.MarkFinished();
+
+        _fixtures.Setup(repo => repo.ListFinishedWithoutAFinishedMatchAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Fixture>());
+
+        Assert.Equal(0, await service.ReopenTheFixturesNobodyDecidedAsync());
+        Assert.Equal(FixtureStatus.Finished, _fixture.Status);
     }
 
     [Fact]
@@ -1485,6 +1700,80 @@ public class MatchServiceTests
         Assert.Null(view.Injury.PlayerId);
     }
 
+    /// <summary>
+    /// The note every man is carrying, on the tick, while the match is being played.
+    /// </summary>
+    /// <remarks>
+    /// This is the whole of "live", and it was worth writing down because the number is
+    /// stored rather than worked out on demand: a rating read from the persisted statistics
+    /// exists only once the whistle has gone, and a screen that read it from there showed a
+    /// settled opinion of a match that was still being played. It was built from the state the
+    /// tick already carries so that the eleven under the scoreboard moves with the football
+    /// rather than being a second thing to go and fetch.
+    /// </remarks>
+    [Fact]
+    public async Task Every_man_on_the_pitch_carries_a_number_while_the_match_is_being_played()
+    {
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        // Past the fifth minute, which is where the first note appears at all: a man who has
+        // not played five minutes has a cameo and not a match. The numbers are read at minute
+        // zero because the clock is, so the assertion that nothing is rated before then is
+        // part of what is being held here.
+        var atTheWhistle = await service.GetStateAsync(matchId);
+        Assert.All(atTheWhistle.LiveRatings, rating => Assert.Null(rating.Rating));
+
+        await PlayUntil(service, matchId, minute: 20);
+
+        var view = await service.GetStateAsync(matchId);
+
+        // Both elevens, because a manager watching a match he is not in reads the same eleven
+        // and the same eleven has to be rated for him too.
+        Assert.Equal(22, view.LiveRatings.Count);
+        Assert.Equal(
+            view.LiveRatings.Select(rating => rating.PlayerId).Distinct().Count(),
+            view.LiveRatings.Count);
+
+        // The men who have been on the pitch long enough, rated; the ones who have not, not.
+        Assert.Contains(view.LiveRatings, rating => rating.MinutesPlayed > 0);
+
+        var rated = view.LiveRatings.Where(rating => rating.Rating is not null).ToList();
+        Assert.NotEmpty(rated);
+        Assert.All(rated, rating => Assert.InRange(rating.Rating!.Value, 0d, 10d));
+
+        // The band travels with the number rather than being worked out by whoever reads it,
+        // and the two have to agree — that is the whole claim of carrying both.
+        Assert.All(rated, rating =>
+            Assert.Equal(Domain.Matches.MatchRating.BandOf(rating.Rating), rating.RatingBand));
+    }
+
+    /// <summary>
+    /// The number moves with the football, which is the other half of being live.
+    /// </summary>
+    /// <remarks>
+    /// A card frozen at its kick-off value is not a live rating, it is a number that happens
+    /// to be on screen during a match. The engine takes the eleven out to the final whistle and
+    /// at least one of them has to have had a worse evening than he started with, so the two
+    /// reads below cannot be equal.
+    /// </remarks>
+    [Fact]
+    public async Task The_number_on_a_card_moves_as_the_match_does()
+    {
+        var service = CreateService();
+        var matchId = await StartAsync(service);
+
+        var atTheWhistle = await service.GetStateAsync(matchId);
+
+        await PlayUntil(service, matchId, minute: 45);
+
+        var later = await service.GetStateAsync(matchId);
+
+        Assert.NotEqual(
+            atTheWhistle.LiveRatings.Select(rating => rating.Rating).ToArray(),
+            later.LiveRatings.Select(rating => rating.Rating).ToArray());
+    }
+
     [Fact]
     public async Task A_penalty_of_the_managers_club_waits_for_him_to_name_the_taker()
     {
@@ -2107,6 +2396,32 @@ public class MatchServiceTests
 
         Assert.NotEmpty(written);
         Assert.Equal(announced, written.Sum(line => line.Goals + line.OwnGoals));
+    }
+
+    /// <summary>
+    /// Plays the match forward until the clock says what it says, stepping over the interval
+    /// the way the loop does rather than by calling it and hoping.
+    /// </summary>
+    private static async Task PlayUntil(MatchService service, Guid matchId, int minute)
+    {
+        for (var tick = 0; tick < 2000; tick++)
+        {
+            var state = await service.GetStateAsync(matchId);
+
+            if (state.Minute >= minute)
+            {
+                return;
+            }
+
+            if (state.IsHalfTime)
+            {
+                await service.ContinueSecondHalfAsync(matchId);
+            }
+            else
+            {
+                await service.TickAsync(matchId);
+            }
+        }
     }
 
     private MatchState serviceState(Guid matchId)

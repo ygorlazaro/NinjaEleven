@@ -652,13 +652,16 @@ public class MatchEngine
         var keeper = GoalkeeperOf(defendingLineup);
 
         // The very chance the dialog showed the manager, so the number he was given is the
-        // number that is rolled.
+        // number that is rolled — and so the card is priced by the same number rather than
+        // by a second opinion about whether he would have buried it.
         var conversion = PenaltyConversion(taker, keeper);
+        var scored = _random.NextDouble() < conversion;
+        taker.Performance.RecordPenalty(scored, conversion);
 
         state.PenaltyAwaitingSelection = false;
         state.PenaltyTeam = null;
 
-        if (_random.NextDouble() < conversion)
+        if (scored)
         {
             if (home)
             {
@@ -1020,7 +1023,19 @@ public class MatchEngine
         // front of him is the one who decides whether it works. Both men are read on the
         // scale they actually live on and both are on the same ramp, so the difference is a
         // number between -1 and 1 rather than a raw attribute gap of ninety-nine points.
-        if (_random.NextDouble() >= DuelChance(builder, marker, AttributeWeights.Dribble))
+        //
+        // This is the busiest moment in a match and it is where both men are read, so it is
+        // also most of what a card has to go on. It was left unrecorded, and a striker's
+        // ninety minutes then held three things worth counting: every outfield player on the
+        // pitch spent the afternoon being spoken about in the feed and appearing on no card
+        // at all.
+        var dribbleChance = DuelChance(builder, marker, AttributeWeights.Dribble);
+        var builderBeatHim = _random.NextDouble() < dribbleChance;
+
+        builder.Performance.RecordDuel(won: builderBeatHim, dribbleChance);
+        marker.Performance.RecordDuel(won: !builderBeatHim, dribbleChance);
+
+        if (!builderBeatHim)
         {
             SetPossession(state, !home, marker);
             events.Add(Emit(
@@ -1058,7 +1073,16 @@ public class MatchEngine
 
         var onTargetChance = ShotOnTargetChance(shooter);
 
-        if (_random.NextDouble() > onTargetChance)
+        // A pass that found a runner is a moment the man who played it was in, and the man
+        // who received one. The chance is recorded before the roll so the shot is counted
+        // once whichever way it went, and the pass is not: a ball played into a man is worth
+        // something whether or not he then shoots it well.
+        builder.Performance.RecordInvolvement();
+        shooter.Performance.RecordInvolvement();
+        var onTarget = _random.NextDouble() <= onTargetChance;
+        shooter.Performance.RecordShot(onTarget, onTargetChance);
+
+        if (!onTarget)
         {
             events.Add(Emit(
                 state,
@@ -1075,7 +1099,7 @@ public class MatchEngine
         }
 
         CountShotOnTarget(state, home);
-        ResolveShot(state, events, home, shooter, reboundAllowed: true);
+        ResolveShot(state, events, home, shooter, reboundAllowed: true, assister: builder);
     }
 
     /// <summary>
@@ -1120,7 +1144,10 @@ public class MatchEngine
 
         CountShot(state, home);
 
-        if (_random.NextDouble() >= chance)
+        var onTarget = _random.NextDouble() < chance;
+        shooter.Performance.RecordShot(onTarget, chance);
+
+        if (!onTarget)
         {
             events.Add(Emit(
                 state,
@@ -1204,7 +1231,8 @@ public class MatchEngine
         List<MatchEngineEvent> events,
         bool home,
         MatchPlayerSnapshot shooter,
-        bool reboundAllowed)
+        bool reboundAllowed,
+        MatchPlayerSnapshot? assister = null)
     {
         var defendingLineup = home ? state.AwayLineup : state.HomeLineup;
         var teamId = home ? state.HomeTeam.Id : state.AwayTeam.Id;
@@ -1242,7 +1270,7 @@ public class MatchEngine
 
         if (_random.NextDouble() < goalChance)
         {
-            ScoreGoal(state, events, home, shooter);
+            ScoreGoal(state, events, home, shooter, assister: assister);
             return;
         }
 
@@ -1277,6 +1305,7 @@ public class MatchEngine
         SetPossession(state, home, second);
         CountShot(state, home);
         CountShotOnTarget(state, home);
+        second.Performance.RecordInvolvement();
 
         if (_random.NextDouble() < MatchRules.ReboundGoalChance)
         {
@@ -1304,7 +1333,8 @@ public class MatchEngine
         List<MatchEngineEvent> events,
         bool home,
         MatchPlayerSnapshot scorer,
-        bool rebound = false)
+        bool rebound = false,
+        MatchPlayerSnapshot? assister = null)
     {
         if (home)
         {
@@ -1319,6 +1349,16 @@ public class MatchEngine
 
         scorer.Goals++;
         scorer.MatchGoals++;
+        scorer.Performance.RecordInvolvement();
+
+        // An assist is the pass that set the goal up, so it is only ever given to the man
+        // who played that pass and only when the goal came from it directly. A goal off a
+        // rebound has nobody behind it: the ball was already loose, and crediting the man
+        // whose shot it was would be an assist for a shot that had already missed.
+        if (assister is not null && assister.PlayerId != scorer.PlayerId)
+        {
+            assister.Performance.RecordAssist();
+        }
 
         events.Add(Emit(
             state,
@@ -1370,6 +1410,7 @@ public class MatchEngine
         var takers = Outfield(home ? state.HomeLineup : state.AwayLineup);
         var taker = takers.Count > 0 ? takers[_random.Next(0, takers.Count)] : null;
         SetPossession(state, home, taker);
+        taker?.Performance.RecordCorner();
 
         events.Add(Emit(
             state,
@@ -1458,6 +1499,12 @@ public class MatchEngine
         var victim = victims.Count > 0 ? victims[_random.Next(0, victims.Count)] : null;
         var offender = offenders.Count > 0 ? offenders[_random.Next(0, offenders.Count)] : null;
 
+        // Being fouled is being in the match, and being the one who did it is a mark against
+        // a name. Both men are recorded, and the card is a small thing next to a booking
+        // because a foul is mostly a thing football happens.
+        victim?.Performance.RecordInvolvement();
+        offender?.Performance.RecordFoul();
+
         SetPossession(state, home, victim);
 
         events.Add(Emit(
@@ -1500,7 +1547,20 @@ public class MatchEngine
         var carrier = attackers[_random.Next(0, attackers.Count)];
         var defender = defenders[_random.Next(0, defenders.Count)];
 
-        if (_random.NextDouble() < DuelChance(carrier, defender, AttributeWeights.Duel))
+        // The chance is drawn once, and the roll and both men's cards are all read from that
+        // one number. Drawing it twice would be a second opinion about the same duel, and the
+        // two would disagree often enough to be visible: the feed would say one thing happened
+        // and the card would price a different one.
+        var chance = DuelChance(carrier, defender, AttributeWeights.Duel);
+        var carrierWon = _random.NextDouble() < chance;
+
+        // Both men are recorded, and not only the one the ball went to. A defender's evening
+        // is made of the duels he was in whether he won or lost them, and a card that only
+        // read the winner would leave the best markers in the world with an empty one.
+        carrier.Performance.RecordDuel(won: carrierWon, chance);
+        defender.Performance.RecordDuel(won: !carrierWon, chance);
+
+        if (carrierWon)
         {
             SetPossession(state, home, carrier);
             events.Add(Emit(

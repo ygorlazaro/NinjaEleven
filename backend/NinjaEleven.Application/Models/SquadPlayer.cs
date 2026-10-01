@@ -79,9 +79,51 @@ public class SquadPlayer
     /// </summary>
     public decimal AskingPrice => PlayerValuation.AskingPrice(MarketValue, IsInLastSeason);
 
-    /// <summary>What the club owes for his contract this season, in limos.</summary>
-    public decimal Salary => PlayerValuation.SeasonWage(Player, SeasonState);
+    /// <summary>
+    /// What the club owes him for this season, in limos, and what it will go on owing for as
+    /// long as this contract runs.
+    ///
+    /// It is the number on the contract rather than a figure worked out from his attributes
+    /// today, so the salary a manager reads here is the salary the club's book is charged. A
+    /// wage that moved with his form would mean a striker's price on this table and his cost
+    /// in the wage bill were two different numbers, and a manager budgeting a season would be
+    /// budgeting one of them. A man on no contract is owed nothing, which is the truth about a
+    /// man nobody is paying.
+    /// </summary>
+    public decimal Salary => Membership?.Wage ?? 0m;
+
+    /// <summary>
+    /// What the club would pay him if it signed him again today, at the current formula and
+    /// the age he is now.
+    ///
+    /// It is on the squad row because a renewal is a decision the manager takes from this
+    /// screen, and a decision taken without seeing the number is a decision taken blind. It is
+    /// deliberately not the salary above: the one is what he costs, the other is what he would
+    /// cost, and a club that renews a man on the second number is choosing to pay more than it
+    /// is paying now.
+    /// </summary>
+    public decimal WageOnRenewal => PlayerValuation.SeasonWage(Player, SeasonState);
 }
+
+/// <summary>
+/// What a renewal settled, so the screen that asked for it can be told rather than
+/// re-deriving the new wage from the squad it is about to refetch.
+/// </summary>
+/// <param name="PlayerId">Who was signed again.</param>
+/// <param name="TeamId">Who signed him.</param>
+/// <param name="SeasonId">The season the renewal was made in.</param>
+/// <param name="ContractId">The contract that was restated.</param>
+/// <param name="Seasons">How many seasons were signed, counted from now.</param>
+/// <param name="SeasonsLeft">How many of them are left, which is the same number today.</param>
+/// <param name="Wage">What he costs a season under the new deal.</param>
+public record ContractRenewal(
+    Guid PlayerId,
+    Guid TeamId,
+    Guid SeasonId,
+    Guid ContractId,
+    int Seasons,
+    int SeasonsLeft,
+    decimal Wage);
 
 /// <summary>
 /// A fixture enriched with both clubs and the result of the match played from it.

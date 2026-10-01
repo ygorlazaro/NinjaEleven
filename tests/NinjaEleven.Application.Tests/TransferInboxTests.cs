@@ -97,6 +97,7 @@ public class TransferInboxTests
         _matches.Object,
         _finance.Object,
         InboxTestFactory.Create(_teams, _inbox),
+        new ManagedClubs(_managerClub.Id),
         _unitOfWork.Object,
         NullLogger<TransferService>.Instance);
 

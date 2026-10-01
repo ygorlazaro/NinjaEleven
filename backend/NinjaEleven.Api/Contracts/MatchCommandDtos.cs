@@ -83,6 +83,14 @@ public class MatchPlayerDto
     public string Name { get; init; } = string.Empty;
     public int Age { get; init; }
     public Position Position { get; init; }
+
+    /// <summary>
+    /// The number on his back, and null for a man who has not been given one. It travels with
+    /// the snapshot rather than being asked of the club mid-match, so the shirt a card draws is
+    /// the shirt he was put on in.
+    /// </summary>
+    public int? ShirtNumber { get; init; }
+
     public int Speed { get; init; }
     public int Accuracy { get; init; }
     public int Dribbling { get; init; }
@@ -144,6 +152,34 @@ public class MatchPlayerDto
 public double? PenaltyChance { get; init; }
 
 public double Stars { get; init; }
+
+    /// <summary>
+    /// How many minutes of this match he has actually been on the pitch, as the match stands
+    /// right now.
+    /// </summary>
+    /// <para>
+    /// Read from the engine's own stamps rather than from the clock, because the two are not
+    /// the same thing: a man who came on at the eightieth has twenty minutes at the
+    /// eightieth-five whatever the scoreboard says, and a screen that printed the difference
+    /// would be telling a manager a substitute had played a full match.
+    /// </para>
+    /// </summary>
+    public int MinutesPlayed { get; init; }
+
+    /// <summary>
+    /// What the match has been worth to him so far, out of ten, and null while he has not
+    /// played long enough of it to have one.
+    /// </summary>
+    /// <para>
+    /// The band travels with it so that no screen has to work out where the lines are. A
+    /// client that decided for itself where "good" starts is a client that will decide it
+    /// differently from the next one, and the eleven under the scoreboard is read by a
+    /// manager in the middle of a match rather than studied.
+    /// </para>
+    /// </summary>
+    public double? Rating { get; init; }
+
+    public MatchRatingBand RatingBand { get; init; } = MatchRatingBand.Unrated;
 }
 
 /// <summary>
@@ -258,6 +294,27 @@ public class MatchStateDto
     /// The shootout, when the match is at the spot, and nothing at all when it is not.
     /// </summary>
     public ShootoutDto? Shootout { get; init; }
+
+    /// <summary>
+    /// What the match is worth to each of the men on the pitch right now. It travels on the
+    /// tick rather than on a second call, because the number on the eleven under the
+    /// scoreboard is the one a manager reads while the match is still being played, and a
+    /// number fetched separately is either a poll or a reading of a match that has moved on.
+    /// </summary>
+    public IReadOnlyList<LiveRatingDto> LiveRatings { get; init; } = Array.Empty<LiveRatingDto>();
+}
+
+/// <summary>
+/// One man's card as the match stands at this tick: the note, the band it falls in, and the
+/// minutes behind it. Three numbers rather than a whole player, because the client already has
+/// the player and this is the part that moves.
+/// </summary>
+public class LiveRatingDto
+{
+    public Guid PlayerId { get; init; }
+    public double? Rating { get; init; }
+    public MatchRatingBand RatingBand { get; init; } = MatchRatingBand.Unrated;
+    public int MinutesPlayed { get; init; }
 }
 
 /// <summary>
@@ -398,6 +455,24 @@ public class RoundSimulationDto
 /// words, from the same match — and the match id is what keeps the four logs apart on a
 /// client that is following all of them at once.
 /// </summary>
+/// <summary>
+/// The beats of one match, with the match they belong to.
+///
+/// <para>
+/// A connection follows a match in full and a round at the same time, and it can move from one
+/// match to another without losing the connection — a manager who opens a second game from the
+/// matchday panel is on the same socket. So an event stream that carried no owner would be a
+/// stream a client could not put anywhere: the two matches arrive on one connection, and
+/// whichever arrived last would be the match on the screen. This is the same envelope
+/// <see cref="MatchdayEventDto"/> uses for the round, and for the same reason.
+/// </para>
+/// </summary>
+public class MatchStreamDto
+{
+    public Guid MatchId { get; init; }
+    public IReadOnlyList<MatchEngineEventDto> Events { get; init; } = Array.Empty<MatchEngineEventDto>();
+}
+
 public class MatchdayEventDto
 {
     public Guid RoundId { get; init; }

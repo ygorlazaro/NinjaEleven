@@ -2,6 +2,7 @@ using NinjaEleven.Domain.Enums;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
+using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Teams;
@@ -96,7 +97,14 @@ public class PlayerService
                 }
 
                 profile.MarketValue = PlayerValuation.MarketValue(player, state);
-                profile.Salary = PlayerValuation.SeasonWage(player, state);
+
+                // The salary is what the contract says the club owes, so the card and the
+                // squad table and the wage bill are all reading one number. What the man
+                // would be paid on a renewal is worked out from him as he is today, and the
+                // two are different on purpose: one is a cost the club has agreed and the
+                // other is a price for a decision nobody has taken yet.
+                profile.Salary = contract?.Wage ?? 0m;
+                profile.WageOnRenewal = PlayerValuation.SeasonWage(player, state);
 
                 // How much of the contract is left is read against the same season, so the
                 // card and the squad table cannot say a man is two seasons from freedom in
@@ -135,6 +143,15 @@ public class PlayerService
             Goals = line.Goals,
             OwnGoals = line.OwnGoals,
             Saves = line.Saves,
+            Rating = line.Rating,
+
+            // Read off the number the match wrote, in one place, rather than by whichever
+            // screen happens to be holding the line.
+            RatingBand = line.Rating is { } rating
+                ? MatchRating.BandOf(rating)
+                : MatchRatingBand.Unrated,
+            MinutesPlayed = line.MinutesPlayed,
+            Assists = line.Assists,
             YellowCards = line.YellowCards,
             RedCards = line.RedCards,
             WasInjured = line.WasInjured,
@@ -192,6 +209,7 @@ public class PlayerService
     private static PlayerCareerLine Sum(IReadOnlyList<PlayerMatchRecord> lines)
     {
         var total = new PlayerCareerLine { Appearances = lines.Count };
+        var rated = 0d;
 
         foreach (var line in lines)
         {
@@ -201,10 +219,26 @@ public class PlayerService
             total.Goals += line.Goals;
             total.OwnGoals += line.OwnGoals;
             total.Saves += line.Saves;
+            total.Assists += line.Assists;
             total.YellowCards += line.YellowCards;
             total.RedCards += line.RedCards;
             if (line.WasInjured) total.Injuries++;
             if (line.InjuredOff) total.MatchesMissed++;
+
+            // Only the matches he was rated for. A four-minute substitute is a cameo and not a
+            // data point about how well a man plays, and averaging him in would drag every
+            // average on the card towards the baseline by a different amount for every player
+            // — which is the same number meaning two things depending on who is reading.
+            if (line.Rating is { } rating)
+            {
+                rated += rating;
+                total.RatedMatches++;
+            }
+        }
+
+        if (total.RatedMatches > 0)
+        {
+            total.AverageRating = Math.Round(rated / total.RatedMatches, 1, MidpointRounding.AwayFromZero);
         }
 
         return total;

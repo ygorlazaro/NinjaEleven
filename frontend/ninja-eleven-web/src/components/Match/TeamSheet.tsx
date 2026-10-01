@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import type { MatchLineupDto, MatchPlayerDto, TeamDto } from '@/types';
 import { positionLabel, sortByPosition, starsToString } from '@/services/formatters';
-import EnergyBar from '@/components/Match/EnergyBar';
 import SubstitutionPanel from '@/components/Match/SubstitutionPanel';
 import { ClubName, PlayerName } from '@/components/Common/Names';
 import ClubCrest from '@/components/Club/ClubCrest';
-import HurtBadge from '@/components/Match/HurtBadge';
-import KitChip from '@/components/Club/KitChip';
+import PlayerCard from '@/components/Match/PlayerCard';
 
 interface TeamSheetProps {
   lineup: MatchLineupDto;
@@ -197,8 +195,9 @@ interface SheetCardProps {
 }
 
 /**
- * One name on a team sheet, with the energy bar and whatever already happened to him. The
- * same information for both clubs, because a manager decides with the whole picture.
+ * One name on a team sheet. The same card the eleven under the scoreboard is drawn with,
+ * because a team sheet and the eleven are the same list at two lengths: a manager reading the
+ * bench and a manager reading the pitch are reading the same footballers.
  */
 const SheetCard: React.FC<SheetCardProps> = ({
   player,
@@ -207,40 +206,28 @@ const SheetCard: React.FC<SheetCardProps> = ({
   isBench = false,
   opponent = false,
 }) => (
-  <div
-    className={`player-card ${isBench ? 'bench-card' : ''} ${player.redCard ? 'sent-off' : ''} ${
-      player.injuredOff ? 'injured' : ''
-    } ${opponent ? 'opponent' : ''}`}
-  >
-    <div className="player-top">
-      <span className="player-pos">
-        {player.emergencyGK ? 'GOL*' : positionLabel(player.position)}
-      </span>
-      <span className="player-card__name">
-        <KitChip team={team} side={kitSide} />
-        <PlayerName playerId={player.playerId}>{player.name}</PlayerName>
-        <HurtBadge player={player} />
-        <span className="player-stars" style={{ color: 'var(--accent)', marginLeft: '6px' }}>{starsToString(player.stars)}</span>
-      </span>
-      <span className="player-energy">{Math.round(player.energy)}%</span>
-    </div>
-
-    <EnergyBar value={player.energy} />
-
-    <div className="player-stats">
-      {/* This is a match screen, so these are the numbers of this match. The season's
-          goals belong on a profile, not beside a man who has not scored today. */}
-      {player.matchGoals > 0 && <span title={`${player.matchGoals} gol(s) na partida`}>⚽ {player.matchGoals}</span>}
-      {player.matchSaves > 0 && <span title={`${player.matchSaves} defesa(s) na partida`}>🧤 {player.matchSaves}</span>}
-      {player.matchOwnGoals > 0 && <span title={`${player.matchOwnGoals} gol(s) contra na partida`}>🔴 {player.matchOwnGoals}</span>}
-      {player.matchYellowCards > 0 && <span title="Cartão amarelo">🟨 {player.matchYellowCards}</span>}
-      {player.redCard && <span title="Expulso">🟥</span>}
-      {player.injuredOff && <span title="Saiu lesionado">🚑</span>}
-      {player.subbedIn && <span title="Entrou em campo">↩</span>}
-      {player.subbedOff && <span title="Já saiu de campo">⇤</span>}
-      {player.emergencyGK && <span title="Assumiu a meta sem goleiro">🧤</span>}
-    </div>
-  </div>
+  <PlayerCard
+    player={player}
+    team={team}
+    side={kitSide}
+    compactEnergy={false}
+    className={`sheet-card${isBench ? ' bench-card' : ''}${opponent ? ' opponent' : ''}`}
+    detail={
+      <div className="player-stats">
+        {/* This is a match screen, so these are the numbers of this match. The season's
+            goals belong on a profile, not beside a man who has not scored today. */}
+        {player.matchGoals > 0 && <span title={`${player.matchGoals} gol(s) na partida`}>⚽ {player.matchGoals}</span>}
+        {player.matchSaves > 0 && <span title={`${player.matchSaves} defesa(s) na partida`}>🧤 {player.matchSaves}</span>}
+        {player.matchOwnGoals > 0 && <span title={`${player.matchOwnGoals} gol(s) contra na partida`}>🔴 {player.matchOwnGoals}</span>}
+        {player.matchYellowCards > 0 && <span title="Cartão amarelo">🟨 {player.matchYellowCards}</span>}
+        {player.redCard && <span title="Expulso">🟥</span>}
+        {player.injuredOff && <span title="Saiu lesionado">🚑</span>}
+        {player.subbedIn && <span title="Entrou em campo">↩</span>}
+        {player.subbedOff && <span title="Já saiu de campo">⇤</span>}
+        {player.emergencyGK && <span title="Assumiu a meta sem goleiro">🧤</span>}
+      </div>
+    }
+  />
 );
 
 export default TeamSheet;

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using NinjaEleven.Application.Abstractions;
+using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Players;
@@ -67,6 +68,7 @@ public class RosterService
     private readonly ITeamRepository _teams;
     private readonly ITransferRepository _transfers;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly InboxService _inbox;
     private readonly ILogger<RosterService> _logger;
 
     public RosterService(
@@ -74,12 +76,14 @@ public class RosterService
         ITeamRepository teams,
         ITransferRepository transfers,
         IUnitOfWork unitOfWork,
+        InboxService inbox,
         ILogger<RosterService> logger)
     {
         _players = players;
         _teams = teams;
         _transfers = transfers;
         _unitOfWork = unitOfWork;
+        _inbox = inbox;
         _logger = logger;
     }
 
@@ -93,6 +97,7 @@ public class RosterService
         CancellationToken cancellationToken = default)
     {
         var retired = await CarryOutTheRetirementsAsync(previous, cancellationToken);
+        var expiring = await EndTheContractsThatRanOutAsync(previous, cancellationToken);
 
         // Everybody is a year older, and this is the only place it happens. It comes first
         // because everything below reads the age of the world as it now stands, and the rule
@@ -145,6 +150,14 @@ public class RosterService
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // The warning goes out against the states just written, because the man is priced for
+        // the season that is opening rather than for the one that closed.
+        await WarnAboutTheContractsInTheirLastSeasonAsync(
+            season,
+            states.ToDictionary(state => state.PlayerId),
+            contracts,
+            cancellationToken);
 
         var linked = await LinkTheWaitingDealsAsync(season, cancellationToken);
 
@@ -204,6 +217,139 @@ public class RosterService
             "{Count} players retired at the end of season {Number}.", retired.Count, previous.Number);
 
         return retired;
+    }
+
+    /// <summary>
+    /// Ends every contract whose seasons are all in the past, so a man the club has finished
+    /// paying for is a free agent rather than a player under contract with nobody.
+    ///
+    /// <para>
+    /// Nothing did this before. A membership with no seasons left went on being a live
+    /// contract for ever: the club kept the man, kept paying him, and the squad table kept
+    /// showing him as being in his last season, which made every rival free to sign him while
+    /// his own club held a deal that had already run out. The seasons were being counted down
+    /// the whole time and nobody was reading the count.
+    /// </para>
+    ///
+    /// <para>
+    /// It is checked against the season that has just finished rather than the one about to
+    /// open, because that is the boundary the club is standing on: a deal signed for one season
+    /// is spent at the end of that season, and a deal signed for three at the end of the third.
+    /// A man whose contract was renewed in the season just closed has seasons left and is not
+    /// touched, because a renewal resets the clock and the clock is what is being read.
+    /// </para>
+    /// </summary>
+    private async Task<int> EndTheContractsThatRanOutAsync(
+        Season previous,
+        CancellationToken cancellationToken)
+    {
+        var ended = 0;
+        var lastDay = previous.EndDate;
+
+        foreach (var team in await _teams.ListAsync(cancellationToken))
+        {
+            foreach (var membership in await _teams.GetLiveContractsAsync(team.Id, cancellationToken))
+            {
+                if (!membership.HasRunOut(previous.Number))
+                {
+                    continue;
+                }
+
+                membership.End(lastDay < membership.StartDate ? membership.StartDate : lastDay);
+                _teams.UpdateMembership(membership);
+                ended++;
+            }
+        }
+
+        if (ended > 0)
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        _logger.LogInformation(
+            "{Count} contracts ran out at the end of season {Number} and their players are free agents.",
+            ended, previous.Number);
+
+        return ended;
+    }
+
+    /// <summary>
+    /// Tells a club, once per man, that a contract of theirs is in its last season.
+    ///
+    /// <para>
+    /// The warning is sent at the boundary rather than during the season, and it is sent then
+    /// because that is the first moment the fact exists: a man with two seasons left does not
+    /// become a man with one on some afternoon, he becomes one on the day the season turns over.
+    /// Sending it later would be sending it about a man who has already had the season in which
+    /// to do something about it.
+    /// </para>
+    ///
+    /// <para>
+    /// It is keyed by the contract, not by the man and not by the season, so the same man
+    /// renewed into another long deal does not get a second warning next year, and a world that
+    /// opened this season twice does not send it twice either.
+    /// </para>
+    ///
+    /// <para>
+    /// It runs after the season's states are written rather than before, because the warning
+    /// prices the man on the contract as he will be for the season that is opening — and a
+    /// state that does not exist yet cannot price anybody. Asking earlier is not asking too
+    /// early to be inconvenient; it is a lookup that finds nothing and a warning that is never
+    /// sent.
+    /// </para>
+    /// </summary>
+    private async Task WarnAboutTheContractsInTheirLastSeasonAsync(
+        Season season,
+        IReadOnlyDictionary<Guid, PlayerSeasonState> states,
+        IReadOnlyDictionary<Guid, TeamMembership> contracts,
+        CancellationToken cancellationToken)
+    {
+        var clubNames = (await _teams.ListAsync(cancellationToken))
+            .ToDictionary(team => team.Id, team => team.Name);
+
+        var men = (await _players.ListAsync(cancellationToken)).ToDictionary(player => player.Id);
+        var warned = 0;
+
+        foreach (var state in states.Values)
+        {
+            // One season left counting from the season opening, and not from the one that
+            // closed: the warning is about the season the manager can still act in.
+            if (state.TeamId is not { } clubId
+                || !contracts.TryGetValue(state.PlayerId, out var membership)
+                || membership.TeamId != clubId
+                || membership.SeasonsLeft(season.Number) != 1)
+            {
+                continue;
+            }
+
+            if (!men.TryGetValue(state.PlayerId, out var player))
+            {
+                continue;
+            }
+
+            await _inbox.PostContractExpiringAsync(
+                new ContractExpiringFacts
+                {
+                    RecipientTeamId = membership.TeamId,
+                    ClubName = clubNames[membership.TeamId],
+                    PlayerId = player.Id,
+                    PlayerName = player.Name,
+                    ContractId = membership.Id,
+                    SeasonsLeft = membership.SeasonsLeft(season.Number),
+                    Wage = membership.Wage,
+                    WageOnRenewal = PlayerValuation.SeasonWage(player, state)
+                },
+                cancellationToken);
+
+            warned++;
+        }
+
+        if (warned > 0)
+        {
+            _logger.LogInformation(
+                "Warned clubs about {Count} contracts entering their last season in {Number}.",
+                warned, season.Number);
+        }
     }
 
     /// <summary>

@@ -6,7 +6,7 @@ import { useOffer } from '@/state/OfferProvider';
 import type { PlayerProfileDto } from '@/types';
 import { positionLabel } from '@/services/formatters';
 import { formatLimo } from '@/services/limo';
-import { starsToString, attributeBarWidth, attributeToneClass } from '@/services/formatters';
+import { starsToString, attributeBarWidth, attributeToneClass, matchRatingClass, matchRatingText } from '@/services/formatters';
 import { PlayerFace } from '@/components/Common/PlayerFace';
 import StarRating from '@/components/Common/StarRating';
 import ClubCrest from '@/components/Club/ClubCrest';
@@ -325,6 +325,24 @@ const PlayerProfileScreen: React.FC = () => {
                 <span className="career-value">{totals.goals}</span>
                 <span className="career-label">Gols</span>
               </div>
+              <div className="career-cell">
+                <span className="career-value">{totals.assists}</span>
+                <span className="career-label">Assistências</span>
+              </div>
+              {/* The average of the matches he was actually rated for, and not of every match
+                  he was on the sheet for. A four-minute substitute is a cameo; averaging him
+                  in would pull this number towards six by a different amount for every
+                  player, which is one figure meaning two things. */}
+              <div className="career-cell">
+                <span className={`career-value ${matchRatingClass(totals.averageRating)}`}>
+                  {totals.averageRating !== null && totals.averageRating !== undefined
+                    ? totals.averageRating.toFixed(1)
+                    : '—'}
+                </span>
+                <span className="career-label">
+                  {totals.ratedMatches > 0 ? `Nota média (${totals.ratedMatches})` : 'Nota média'}
+                </span>
+              </div>
               {isKeeper && (
                 <div className="career-cell">
                   <span className="career-value">{totals.saves}</span>
@@ -394,7 +412,9 @@ const PlayerProfileScreen: React.FC = () => {
                     <th>Público</th>
                     <th>J</th>
                     <th>G</th>
+                    <th title="Passes que resultaram em gol">A</th>
                     {isKeeper && <th>Def</th>}
+                    <th>Nota</th>
                     <th>Les</th>
                   </tr>
                 </thead>
@@ -436,7 +456,15 @@ const PlayerProfileScreen: React.FC = () => {
                         <td className="form-attendance">{line.attendance ? line.attendance.toLocaleString('pt-BR') : '—'}</td>
                         <td>{line.started ? 'T' : line.cameOn ? 'E' : line.wasOnBenchUnused ? 'B' : 'J'}</td>
                         <td>{line.goals > 0 ? line.goals : ''}</td>
+                        <td>{line.assists > 0 ? line.assists : ''}</td>
                         {isKeeper && <td>{line.saves > 0 ? line.saves : ''}</td>}
+                        {/* A dash rather than a blank, and a dash rather than a number for a
+                            man who did not play five minutes: he has a cameo on this row and
+                            not a match, and "—" says that where a zero would say he was
+                            terrible. */}
+                        <td className={matchRatingClass(line.rating, line.ratingBand)}>
+                          {matchRatingText(line.rating)}
+                        </td>
                         <td>{line.wasInjured ? (line.injuredOff ? 'saiu' : 'leve') : ''}</td>
                       </tr>
                     );

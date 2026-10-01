@@ -41,6 +41,36 @@ public interface IFixtureRepository
         DateOnly date,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The fixtures that say they were played and have nothing to show for it: a fixture
+    /// marked finished whose every match was abandoned.
+    ///
+    /// <para>
+    /// This is the hole the rest of the world is built to refuse, and it is asked of the
+    /// fixtures rather than of the matches. A fixture's own column is a claim, not a proof:
+    /// three readers believe it — the window that closes itself, the claim that completes a
+    /// window, and the sweep that closes orphans — and a claim nothing checks is a matchday
+    /// that can be lost without a line of log. Six fixtures of a second division sat exactly
+    /// here for a whole season, and the table above them was a game short for eleven of its
+    /// sixteen clubs.
+    /// </para>
+    ///
+    /// <para>
+    /// The abandoned matches are required to be <i>there</i> for the same reason. A fixture
+    /// that was never reached by a ball is a fixture the calendar has not got to yet, and
+    /// reopening one would put a matchday that is still in the future into arrears. The
+    /// fixtures asked for are the ones whose football started and did not finish, which is
+    /// the whole difference between a matchday to replay and a matchday to wait for.
+    /// </para>
+    ///
+    /// <para>
+    /// It is a join and not a fixture list walked match by match, because this is asked of
+    /// every fixture in the world and the answer has to be cheap enough to ask often.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<Fixture>> ListFinishedWithoutAFinishedMatchAsync(
+        CancellationToken cancellationToken = default);
+
     Task AddAsync(Fixture fixture, CancellationToken cancellationToken = default);
 
     /// <summary>

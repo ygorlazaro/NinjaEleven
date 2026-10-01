@@ -61,7 +61,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   // that started.
   const feed = useGameState((s) => feedOf(s, matchId));
 
-  const [lineup, setLineup] = useState<MatchLineupDto | null>(null);
+  const [menOnRecord, setLineup] = useState<MatchLineupDto | null>(null);
   // Where this match is: season, day, competition, phase, ground, and the other leg of
   // a cup tie. It is read once per match and never worked out here.
   const [context, setContext] = useState<MatchContextDto | null>(null);
@@ -121,6 +121,35 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
     const lineupData = await MatchApi.getLineup(matchId, userTeam?.id);
     setLineup(lineupData);
   }, [matchId, userTeam?.id]);
+
+  /**
+   * Where a manager goes when the match he is watching stops existing.
+   *
+   * A match abandoned is one the world took back: its process is gone and the fixture has
+   * been reopened, so the fixture is either owed again or already has a new match on it.
+   * Staying put is the one answer that is certainly wrong — the scoreboard would be the last
+   * minute anybody played, held still, with no end and no explanation. So the fixture is
+   * asked where it went, and the screen follows it: to the new match when there is one, and
+   * back to the club when there is not, because a manager whose fixture is owed again is a
+   * manager who is going to play it.
+   */
+  const followTheFixtureForward = useCallback(async (abandonedMatchId: string) => {
+    try {
+      const abandoned = await MatchApi.get(abandonedMatchId);
+      const fixture = await FixtureApi.get(abandoned.fixtureId);
+
+      if (fixture.matchId && fixture.matchId !== abandonedMatchId) {
+        navigate(`/match/${fixture.matchId}`, { replace: true });
+        return;
+      }
+
+      navigate('/league', { replace: true });
+    } catch {
+      // A fixture the API will not answer about is a screen with nowhere to go, and a screen
+      // that says so beats a screen that keeps showing a match that is over.
+      navigate('/league', { replace: true });
+    }
+  }, [navigate]);
 
   /**
    * The header's own facts about the match. Fetched on its own and allowed to fail: a
@@ -277,6 +306,16 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
         setShowHalfTimeModal(true);
       }
 
+      // An abandoned match is finished and is not a match that was played: it is one whose
+      // process is gone, and its fixture has been handed back to the world. The end modal
+      // would tell the manager his team lost a game nobody finished, so the screen goes
+      // wherever the fixture went instead — the new match if the world has already started
+      // one, and the club's own page if it is still owed.
+      if (next.status === 'Abandoned') {
+        followTheFixtureForward(matchId);
+        return;
+      }
+
       if (next.isFinished) {
         setShowEndModal(true);
       }
@@ -299,8 +338,14 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
 
     });
 
-    const offEvent = MatchHubClient.onEvent(async events => {
-      if (disposed || events.length === 0) return;
+    const offEvent = MatchHubClient.onEvent(async stream => {
+      // The stream says which match it is. A screen that moved from one live match to another
+      // on the same connection is briefly on both, and a beat of the match left behind is not
+      // a beat of this one — it would be written into this match's feed under its sequence.
+      if (disposed || stream.matchId !== matchId) return;
+
+      const events = stream.events;
+      if (events.length === 0) return;
 
       const newest = events[events.length - 1].sequence;
       const previous = lastSequence.current;
@@ -388,7 +433,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
       offMatchdayEvent();
       MatchHubClient.disconnect(lease);
     };
-  }, [matchId]);
+  }, [matchId, followTheFixtureForward]);
 
   /**
    * The matchday is followed on the round group, and joining it is a question about the
@@ -573,6 +618,39 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
       setSubstituting(false);
     }
   };
+
+  // The eleven carries the men; the tick carries what the match is currently worth to each of
+  // them. They are merged here rather than kept in one piece of state because they arrive on
+  // different beats: a substitution re-reads the men and leaves the notes behind, and a tick
+  // moves the notes and leaves the men alone. One stored copy would have to be patched by
+  // both and would blank the numbers for a moment every time a change was made.
+  //
+  // The merged one is called `lineup` and the raw one `menOnRecord`, rather than the other way
+  // round, so that everything below reads the notes without asking. The first version had it
+  // the other way round and the eleven under the scoreboard was drawn from the raw list, which
+  // is a way of saying that a number everyone had agreed to show was shown on one screen.
+  const lineup = useMemo<MatchLineupDto | null>(() => {
+    if (!menOnRecord) return null;
+
+    const live = state?.liveRatings;
+    if (!live || live.length === 0) return menOnRecord;
+
+    const byPlayer = new Map(live.map(entry => [entry.playerId, entry]));
+    const withNote = (player: MatchPlayerDto): MatchPlayerDto => {
+      const entry = byPlayer.get(player.playerId);
+      return entry
+        ? { ...player, rating: entry.rating, ratingBand: entry.ratingBand, minutesPlayed: entry.minutesPlayed }
+        : player;
+    };
+
+    return {
+      ...menOnRecord,
+      homeLineup: menOnRecord.homeLineup.map(withNote),
+      awayLineup: menOnRecord.awayLineup.map(withNote),
+      homeBench: menOnRecord.homeBench.map(withNote),
+      awayBench: menOnRecord.awayBench.map(withNote),
+    };
+  }, [menOnRecord, state?.liveRatings]);
 
   // Everything below reads these, including the command handlers, so they are derived
   // before them. They are null only while the first request is still in flight.
@@ -965,7 +1043,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
 
           <div className="tabpane active" style={{ display: matchScreen === 'lineup' ? 'block' : 'none' }}>
             <TeamSheet
-              lineup={lineup}
+              lineup={lineup!}
               userTeamIndex={isInThisMatch ? userTeamIdx : null}
               canSubstitute={canSubstitute}
               substitutionsUsed={userSubstitutionsUsed}

@@ -43,6 +43,36 @@ internal static class InboxTestFactory
         return new InboxService(
             messages.Object,
             teams.Object,
+            // A world of nobody, which is what a test that has not declared a manager has. The
+            // two messages with no addressee of their own — the cup round and the season's
+            // summary — are delivered to the managers of the world, so a test that is about
+            // something else pays for no fan-out and gets none.
+            new ManagedClubs(),
+            Mock.Of<IUnitOfWork>(),
+            NullLogger<InboxService>.Instance);
+    }
+
+    /// <summary>
+    /// A box over a world with managers in it, for a test that is about the two messages
+    /// written to everybody.
+    /// </summary>
+    public static InboxService Create(
+        Mock<ITeamRepository> teams,
+        Mock<IInboxMessageRepository> messages,
+        IManagedClubReader managedClubs)
+    {
+        messages.Setup(repo => repo.ExistsWithReferenceAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        messages.Setup(repo => repo.AddAsync(It.IsAny<InboxMessage>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        messages.Setup(repo => repo.UnreadCountAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        return new InboxService(
+            messages.Object,
+            teams.Object,
+            managedClubs,
             Mock.Of<IUnitOfWork>(),
             NullLogger<InboxService>.Instance);
     }

@@ -37,19 +37,63 @@ public class PlayerTrainingController : ControllerBase
         var result = await _trainingService.TrainAsync(
             id, request.Attribute, request.SeasonId, cancellationToken);
 
-        return Ok(new TrainingResultDto
-        {
-            PlayerId = result.PlayerId,
-            SeasonId = result.SeasonId,
-            Attribute = result.Attribute,
-            EnergySpent = result.EnergySpent,
-            EnergyLeft = result.EnergyLeft,
-            AttributeBefore = result.AttributeBefore,
-            AttributeAfter = result.AttributeAfter,
-            Fee = result.Fee,
-            SessionsLeft = result.SessionsLeft
-        });
+        return Ok(ToDto(result));
     }
+
+    /// <summary>
+    /// Works a whole selection in one press, and answers for every man in it.
+    /// </summary>
+    /// <para>
+    /// It is one request rather than twenty-three because the manager's decision is one
+    /// decision: which men are being worked today. A screen that made him press once per man
+    /// would be asking him to answer the same question eleven times, and the club's balance
+    /// would be read after each of them rather than once at the end.
+    /// </para>
+    /// <para>
+    /// The answer is a list rather than a single result because the request is allowed to
+    /// contain a man who cannot be worked — an injured reserve, a player already at his
+    /// ceiling — and a manager who marked eleven men and got six sessions needs to be told
+    /// which five and why. A 207 with per-man outcomes is the honest shape of that; refusing
+    /// the whole selection would mean one twisted ankle costs a club its morning.
+    /// </para>
+    /// </summary>
+    [HttpPost("training")]
+    public async Task<ActionResult<IReadOnlyList<TrainingOutcomeDto>>> TrainSelection(
+        [FromBody] TrainSelectionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var outcomes = await _trainingService.TrainManyAsync(
+            request.Selection
+                .Select(item => new TrainingRequest(item.PlayerId, item.Attribute))
+                .ToList(),
+            request.SeasonId,
+            cancellationToken);
+
+        return Ok(outcomes.Select(ToDto).ToList());
+    }
+
+    private static TrainingResultDto ToDto(TrainingResult result) => new()
+    {
+        PlayerId = result.PlayerId,
+        SeasonId = result.SeasonId,
+        Attribute = result.Attribute,
+        EnergySpent = result.EnergySpent,
+        EnergyLeft = result.EnergyLeft,
+        AttributeBefore = result.AttributeBefore,
+        AttributeAfter = result.AttributeAfter,
+        Fee = result.Fee,
+        SessionsLeft = result.SessionsLeft
+    };
+
+    private static TrainingOutcomeDto ToDto(TrainingOutcome outcome) => new()
+    {
+        PlayerId = outcome.PlayerId,
+        Attribute = outcome.Attribute,
+        Worked = outcome.Worked,
+        Result = outcome.Result is { } result ? ToDto(result) : null,
+        RefusalCode = outcome.RefusalCode,
+        Refusal = outcome.Refusal
+    };
 }
 
 /// <summary>

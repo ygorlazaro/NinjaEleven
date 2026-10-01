@@ -98,6 +98,50 @@ public class UpdateShirtNumberRequestDto
 }
 
 /// <summary>
+/// A manager signing one of his own men again.
+/// </summary>
+/// <remarks>
+/// There is no wage in the request, and that absence is the contract. A salary is fixed for
+/// the run of a contract and moves only at a renewal, so the renewal is the moment the club
+/// reads the man's age and his attributes and decides what the seasons ahead cost. A request
+/// carrying a wage would let a client settle a player's salary, which is the one number in the
+/// game that belongs to the club and not to whoever is holding the phone.
+/// </remarks>
+public class RenewContractRequestDto
+{
+    public Guid PlayerId { get; init; }
+
+    /// <summary>
+    /// How many seasons to sign, counted from the season being played. The domain refuses
+    /// anything outside one to five, and says which end of the range was wrong.
+    /// </summary>
+    public int Seasons { get; init; }
+
+    /// <summary>The season to renew in, or the current one.</summary>
+    public Guid? SeasonId { get; init; }
+}
+
+/// <summary>
+/// The deal as it stands after the renewal: both numbers the manager agreed to.
+/// </summary>
+public class RenewContractResponseDto
+{
+    public Guid PlayerId { get; init; }
+    public Guid TeamId { get; init; }
+    public Guid SeasonId { get; init; }
+    public Guid ContractId { get; init; }
+
+    /// <summary>How many seasons were signed, counted from now.</summary>
+    public int Seasons { get; init; }
+
+    /// <summary>How many of them are left, which on the day of the renewal is all of them.</summary>
+    public int SeasonsLeft { get; init; }
+
+    /// <summary>What a season of the new deal costs.</summary>
+    public decimal Wage { get; init; }
+}
+
+/// <summary>
 /// The number a man is wearing after the change, said back rather than read again.
 ///
 /// <para>

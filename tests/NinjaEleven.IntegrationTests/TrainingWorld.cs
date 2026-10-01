@@ -46,6 +46,7 @@ internal sealed class TrainingWorld(NinjaElevenDbContext db) : IDisposable
     public TrainingService Training() => new(
         Players,
         Seasons,
+        Teams,
         UnitOfWork,
         Clock,
         Sessions,
@@ -71,6 +72,7 @@ internal sealed class TrainingWorld(NinjaElevenDbContext db) : IDisposable
     private InboxService Inbox() => new(
         new InboxMessageRepository(db),
         Teams,
+        new ManagedClubReader(db),
         UnitOfWork,
         NullLogger<InboxService>.Instance);
 
@@ -159,8 +161,16 @@ internal sealed class TrainingWorld(NinjaElevenDbContext db) : IDisposable
 
             foreach (var player in players.Where(player => withoutASeason is null || player.Id != withoutASeason.Id))
             {
-                db.PlayerSeasonStates.Add(PlayerSeasonState.Create(player.Id, season.Id, TheClub, energy: 100));
-                db.TeamMemberships.Add(TeamMembership.Create(player.Id, TheClub, season.StartDate, number));
+                var state = PlayerSeasonState.Create(player.Id, season.Id, TheClub, energy: 100);
+                db.PlayerSeasonStates.Add(state);
+
+                // Signed on the wage the man would have been valued at, because a contract
+                // with no wage is not a cheap one — it is an unpayable one, and the fee is a
+                // share of it. A world that gave its players free contracts would make every
+                // test about what a session costs a test about a session that cannot happen.
+                db.TeamMemberships.Add(TeamMembership.Create(
+                    player.Id, TheClub, season.StartDate, number,
+                    wage: PlayerValuation.SeasonWage(player, state)));
             }
 
             await db.SaveChangesAsync();

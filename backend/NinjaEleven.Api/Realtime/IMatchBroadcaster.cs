@@ -60,7 +60,10 @@ public sealed class SignalRMatchBroadcaster : IMatchBroadcaster
         }
 
         return _hubContext.Clients.Group(MatchHub.MatchGroupFor(matchId))
-            .SendAsync(MatchHub.EventMethod, events, cancellationToken);
+            .SendAsync(
+                MatchHub.EventMethod,
+                new MatchStreamDto { MatchId = matchId, Events = events },
+                cancellationToken);
     }
 
     public Task PublishResultAsync(Guid matchId, MatchResultDto result, CancellationToken cancellationToken = default) =>

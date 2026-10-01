@@ -9,7 +9,9 @@ using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Finance;
 using Microsoft.Extensions.Logging.Abstractions;
 using NinjaEleven.Domain.Matches;
+using NinjaEleven.Domain.Inbox;
 using NinjaEleven.Domain.Seasons;
+using NinjaEleven.Domain.Teams;
 using Xunit;
 using Match = NinjaEleven.Domain.Matches.Match;
 
@@ -79,7 +81,16 @@ public class CupProgressionServiceTests
     /// <summary>The order the service did things in, for the tests that care about order.</summary>
     private readonly List<string> _calls = new();
 
-    private CupProgressionService CreateService() => new(
+    /// <summary>Every message the cup wrote into a manager's box.</summary>
+    private readonly List<InboxMessage> _sent = new();
+
+    private CupProgressionService CreateService() => CreateService(InboxTestFactory.Create(_teams));
+
+    /// <summary>
+    /// The same service over a box the caller keeps, for the tests that read what the cup told
+    /// the world rather than only what it drew.
+    /// </summary>
+    private CupProgressionService CreateService(InboxService inbox) => new(
         _cupTies.Object,
         _trophies.Object,
         _matches.Object,
@@ -87,9 +98,10 @@ public class CupProgressionServiceTests
         _fixtures.Object,
         _matchDays.Object,
         _competitions.Object,
+        _seasons.Object,
         _unitOfWork.Object,
         Finance(),
-        InboxTestFactory.Create(_teams),
+        inbox,
         _teams.Object,
         new Random());
 
@@ -427,6 +439,82 @@ public class CupProgressionServiceTests
         Assert.All(_addedTies, tie => Assert.Equal(2, tie.RoundNumber));
         Assert.Equal(32, _addedFixtures.Count);
         Assert.Equal(2, _addedRounds.Count);
+    }
+
+    /// <summary>
+    /// The country is told when a round is decided — every manager, not only the two clubs in
+    /// it.
+    ///
+    /// <para>
+    /// The wiring is what this holds, not the prose: a cup round is the one football everybody
+    /// watches, and a box that only tells the clubs that happened to be in the ties tells the
+    /// manager of a club knocked out three rounds ago that a club he will never meet is still in
+    /// the cup. The message goes out with the draw of the next round rather than at the end of
+    /// the method, so a bracket that stops drawing is still a bracket whose rounds were
+    /// announced.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ASettledRoundIsAnnounced_to_every_manager()
+    {
+        var messages = new Mock<IInboxMessageRepository>(MockBehavior.Loose);
+        var managed = new[] { Guid.NewGuid(), Guid.NewGuid() };
+
+        foreach (var teamId in managed)
+        {
+            var club = Team.Create($"Clube {teamId.ToString()[..4]}", "CLB", "#0a5", "#fff");
+            club.MarkAsManagerClub();
+            _teams.Setup(repo => repo.GetAsync(teamId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(club);
+        }
+
+        _teams.Setup(repo => repo.ListByIdsAsync(
+                It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .Returns<IEnumerable<Guid>, CancellationToken>((ids, _) =>
+                Task.FromResult<IReadOnlyList<Team>>(ids
+                    .Select(id => managed.Contains(id)
+                        ? Team.Create($"Clube {id.ToString()[..4]}", "CLB", "#0a5", "#fff")
+                        : null)
+                    .Where(club => club is not null)
+                    .Select(club => { club!.MarkAsManagerClub(); return club; })
+                    .ToList()));
+
+        var box = InboxTestFactory.Create(_teams, messages, new ManagedClubs(managed));
+
+        // The box sets its own writes up when it is built, so what a cup round wrote is read
+        // after that rather than before: a callback registered first is the one the box's own
+        // setup replaces, and the test would watch a box that had written nothing at all.
+        messages.Setup(repo => repo.AddAsync(It.IsAny<InboxMessage>(), It.IsAny<CancellationToken>()))
+            .Callback((InboxMessage message, CancellationToken _) => _sent.Add(message))
+            .Returns(Task.CompletedTask);
+
+        _competitions.Setup(repo => repo.GetSeasonViewByIdAsync(_cup.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CompetitionSeasonView
+            {
+                Id = _cup.Id,
+                CompetitionId = Guid.NewGuid(),
+                SeasonId = _seasonId,
+                CompetitionName = "Copa do Brasil",
+                Type = CompetitionType.Cup
+            });
+
+        _seasons.Setup(repo => repo.GetAsync(_seasonId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Season.Create(2, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31)));
+
+        var last = CompleteTheRoundOfSixtyFourWithTheLastTieDecided();
+
+        await CreateService(box).AdvanceAsync(
+            SecondLegOf(last, last.SecondLegFixtureId!.Value, 1, 1, TakenByTheLegsHomeClub(last)));
+
+        Assert.Equal(managed.Length, _sent.Count);
+        Assert.All(_sent, message => Assert.Equal(InboxCategory.CupRound, message.Category));
+        Assert.All(_sent, message => Assert.Equal($"cup-round:{_cup.Id}:1", message.Reference));
+        Assert.Equal(managed.OrderBy(id => id), _sent.Select(message => message.RecipientTeamId).OrderBy(id => id));
+
+        // The letter names the round it settled and the cup it belongs to, so a manager reads
+        // which evening of football he is looking at before he reads a single tie.
+        Assert.All(_sent, message => Assert.Contains(CompetitionRules.TieRoundName(1), message.Subject, StringComparison.Ordinal));
+        Assert.All(_sent, message => Assert.Contains("Copa do Brasil", message.Body, StringComparison.Ordinal));
     }
 
     [Fact]

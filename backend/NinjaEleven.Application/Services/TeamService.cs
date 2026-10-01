@@ -3,6 +3,7 @@ using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
+using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Teams;
 using NinjaEleven.Application.Abstractions;
 
@@ -269,8 +270,86 @@ public class TeamService
         return shirtNumber;
     }
 
-    public async Task<IReadOnlyList<SquadPlayer>> GetSquadAsync(
+    /// <summary>
+    /// Signs a man again, for as many seasons as the manager says and at whatever he is worth
+    /// today.
+    ///
+    /// <para>
+    /// The wage is worked out here rather than asked of the client, and that is the whole
+    /// point of the rule: the salary on a contract is fixed for the run of that contract, so
+    /// the only moment it moves is a renewal, and a renewal the client could price would be a
+    /// renewal a client could make cheaper. The man is read as he is now — his age, his
+    /// attributes, the cards and the injuries on his record — because that is what a club is
+    /// buying when it signs him again.
+    /// </para>
+    ///
+    /// <para>
+    /// The seasons are counted from the season being played and not from what is left, so
+    /// renewing a man with nothing left for three seasons gives him three and not none. A
+    /// contract that has run out is ended by the season boundary rather than by this method,
+    /// so a man here is always a man the club still holds.
+    /// </para>
+    /// </summary>
+    public async Task<ContractRenewal> RenewContractAsync(
         Guid teamId,
+        Guid playerId,
+        int seasons,
+        Guid? seasonId = null,
+        CancellationToken cancellationToken = default)
+    {
+        await GetDrawableClubAsync(teamId, cancellationToken);
+
+        if (!ContractRules.IsARenewableLength(seasons))
+        {
+            throw new DomainValidationException(
+                "InvalidContractLength",
+                $"Uma renovação vai de {ContractRules.FewestRenewableSeasons} a " +
+                $"{ContractRules.MostRenewableSeasons} temporadas; foram pedidas {seasons}.");
+        }
+
+        var season = seasonId is { } wanted
+            ? await _seasonRepository.GetAsync(wanted, cancellationToken)
+            : await _seasonRepository.GetCurrentAsync(cancellationToken);
+
+        if (season is null)
+        {
+            throw new DomainValidationException(
+                "SeasonRequired", "Não há temporada em andamento para renovar contrato.");
+        }
+
+        var player = await _playerRepository.GetAsync(playerId, cancellationToken)
+            ?? throw new EntityNotFoundException("Player", playerId);
+
+        var state = await _playerRepository.GetSeasonStateForUpdateAsync(playerId, season.Id, cancellationToken)
+            ?? throw new EntityNotFoundException("PlayerSeasonState", playerId);
+
+        var contract = (await _teamRepository.GetLiveContractsAsync(teamId, cancellationToken))
+            .FirstOrDefault(membership => membership.PlayerId == playerId);
+
+        if (contract is null)
+        {
+            throw new DomainValidationException(
+                "PlayerNotContracted",
+                "Esse jogador não está no elenco deste clube.");
+        }
+
+        var wage = PlayerValuation.SeasonWage(player, state);
+        contract.Renew(seasons, season.Number, wage, season.StartDate);
+
+        _teamRepository.UpdateMembership(contract);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new ContractRenewal(
+            playerId,
+            teamId,
+            season.Id,
+            contract.Id,
+            contract.ContractSeasons,
+            contract.SeasonsLeft(season.Number),
+            wage);
+    }
+
+    public async Task<IReadOnlyList<SquadPlayer>> GetSquadAsync(        Guid teamId,
         Guid seasonId,
         CancellationToken cancellationToken = default)
     {

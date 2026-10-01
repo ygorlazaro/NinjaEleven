@@ -247,6 +247,13 @@ public class MatchRepository : IMatchRepository
                     Goals = statistics.Goals,
                     OwnGoals = statistics.OwnGoals,
                     Saves = statistics.Saves,
+                    // The number only. The band is worked out by the service, out of what
+                    // comes back: a projection is translated into SQL, and a band is a reading
+                    // of a number rather than a column, so asking for it here asked the
+                    // database to run the rating's own rules.
+                    Rating = statistics.Rating,
+                    MinutesPlayed = statistics.MinutesPlayed,
+                    Assists = statistics.Assists,
                     YellowCards = statistics.YellowCards,
                     RedCards = statistics.RedCards,
                     WasInjured = statistics.WasInjured,

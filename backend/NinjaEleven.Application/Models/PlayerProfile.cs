@@ -61,12 +61,28 @@ public class PlayerProfile
     /// <summary>
     /// What he is worth on the market and what the club owes for his contract, in limos.
     ///
-    /// They are read off the same season state the market reads, so the price on a profile
-    /// and the wage on the club's wage bill are one number and its share rather than two
-    /// screens that each have their own idea of what a player is.
+    /// <para>
+    /// The salary is the figure on the contract, so it is the same number on the card, on the
+    /// squad table and on the club's wage bill — a wage worked out from his attributes today
+    /// would be a different number in each of those places, and a manager budgeting a season
+    /// would be budgeting one of them.
+    /// </para>
     /// </summary>
     public decimal MarketValue { get; set; }
     public decimal Salary { get; set; }
+
+    /// <summary>
+    /// What the club would pay him for a season if it signed him again today, worked out from
+    /// his age and his attributes as they are at this moment.
+    ///
+    /// It travels beside the salary and not instead of it because the two answer different
+    /// questions and a renewal is the moment both are on the table: one is what he costs, the
+    /// other is what he would cost. They are the same number until something changes, and the
+    /// whole point of showing both is that a manager can see which of the two he is about to
+    /// move.
+    /// </summary>
+    public decimal WageOnRenewal { get; set; }
+
     public int ContractSeasons { get; set; } = NinjaEleven.Domain.Finance.FinanceRules.DefaultContractSeasons;
 
     /// <summary>
@@ -104,6 +120,18 @@ public class PlayerProfile
 public class PlayerCareerLine
 {
     public int Appearances { get; set; }
+    public int Assists { get; set; }
+
+    /// <summary>
+    /// The average of the ratings he was given, and null when he has not been rated once.
+    /// Kept beside the sums rather than worked out by the screen, for the same reason every
+    /// other number on this card is worked out in one place.
+    /// </summary>
+    public double? AverageRating { get; set; }
+
+    /// <summary>How many matches that average stands on.</summary>
+    public int RatedMatches { get; set; }
+
     public int Started { get; set; }
     public int CameOn { get; set; }
     public int BenchUnused { get; set; }
@@ -165,6 +193,23 @@ public class PlayerMatchLine
     public int Goals { get; set; }
     public int OwnGoals { get; set; }
     public int Saves { get; set; }
+
+    /// <summary>
+    /// What the match was worth to him, and null when he did not play enough of it to have
+    /// one. Read from the column the match wrote, never recomputed here: the tally it was
+    /// worked out from is a fact about a match that was played, and asking again would give
+    /// the same fixture two different answers on two different days.
+    /// </summary>
+    public double? Rating { get; set; }
+
+    /// <summary>The band that number falls in, decided by the domain and not by the client.</summary>
+    public Domain.Matches.MatchRatingBand RatingBand { get; set; }
+
+    /// <summary>Minutes actually on the pitch, which is what the recovery was measured against.</summary>
+    public int MinutesPlayed { get; set; }
+
+    public int Assists { get; set; }
+
     public int YellowCards { get; set; }
     public int RedCards { get; set; }
     public bool WasInjured { get; set; }
@@ -218,6 +263,19 @@ public class PlayerMatchLine
         public int Goals { get; set; }
         public int OwnGoals { get; set; }
         public int Saves { get; set; }
+    /// <summary>
+    /// What the match was worth to him, and null when he did not play enough of it to have
+    /// one. Read from the column the match wrote, never recomputed here: the tally it was
+    /// worked out from is a fact about a match that was played, and asking again would give
+    /// the same fixture two different answers on two different days.
+    /// </summary>
+    public double? Rating { get; set; }
+
+    /// <summary>The band that number falls in, decided by the domain and not by the client.</summary>
+    public Domain.Matches.MatchRatingBand RatingBand { get; set; }
+
+    public int MinutesPlayed { get; set; }
+    public int Assists { get; set; }
         public int YellowCards { get; set; }
         public int RedCards { get; set; }
         public bool WasInjured { get; set; }
@@ -299,6 +357,18 @@ public class TrainingQuote
     /// </remarks>
     public decimal SessionFee { get; set; }
 
+    /// <summary>
+    /// How many sessions this man still has on <see cref="SquadTrainingQuotes.Day"/>.
+    ///
+    /// <para>
+    /// It is on each man's sheet rather than on the squad's because the day is counted per
+    /// body. A sheet with one number for the club is a sheet that can only say "somebody has
+    /// had theirs", and a manager working his whole squad needs to know which men still have a
+    /// session in them and which have had it.
+    /// </para>
+    /// </summary>
+    public int SessionsLeft { get; set; }
+
     public List<TrainingAttributeQuote> Attributes { get; set; } = new();
 }
 
@@ -331,10 +401,21 @@ public class SquadTrainingQuotes
     /// </summary>
     public bool PlaysToday { get; set; }
 
-    /// <summary>How many sessions the club has on <see cref="Day"/>.</summary>
+    /// <summary>
+    /// How many sessions <em>each man</em> has on <see cref="Day"/>.
+    /// </summary>
     public int SessionsAllowed { get; set; }
 
-    /// <summary>How many of them have been spent.</summary>
+    /// <summary>
+    /// How many of the squad's men have used theirs, which is what a screen shows next to a
+    /// "work the whole squad" button.
+    ///
+    /// <para>
+    /// It counts men and not sessions because the day is worth the same number to every body
+    /// in the squad: a total of sessions would be a number that only means anything next to
+    /// the number of men, and the two are the same number here by construction.
+    /// </para>
+    /// </summary>
     public int SessionsSpent { get; set; }
 
     public List<TrainingQuote> Players { get; set; } = new();

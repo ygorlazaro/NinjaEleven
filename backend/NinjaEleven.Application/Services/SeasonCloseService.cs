@@ -169,6 +169,12 @@ public class SeasonCloseService : ISeasonCloser
         var champions = new List<Guid>();
         var paid = 0;
 
+        // The four tables, read once and kept: the prizes, the trophies and the season's own
+        // letter are all the same standings, and a service that asked the standings service for
+        // them twice would be paying twice for one fact and could be handed two different
+        // answers if a match were settled in between.
+        var tables = new Dictionary<int, IReadOnlyList<StandingEntry>>();
+
         foreach (var view in divisions)
         {
             var collection = await _standings.CollectAsync(view.Id, view, cancellationToken);
@@ -178,6 +184,7 @@ public class SeasonCloseService : ISeasonCloser
             }
 
             var table = StandingTable.Build(collection.Seeds, collection.Finished);
+            tables[view.Tier!.Value] = table;
             var clubs = table.Count;
 
             for (var position = 1; position <= clubs; position++)
@@ -237,6 +244,13 @@ public class SeasonCloseService : ISeasonCloser
         _seasons.Update(season);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+        // The season's letter goes out before the next season is opened, and after the save, so
+        // a message is never written about a close that was then rolled back. It is one message
+        // to every manager because a season ends by rearranging the country: the man in the 4ª
+        // Divisão watched two clubs leave his table and two arrive, and four letters — one per
+        // division, each about somebody else's — would be a season that ended four times over.
+        await PostTheSeasonLetterAsync(season, divisions, tables, cancellationToken);
+
         _logger.LogInformation(
             "Closed season {Number} ({Name}): {Prizes} championship prizes paid, {Champions} champions.",
             season.Number,
@@ -252,6 +266,87 @@ public class SeasonCloseService : ISeasonCloser
         }
 
         return new SeasonCloseResult(seasonId, nextSeasonId, paid, champions);
+    }
+
+    /// <summary>
+    /// Writes the season's letter: the four final tables, who moved, and where the reader's own
+    /// club finished.
+    /// </summary>
+    ///
+    /// <para>
+    /// It is built from the tables the close has already read, and the movement from the same
+    /// rule that will rearrange the pyramid an instant later — <see cref="DivisionMovement"/> —
+    /// because a letter that said a club stayed while the calendar put it in another division
+    /// would be a season ending twice with two different endings.
+    /// </para>
+    ///
+    /// <para>
+    /// A division with no table is left out rather than written as empty: a pyramid of three
+    /// divisions in a world being seeded is three tables, and a fourth block saying "no clubs"
+    /// is a division the game does not have.
+    /// </para>
+    /// </summary>
+    private async Task PostTheSeasonLetterAsync(
+        Season season,
+        IReadOnlyList<CompetitionSeasonView> divisions,
+        IReadOnlyDictionary<int, IReadOnlyList<StandingEntry>> tables,
+        CancellationToken cancellationToken)
+    {
+        if (tables.Count == 0)
+        {
+            return;
+        }
+
+        var clubNames = (await _teams.ListByIdsAsync(
+                tables.Values.SelectMany(table => table).Select(entry => entry.TeamId).Distinct().ToList(),
+                cancellationToken))
+            .ToDictionary(club => club.Id, club => club.Name);
+
+        var summaryDivisions = new List<SeasonSummaryDivision>();
+
+        foreach (var view in divisions.OrderBy(view => view.Tier))
+        {
+            if (view.Tier is not { } tier || !tables.TryGetValue(tier, out var table) || table.Count == 0)
+            {
+                continue;
+            }
+
+            var movement = DivisionMovement.From(tier, table);
+            var byClub = movement.Movements.ToDictionary(club => club.TeamId);
+
+            summaryDivisions.Add(new SeasonSummaryDivision
+            {
+                Tier = tier,
+                DivisionName = CompetitionRules.DivisionName(tier),
+                Lines = table.Select(entry => new SeasonSummaryLine
+                {
+                    TeamId = entry.TeamId,
+                    ClubName = clubNames.GetValueOrDefault(entry.TeamId, entry.TeamId.ToString()),
+                    Position = entry.Position,
+                    Points = entry.Points,
+                    Played = entry.Played,
+                    Wins = entry.Wins,
+                    Draws = entry.Draws,
+                    Losses = entry.Losses,
+                    GoalsFor = entry.GoalsFor,
+                    GoalsAgainst = entry.GoalsAgainst,
+                    Movement = !byClub.TryGetValue(entry.TeamId, out var clubMovement)
+                        ? SeasonMovementKind.Stays
+                        : clubMovement.IsPromoted ? SeasonMovementKind.Promoted
+                        : clubMovement.IsRelegated ? SeasonMovementKind.Relegated
+                        : SeasonMovementKind.Stays
+                }).ToList()
+            });
+        }
+
+        await _inbox.PostSeasonSummaryAsync(
+            new SeasonSummaryFacts
+            {
+                SeasonName = season.Name,
+                SeasonId = season.Id,
+                Divisions = summaryDivisions
+            },
+            cancellationToken);
     }
 
     /// <summary>

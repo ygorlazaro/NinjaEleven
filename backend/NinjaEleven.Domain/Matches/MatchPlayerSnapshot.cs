@@ -14,6 +14,19 @@ public class MatchPlayerSnapshot
     public string Name { get; private set; } = string.Empty;
     public int Age { get; private set; }
     public Position Position { get; private set; }
+
+    /// <summary>
+    /// The number on his back, and null for a man who has none.
+    ///
+    /// <para>
+    /// It is copied off the contract at the whistle rather than asked of the club while the
+    /// match is being played: a snapshot is what the evening was played with, and a number
+    /// read live could change under a match that is already running. Null is a real answer and
+    /// not a missing column — a world seeded before shirts existed has none, and a shirt drawn
+    /// with a blank back is a man whose club has not given him a number yet.
+    /// </para>
+    /// </summary>
+    public int? ShirtNumber { get; private set; }
     public int Speed { get; private set; }
     public int Accuracy { get; private set; }
     public int Dribbling { get; private set; }
@@ -114,6 +127,19 @@ public class MatchPlayerSnapshot
     /// match. <see cref="MatchGoals"/> is the part of this match alone, and it is what
     /// the season state receives when the match ends.
     /// </summary>
+    /// <summary>
+    /// What he did, counted as the match resolved it.
+    ///
+    /// <para>
+    /// It is here rather than somewhere the engine keeps its own because this is the man, and
+    /// a match is two squads of him: the keeper who made five saves and the striker who beat
+    /// him are two entries of one list, not two lists the engine has to reconcile afterwards.
+    /// Nothing on it is a rating — the tally is facts, and the reading of them happens once,
+    /// at the whistle.
+    /// </para>
+    /// </summary>
+    public MatchPerformance Performance { get; } = new();
+
     public int Goals { get; set; }
 
     public int MatchGoals { get; set; }
@@ -248,7 +274,10 @@ public class MatchPlayerSnapshot
 
     private MatchPlayerSnapshot() { }
 
-    public static MatchPlayerSnapshot FromPlayerSeasonState(Player player, PlayerSeasonState state)
+    public static MatchPlayerSnapshot FromPlayerSeasonState(
+        Player player,
+        PlayerSeasonState state,
+        int? shirtNumber = null)
     {
         if (player is null) throw new ArgumentNullException(nameof(player));
         if (state is null) throw new ArgumentNullException(nameof(state));
@@ -259,6 +288,7 @@ public class MatchPlayerSnapshot
             Name = player.Name,
             Age = player.Age,
             Position = player.Position,
+            ShirtNumber = shirtNumber,
             Speed = player.Speed,
             Accuracy = player.Accuracy,
             Dribbling = player.Dribbling,

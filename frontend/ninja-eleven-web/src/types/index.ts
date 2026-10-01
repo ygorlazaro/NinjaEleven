@@ -790,6 +790,13 @@ export interface MatchStateDto {
    * cannot tell the two apart would show a penalty that is not being taken.
    */
   shootout: ShootoutDto | null;
+  /**
+   * What the match is worth to each man on the pitch at this tick. It arrives with the state
+   * rather than on a call of its own: the number under the scoreboard is the one a manager
+   * reads while the match is still going, and one fetched separately is either a poll or a
+   * reading of a match that has already moved on.
+   */
+  liveRatings?: LiveRatingDto[];
 }
 
 export interface PenaltyTakerOptionsDto {
@@ -1008,6 +1015,19 @@ export interface ScorerDto {
   cardPoints: number;
 }
 
+/**
+ * The beats of one match, with the match they belong to.
+ *
+ * A connection follows a match and a round at once, and it can move from one match to another
+ * without losing the connection — so the stream says who it is. A stream without an owner is a
+ * stream a client cannot put anywhere, and a scoreboard that changes its mind once a second is
+ * what that reads like.
+ */
+export interface MatchStreamDto {
+  matchId: Guid;
+  events: MatchEngineEventDto[];
+}
+
 export interface MatchEngineEventDto {
   sequence: number;
   minute: number;
@@ -1136,6 +1156,12 @@ export interface MatchPlayerDto {
   name: string;
   age: number;
   position: string;
+  /**
+   * The number on his back, and null for a man who has not been given one. It arrives with
+   * the snapshot rather than being asked of the club, so the shirt drawn beside the name is
+   * the shirt he actually put on in.
+   */
+  shirtNumber?: number | null;
   speed: number;
   accuracy: number;
   dribbling: number;
@@ -1180,7 +1206,35 @@ export interface MatchPlayerDto {
   /** Chance of converting a penalty right now, only sent for the candidates of a penalty. */
   penaltyChance?: number | null;
   stars: number;
+  /**
+   * Minutes of this match he has actually been on the pitch, read from the engine's own
+   * stamps. A man who came on at the eightieth has twenty at the eightieth-five whatever the
+   * scoreboard says.
+   */
+  minutesPlayed: number;
+  /**
+   * What the match has been worth to him so far, out of ten, and null while he has not played
+   * long enough of it to have one. The band arrives with the number so no screen decides for
+   * itself where "good" starts.
+   */
+  rating?: number | null;
+  ratingBand: MatchRatingBand;
 }
+
+/**
+ * Which band a rating falls in, decided by the backend. A client that worked the lines out for
+ * itself would decide them differently from the next one, and the eleven under the scoreboard
+ * is read at a glance in the middle of a match rather than studied.
+ */
+export type MatchRatingBand = 'Unrated' | 'Red' | 'Yellow' | 'Green' | 'Diamond';
+
+/** One man's card as the match stands at this tick. */
+export type LiveRatingDto = {
+  playerId: Guid;
+  rating?: number | null;
+  ratingBand: MatchRatingBand;
+  minutesPlayed: number;
+};
 
 export interface PlayerMatchStatsDto {
   fouls: number;
@@ -1391,10 +1445,19 @@ export type PlayerCareerLineDto = {
   goals: number;
   ownGoals: number;
   saves: number;
+  assists: number;
   yellowCards: number;
   redCards: number;
   injuries: number;
   matchesMissed: number;
+  /**
+   * The average of the ratings he was given, out of ten, and null before he has been rated
+   * once. Cameos are left out of it: a four-minute substitute is not a data point about how
+   * well a man plays.
+   */
+  averageRating?: number | null;
+  /** How many matches that average stands on. */
+  ratedMatches: number;
 };
 
 export type PlayerMatchLineDto = {
@@ -1407,6 +1470,11 @@ export type PlayerMatchLineDto = {
   goals: number;
   ownGoals: number;
   saves: number;
+  assists: number;
+  /** What that match was worth to him, and null when he did not play enough to have one. */
+  rating?: number | null;
+  ratingBand: MatchRatingBand;
+  minutesPlayed: number;
   yellowCards: number;
   redCards: number;
   wasInjured: boolean;
@@ -2003,7 +2071,7 @@ export interface ClubTransferHistoryDto {
  */
 export interface InboxMessageDto {
   id: Guid;
-  /** `Finance`, `MatchReport`, `TransferOffer`, `Title` or `Club`, as a name. */
+  /** `Finance`, `MatchReport`, `TransferOffer`, `Title`, `CupRound`, `SeasonSummary` or `Club`, as a name. */
   category: string;
   subject: string;
   senderName: string;

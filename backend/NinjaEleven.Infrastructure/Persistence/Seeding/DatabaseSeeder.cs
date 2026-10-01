@@ -274,18 +274,22 @@ public class DatabaseSeeder : IDataSeeder
         if (await _dbContext.Teams.AnyAsync(cancellationToken))
         {
             _logger.LogInformation("Seeding skipped: the world already contains teams.");
+            await LeaveNoClubHoldingAManTwiceAsync(cancellationToken);
             await GiveFacesToTheWorldAlreadySeededAsync(random, cancellationToken);
             await GiveIdentitiesToTheWorldAlreadySeededAsync(cancellationToken);
             await GiveShirtNumbersToTheWorldAlreadySeededAsync(cancellationToken);
+            await GiveWagesToTheWorldAlreadySeededAsync(cancellationToken);
             await GiveManagersToTheWorldAlreadySeededAsync(random, cancellationToken);
             await OpenTheBooksOfTheWorldAlreadySeededAsync(cancellationToken);
             return;
         }
 
         await SeedStartingWorldAsync(random, cancellationToken);
+        await LeaveNoClubHoldingAManTwiceAsync(cancellationToken);
         await GiveFacesToTheWorldAlreadySeededAsync(random, cancellationToken);
         await GiveIdentitiesToTheWorldAlreadySeededAsync(cancellationToken);
         await GiveShirtNumbersToTheWorldAlreadySeededAsync(cancellationToken);
+        await GiveWagesToTheWorldAlreadySeededAsync(cancellationToken);
         await GiveManagersToTheWorldAlreadySeededAsync(random, cancellationToken);
         await OpenTheBooksOfTheWorldAlreadySeededAsync(cancellationToken);
     }
@@ -814,6 +818,159 @@ public class DatabaseSeeder : IDataSeeder
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Gave a face to {Count} players that had none.", faceless.Count);
+    }
+
+    /// <summary>
+    /// Puts a wage on every live contract that has not been given one.
+    ///
+    /// <para>
+    /// A world seeded before contracts carried a price has sixty-four clubs being paid
+    /// nothing, and the column's default of zero is what that looks like. Zero is not a real
+    /// wage — a professional on a club's books is paid something — so it is the honest "not
+    /// priced yet" and this pass is what turns it into a number.
+    /// </para>
+    ///
+    /// <para>
+    /// The wage is worked out exactly as a signing works it out, from the man as he is today:
+    /// his stars, his age, the injuries and the red cards on his season state. That is not an
+    /// approximation of the past, it is the rule applied at the moment of the migration, and it
+    /// is the same number a renewal on the same day would produce.
+    /// </para>
+    ///
+    /// <para>
+    /// Only live contracts are touched, and only the ones at zero. A contract already carrying
+    /// a wage has been priced by somebody who decided what it costs, and a newer boot arriving
+    /// is not a reason to re-decide it — a wage that moved on its own is the thing this column
+    /// exists to prevent.
+    /// </para>
+    /// </summary>
+    private async Task GiveWagesToTheWorldAlreadySeededAsync(CancellationToken cancellationToken)
+    {
+        var unpriced = await _dbContext.TeamMemberships
+            .Where(membership => membership.EndDate == null && membership.Wage == 0m)
+            .ToListAsync(cancellationToken);
+
+        if (unpriced.Count == 0)
+        {
+            return;
+        }
+
+        var playerIds = unpriced.Select(membership => membership.PlayerId).Distinct().ToList();
+
+        var players = await _dbContext.Players
+            .Where(player => playerIds.Contains(player.Id))
+            .ToDictionaryAsync(player => player.Id, cancellationToken);
+
+        // A contract with no season state cannot be priced, because the price reads the season
+        // the man played in. One like that is a contract the world has not got to yet, and it
+        // stays at zero until the season that would price it exists.
+        var states = await _dbContext.PlayerSeasonStates
+            .Where(state => playerIds.Contains(state.PlayerId))
+            .ToListAsync(cancellationToken);
+
+        var stateByPlayer = states
+            .GroupBy(state => state.PlayerId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        var priced = 0;
+
+        foreach (var membership in unpriced)
+        {
+            if (!players.TryGetValue(membership.PlayerId, out var player)
+                || !stateByPlayer.TryGetValue(membership.PlayerId, out var state))
+            {
+                continue;
+            }
+
+            var wage = PlayerValuation.SeasonWage(player, state);
+            if (wage <= 0m)
+            {
+                continue;
+            }
+
+            membership.AgreeWage(wage);
+            priced++;
+        }
+
+        if (priced > 0)
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        _logger.LogInformation("Priced {Count} live contracts that carried no wage.", priced);
+    }
+
+    /// <summary>
+    /// Leaves no club holding the same man on two live contracts.
+    ///
+    /// <para>
+    /// A window that completes a deal asks first whether the buyer already holds the player,
+    /// because a club of twenty-three that becomes twenty-four men with one of them in two
+    /// shirts is a squad that cannot be read: the shirt number was dealt to the second copy
+    /// and the manager has never seen it, and every screen that builds a lineup from a club's
+    /// contracts dies on the duplicate key rather than showing the twenty-three it has.
+    /// </para>
+    ///
+    /// <para>
+    /// The guard in the window is what stops the next one. This is what undoes the copies the
+    /// world already has, and it is here because a world that has them cannot play a league:
+    /// a career that cannot field a side has no error on any screen to explain why.
+    /// </para>
+    ///
+    /// <para>
+    /// The copy that is kept is the later contract, because that is the one the window wrote
+    /// last and the one the rest of the world has already read; the earlier one is ended the
+    /// day before it began, so it reads as a contract that never ran rather than as a season
+    /// of football that has to be un-happened. The deal rows are left alone: a completed deal
+    /// is a fact the window wrote and there is no transition back out of it, and the shirt a
+    /// manager can see is the one that decides whether he can play.
+    /// </para>
+    /// </summary>
+    private async Task LeaveNoClubHoldingAManTwiceAsync(CancellationToken cancellationToken)
+    {
+        var live = await _dbContext.TeamMemberships
+            .Where(membership => membership.EndDate == null)
+            .ToListAsync(cancellationToken);
+
+        var twice = live
+            .GroupBy(membership => (membership.TeamId, membership.PlayerId))
+            .Where(group => group.Count() > 1)
+            .ToList();
+
+        if (twice.Count == 0)
+        {
+            return;
+        }
+
+        var ended = 0;
+
+        foreach (var group in twice)
+        {
+            // Later first, so the head of the list is the copy the world knows about. The id
+            // breaks a tie between two contracts written in the same second, which two deals
+            // completed by one save are, so the repair is the same repair on the next boot.
+            var ordered = group
+                .OrderByDescending(membership => membership.StartDate)
+                .ThenByDescending(membership => membership.Id)
+                .ToList();
+
+            foreach (var stale in ordered.Skip(1))
+            {
+                var keeper = ordered[0];
+                stale.End(keeper.StartDate.AddDays(-1));
+                ended++;
+            }
+        }
+
+        if (ended > 0)
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        _logger.LogInformation(
+            "Ended {Count} duplicate live contract(s): {Players} player(s) were held twice by one club.",
+            ended,
+            twice.Count);
     }
 
     /// <summary>

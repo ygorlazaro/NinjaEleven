@@ -33,6 +33,14 @@ public class TeamMembershipConfiguration : IEntityTypeConfiguration<TeamMembersh
             .IsRequired()
             .HasDefaultValue(1);
         builder.Property(m => m.ShirtNumber);
+        // What the club owes him for a season, fixed for the run of this contract. Zero is
+        // allowed by the entity and is not a real wage: it is what a world seeded before
+        // contracts carried a price looks like, and the seeder prices every live contract it
+        // finds at zero rather than leaving a squad being paid nothing.
+        builder.Property(m => m.Wage)
+            .IsRequired()
+            .HasColumnType("numeric(14,2)")
+            .HasDefaultValue(0m);
 
         builder.HasIndex(m => m.PlayerId);
         builder.HasIndex(m => new { m.TeamId, m.StartDate });

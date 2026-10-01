@@ -179,8 +179,42 @@ public class TeamRepository : ITeamRepository
         CancellationToken cancellationToken = default) =>
         await _dbContext.TeamMemberships.AddAsync(membership, cancellationToken);
 
-    public void UpdateMembership(TeamMembership membership) =>
-        _dbContext.TeamMemberships.Update(membership);
+    /// <summary>
+    /// Marks a membership's row as changed.
+    ///
+    /// <para>
+    /// The same reason as <c>MatchRepository.Update</c>, and the same shape of fix: reads here
+    /// are <c>AsNoTracking</c>, so a service holding a membership is holding a copy the context
+    /// does not own, and anything else on the command's path that attaches one leaves the
+    /// context with a second instance of the same row. EF will not attach the second.
+    /// </para>
+    ///
+    /// <para>
+    /// This one is not hypothetical. The transfer market ends a seller's contract and signs the
+    /// player to his new club in one pass, and a window that runs the market over two deals of
+    /// the same player asked the seller's book twice — the second read handing back a second
+    /// instance of a row the first read had already attached. The context was then poisoned for
+    /// the rest of the request, and the Supercup — whose window is the first of a season and
+    /// the first window the market ever runs on — could not commit its own result. It failed,
+    /// reopened its fixture, and failed again, for ever.
+    /// </para>
+    /// </summary>
+    public void UpdateMembership(TeamMembership membership)
+    {
+        var tracked = _dbContext.TeamMemberships.Local
+            .FirstOrDefault(candidate => candidate.Id == membership.Id);
+
+        if (tracked is null)
+        {
+            _dbContext.TeamMemberships.Update(membership);
+            return;
+        }
+
+        if (!ReferenceEquals(tracked, membership))
+        {
+            _dbContext.Entry(tracked).CurrentValues.SetValues(membership);
+        }
+    }
 
     public async Task<IReadOnlyList<Team>> ListClubsWithoutManagerAsync(
         CancellationToken cancellationToken = default) =>

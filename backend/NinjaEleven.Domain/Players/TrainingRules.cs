@@ -77,7 +77,7 @@ public static class TrainingRules
     }
 
     /// <summary>
-    /// The sessions a club has on a day it is playing on.
+    /// The sessions one man has on a day it is playing on.
     ///
     /// <para>
     /// One, and it is the number rather than zero because a matchday is not a day off. A
@@ -90,13 +90,13 @@ public static class TrainingRules
     public const int SessionsOnAMatchDay = 1;
 
     /// <summary>
-    /// The sessions a club has on a day it is not playing on.
+    /// The sessions one man has on a day it is not playing on.
     ///
     /// <para>
     /// Two, so a rest day is a doubling rather than a windfall. The day a club does not play
     /// is the day its reserve side plays, and the men who would have started that afternoon
-    /// are the men who are here to be worked; a squad given four sessions would be a squad
-    /// whose second-choice goalkeeper is as trained as its first-choice striker by Tuesday.
+    /// are the men who are here to be worked; a man given four would be as trained by Tuesday
+    /// as he is by the end of the month, and a point bought that cheaply is not development.
     /// </para>
     /// </summary>
     public const int SessionsOnARestDay = 2;
@@ -115,13 +115,14 @@ public static class TrainingRules
     /// </para>
     ///
     /// <para>
-    /// Fifteen per cent of a season's wage is a real budget decision and not a rounding
-    /// error. A squad of twenty-three carries about L$ 162,000 of wages across a season, and a
-    /// manager who spends both sessions on the same man on every day of the calendar pays
-    /// about L$ 72,000 for the privilege — some forty per cent on top of the wage bill, and
-    /// nothing at all to a club that would rather not develop anybody. It is high enough that
-    /// the choice is a real one, and low enough that a club which trains deliberately is not
-    /// bankrupt by the end of the month.
+    /// Half a season's wage, and it is half rather than a rounding for a reason that has
+    /// nothing to do with arithmetic: a session is half as much as the man costs to keep for
+    /// the whole season, so a manager is always trading a fortnight of a wage for a point that
+    /// may or may not arrive. At fifteen per cent the fee was small enough to stop being a
+    /// decision — a manager who worked his whole squad every day paid a rounding error and
+    /// nothing in the game pushed back. At half, the squad-wide session is a budget line the
+    /// board can see, and training the men who will actually play is cheaper than training the
+    /// men who will not.
     /// </para>
     ///
     /// <para>
@@ -131,11 +132,21 @@ public static class TrainingRules
     /// cost is not allowed to be.
     /// </para>
     /// </summary>
-    public const decimal SessionFeeRate = 0.15m;
+    public const decimal SessionFeeRate = 0.50m;
 
     /// <summary>
-    /// How many sessions a club has left to spend on a day, which is what the day turns on.
-    /// </summary>
+    /// How many sessions one man has on a day, which is what the day turns on.
+    ///
+    /// <para>
+    /// Per man and not per club. It was per club, and a club got one session on a matchday and
+    /// two on a rest day to share between twenty-three men — which is not a squad being
+    /// developed, it is one man a day and nineteen watching, and it made a manager's decision
+    /// about who to work into a decision about who to abandon. Each man now has his own
+    /// allowance, so a manager who wants to work the whole squad can, and pays a fee for each
+    /// man he works. The cap is on how much one body can take in a day, which is the only thing
+    /// a daily cap is honestly about.
+    /// </para>
+    ///
     /// <param name="hasMatch">Whether the club has a fixture on the day in question.</param>
     public static int DailyBudget(bool hasMatch) => hasMatch ? SessionsOnAMatchDay : SessionsOnARestDay;
 

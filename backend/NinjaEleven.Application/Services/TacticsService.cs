@@ -231,11 +231,21 @@ public class TacticsService
                 $"Um time titular tem {MatchRules.SquadSize} jogadores; foram nomeados {starters.Count}.");
         }
 
-        if (starters.Count > 0 && starters.All(id => byId[id].Player.Position != Position.GK))
+        if (starters.Count > 0)
         {
-            throw new DomainValidationException(
-                "GoalkeeperRequired",
-                "O time titular precisa de um goleiro.");
+            // Exactly one, not at least one. A team sheet with two names in the goalkeeper band
+            // is not a plan that will be adjusted on the day: it is two goalkeepers on the
+            // pitch, because a replacement for one of them comes from the line the man plays and
+            // a keeper's place has nobody to replace it from. Refusing it here is the only
+            // point at which anybody is still there to be told.
+            var keepers = starters.Count(id => byId[id].Player.Position == Position.GK);
+
+            if (keepers != 1)
+            {
+                throw new DomainValidationException(
+                    "GoalkeeperRequired",
+                    $"Um time titular tem exatamente um goleiro; foram nomeados {keepers}.");
+            }
         }
 
         var now = _clock.UtcNow;

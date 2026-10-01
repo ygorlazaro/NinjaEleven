@@ -162,6 +162,51 @@ export function attributeToneClass(attribute: number): string {
 }
 
 /**
+ * The colour a match rating is drawn in, on the 0..10 scale a rating lives on.
+ *
+ * It is a second rule beside `attributeToneClass` and not a call into it, and the two scales
+ * have nothing to do with each other: 7.5 is a good evening out of ten and the worst half of
+ * an average squad's players out of a hundred, and a function that served both would have to
+ * be told which one it was holding. Sharing the rule would be sharing a number, and a 7 on
+ * the wrong side of that would colour every striker in a league green.
+ *
+ * The band itself arrives on the DTO, so this is only ever a lookup — the client is not
+ * deciding where a good evening starts, it is dressing the answer the backend gave. The
+ * fallback is the same table, written out, so a payload from a server that has not been
+ * redeployed still reads correctly rather than falling back to a default colour.
+ */
+export function matchRatingClass(rating: number | null | undefined, band?: string): string {
+  if (rating === null || rating === undefined) return 'rating-unrated';
+
+  switch (band) {
+    case 'Red':
+      return 'rating-red';
+    case 'Yellow':
+      return 'rating-yellow';
+    case 'Green':
+      return 'rating-green';
+    case 'Diamond':
+      return 'rating-diamond';
+    default:
+      break;
+  }
+
+  if (rating >= 10) return 'rating-diamond';
+  if (rating >= 8) return 'rating-green';
+  if (rating >= 6) return 'rating-yellow';
+  return 'rating-red';
+}
+
+/**
+ * The rating as it is printed, with the diamond spelled rather than drawn, so a number that
+ * means "the best match anybody had" is not the same shape as the nine beside it.
+ */
+export function matchRatingText(rating: number | null | undefined): string {
+  if (rating === null || rating === undefined) return '—';
+  return rating >= 10 ? '💎 10.0' : rating.toFixed(1);
+}
+
+/**
  * How full an attribute bar is, as a CSS width on the 1..100 scale the attributes live on.
  *
  * The one thing a bar is allowed to do on the client: map a value the backend sent onto the

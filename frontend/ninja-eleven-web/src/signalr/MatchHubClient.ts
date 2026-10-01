@@ -2,10 +2,10 @@ import * as signalR from '@microsoft/signalr';
 import { HUB_BASE_URL, MATCH_HUB_PATH } from '@/config/env';
 import type {
   MatchCommandResult,
-  MatchEngineEventDto,
   MatchdayEventDto,
   MatchResult,
-  MatchStateDto
+  MatchStateDto,
+  MatchStreamDto
 } from '../types';
 import type { MatchScore } from '@/components/Match/MatchdayScoreboard';
 
@@ -27,6 +27,21 @@ class MatchHubClient {
   private lifecycle: Promise<unknown> = Promise.resolve();
 
   /**
+   * The match whose group this connection is actually in, which is not always the one the
+   * current lease asked for.
+   *
+   * <para>
+   * The connection outlives a match: a manager who opens a second game from the matchday panel
+   * keeps the socket, and the round subscription is deliberately kept across a remount. So
+   * joining a match is not the same as being in it, and the two have to be remembered apart.
+   * When they were the same field, a screen that moved from one match to another stayed in the
+   * first match's group and both arrived on the connection at once — two states, two feeds,
+   * and a scoreboard that changed its mind once a second.
+   * </para>
+   */
+  private subscribedMatchId: string | null = null;
+
+  /**
    * The round whose scores the client follows, remembered so a reconnect can ask again.
    *
    * After a reconnect the server holds no group for us: the membership went with the
@@ -44,7 +59,7 @@ class MatchHubClient {
   private activeLease = 0;
 
   private stateListeners = new Set<Listener<MatchStateDto>>();
-  private eventListeners = new Set<Listener<MatchEngineEventDto[]>>();
+  private eventListeners = new Set<Listener<MatchStreamDto>>();
   private resultListeners = new Set<Listener<MatchResult>>();
   private scoreListeners = new Set<Listener<MatchScore>>();
   private matchdayEventListeners = new Set<Listener<MatchdayEventDto>>();
@@ -79,11 +94,24 @@ class MatchHubClient {
         .withAutomaticReconnect()
         .build();
 
-      this.connection.on('MatchEvent', (events: MatchEngineEventDto[]) => {
-        this.eventListeners.forEach(listener => listener(events));
+      // The beats of a match, in a payload that says which match they are. A connection can
+      // be asked for two matches over its life and the server drops us from the first group
+      // only when it reads that request, so a stream that arrives in between belongs to a
+      // match this screen is no longer showing. It is dropped here rather than in the screen,
+      // because the client is what knows which match it is following.
+      this.connection.on('MatchEvent', (stream: MatchStreamDto) => {
+        if (this.subscribedMatchId && stream.matchId !== this.subscribedMatchId) {
+          return;
+        }
+
+        this.eventListeners.forEach(listener => listener(stream));
       });
 
       this.connection.on('MatchState', (state: MatchStateDto) => {
+        if (this.subscribedMatchId && state.matchId !== this.subscribedMatchId) {
+          return;
+        }
+
         this.stateListeners.forEach(listener => listener(state));
       });
 
@@ -108,6 +136,10 @@ class MatchHubClient {
       // again — to the match and to the round, since the matchday scoreboard is fed by a
       // group that went away with the connection too.
       this.connection.onreconnected(async () => {
+        // The groups went with the connection, so the client is in no match group at all —
+        // and a remembered subscription would have it try to leave a group it never made.
+        this.subscribedMatchId = null;
+
         if (this.currentMatchId) {
           await this.subscribe(this.currentMatchId);
         }
@@ -135,6 +167,25 @@ class MatchHubClient {
       return;
     }
 
+    // Out of the match being left before into the one being joined. The connection is reused
+    // on purpose, so this is the only thing that ever takes a client out of a match group,
+    // and skipping it is what leaves two matches publishing into one screen. The two invokes
+    // go out in order on one connection, so the server has left the old group before it joins
+    // the new one.
+    const leaving = this.subscribedMatchId;
+
+    if (leaving && leaving !== matchId) {
+      this.subscribedMatchId = null;
+
+      try {
+        await this.connection.invoke('LeaveMatch', leaving);
+      } catch {
+        // The connection may already be gone; the join below is what matters.
+      }
+    }
+
+    this.subscribedMatchId = matchId;
+
     const state = await this.connection.invoke<MatchStateDto>('SubscribeMatch', matchId);
     this.stateListeners.forEach(listener => listener(state));
   }
@@ -156,7 +207,7 @@ class MatchHubClient {
   }
 
   /** Returns the function that removes the listener again. */
-  onEvent(listener: Listener<MatchEngineEventDto[]>): () => void {
+  onEvent(listener: Listener<MatchStreamDto>): () => void {
     this.eventListeners.add(listener);
     return () => this.eventListeners.delete(listener);
   }
@@ -388,7 +439,7 @@ class MatchHubClient {
     }
 
     this.activeLease = 0;
-    const matchId = this.currentMatchId;
+    const matchId = this.subscribedMatchId ?? this.currentMatchId;
     const roundId = this.currentRoundId;
 
     this.serialize(async () => {
@@ -398,6 +449,7 @@ class MatchHubClient {
       }
 
       this.currentMatchId = null;
+      this.subscribedMatchId = null;
       // Don't clear currentRoundId - the round subscription should persist
       // across match disconnects (e.g., React Strict Mode double-mount)
       const connection = this.connection;

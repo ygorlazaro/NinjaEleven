@@ -30,6 +30,16 @@ public class TrainingSessionRepository : ITrainingSessionRepository
             .OrderBy(session => session.PerformedAt)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<TrainingSession>> ListByPlayerAndDayAsync(
+        Guid playerId,
+        DateOnly day,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.TrainingSessions
+            .AsNoTracking()
+            .Where(session => session.PlayerId == playerId && session.Day == day)
+            .OrderBy(session => session.PerformedAt)
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<TrainingSession>> ListByPlayerAsync(
         Guid playerId,
         int take = 20,

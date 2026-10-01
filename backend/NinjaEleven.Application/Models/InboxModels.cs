@@ -166,8 +166,135 @@ public class TransferOfferFacts
     /// </summary>
     public decimal? AskingPrice { get; init; }
 
+    /// <summary>
+    /// The round by which the offer has to be answered, when it has one.
+    ///
+    /// <para>
+    /// It is on the message because a manager deciding whether to sell needs to know whether he
+    /// is deciding in a week or not deciding at all, and a report that said a deadline was
+    /// running against a proposal with no deadline is a manager holding off for a clock that was
+    /// never going to ring. An offer the engine made on its own has none: it waits on the club
+    /// rather than the club waiting on a round.
+    /// </para>
+    /// </summary>
+    public int? AnswerByRound { get; init; }
+
     /// <summary>What the club is being offered, in the words a manager would use.</summary>
     public string? Reference { get; init; }
+}
+
+/// <summary>
+/// One of a manager's players arriving at a rival, in the words the manager reads it in.
+/// </summary>
+/// <remarks>
+/// <para>
+/// It is a departure told from the other side. A manager who sold reads a cheque and a
+/// transaction; a manager who watched his striker sign a neighbour reads neither, and is the
+/// one who is actually planning a season around that player's goals — so the news is his, and
+/// the message that carries it is written as a departure from his own squad.
+/// </para>
+/// <para>
+/// The tier travels because the message says "the same division as yours" and says which one,
+/// and because a reader who did not know it would take "2ª Divisão" for the second line of a
+/// table rather than the pyramid.
+/// </para>
+/// </remarks>
+public class PlayerDepartureFacts
+{
+    /// <summary>The club that lost the player, which is the club the message is delivered to.</summary>
+    public required Guid RecipientTeamId { get; init; }
+
+    public required string ClubName { get; init; }
+    public required Guid PlayerId { get; init; }
+    public required string PlayerName { get; init; }
+
+    /// <summary>Where he went; null when the buyer is a club the world did not name.</summary>
+    public Guid? BuyingTeamId { get; init; }
+
+    public string? BuyingClubName { get; init; }
+
+    /// <summary>Which division of the pyramid both clubs are in, counted from one.</summary>
+    public required int DivisionTier { get; init; }
+
+    /// <summary>What the deal was worth to the club that sold him.</summary>
+    public required decimal Fee { get; init; }
+
+    /// <summary>
+    /// The deal this message is about, so a window closed twice is one departure told about
+    /// once.
+    /// </summary>
+    public required Guid TransferId { get; init; }
+
+    public string? Reference { get; init; }
+}
+
+/// <summary>
+/// One tie of a cup round, in the words the round's news is written in.
+/// </summary>
+/// <remarks>
+/// The winner is a field rather than something worked out from the two sides and the score,
+/// because the aggregate is what decided it and a reader who added the two legs up from one
+/// score would get a different answer from the one the game settled.
+/// </remarks>
+public class CupRoundTieFacts
+{
+    public required Guid HomeTeamId { get; init; }
+    public required string HomeClubName { get; init; }
+    public required int HomeGoals { get; init; }
+
+    public required Guid AwayTeamId { get; init; }
+    public required string AwayClubName { get; init; }
+    public required int AwayGoals { get; init; }
+
+    /// <summary>
+    /// Who goes through, and null only for a tie that is still level — which a round that is
+    /// being announced is not.
+    /// </summary>
+    public Guid? WinnerTeamId { get; init; }
+
+    /// <summary>Whether the tie needed penalties to be decided.</summary>
+    public bool WentToPenalties { get; init; }
+
+    /// <summary>Whether the tie was two legs rather than one.</summary>
+    public bool IsSecondLeg { get; init; }
+}
+
+/// <summary>
+/// A cup round that has been settled, told to everybody who is running a club.
+/// </summary>
+/// <remarks>
+/// <para>
+/// It has no recipient, and that is the whole difference from every other message here. A cup
+/// round is the one piece of football that belongs to the country: sixty-four clubs, one
+/// bracket, and a manager whose club is not in it on this afternoon still watched it, because
+/// the round of sixteen is where the season's biggest names start falling out and a manager
+/// planning his own summer needs to know which of them are gone.
+/// </para>
+///
+/// <para>
+/// It is still delivered only to a club with a person behind it — the rule is the same one,
+/// and it is asked of the world rather than of the request, so a scheduler walking the cup
+/// tells the same managers a hand pressing the button would.
+/// </para>
+/// </remarks>
+public class CupRoundFacts
+{
+    /// <summary>The edition the round belongs to, which is also what the round is identified by.</summary>
+    public required Guid CompetitionSeasonId { get; init; }
+
+    public required string CupName { get; init; }
+    public required string SeasonName { get; init; }
+
+    /// <summary>The round's number in the bracket, counted from the first round.</summary>
+    public required int RoundNumber { get; init; }
+
+    public required IReadOnlyList<CupRoundTieFacts> Ties { get; init; }
+
+    /// <summary>
+    /// What makes this message once: the cup and the round. A round closed twice — by the run
+    /// that played it and by a process that was down over the weekend — is one round of news.
+    /// </summary>
+    public string Reference => $"cup-round:{CompetitionSeasonId}:{RoundNumber}";
 }
 
 /// <summary>
@@ -325,6 +452,30 @@ public class SponsorSignedFacts
 
     /// <summary>How many matches the shirt carries the name for.</summary>
     public required int ContractMatches { get; init; }
+}
+
+/// <summary>
+/// A player is in the last year of his contract, in the words a manager reads it in.
+/// </summary>
+public class ContractExpiringFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+    public required Guid PlayerId { get; init; }
+    public required string PlayerName { get; init; }
+    public required Guid ContractId { get; init; }
+
+    /// <summary>How many seasons are left, which on this message is always one.</summary>
+    public required int SeasonsLeft { get; init; }
+
+    /// <summary>What the club is paying him now.</summary>
+    public required decimal Wage { get; init; }
+
+    /// <summary>
+    /// What he would be paid if the club signed him again today, which is the number a
+    /// manager is being asked to weigh.
+    /// </summary>
+    public required decimal WageOnRenewal { get; init; }
 }
 
 /// <summary>

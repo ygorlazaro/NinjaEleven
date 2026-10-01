@@ -36,6 +36,7 @@ public class CupProgressionService
     private readonly IFixtureRepository _fixtureRepository;
     private readonly IMatchDayRepository _matchDayRepository;
     private readonly ICompetitionRepository _competitionRepository;
+    private readonly ISeasonRepository _seasons;
     private readonly IUnitOfWork _unitOfWork;
     private readonly FinanceService _finance;
     private readonly InboxService _inbox;
@@ -50,6 +51,7 @@ public class CupProgressionService
         IFixtureRepository fixtureRepository,
         IMatchDayRepository matchDayRepository,
         ICompetitionRepository competitionRepository,
+        ISeasonRepository seasons,
         IUnitOfWork unitOfWork,
         FinanceService finance,
         InboxService inbox,
@@ -63,6 +65,7 @@ public class CupProgressionService
         _fixtureRepository = fixtureRepository;
         _matchDayRepository = matchDayRepository;
         _competitionRepository = competitionRepository;
+        _seasons = seasons;
         _unitOfWork = unitOfWork;
         _finance = finance;
         _inbox = inbox;
@@ -145,6 +148,13 @@ public class CupProgressionService
             return;
         }
 
+        // The round is decided, so the country is told. It goes to every manager rather than to
+        // the clubs in the ties, because a cup round is the one football that belongs to
+        // everybody: the round of sixteen is where the season's biggest clubs start falling out,
+        // and a manager planning his own summer needs to know which of them are gone whether or
+        // not his own club was on the ball that afternoon.
+        await AnnounceTheRoundAsync(tie, roundTies, cancellationToken);
+
         var survivors = CupQualification.SurvivorsAfter(tie.RoundNumber);
 
         if (survivors == 1)
@@ -154,6 +164,76 @@ public class CupProgressionService
         }
 
         await DrawNextRoundAsync(tie, roundTies, _random, cancellationToken);
+    }
+
+    /// <summary>
+    /// Tells every manager which clubs went through a cup round and which are out of the cup.
+    ///
+    /// <para>
+    /// The score written beside a tie is the aggregate, not the second leg's: a two-leg tie is
+    /// decided by the sum of the two, and a manager reading "1 x 0" from a tie he watched go
+    /// 2 x 1 on aggregate would take the wrong club through. A tie that went to penalties says
+    /// so, because a 0 x 0 with eleven kicks behind it is not a draw.
+    /// </para>
+    ///
+    /// <para>
+    /// It is keyed on the edition and the round, so a round closed twice — by the run that
+    /// played its last tie and by a process that was down over the weekend — is one letter.
+    /// </para>
+    /// </summary>
+    private async Task AnnounceTheRoundAsync(
+        CupTie decided,
+        IReadOnlyCollection<CupTie> roundTies,
+        CancellationToken cancellationToken)
+    {
+        var edition = await _competitionRepository.GetSeasonViewByIdAsync(
+            decided.CompetitionSeasonId, cancellationToken);
+
+        if (edition is null)
+        {
+            return;
+        }
+
+        var season = await _seasons.GetAsync(edition.SeasonId, cancellationToken);
+        if (season is null)
+        {
+            return;
+        }
+
+        var clubs = await _teams.ListByIdsAsync(
+            roundTies
+                .SelectMany(t => new[] { t.HomeTeamId, t.AwayTeamId })
+                .Distinct()
+                .ToList(),
+            cancellationToken);
+
+        var names = clubs.ToDictionary(club => club.Id, club => club.Name);
+
+        await _inbox.PostCupRoundAsync(
+            new CupRoundFacts
+            {
+                CompetitionSeasonId = decided.CompetitionSeasonId,
+                CupName = edition.CompetitionName,
+                SeasonName = season.Name,
+                RoundNumber = decided.RoundNumber,
+                Ties = roundTies
+                    .Where(t => t.IsResolved)
+                    .OrderBy(t => t.HomeTeamId)
+                    .Select(t => new CupRoundTieFacts
+                    {
+                        HomeTeamId = t.HomeTeamId,
+                        HomeClubName = names.GetValueOrDefault(t.HomeTeamId, t.HomeTeamId.ToString()),
+                        HomeGoals = t.AggregateHomeGoals ?? 0,
+                        AwayTeamId = t.AwayTeamId,
+                        AwayClubName = names.GetValueOrDefault(t.AwayTeamId, t.AwayTeamId.ToString()),
+                        AwayGoals = t.AggregateAwayGoals ?? 0,
+                        WinnerTeamId = t.WinnerTeamId,
+                        WentToPenalties = t.WentToPenalties,
+                        IsSecondLeg = t.FirstLegFixtureId is not null
+                    })
+                    .ToList()
+            },
+            cancellationToken);
     }
 
     /// <summary>

@@ -23,6 +23,19 @@ public enum InboxCategory
     /// <summary>A championship, a cup or an artilharia the club has won.</summary>
     Title,
 
-    /// <summary>Anything the game itself has to say that is none of the four above.</summary>
+    /// <summary>
+    /// A cup round the country played, told to every manager rather than to the one club it
+    /// happened to involve. It is separate from <see cref="Title"/> because the news is not a
+    /// prize: nobody won anything, a set of clubs went through and another set did not, and a
+    /// box that filed that under titles would be filing an elimination next to a championship.
+    /// </summary>
+    CupRound,
+
+    /// <summary>
+    /// A season that is over: its four final tables and who moved between them.
+    /// </summary>
+    SeasonSummary,
+
+    /// <summary>Anything the game itself has to say that is none of the above.</summary>
     Club
 }

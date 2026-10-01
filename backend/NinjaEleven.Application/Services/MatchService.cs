@@ -391,12 +391,12 @@ public class MatchService : IMatchCleaner
             // match the world could not start because of a suspension is a match nobody sees.
             if (orderHome?.StarterIds is { Count: > 0 } homeStarterIds)
             {
-                homeSquad = ApplyTheStandingOrder(homeSquad, homeStarterIds, orderHome.BenchIds);
+                homeSquad = ApplyTheStandingOrder(homeSquad, homeStarterIds, orderHome.BenchIds, homeTactic);
             }
 
             if (orderAway?.StarterIds is { Count: > 0 } awayStarterIds)
             {
-                awaySquad = ApplyTheStandingOrder(awaySquad, awayStarterIds, orderAway.BenchIds);
+                awaySquad = ApplyTheStandingOrder(awaySquad, awayStarterIds, orderAway.BenchIds, awayTactic);
             }
         }
 
@@ -691,15 +691,99 @@ public class MatchService : IMatchCleaner
     /// the window it belonged to is the last thing that would have closed it — so a season
     /// left running comes back with its calendar a day behind its own results.
     /// </summary>
-    public async Task<int> RecoverInterruptedMatchesAsync(CancellationToken cancellationToken = default)
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <param name="leaveRunningMatchesAlone">
+    /// Whether a match this process is driving right now counts as interrupted. It does not,
+    /// and the flag is the difference between the two callers: a process that has just booted
+    /// holds no live session and is clearing up after a crash, while a loop that sweeps every
+    /// thirty seconds is running alongside the football it would otherwise close. A cold start
+    /// passes false and drops whatever is in the registry — which is how a restart stops a
+    /// match from being "already being played here" by a process that is playing nothing. A
+    /// sweep passes true, because a match on the pitch is a match somebody is watching.
+    /// </param>
+    /// <summary>
+    /// Gives up every match this process is playing, on the way out.
+    ///
+    /// <para>
+    /// A match stays where it is — the minute, the score, the status, the fixture — and only
+    /// stops claiming to be played. The next process may then take it over at once instead of
+    /// waiting out a lease nobody is going to renew, which is the difference between a restart
+    /// costing a manager nothing and a restart freezing the match he is watching for five
+    /// minutes. The alternative is a process that stops cleanly being indistinguishable from
+    /// one that was killed, and the price of that is charged to whoever is watching.
+    /// </para>
+    /// </summary>
+    public async Task<int> ReleaseTheMatchesOfThisHostAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var mine = _sessions.ActiveMatchIds.ToHashSet();
+
+        if (mine.Count == 0)
+        {
+            return 0;
+        }
+
+        var matches = await _matchRepository.ListUnfinishedAsync(cancellationToken);
+        var released = 0;
+
+        foreach (var match in matches)
+        {
+            if (!mine.Contains(match.Id) || !match.IsOwnedBy(_host.HostId))
+            {
+                continue;
+            }
+
+            match.ReleaseTheSession();
+            _matchRepository.Update(match);
+            released++;
+        }
+
+        if (released > 0)
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            _logger.LogWarning(
+                "Released {Count} match(es) on the way out; the next process may take them over at once.",
+                released);
+        }
+
+        return released;
+    }
+
+    public async Task<IReadOnlyCollection<Guid>> RecoverInterruptedMatchesAsync(
+        CancellationToken cancellationToken = default,
+        bool leaveRunningMatchesAlone = false)
     {
         var unfinished = await _matchRepository.ListUnfinishedAsync(cancellationToken);
         var now = _clock.UtcNow;
         var lease = _world.Value.SessionLease;
-        var recovered = 0;
+
+        // The matches this process is driving, read once. It is a set rather than a list
+        // because the question is asked of every unfinished match, and asking it of a list
+        // each time is a sweep of the registry per row.
+        var beingPlayed = leaveRunningMatchesAlone
+            ? _sessions.ActiveMatchIds.ToHashSet()
+            : new HashSet<Guid>();
+
+        // Which matches were given up on, so the caller can say so to whoever was watching
+        // them. An abandoned match is not told to its followers: the loop stops driving it and
+        // publishes nothing more, so a manager watching one is left looking at a scoreboard
+        // that will never move again, with no end to the match and no word about where it went.
+        var abandoned = new List<Guid>();
 
         foreach (var match in unfinished)
         {
+            // A match this process is playing right now is not an interrupted match, however
+            // old its last snapshot looks. The registry is the working memory, so a match
+            // that is in it is being driven by the loop on this thread — and a rescue that
+            // asked only about the lease would close it, because a lease is a claim on a
+            // match and a process always holds the lease on its own. This is asked before the
+            // lease because it is the stronger fact: a live session beats a fresh heartbeat.
+            if (beingPlayed.Contains(match.Id))
+            {
+                continue;
+            }
+
             if (!match.CanBeReclaimedBy(_host.HostId, now, lease))
             {
                 // Somebody else is playing it and their lease is alive. Not ours to close.
@@ -715,18 +799,77 @@ public class MatchService : IMatchCleaner
             {
                 match.Abandon();
                 _matchRepository.Update(match);
-                recovered++;
+                abandoned.Add(match.Id);
                 continue;
             }
 
             await AbandonAsync(match, fixture, cancellationToken);
-            recovered++;
+            abandoned.Add(match.Id);
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         await _matchday.CloseTheWindowsThatWereLeftOpenAsync(cancellationToken);
 
-        return recovered;
+        return abandoned;
+    }
+
+    /// <summary>
+    /// Puts back on the schedule every fixture that says it was played and has no result.
+    ///
+    /// <para>
+    /// A fixture's status is a claim about a match, and three readers believe it: the window
+    /// that closes itself over its own fixtures, the claim that completes a window, and the
+    /// orphan sweep below. None of them checks the other side, so a fixture that reaches
+    /// <c>Finished</c> without a match to show for it is closed over, completed, and read as
+    /// settled — and the result it never had is missing from the table for the rest of the
+    /// season. A second division lost six fixtures this way, and eleven of its sixteen clubs
+    /// finished the campaign a game short with a calendar that said otherwise.
+    /// </para>
+    ///
+    /// <para>
+    /// Reopening is the whole repair, and it is enough on its own. The window's claim reads
+    /// the fixtures rather than trusting its own two columns
+    /// (<c>RoundExecutionStore.TryClaimAsync</c>), so a fixture back on the schedule puts its
+    /// window back on the calendar and the next walk of the world plays the matchday. Nothing
+    /// has to remember that the hole was found: the hole stops being a hole.
+    /// </para>
+    ///
+    /// <para>
+    /// The abandoned matches are left where they are. They are the record of what the football
+    /// was before it was given up on, and a table skips them by reading
+    /// <see cref="MatchStatus.Finished"/> — so the replay does not double the result, it
+    /// replaces a matchday that had none.
+    /// </para>
+    /// </summary>
+    /// <returns>How many fixtures were put back on the schedule.</returns>
+    public async Task<int> ReopenTheFixturesNobodyDecidedAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var orphans = await _fixtureRepository.ListFinishedWithoutAFinishedMatchAsync(cancellationToken);
+
+        if (orphans.Count == 0)
+        {
+            return 0;
+        }
+
+        foreach (var fixture in orphans)
+        {
+            fixture.Reopen();
+            _fixtureRepository.Update(fixture);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // An error rather than a warning, because the word for it is "lost": every one of
+        // these is a matchday that was closed over a hole, and the table above it has been
+        // short by that fixture's result since the moment it happened.
+        _logger.LogError(
+            "{Count} fixture(s) were marked played with no match behind them and have been put " +
+            "back on the schedule: {Fixtures}. Their windows owe those matches again.",
+            orphans.Count,
+            string.Join(", ", orphans.Select(fixture => fixture.Id)));
+
+        return orphans.Count;
     }
 
     /// <summary>
@@ -734,20 +877,21 @@ public class MatchService : IMatchCleaner
     /// decided, so they stop holding their fixtures.
     ///
     /// <para>
-    /// A live match and its fixture are exclusive: the database refuses a second match for a
-    /// fixture while the first one is running. So a match left running on a decided fixture is
-    /// not a leftover nobody looks at — it is a claim on a fixture that can never be played
-    /// again, held by a match that is never ticked, and no window will ever ask about it
-    /// because every walk has already finished with that fixture. The world does not skip a
+    /// A live match and its fixture are exclusive: the database refuses a second live match
+    /// for a fixture while the first one is running. So a match left running on a decided
+    /// fixture is not a leftover nobody looks at — it is a claim on a fixture that can never
+    /// be played again, held by a match that is never ticked, and no window will ever ask about
+    /// it because every walk has already finished with that fixture. The world does not skip a
     /// matchday over that; it owes it for ever.
     /// </para>
     ///
     /// <para>
-    /// The fixture is <b>not</b> reopened. It was decided, the result is in the table, and
-    /// reopening it would put a played match back on the schedule and have the world play it
-    /// twice. Only the match is closed, and it is closed as <c>Abandoned</c> because it never
-    /// reached full time — a row recording a score that was never played is a lie in the
-    /// results table.
+    /// The fixture is <b>not</b> reopened here, and the reason is that this method is run by
+    /// <see cref="ReopenTheFixturesNobodyDecidedAsync"/> immediately beforehand: a fixture
+    /// that is decided here is decided by a match that reached the final whistle, and that is
+    /// the only thing that makes a fixture decided. Reading the column on its own is what let
+    /// a matchday be closed over a hole, and the sweep that closes an orphan is the last place
+    /// in the game that should be the one to believe it.
     /// </para>
     ///
     /// <para>
@@ -1053,6 +1197,7 @@ public class MatchService : IMatchCleaner
                 AwayTeam = ToTeam(await _teamRepository.GetAsync(match.AwayTeamId, cancellationToken)),
                 HomeKitSide = match.HomeKitSide,
                 AwayKitSide = match.AwayKitSide,
+                Minute = session.State.Minute,
                 HomeLineup = session.State.HomeLineup,
                 AwayLineup = session.State.AwayLineup,
                 HomeBench = session.State.HomeBench,
@@ -2890,12 +3035,43 @@ public class MatchService : IMatchCleaner
         var players = (await _playerRepository.ListAsync(cancellationToken))
             .ToDictionary(player => player.Id);
 
+        // The numbers on their backs, read as the club's whole set of contracts rather than
+        // one lookup per man. A snapshot is built for every available player of the club and a
+        // lookup each would be a question per row about a fact that is already a list.
+        //
+        // The contracts the club holds now, rather than the squad of the season: the shirt is
+        // what the man is wearing tonight, and a contract that has not been called off is the
+        // one that says so. A club's history is in the same table, so a striker who has been
+        // through here twice has a row per spell and the number he wore in the first of them
+        // is not the number on his back.
+        //
+        // A club holding one man on two live contracts is not supposed to happen — the transfer
+        // market refuses the deal that would do it — and it is not this method's job to decide
+        // which of the two shirts he is wearing. But the dictionary is built from a book rather
+        // than from a rule, and a book that is wrong takes down a matchday with it: the
+        // ToDictionary threw, the window failed, the fixture reopened, and the whole country
+        // stopped over one duplicated row in one club's history. So the first contract wins the
+        // shirt, the duplicate is ignored, and the day is played. The wrong book is the
+        // integrity sweep's to report, not a manager's to be locked out of a Saturday by.
+        var shirtNumbers = new Dictionary<Guid, int?>();
+
+        foreach (var membership in (await _teamRepository.GetLiveContractsAsync(team.Id, cancellationToken)))
+        {
+            if (membership.ShirtNumber.HasValue)
+            {
+                shirtNumbers.TryAdd(membership.PlayerId, membership.ShirtNumber);
+            }
+        }
+
         var snapshots = new List<MatchPlayerSnapshot>(states.Count);
         foreach (var state in states)
         {
             if (players.TryGetValue(state.PlayerId, out var player))
             {
-                snapshots.Add(MatchPlayerSnapshot.FromPlayerSeasonState(player, state));
+                snapshots.Add(MatchPlayerSnapshot.FromPlayerSeasonState(
+                    player,
+                    state,
+                    shirtNumbers.GetValueOrDefault(state.PlayerId)));
             }
         }
 
@@ -3192,9 +3368,18 @@ public class MatchService : IMatchCleaner
     /// <para>
     /// The order is a statement made days ago about men who have since been suspended, injured
     /// or sent away. It is applied as far as it still holds: every man the manager named who is
-    /// available today keeps his place, in the manager's own order, and the gaps are filled
-    /// from the eleven the staff would have picked — which is the best available man for the
-    /// shape, rather than any man at all.
+    /// available today keeps his place, in the manager's own order, and the gaps are filled by
+    /// a man of the same line — which is what keeps the shape he saved the shape that turns up.
+    /// </para>
+    ///
+    /// <para>
+    /// The keeper is the one exception to "every man named keeps his place", and it is exactly
+    /// one rather than at least one. It used to be filled from the head of the staff's eleven,
+    /// which is ordered with the keeper first, so a plan of four-three-three lost its striker
+    /// and gained a second goalkeeper every time one of the eleven was unavailable; and a plan
+    /// was allowed to name two keepers in the first place. Both put a team sheet on the pitch
+    /// that the engine cannot read a shape out of, so a manager's saved tactic arrived as
+    /// somebody else's eleven.
     /// </para>
     ///
     /// <para>
@@ -3208,7 +3393,8 @@ public class MatchService : IMatchCleaner
     private static SquadSelection ApplyTheStandingOrder(
         SquadSelection squad,
         IReadOnlyCollection<Guid> starterIds,
-        IReadOnlyCollection<Guid>? benchIds)
+        IReadOnlyCollection<Guid>? benchIds,
+        Tactic? tactic)
     {
         var available = squad.All.ToDictionary(player => player.PlayerId);
 
@@ -3224,30 +3410,52 @@ public class MatchService : IMatchCleaner
             .Take(SquadSize)
             .ToList();
 
-        eleven.AddRange(fallback
-            .Where(player => !eleven.Contains(player))
-            .Take(SquadSize - eleven.Count));
+        // Exactly one goalkeeper plays, and the one the manager named is the one who plays.
+        // This is not a detail of the eleven: a keeper's attributes are high by design, so a
+        // second name in that band is a second man on the pitch who is a goalkeeper, and a
+        // team sheet that says two of them is a shape the engine cannot measure — which is how
+        // a 4-3-3 the manager saved arrived at the pitch as somebody else's eleven.
+        var surplusKeepers = eleven
+            .Where(player => player.Position == Position.GK)
+            .Skip(1)
+            .ToList();
 
-        // One goalkeeper is the rule that survives everything, because a club that plays with
-        // nobody in goal is punished for a suspension rather than for football. The keeper is
-        // taken from the bench before an outfielder is promoted into the eleven.
-        if (eleven.Count(player => player.Position == Position.GK) == 0)
+        foreach (var surplus in surplusKeepers)
         {
-            var keeper = squad.All
-                .Where(player => player.Position == Position.GK && !eleven.Contains(player))
-                .OrderByDescending(player => PlayerMetric.KeeperAbility(player))
-                .FirstOrDefault();
+            eleven.Remove(surplus);
+        }
 
-            if (keeper is not null)
+        // A gap is filled by a man of the same line. Filling it from the head of the staff's
+        // eleven instead — which is ordered with the keeper first — handed a club playing 4-3-3
+        // a second goalkeeper every time one of his eleven was unavailable, and the striker the
+        // shape was missing nobody put back. The shape is what the manager ordered, so it is
+        // the shape the replacements are chosen against.
+        var shape = tactic is { IsComplete: true } ? tactic : Tactics.FromSquad(squad.All);
+
+        foreach (var line in shape.Lines)
+        {
+            var need = line.Count - eleven.Count(player => player.Position == line.Position);
+            if (need <= 0)
             {
-                var displaced = eleven.LastOrDefault(player => player.Position != Position.GK);
-                if (displaced is not null)
-                {
-                    eleven.Remove(displaced);
-                }
-
-                eleven.Add(keeper);
+                continue;
             }
+
+            eleven.AddRange(squad.All
+                .Where(player => player.Position == line.Position && !eleven.Contains(player))
+                .OrderByDescending(player => fallback.Contains(player) ? 1 : 0)
+                .ThenByDescending(player => PlayerMetric.TacticalMetric(player, line.Profile))
+                .Take(need));
+        }
+
+        // A club that does not have the men for its own shape still plays eleven: the seats
+        // its lines cannot fill are filled by anybody left rather than the eleven going out
+        // with nine names in it.
+        if (eleven.Count < SquadSize)
+        {
+            eleven.AddRange(squad.All
+                .Where(player => !eleven.Contains(player))
+                .OrderByDescending(player => PlayerMetric.Metric(player))
+                .Take(SquadSize - eleven.Count));
         }
 
         // The bench is the manager's bench as far as it holds, and the rest of the squad after
@@ -3423,8 +3631,37 @@ public class MatchService : IMatchCleaner
         GateRevenue = match.Gate.GrossRevenue,
         Penalty = PenaltyOptionsFor(state),
         Shootout = ShootoutViewFor(state),
-        UserTeamId = state.ManagerTeamId
+        UserTeamId = state.ManagerTeamId,
+        LiveRatings = LiveRatingsFor(state)
     };
+
+    /// <summary>
+    /// The note every man on the pitch is carrying at this minute, for both clubs, and the
+    /// bench is left out because a man who has not played does not have one. A substitute who
+    /// has come on is in the lineup and therefore in here, which is the point: a manager
+    /// watching his own change wants to see what it was worth.
+    /// </summary>
+    private static IReadOnlyList<LiveRatingView> LiveRatingsFor(MatchState state)
+    {
+        var everyone = state.HomeLineup.Concat(state.AwayLineup).ToList();
+        var views = new List<LiveRatingView>(everyone.Count);
+
+        foreach (var player in everyone)
+        {
+            var minutes = player.MinutesPlayed(state.Minute);
+            var rating = MatchRating.Of(player, minutes, state.Minute);
+
+            views.Add(new LiveRatingView
+            {
+                PlayerId = player.PlayerId,
+                Rating = rating,
+                RatingBand = MatchRating.BandOf(rating),
+                MinutesPlayed = minutes
+            });
+        }
+
+        return views;
+    }
 
     /// <summary>
     /// The injury a manager has to act on: who cannot continue, for which club, and how

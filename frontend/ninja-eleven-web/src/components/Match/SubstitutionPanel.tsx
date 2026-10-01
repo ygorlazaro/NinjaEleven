@@ -1,9 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { MatchPlayerDto, TeamDto } from '@/types';
-import { positionLabel, sortByPosition, starsToString } from '@/services/formatters';
-import EnergyBar from '@/components/Match/EnergyBar';
-import HurtBadge from '@/components/Match/HurtBadge';
-import KitChip from '@/components/Club/KitChip';
+import { sortByPosition } from '@/services/formatters';
+import PlayerCard from '@/components/Match/PlayerCard';
 
 interface SubstitutionPanelProps {
   /**
@@ -82,14 +80,17 @@ const SubstitutionPanel: React.FC<SubstitutionPanelProps> = ({
     setPlayerInId(null);
   };
 
+  // The card a manager picks a change from is the card he reads the eleven in, and the card
+  // the bench is drawn in. A substitution decided against a different design from the one he
+  // just studied is a decision made on a stranger.
   const card = (player: MatchPlayerDto, kind: 'out' | 'in', disabled: boolean) => (
-    <button
+    <PlayerCard
       key={`${kind}-${player.playerId}`}
-      type="button"
-      className={`player-card ${disabled ? 'disabled' : ''} ${
-        (kind === 'out' ? playerOutId : playerInId) === player.playerId ? 'selected' : ''
-      }`}
+      player={player}
+      team={team}
+      side={kitSide}
       disabled={disabled}
+      selected={(kind === 'out' ? playerOutId : playerInId) === player.playerId}
       onClick={() => {
         if (kind === 'out') {
           setPlayerOutId(playerOutId === player.playerId ? null : player.playerId);
@@ -97,35 +98,27 @@ const SubstitutionPanel: React.FC<SubstitutionPanelProps> = ({
           setPlayerInId(playerInId === player.playerId ? null : player.playerId);
         }
       }}
-    >
-      <div className="player-top">
-        <span className="player-pos">{positionLabel(player.position)}</span>
-        <span className="player-card__name">
-          <KitChip team={team} side={kitSide} />
-          {player.name}
-          <HurtBadge player={player} />
-        </span>
-        <span className="player-stars" style={{ color: 'var(--accent)', marginLeft: '6px' }}>{starsToString(player.stars)}</span>
-        <span className="player-energy">{player.energy}%</span>
-      </div>
-      <div className="player-stats">
-        <span>Vel {player.speed}</span>
-        <span>Fio {player.dribbling}</span>
-        <span>For {player.strength}</span>
-        {player.matchGoals > 0 && <span title="Gols na partida">⚽ {player.matchGoals}</span>}
-        {player.matchSaves > 0 && <span title="Defesas na partida">🧤 {player.matchSaves}</span>}
-        {player.matchOwnGoals > 0 && <span title="Gols contra na partida">🔴 {player.matchOwnGoals}</span>}
-        {player.matchYellowCards > 0 && <span title="Cartões amarelos">🟨 {player.matchYellowCards}</span>}
-        {player.redCard && <span className="injury-mark" title="Expulso">🟥</span>}
-        {player.injuredOff && <span className="injury-mark" title="Saiu lesionado">🚑</span>}
-        {player.emergencyGK && <span title="Assumiu a meta sem goleiro">🧤</span>}
-        {player.subbedIn && <span title="Entrou em campo">↩</span>}
-        {/* A substitute is spent: he came off, so the screen says so rather than offering
-            a change the backend is going to refuse. */}
-        {player.subbedOff && <span className="injury-mark" title="Já saiu de campo — não pode voltar">⇤</span>}
-      </div>
-      <EnergyBar value={player.energy} compact />
-    </button>
+      detail={
+        <div className="player-stats">
+          <span>Vel {player.speed}</span>
+          <span>Fio {player.dribbling}</span>
+          <span>For {player.strength}</span>
+          {player.matchGoals > 0 && <span title="Gols na partida">⚽ {player.matchGoals}</span>}
+          {player.matchSaves > 0 && <span title="Defesas na partida">🧤 {player.matchSaves}</span>}
+          {player.matchOwnGoals > 0 && <span title="Gols contra na partida">🔴 {player.matchOwnGoals}</span>}
+          {player.matchYellowCards > 0 && <span title="Cartões amarelos">🟨 {player.matchYellowCards}</span>}
+          {player.redCard && <span className="injury-mark" title="Expulso">🟥</span>}
+          {player.injuredOff && <span className="injury-mark" title="Saiu lesionado">🚑</span>}
+          {player.emergencyGK && <span title="Assumiu a meta sem goleiro">🧤</span>}
+          {player.subbedIn && <span title="Entrou em campo">↩</span>}
+          {/* A substitute is spent: he came off, so the screen says so rather than offering
+              a change the backend is going to refuse. */}
+          {player.subbedOff && (
+            <span className="injury-mark" title="Já saiu de campo — não pode voltar">⇤</span>
+          )}
+        </div>
+      }
+    />
   );
 
   return (

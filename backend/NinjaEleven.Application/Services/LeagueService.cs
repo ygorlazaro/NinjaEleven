@@ -239,8 +239,8 @@ public class LeagueService
             .ToList();
 
     /// <summary>
-    /// The top scorers of a season, and of one kind of competition inside it, in the order the
-    /// domain's chain gives.
+    /// The top scorers of a season, of one kind of competition inside it, and of one division of
+    /// that kind, in the order the domain's chain gives.
     /// </summary>
     /// <param name="seasonId">The season being counted.</param>
     /// <param name="top">How many to return.</param>
@@ -253,6 +253,27 @@ public class LeagueService
     /// league's goals wearing the cup's name, and a manager would read his striker's cup run off
     /// it wrong.
     /// </param>
+    /// <param name="divisionId">
+    /// The division whose artilharia is being asked for; null for the whole competition.
+    ///
+    /// <para>
+    /// The championship is <b>four</b> editions of one kind, so asking for "the league" answers
+    /// a question about the country and not about a division. It is a legitimate answer — the
+    /// season-wide chart is a real thing and a page wants it — but it is the wrong answer for an
+    /// artilharia: a second-division striker topping the season's list put his club at the top of
+    /// a table whose money is the first division's, and the first division's own artilheiro sat
+    /// below a man from a division he does not play in. The chart and the cheque have to be the
+    /// same table, and the prize side already counts per edition
+    /// (<see cref="ScorerPrizeService"/>); without this the manager read one division's artilharia
+    /// off another division's football.
+    /// </para>
+    ///
+    /// <para>
+    /// A cup is one edition and needs no such filter, and a division that was asked for inside a
+    /// competition that is not the league is ignored rather than trusted — the pyramid's
+    /// editions are the only ones with a division to filter on.
+    /// </para>
+    /// </param>
     /// <remarks>
     /// Every kind is counted from the match lines, not only the filtered ones. The chain that
     /// orders a scorers table reaches for games played and cards booked, and the season's own
@@ -264,6 +285,7 @@ public class LeagueService
         Guid seasonId,
         int top = 15,
         CompetitionType? competition = null,
+        Guid? divisionId = null,
         CancellationToken cancellationToken = default)
     {
         if (await _seasonRepository.GetAsync(seasonId, cancellationToken) is null)
@@ -272,7 +294,7 @@ public class LeagueService
         }
 
         var lines = await _playerRepository.ListSeasonScorerLinesAsync(
-            seasonId, competition, cancellationToken);
+            seasonId, competition, divisionId, cancellationToken);
 
         if (lines.Count == 0)
         {

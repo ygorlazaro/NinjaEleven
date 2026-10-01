@@ -211,16 +211,36 @@ public class CompetitionExecutionService
         && !round.HasTheClaimExpired(now, lease);
 
     /// <summary>
-    /// Closes the matches that are still on the pitch of fixtures the world has already
-    /// decided, and says so when there were any.
+    /// Brings the world's fixtures back in line with the matches under them, and closes the
+    /// matches still on the pitch of fixtures it has already decided.
     ///
+    /// <para>
     /// A live match holds its fixture — the database refuses a second one — so an orphan is
     /// not a row nobody looks at: it is a fixture the world can never play again, held by a
     /// match that is never ticked, and no walk asks about a fixture it has already finished
     /// with. The world does not skip a matchday over that; it owes it for ever.
+    /// </para>
+    ///
+    /// <para>
+    /// The lost fixtures come first, and the order is the argument. A fixture whose matches
+    /// were all abandoned is one the world believes it played and the table says it did not:
+    /// putting it back on the schedule is the repair, and it has to happen before the orphan
+    /// sweep, whose whole premise is that a decided fixture was decided by a match that
+    /// reached the final whistle.
+    /// </para>
     /// </summary>
     private async Task ReleaseTheFixturesThatMatchesAreHoldingAsync(CancellationToken cancellationToken)
     {
+        var reopened = await _cleaner.ReopenTheFixturesNobodyDecidedAsync(cancellationToken);
+
+        if (reopened > 0)
+        {
+            _logger.LogWarning(
+                "{Count} fixture(s) had been closed over a matchday nobody played. They are back on " +
+                "the schedule and their windows owe those matches again.",
+                reopened);
+        }
+
         var released = await _cleaner.AbandonMatchesOnDecidedFixturesAsync(cancellationToken);
 
         if (released > 0)
@@ -431,6 +451,14 @@ public class CompetitionExecutionService
     /// nothing left in it is not offered whatever its own row says, for the same reason the
     /// due walk does not offer it.
     /// </para>
+    ///
+    /// <para>
+    /// Which is the whole of what decides a window here: its fixtures. A window the calendar
+    /// has not got to yet has no fixtures, and a window whose football was all played has none
+    /// left, and neither is offered — but a window that was closed over a matchday nobody
+    /// finished has one, and it is the fixtures that say so rather than the window's own claim
+    /// that it was played.
+    /// </para>
     /// </summary>
     private async Task<(MatchDay Day, CompetitionType Wave, List<Round> Rounds)?> NextWindowOfTheSeasonAsync(
         Season season,
@@ -456,11 +484,21 @@ public class CompetitionExecutionService
             waveByEdition.Keys.ToList(),
             cancellationToken);
 
+        // The window's own row is not asked whether it was played. Its two columns are a record
+        // of a window having been *closed*, and a window can be closed over a hole — a fixture
+        // whose match was given up on is put back on the schedule while the window above it is
+        // being written up. Filtering on the row here would skip exactly the windows the
+        // fixtures below say are owed, and a window the walk will not offer is a matchday that
+        // is simply gone: the six fixtures a second division lost were owed to the world and no
+        // press of the button was ever going to reach them.
+        //
+        // So the fixtures have the last word, which is what the two lines below do, and they
+        // are the same test the due walk makes for the scheduler. One rule, asked twice, is
+        // better than two rules that can disagree — and they did.
         var pending = rounds
             .Where(round =>
                 round.MatchDayId is not null
                 && dayById.ContainsKey(round.MatchDayId.Value)
-                && !round.HasBeenExecuted
                 && waveByEdition.ContainsKey(round.CompetitionSeasonId))
             .ToList();
 

@@ -20,7 +20,7 @@ namespace NinjaEleven.Application.Services;
 /// <param name="AttributeBefore">The attribute as it was.</param>
 /// <param name="AttributeAfter">The attribute as it is.</param>
 /// <param name="Fee">What the session cost the club.</param>
-/// <param name="SessionsLeft">How many sessions the club has left on the day.</param>
+/// <param name="SessionsLeft">How many sessions this man has left on the day.</param>
 public record TrainingResult(
     Guid PlayerId,
     Guid SeasonId,
@@ -31,6 +31,45 @@ public record TrainingResult(
     int AttributeAfter,
     decimal Fee,
     int SessionsLeft);
+
+/// <summary>One man on a manager's sheet: this one, this attribute, today.</summary>
+/// <param name="PlayerId">Who to work.</param>
+/// <param name="Attribute">What to work on.</param>
+public record TrainingRequest(Guid PlayerId, PlayerAttribute Attribute);
+
+/// <summary>
+/// What happened to one man in a selection, which is worked or refused and never nothing.
+/// </summary>
+/// <param name="PlayerId">Who he is.</param>
+/// <param name="Attribute">What was asked of him.</param>
+/// <param name="Worked">Whether the session was run.</param>
+/// <param name="Result">What it did, when it ran.</param>
+/// <param name="RefusalCode">The rule that refused him, when it did.</param>
+/// <param name="Refusal">The sentence telling the manager why, when it did.</param>
+/// <remarks>
+/// The refusal travels as the code and the sentence the domain wrote, and not as a client's
+/// guess at the reason: a screen that invented "não pôde treinar" for a man who had no energy
+/// and for a man who had already worked today would be telling the manager the same thing
+/// about two problems he fixes in opposite ways.
+/// </remarks>
+public record TrainingOutcome(
+    Guid PlayerId,
+    PlayerAttribute Attribute,
+    bool Worked,
+    TrainingResult? Result,
+    string? RefusalCode,
+    string? Refusal)
+{
+    public static TrainingOutcome Trained(TrainingResult result) =>
+        new(result.PlayerId, result.Attribute, true, result, null, null);
+
+    public static TrainingOutcome Refused(
+        Guid playerId,
+        PlayerAttribute attribute,
+        string code,
+        string refusal) =>
+        new(playerId, attribute, false, null, code, refusal);
+}
 
 /// <summary>
 /// A manager's one decision about one player: work on something, and pay for it in the
@@ -73,6 +112,7 @@ public class TrainingService
 {
     private readonly IPlayerRepository _players;
     private readonly ISeasonRepository _seasons;
+    private readonly ITeamRepository _teams;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IClock _clock;
     private readonly ITrainingSessionRepository _sessions;
@@ -83,6 +123,7 @@ public class TrainingService
     public TrainingService(
         IPlayerRepository players,
         ISeasonRepository seasons,
+        ITeamRepository teams,
         IUnitOfWork unitOfWork,
         IClock clock,
         ITrainingSessionRepository sessions,
@@ -92,6 +133,7 @@ public class TrainingService
     {
         _players = players;
         _seasons = seasons;
+        _teams = teams;
         _unitOfWork = unitOfWork;
         _clock = clock;
         _sessions = sessions;
@@ -138,8 +180,22 @@ public class TrainingService
             .Where(player => stateByPlayer.ContainsKey(player.Id))
             .ToList();
 
+        // The wage is on the contract, so the price of a session is read from the same place
+        // the wage on the squad screen is read from. Reading it from the player's attributes
+        // here would price a session off a number the club is not paying this season.
+        var contracts = await _teams.GetLiveContractsAsync(teamId, cancellationToken);
+        var wageByPlayer = contracts.ToDictionary(membership => membership.PlayerId, membership => membership.Wage);
+
         var today = DateOnly.FromDateTime(_clock.UtcNow.UtcDateTime);
-        var played = await TheAllowanceForAsync(teamId, season.Id, today, cancellationToken);
+
+        // The day's value is the same for every man, so it is worked out once and the spent
+        // count is taken per man: the day is what a body can take, not what a club can spend.
+        var day = await TheAllowanceForAsync(teamId, Guid.Empty, season.Id, today, cancellationToken);
+        var spentByPlayer = await _sessions.ListByTeamAndDayAsync(teamId, today, cancellationToken);
+
+        var spent = spentByPlayer
+            .GroupBy(session => session.PlayerId)
+            .ToDictionary(group => group.Key, group => group.Count());
 
         var quotes = new SquadTrainingQuotes
         {
@@ -147,20 +203,28 @@ public class TrainingService
             SeasonId = season.Id,
             SquadEnergy = states.Sum(state => state.Energy),
             Day = today,
-            PlaysToday = played.Plays,
-            SessionsAllowed = played.Allowed,
-            SessionsSpent = played.Spent,
+            PlaysToday = day.Plays,
+            SessionsAllowed = day.Allowed,
+            SessionsSpent = spent.Count,
             Players = squad
                 .OrderBy(player => player.Position)
                 .ThenByDescending(player => player.Potential)
-                .Select(player => QuoteFor(player, stateByPlayer[player.Id]))
+                .Select(player => QuoteFor(
+                    player,
+                    stateByPlayer[player.Id],
+                    wageByPlayer.GetValueOrDefault(player.Id),
+                    day.Allowed - spent.GetValueOrDefault(player.Id)))
                 .ToList()
         };
 
         return quotes;
     }
 
-    private static TrainingQuote QuoteFor(Player player, PlayerSeasonState state)
+    private static TrainingQuote QuoteFor(
+        Player player,
+        PlayerSeasonState state,
+        decimal seasonWage,
+        int sessionsLeft)
     {
         var quote = new TrainingQuote
         {
@@ -173,7 +237,8 @@ public class TrainingService
             Energy = state.Energy,
             IsAvailable = state.IsAvailable,
             Injury = state.Injury.ToString(),
-            SessionFee = TrainingRules.SessionFee(PlayerValuation.SeasonWage(player, state))
+            SessionFee = TrainingRules.SessionFee(seasonWage),
+            SessionsLeft = Math.Max(0, sessionsLeft)
         };
 
         foreach (var attribute in DevelopmentRules.All)
@@ -193,12 +258,12 @@ public class TrainingService
     }
 
     /// <summary>
-    /// A club's training allowance for one day: whether it is playing, how many sessions it
-    /// has, how many are gone, and the matchday the day is, if the calendar has one.
+    /// One man's training allowance for one day: whether his club is playing, how many
+    /// sessions he has, how many are gone, and the matchday the day is, if the calendar has one.
     /// </summary>
     /// <param name="Plays">Whether the club has a fixture on the day.</param>
     /// <param name="Allowed">The sessions the day is worth.</param>
-    /// <param name="Spent">The sessions already run.</param>
+    /// <param name="Spent">The sessions he has already run.</param>
     /// <param name="MatchDay">The calendar's day, when there is one.</param>
     private sealed record Allowance(bool Plays, int Allowed, int Spent, MatchDay? MatchDay)
     {
@@ -207,18 +272,25 @@ public class TrainingService
     }
 
     /// <summary>
-    /// The day's allowance, counted from the sessions rather than from a tally.
+    /// One man's day, counted from his own sessions rather than from a tally.
     ///
     /// <para>
-    /// Two set reads and a count between them: the club's fixtures on the day, and the club's
-    /// sessions on the day. The calendar is only opened to name the day a fee is written
-    /// against, which is the same reason every line of the club's book carries a matchday
-    /// number — and the number is null on a day the calendar has no day for, rather than
+    /// Three set reads and a count between them: the club's fixtures on the day, the man's
+    /// sessions on the day, and the calendar's own day — which is only opened to name the day a
+    /// fee is written against, and is null on a day the calendar has no day for rather than
     /// invented so that a statement always has a day in it.
+    /// </para>
+    ///
+    /// <para>
+    /// The count is over one man and not over the club. It was over the club, which made a day
+    /// worth one session to twenty-three men, and a manager who wanted his squad worked had to
+    /// choose which nineteen to leave alone. A day is what a body can take, so the day is
+    /// counted per body.
     /// </para>
     /// </summary>
     private async Task<Allowance> TheAllowanceForAsync(
         Guid teamId,
+        Guid playerId,
         Guid seasonId,
         DateOnly day,
         CancellationToken cancellationToken)
@@ -229,7 +301,7 @@ public class TrainingService
         var fixtures = await _fixtures.ListByTeamAndDateAsync(teamId, day, cancellationToken);
         var plays = fixtures.Count > 0;
 
-        var spent = (await _sessions.ListByTeamAndDayAsync(teamId, day, cancellationToken)).Count;
+        var spent = (await _sessions.ListByPlayerAndDayAsync(playerId, day, cancellationToken)).Count;
 
         return new Allowance(plays, TrainingRules.DailyBudget(plays), spent, matchDay);
     }
@@ -298,20 +370,19 @@ public class TrainingService
         }
 
         var today = DateOnly.FromDateTime(_clock.UtcNow.UtcDateTime);
-        var allowance = await TheAllowanceForAsync(teamId, season.Id, today, cancellationToken);
+        var allowance = await TheAllowanceForAsync(teamId, player.Id, season.Id, today, cancellationToken);
 
-        // The refusal comes before the price is quoted, because a manager who has spent the
-        // day's allowance is not being offered anything and should not be shown what it would
-        // have cost first. The count is the sessions themselves, so this cannot disagree with
-        // the history it is counting.
+        // The refusal comes before the price is quoted, because a man who has spent the day's
+        // allowance is not being offered anything and should not be shown what it would have
+        // cost first. The count is the sessions themselves, so this cannot disagree with the
+        // history it is counting.
         if (allowance.Left <= 0)
         {
             throw new DomainValidationException(
                 "TrainingAllowanceSpent",
                 allowance.Plays
-                    ? $"O clube já usou as {TrainingRules.SessionsOnAMatchDay} sessão " +
-                      $"de hoje e joga hoje."
-                    : $"O clube já usou as {TrainingRules.SessionsOnARestDay} sessões de hoje.");
+                    ? $"{player.Name} já usou a {TrainingRules.SessionsOnAMatchDay} sessão de hoje e joga hoje."
+                    : $"{player.Name} já usou as {TrainingRules.SessionsOnARestDay} sessões de hoje.");
         }
 
         var cost = TrainingRules.Cost(player, attribute);
@@ -324,7 +395,14 @@ public class TrainingService
                 $"e tem {state.Energy}.");
         }
 
-        var fee = TrainingRules.SessionFee(PlayerValuation.SeasonWage(player, state));
+        // The fee is a share of the wage the club has agreed, not of a wage worked out from the
+        // man as he is right now: a striker who scored twice this week costs the same to train
+        // as he did on Monday, and a club that has signed a man to a number is not re-opening
+        // that number every time he has a good afternoon.
+        var contract = (await _teams.GetLiveContractsAsync(teamId, cancellationToken))
+            .FirstOrDefault(membership => membership.PlayerId == player.Id);
+
+        var fee = TrainingRules.SessionFee(contract?.Wage ?? 0m);
         var before = player.Get(attribute);
         var now = _clock.UtcNow;
 
@@ -382,6 +460,48 @@ public class TrainingService
             player.Get(attribute),
             fee,
             allowance.Left - 1);
+    }
+
+    /// <summary>
+    /// Works a whole selection of men in one press of the button.
+    ///
+    /// <para>
+    /// Each man is his own session and his own commit, and one man's refusal never takes
+    /// another man's morning with it. That is the whole reason this is a loop over
+    /// <see cref="TrainAsync"/> rather than a set operation: a session is four writes that go
+    /// together, and a batch that rolled the eleven back because the twelfth was injured would
+    /// be a manager who cannot work his squad because one reserve has a twisted ankle.
+    /// </para>
+    ///
+    /// <para>
+    /// Every man is answered for, in the order he was picked, whether he was worked or refused —
+    /// a selection that silently lost somebody would be a screen that cannot say why the eleven
+    /// it was given is not the eleven on the pitch.
+    /// </para>
+    /// </summary>
+    public async Task<IReadOnlyList<TrainingOutcome>> TrainManyAsync(
+        IReadOnlyList<TrainingRequest> selection,
+        Guid? seasonId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+
+        var outcomes = new List<TrainingOutcome>(selection.Count);
+
+        foreach (var request in selection)
+        {
+            try
+            {
+                outcomes.Add(TrainingOutcome.Trained(
+                    await TrainAsync(request.PlayerId, request.Attribute, seasonId, cancellationToken)));
+            }
+            catch (DomainValidationException refusal)
+            {
+                outcomes.Add(TrainingOutcome.Refused(request.PlayerId, request.Attribute, refusal.Code, refusal.Message));
+            }
+        }
+
+        return outcomes;
     }
 
     /// <summary>

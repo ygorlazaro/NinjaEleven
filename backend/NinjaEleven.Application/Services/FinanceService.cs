@@ -245,29 +245,26 @@ public class FinanceService
             return false;
         }
 
-        var contracted = contracts.Select(m => m.PlayerId).ToHashSet();
+        var contracted = contracts.ToDictionary(m => m.PlayerId, m => m.Wage);
         var bill = 0m;
 
-        foreach (var state in squad)
+        foreach (var playerId in squad.Select(state => state.PlayerId))
         {
             // A player with a season state but no membership is on nobody's books: his
             // contract ran out while the state carrying his goals is still around. A club
             // does not pay a man who is not on its books, whatever the season says he did.
-            if (!contracted.Contains(state.PlayerId))
+            if (!contracted.TryGetValue(playerId, out var wage))
             {
                 continue;
             }
 
-            var player = await _players.GetAsync(state.PlayerId, cancellationToken);
-            if (player is null)
-            {
-                continue;
-            }
-
-            // The age is today's, the same age the squad screen and the profile show. A wage
-            // read from a different day than the price on the same player would be two clubs'
-            // books disagreeing about one man.
-            bill += PlayerValuation.SeasonWage(player, state);
+            // The wage is the one on the contract, and not a figure worked out from the man's
+            // attributes today. A wage that moved with his form would make the wage bill
+            // something the club watches rather than something it agreed: the same striker
+            // would cost four different amounts across a season depending on which Saturday he
+            // had scored on, and a club could not plan a month around a number that changes on
+            // its own. The number moves when the deal is signed and when it is renewed.
+            bill += wage;
         }
 
         if (bill <= 0m)

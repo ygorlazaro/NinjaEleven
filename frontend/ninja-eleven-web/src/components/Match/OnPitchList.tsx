@@ -1,115 +1,101 @@
-import React, { useMemo } from 'react';
-import type { Guid, KitSide, MatchPlayerDto, TeamDto } from '@/types';
-import { positionLabel, sortByPosition, starsToString } from '@/services/formatters';
-import EnergyBar from '@/components/Match/EnergyBar';
-import { PlayerName } from '@/components/Common/Names';
-import HurtBadge from '@/components/Match/HurtBadge';
-import KitChip from '@/components/Club/KitChip';
-
-interface OnPitchListProps {
-  /** Only the club the manager commands: the list is his team sheet, not both. */
-  players: MatchPlayerDto[];
-  /**
-   * The club these eleven belong to, and which of its two shirts they are playing in.
-   *
-   * It is the fixture that says the side and not the club: the same club plays its first shirt
-   * at home and its second when the two colours on the pitch would be impossible to tell apart,
-   * so a list that asked the club would be showing the wrong shirt for half of a season's
-   * matches.
-   */
-  team?: TeamDto | null;
-  side?: KitSide;
-  /** False once the match is over, and while the five substitutions are spent. */
-  onSelect?: (player: MatchPlayerDto) => void;
-  /**
-   * The player of this club who has the ball right now, when it is theirs. It is a
-   * statement about where the ball is and not about how the player is performing, so the
-   * card is lit rather than rated.
-   */
-  ballCarrierId?: Guid | null;
-}
+import React from 'react';
+import type { MatchPlayerDto, TeamDto } from '@/types';
+import type { KitSide } from '@/types';
+import PlayerCard from './PlayerCard';
 
 /**
- * The team sheet under the scoreboard, and the way into a substitution during the match.
+ * The eleven on the pitch, in the order a manager reads them in: by line, and by where they
+ * play in that line.
  *
- * It shows the manager's own eleven, in the order a team sheet is read — goalkeepers,
- * defenders, midfielders, attackers, and by name inside each group — because a manager
- * looks for his own men, not for the other club. Every card carries what happened to its
- * player so far, and clicking one opens the substitution screen with that player already
- * picked to come off.
- *
- * Every card carries the shirt too, because a column of names is a column in one colour and a
- * manager glancing down it during a substitution is looking for the men on the pitch, not
- * reading eleven names.
+ * <para>
+ * The card is the one every list of players on this screen uses, and it is not a summary of it
+ * — it is the same thing. A manager deciding a substitution reads the eleven under the scoreboard
+ * and then reads the same eleven in the panel he is about to pick from, and two designs would
+ * mean he is learning the squad twice.
+ * </para>
  */
-const OnPitchList: React.FC<OnPitchListProps> = ({ players, team, side, onSelect, ballCarrierId }) => {
-  const ordered = useMemo(() => sortByPosition(players), [players]);
 
-  if (ordered.length === 0) {
-    return <div className="league-empty">Nenhum jogador em campo.</div>;
+interface OnPitchListProps {
+  players: MatchPlayerDto[];
+  team?: TeamDto | null;
+  side?: KitSide;
+  onSelect?: (player: MatchPlayerDto) => void;
+  /** The man with the ball, which the card marks so the eye finds it in a column. */
+  ballCarrierId?: string | null;
+}
+
+const OnPitchList: React.FC<OnPitchListProps> = ({
+  players,
+  team,
+  side = 'Home',
+  onSelect,
+  ballCarrierId,
+}) => {
+  if (players.length === 0) {
+    return <p className="squad-empty">Ninguém em campo.</p>;
   }
 
   return (
     <div className="on-pitch-list">
-      {ordered.map(p => {
-        const unavailable = p.redCard || p.injuredOff;
-        const clickable = !!onSelect && !unavailable;
-        const hasBall = !!ballCarrierId && p.playerId === ballCarrierId;
+      {players.map(p => {
+        const isBallCarrier = !!ballCarrierId && ballCarrierId === p.playerId;
+        // A man who cannot play is drawn as he is rather than left out: an eleven is a fact
+        // about the match, and a card that is missing says the match is missing a player when
+        // it has one who cannot touch the ball.
+        const unavailable = p.injuredOff || p.redCard;
 
         return (
-          <div
+          <PlayerCard
             key={p.playerId}
-            className={[
-              'on-pitch-card',
-              unavailable ? 'unavailable' : '',
-              p.emergencyGK ? 'emergency' : '',
-              hasBall ? 'has-ball' : '',
-              clickable ? 'clickable' : ''
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            title={unavailable ? 'Não está mais em campo' : 'Clique para fazer uma substituição'}
-            onClick={clickable ? () => onSelect?.(p) : undefined}
-          >
-            <span className="pc-pos">{positionLabel(p.position)}</span>
-            <span className="pc-name">
-              <KitChip team={team} side={side} />
-              <PlayerName playerId={p.playerId}>{p.name}</PlayerName>
-              {/* A man playing through a knock is still in the eleven, so the card that
-                  says who is on the pitch is also the card that says who is hurt. */}
-              <HurtBadge player={p} />
-              <span className="pc-stars" style={{ color: 'var(--accent)', marginLeft: '6px' }}>{starsToString(p.stars)}</span>
-            </span>
-            <span className="on-pitch-icons">
-              {/* The card under the scoreboard counts this match, not the season: a striker
-                  with nine for the year who has not scored today has scored nothing here. */}
-              {p.matchGoals > 0 && (
-                <span className="icon-goal" title={`${p.matchGoals} gol(s) na partida`}>
-                  ⚽{p.matchGoals > 1 ? p.matchGoals : ''}
-                </span>
-              )}
-              {p.matchSaves > 0 && (
-                <span className="icon-save" title={`${p.matchSaves} defesa(s) na partida`}>
-                  🧤{p.matchSaves > 1 ? p.matchSaves : ''}
-                </span>
-              )}
-              {p.matchOwnGoals > 0 && (
-                <span className="icon-own-goal" title={`${p.matchOwnGoals} gol(s) contra na partida`}>
-                  🔴{p.matchOwnGoals > 1 ? p.matchOwnGoals : ''}
-                </span>
-              )}
-              {p.matchYellowCards > 0 && (
-                <span className="icon-yellow" title={`${p.matchYellowCards} cartão(s) amarelo(s)`}>
-                  🟨{p.matchYellowCards > 1 ? p.matchYellowCards : ''}
-                </span>
-              )}
-              {p.redCard && <span className="icon-red" title="Expulso">🟥</span>}
-              {p.injuredOff && <span className="icon-injury" title="Saiu lesionado">🚑</span>}
-              {p.subbedIn && <span className="icon-sub" title="Entrou em campo">↩</span>}
-              {p.emergencyGK && <span className="icon-sub" title="Assumiu a meta sem goleiro">🧤</span>}
-            </span>
-            <EnergyBar value={p.energy} compact />
-          </div>
+            player={p}
+            team={team}
+            side={side}
+            className={`on-pitch-card${isBallCarrier ? ' has-ball' : ''}${
+              unavailable ? ' unavailable' : ''
+            }`}
+            title={
+              isBallCarrier
+                ? 'Com a bola'
+                : p.injuredOff
+                  ? 'Saiu lesionado'
+                  : p.redCard
+                    ? 'Expulso'
+                    : undefined
+            }
+            onClick={onSelect ? () => onSelect(p) : undefined}
+            badges={
+              <span className="player-tile__icons">
+                {/* Everything here happened in this match. The season's numbers belong on a
+                    profile, not beside a man who has not scored today. */}
+                {p.matchGoals > 0 && (
+                  <span className="icon-goal" title={`${p.matchGoals} gol(s) na partida`}>
+                    ⚽{p.matchGoals > 1 ? p.matchGoals : ''}
+                  </span>
+                )}
+                {p.matchSaves > 0 && (
+                  <span className="icon-save" title={`${p.matchSaves} defesa(s) na partida`}>
+                    🧤{p.matchSaves > 1 ? p.matchSaves : ''}
+                  </span>
+                )}
+                {p.matchOwnGoals > 0 && (
+                  <span className="icon-own-goal" title={`${p.matchOwnGoals} gol(s) contra`}>
+                    🔴{p.matchOwnGoals > 1 ? p.matchOwnGoals : ''}
+                  </span>
+                )}
+                {p.matchYellowCards > 0 && (
+                  <span className="icon-yellow" title={`${p.matchYellowCards} cartão(s) amarelo(s)`}>
+                    🟨{p.matchYellowCards > 1 ? p.matchYellowCards : ''}
+                  </span>
+                )}
+                {p.redCard && <span className="icon-red" title="Expulso">🟥</span>}
+                {p.injuredOff && <span className="icon-injury" title="Saiu lesionado">🚑</span>}
+                {p.subbedIn && <span className="icon-sub" title="Entrou em campo">↩</span>}
+                {p.emergencyGK && (
+                  <span className="icon-sub" title="Assumiu a meta sem goleiro">🧤</span>
+                )}
+              </span>
+            }
+          />
         );
       })}
     </div>

@@ -194,15 +194,29 @@ public class PlayerRepository : IPlayerRepository
     /// A season's goals by player, across every club in it, and optionally restricted to one
     /// kind of competition.
     /// </summary>
+    /// <summary>
+    /// A season's goals by player, of one kind of competition and of one division of it.
+    /// </summary>
     /// <remarks>
+    /// <para>
     /// The chain is the club list's, without the club: a line knows its match, a match its
     /// fixture, a fixture its round, and only the round's edition knows the kind of competition
-    /// the tie was. So a cup chart is a walk and not a column, and the same walk the club's own
-    /// scorers page walks — which is the point of a rule being in one place.
+    /// and the division the tie was. So a cup chart is a walk and not a column, and the same walk
+    /// the club's own scorers page walks — which is the point of a rule being in one place.
+    /// </para>
+    /// <para>
+    /// The division is the same walk one step further, and it is the step the artilharia needs.
+    /// A competition filter of "League" is satisfied by four editions at once, so without it the
+    /// first division's chart is a table of the country: the top line is whoever scored most in
+    /// the fourth, and the club on it is not in the division whose purse the prize list prices.
+    /// An artilharia and a cheque have to be the same table, so the chart is asked of an
+    /// edition and not of a kind.
+    /// </para>
     /// </remarks>
     public async Task<IReadOnlyList<ClubScorerLine>> ListSeasonScorerLinesAsync(
         Guid seasonId,
         CompetitionType? competitionType = null,
+        Guid? divisionId = null,
         CancellationToken cancellationToken = default)
     {
         var query =
@@ -215,12 +229,18 @@ public class PlayerRepository : IPlayerRepository
             join competition in _dbContext.Competitions.AsNoTracking()
                 on edition.CompetitionId equals competition.Id
             where line.SeasonId == seasonId
-            select new { line, competition.Type };
+            select new { line, competition.Type, edition.DivisionId };
 
         if (competitionType.HasValue)
         {
             var wanted = competitionType.Value;
             query = query.Where(row => row.Type == wanted);
+        }
+
+        if (divisionId.HasValue)
+        {
+            var wanted = divisionId.Value;
+            query = query.Where(row => row.DivisionId == wanted);
         }
 
         return ReadLines(await GroupAsync(query.Select(row => row.line), cancellationToken));

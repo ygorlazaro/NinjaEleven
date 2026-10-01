@@ -302,6 +302,44 @@ public class TeamController : ControllerBase
     }
 
     /// <summary>
+    /// Signs one of the manager's own men again.
+    ///
+    /// <para>
+    /// The request carries the number of seasons and nothing else about the money. The wage is
+    /// the server's to work out, because the salary on a contract is fixed for the run of that
+    /// contract and the only moment it moves is here: a client that sent the wage would be a
+    /// client that could renew a man for whatever it liked, and a renewal the club does not
+    /// agree to is not a renewal.
+    /// </para>
+    /// <para>
+    /// It is a POST because it writes an agreement, and the answer is the whole new shape of
+    /// the deal rather than a bare ok — a manager who has just signed a man for three seasons
+    /// at a new wage is owed the two numbers he agreed to, and the screen that sent this would
+    /// otherwise have to guess them from the squad it is about to refetch.
+    /// </para>
+    /// </summary>
+    [HttpPost("{id:guid}/contract/renew")]
+    public async Task<ActionResult<RenewContractResponseDto>> RenewContract(
+        Guid id,
+        [FromBody] RenewContractRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var renewal = await _teamService.RenewContractAsync(
+            id, request.PlayerId, request.Seasons, request.SeasonId, cancellationToken);
+
+        return Ok(new RenewContractResponseDto
+        {
+            PlayerId = renewal.PlayerId,
+            TeamId = renewal.TeamId,
+            SeasonId = renewal.SeasonId,
+            ContractId = renewal.ContractId,
+            Seasons = renewal.Seasons,
+            SeasonsLeft = renewal.SeasonsLeft,
+            Wage = renewal.Wage
+        });
+    }
+
+    /// <summary>
     /// The wire's kit as the domain's, with the domain doing the refusing. The controller maps
     /// and nothing else: a colour that is not a colour is a fact about the request, and the
     /// domain is where a club's clothes are a rule.

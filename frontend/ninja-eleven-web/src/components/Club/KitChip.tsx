@@ -7,6 +7,17 @@ interface KitChipProps {
   team: TeamDto | null | undefined;
   /** Which of the club's two shirts. A fixture decides it; a squad page has only one. */
   side?: KitSide;
+  /**
+   * The number to print on the back, when the shirt is drawn beside a player rather than
+   * beside a club. Absent leaves the back blank, which is what a shirt on a wall has.
+   */
+  number?: number | null;
+  /**
+   * How big the shirt is drawn. Beside a name in a list it is a mark; on a match card it is
+   * the first thing read, because it is the one thing on the card that says which man is
+   * which before anybody reads a word.
+   */
+  size?: 'small' | 'large';
 }
 
 /**
@@ -25,7 +36,7 @@ interface KitChipProps {
  * would say they were.
  * </para>
  */
-const KitChip: React.FC<KitChipProps> = ({ team, side = 'Home' }) => {
+const KitChip: React.FC<KitChipProps> = ({ team, side = 'Home', number, size = 'small' }) => {
   const kit = kitOf(team, side);
 
   if (!team || !kit) return null;
@@ -33,8 +44,16 @@ const KitChip: React.FC<KitChipProps> = ({ team, side = 'Home' }) => {
   const which = side === 'Away' ? 'reserva' : 'principal';
 
   return (
-    <span className="kit-chip" title={`Uniforme ${which} do ${team.name}`}>
-      <KitShirt kit={kit} label={`Uniforme ${which} do ${team.name}`} />
+    <span
+      className={`kit-chip${number ? ' kit-chip--numbered' : ''}${size === 'large' ? ' kit-chip--large' : ''}`}
+      title={`Uniforme ${which} do ${team.name}${number ? `, número ${number}` : ''}`}
+    >
+      <KitShirt
+        kit={kit}
+        number={number ?? undefined}
+        numberSize={46}
+        label={`Uniforme ${which} do ${team.name}${number ? `, número ${number}` : ''}`}
+      />
     </span>
   );
 };

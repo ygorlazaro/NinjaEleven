@@ -169,6 +169,14 @@ public class MatchShootoutServiceTests
                     .Where(state => state.TeamId == teamId)
                     .Select(state => TeamMembership.Create(state.PlayerId, teamId, new DateOnly(2026, 1, 1)))
                     .ToList()));
+        // The contracts a club holds right now, which is where a match reads the number on a
+        // player's back. The same book as above, read the way the pitch reads it.
+        _teams.Setup(repo => repo.GetLiveContractsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns((Guid teamId, CancellationToken __) => Task.FromResult<IReadOnlyList<TeamMembership>>(
+                _states
+                    .Where(state => state.TeamId == teamId)
+                    .Select(state => TeamMembership.Create(state.PlayerId, teamId, new DateOnly(2026, 1, 1)))
+                    .ToList()));
         // The same book read the way a table reads it: the squads of every club at once, and
         // the men behind them at once, rather than a query per club and a query per man.
         _teams.Setup(repo => repo.GetSquadsAsync(
@@ -568,6 +576,7 @@ public class MatchShootoutServiceTests
             _fixtures.Object,
             _matchDays.Object,
             _competitions.Object,
+            _seasons.Object,
             _unitOfWork.Object,
             new FinanceService(
                 _finance.Object,
@@ -673,6 +682,7 @@ public class MatchShootoutServiceTests
             _matches.Object,
             _finance.Object,
             InboxTestFactory.Create(_teams),
+            new ManagedClubs(),
             _unitOfWork.Object,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<TransferService>.Instance),
         _unitOfWork.Object,

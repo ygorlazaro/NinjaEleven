@@ -27,6 +27,11 @@ const CATEGORIES: Record<string, { label: string; icon: string }> = {
   MatchReport: { label: 'Partida', icon: '⚽' },
   TransferOffer: { label: 'Mercado', icon: '🔄' },
   Title: { label: 'Título', icon: '🏆' },
+  // The two the whole country is told, and they are told apart from a title because neither of
+  // them is one: a round of the cup decides who is still in it, and a season's end moves four
+  // tables at once. Filed under "Título" an elimination would sit next to a championship.
+  CupRound: { label: 'Copa', icon: '🥇' },
+  SeasonSummary: { label: 'Temporada', icon: '📋' },
   Club: { label: 'Clube', icon: '📣' }
 };
 

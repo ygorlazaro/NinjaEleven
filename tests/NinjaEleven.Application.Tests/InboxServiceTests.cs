@@ -56,6 +56,7 @@ public class InboxServiceTests
     private InboxService Service() => new(
         _messages.Object,
         _teams.Object,
+        new ManagedClubs(),
         _unitOfWork.Object,
         NullLogger<InboxService>.Instance);
 

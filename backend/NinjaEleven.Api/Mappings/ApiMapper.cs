@@ -73,6 +73,7 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
     MarketValue = squadPlayer.MarketValue,
     AskingPrice = squadPlayer.AskingPrice,
     Salary = squadPlayer.Salary,
+    WageOnRenewal = squadPlayer.WageOnRenewal,
     ShirtNumber = squadPlayer.ShirtNumber,
     IsAvailable = squadPlayer.IsAvailable,
     Retiring = squadPlayer.Retiring,
@@ -579,12 +580,26 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
         this IEnumerable<Domain.Matches.MatchEngineEvent> events) =>
         events.Select(engineEvent => engineEvent.ToDto()).ToList();
 
-public static MatchPlayerDto ToDto(this Domain.Matches.MatchPlayerSnapshot player, double? penaltyChance = null) => new()
+/// <param name="minute">
+/// How far the match has got. A rating is a reading of the evening so far and cannot be
+/// worked out without it, so a match that has not kicked off has no ratings at all rather
+/// than a full eleven of them.
+/// </param>
+public static MatchPlayerDto ToDto(
+    this Domain.Matches.MatchPlayerSnapshot player,
+    int minute,
+    double? penaltyChance = null)
 {
+    var minutesPlayed = player.MinutesPlayed(minute);
+    var rating = Domain.Matches.MatchRating.Of(player, minutesPlayed, minute);
+
+    return new MatchPlayerDto
+    {
     PlayerId = player.PlayerId,
     Name = player.Name,
     Age = player.Age,
     Position = player.Position,
+    ShirtNumber = player.ShirtNumber,
     Speed = player.Speed,
     Accuracy = player.Accuracy,
     Dribbling = player.Dribbling,
@@ -605,8 +620,12 @@ public static MatchPlayerDto ToDto(this Domain.Matches.MatchPlayerSnapshot playe
     MatchOwnGoals = player.MatchOwnGoals,
     MatchSaves = player.MatchSaves,
     PenaltyChance = penaltyChance,
-    Stars = Domain.Players.PlayerRating.CalculateStars(player)
-};
+    Stars = Domain.Players.PlayerRating.CalculateStars(player),
+    MinutesPlayed = minutesPlayed,
+    Rating = rating,
+    RatingBand = Domain.Matches.MatchRating.BandOf(rating)
+    };
+}
 
 public static MatchLineupDto ToDto(this Application.Models.MatchLineup lineup)
 {
@@ -622,30 +641,18 @@ public static MatchLineupDto ToDto(this Application.Models.MatchLineup lineup)
     {
         MatchId = lineup.MatchId,
         UserTeamIndex = lineup.UserTeamIndex,
-        HomeTeam = new TeamDto
-        {
-            Id = homeTeam.Id,
-            Name = homeTeam.Name,
-            ShortName = homeTeam.ShortName,
-            PrimaryColor = homeTeam.PrimaryColor,
-            SecondaryColor = homeTeam.SecondaryColor,
-            Rating = homeTeam.Rating,
-            Stars = homeStars
-        },
-        AwayTeam = new TeamDto
-        {
-            Id = awayTeam.Id,
-            Name = awayTeam.Name,
-            ShortName = awayTeam.ShortName,
-            PrimaryColor = awayTeam.PrimaryColor,
-            SecondaryColor = awayTeam.SecondaryColor,
-            Rating = awayTeam.Rating,
-            Stars = awayStars
-        },
-        HomeLineup = lineup.HomeLineup.Select(player => player.ToDto()).ToList(),
-        AwayLineup = lineup.AwayLineup.Select(player => player.ToDto()).ToList(),
-        HomeBench = lineup.HomeBench.Select(player => player.ToDto()).ToList(),
-        AwayBench = lineup.AwayBench.Select(player => player.ToDto()).ToList(),
+
+        // The two clubs are mapped the way every other club is mapped, so the badge and the
+        // two shirts travel with them. Copying six fields by hand is what left the match
+        // screen drawing a plain solid shirt in the club's colours while the club had a
+        // striped one drawn in its own editor — the eleven were wearing a kit nobody chose.
+        HomeTeam = homeTeam.ToDto(homeStars),
+        AwayTeam = awayTeam.ToDto(awayStars),
+
+        HomeLineup = lineup.HomeLineup.Select(player => player.ToDto(lineup.Minute)).ToList(),
+        AwayLineup = lineup.AwayLineup.Select(player => player.ToDto(lineup.Minute)).ToList(),
+        HomeBench = lineup.HomeBench.Select(player => player.ToDto(lineup.Minute)).ToList(),
+        AwayBench = lineup.AwayBench.Select(player => player.ToDto(lineup.Minute)).ToList(),
         HomeKitSide = lineup.HomeKitSide,
         AwayKitSide = lineup.AwayKitSide
     };
@@ -655,7 +662,7 @@ public static PenaltyTakerOptionsDto ToDto(this Application.Models.PenaltyTakerO
 {
     AwaitingSelection = options.AwaitingSelection,
     Candidates = options.Candidates
-        .Select(player => player.ToDto(Domain.Matches.MatchEngine.PenaltyConversion(
+        .Select(player => player.ToDto(minute: 0, Domain.Matches.MatchEngine.PenaltyConversion(
             player,
             options.DefendingGoalkeeper)))
         .ToArray()
@@ -679,7 +686,7 @@ public static ShootoutDto? ToDto(this Application.Models.ShootoutView? shootout)
         WinnerTeamId = shootout.WinnerTeamId,
         AwaitingOrder = shootout.AwaitingOrder,
         Candidates = shootout.Candidates
-            .Select(player => player.ToDto(Domain.Matches.MatchEngine.PenaltyConversion(
+            .Select(player => player.ToDto(minute: 0, Domain.Matches.MatchEngine.PenaltyConversion(
                 player,
                 shootout.DefendingGoalkeeper)))
             .ToArray(),
@@ -775,6 +782,15 @@ public static MatchContextDto ToDto(this Application.Models.MatchContextView con
             Severity = state.Injury.Severity
         },
         UserTeamId = state.UserTeamId,
+        LiveRatings = state.LiveRatings
+            .Select(rating => new LiveRatingDto
+            {
+                PlayerId = rating.PlayerId,
+                Rating = rating.Rating,
+                RatingBand = rating.RatingBand,
+                MinutesPlayed = rating.MinutesPlayed
+            })
+            .ToArray(),
         SubstitutionsUsedHome = state.SubstitutionsUsedHome,
         SubstitutionsUsedAway = state.SubstitutionsUsedAway,
         FormationHome = state.FormationHome,
@@ -907,10 +923,13 @@ public static class PlayerProfileMapping
         Goals = line.Goals,
         OwnGoals = line.OwnGoals,
         Saves = line.Saves,
+        Assists = line.Assists,
         YellowCards = line.YellowCards,
         RedCards = line.RedCards,
         Injuries = line.Injuries,
-        MatchesMissed = line.MatchesMissed
+        MatchesMissed = line.MatchesMissed,
+        AverageRating = line.AverageRating,
+        RatedMatches = line.RatedMatches
     };
 
 public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profile) => new()
@@ -951,6 +970,7 @@ public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profi
     ShirtNumber = profile.ShirtNumber,
     MarketValue = profile.MarketValue,
     Salary = profile.Salary,
+    WageOnRenewal = profile.WageOnRenewal,
     ContractSeasons = profile.ContractSeasons,
     SeasonsLeft = profile.SeasonsLeft,
     IsInLastSeason = profile.IsInLastSeason,
@@ -968,6 +988,10 @@ public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profi
         Goals = line.Goals,
         OwnGoals = line.OwnGoals,
         Saves = line.Saves,
+        Assists = line.Assists,
+        Rating = line.Rating,
+        RatingBand = line.RatingBand,
+        MinutesPlayed = line.MinutesPlayed,
         YellowCards = line.YellowCards,
         RedCards = line.RedCards,
         WasInjured = line.WasInjured,
@@ -1079,7 +1103,9 @@ public static class TeamMatchRecordMapping
         YellowCards = line.YellowCards,
         RedCards = line.RedCards,
         Injuries = line.Injuries,
-        MatchesMissed = line.MatchesMissed
+        MatchesMissed = line.MatchesMissed,
+        AverageRating = line.AverageRating,
+        RatedMatches = line.RatedMatches
     };
 
     public static TransferListingDto ToDto(this Application.Models.TransferListing listing) => new()
@@ -1277,6 +1303,7 @@ public static class TrainingQuoteMapper
         IsAvailable = quote.IsAvailable,
         Injury = quote.Injury,
         SessionFee = quote.SessionFee,
+        SessionsLeft = quote.SessionsLeft,
         Attributes = quote.Attributes
             .Select(attribute => new TrainingAttributeQuoteDto
             {

@@ -1,3 +1,4 @@
+using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Enums;
 
@@ -87,7 +88,19 @@ public class SquadPlayerDto
 
     /// <summary>What he is worth, in limos, and what the club owes for his contract.</summary>
     public decimal MarketValue { get; init; }
+
+    /// <summary>
+    /// What the club pays him for the season, fixed by the contract he is on.
+    /// </summary>
     public decimal Salary { get; init; }
+
+    /// <summary>
+    /// What he would be paid for a season if the club signed him again today, which is the
+    /// price on the other side of a renewal. It travels beside the salary rather than instead
+    /// of it because a manager deciding whether to renew is deciding between the two.
+    /// </summary>
+    public decimal WageOnRenewal { get; init; }
+
     public int ContractSeasons { get; init; }
 
     /// <summary>
@@ -170,12 +183,15 @@ public class PlayerProfileDto
     public int? ShirtNumber { get; init; }
 
     /// <summary>
-    /// What he is worth, and what the club owes for his contract, in limos. The wage is a
-    /// share of the price, so a manager can see the two and know which players are costing
-    /// the club more than they are worth.
+    /// What he is worth, and what the club owes for his contract, in limos. The wage is the
+    /// figure on the contract rather than a share of the price worked out again today, so the
+    /// card, the squad table and the wage bill are all quoting the same agreement — and
+    /// <see cref="WageOnRenewal"/> is what the same man would cost if the deal were signed
+    /// again at this age and in this form.
     /// </summary>
     public decimal MarketValue { get; init; }
     public decimal Salary { get; init; }
+    public decimal WageOnRenewal { get; init; }
     public int ContractSeasons { get; init; }
 
     /// <summary>
@@ -214,10 +230,22 @@ public class PlayerCareerLineDto
     public int Goals { get; init; }
     public int OwnGoals { get; init; }
     public int Saves { get; init; }
+    public int Assists { get; init; }
     public int YellowCards { get; init; }
     public int RedCards { get; init; }
     public int Injuries { get; init; }
     public int MatchesMissed { get; init; }
+
+    /// <summary>
+    /// The average of the ratings he was given, out of ten, and null when he has not been
+    /// rated once. Averages the rated matches and ignores the cameos, because a four-minute
+    /// substitute is not a data point about how well a player plays and including him would
+    /// quietly drag every number on the card towards the baseline.
+    /// </summary>
+    public double? AverageRating { get; init; }
+
+    /// <summary>How many matches that average is worked out from.</summary>
+    public int RatedMatches { get; init; }
 }
 
 public class PlayerMatchLineDto
@@ -231,6 +259,17 @@ public class PlayerMatchLineDto
     public int Goals { get; init; }
     public int OwnGoals { get; init; }
     public int Saves { get; init; }
+    public int Assists { get; init; }
+
+    /// <summary>
+    /// What that match was worth to him, and null when he did not play enough of it to have
+    /// one — a man off the bench for four minutes has a cameo on the sheet and not a rating.
+    /// The band travels with the number so no screen decides for itself where the lines are.
+    /// </summary>
+    public double? Rating { get; init; }
+    public MatchRatingBand RatingBand { get; init; } = MatchRatingBand.Unrated;
+
+    public int MinutesPlayed { get; init; }
     public int YellowCards { get; init; }
     public int RedCards { get; init; }
     public bool WasInjured { get; init; }
