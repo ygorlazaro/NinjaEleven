@@ -540,27 +540,28 @@ public class MatchService : IMatchCleaner
     }
 
     /// <summary>
-    /// Closes the match of a fixture that somebody started and nobody ever touched, so the
+    /// Closes the match of a fixture that somebody opened and no process is playing, so the
     /// world can play the fixture again instead of waiting for ever for somebody who is not
     /// coming.
     ///
     /// <para>
-    /// A match the world left on the touchline is the manager's to play, and he is given the
-    /// chance: the world opens it, leaves the clock to nobody and waits. What it cannot do is
-    /// wait for ever — a match that was left and never once ticked has been nobody's business
-    /// since the moment it was opened, and a window that holds it is a window the world can
-    /// never walk past. It would say so by doing nothing at all, over and over, which is
-    /// indistinguishable from a broken route.
+    /// A live match holds its fixture — the database refuses a second one for it — so a match
+    /// sitting at minute zero with no working memory behind it is not a leftover nobody looks
+    /// at: it is a fixture the world can never play again, held by a match that is never ticked,
+    /// and no window that has finished with it will ever ask about it again. The world says so
+    /// by doing nothing at all, over and over, which is indistinguishable from a broken route.
     /// </para>
     ///
     /// <para>
     /// So the question is asked of the match itself, not of a clock. Untouched means minute
-    /// zero, unfinished, and either no session in this process or a session still marked as
-    /// left for the manager: a match the loop is driving, a match somebody claimed and a match
-    /// that has been played for a while are all refused, because those belong to somebody.
+    /// zero, unfinished, and no live session in this process — because a session here is this
+    /// process's working memory for a match it is either walking or driving on the loop, and
+    /// both of those are somebody's match. What this releases is a match whose memory is gone: a
+    /// run that created it and stopped before the first tick, or a process that died between the
+    /// kick-off and anything else.
     /// </para>
     /// </summary>
-    /// <param name="fixtureId">The fixture whose match is sitting on the touchline.</param>
+    /// <param name="fixtureId">The fixture whose match is sitting there doing nothing.</param>
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>Whether a match was closed, so the fixture could be played again.</returns>
     public async Task<bool> ReleaseTheUntouchedMatchAsync(
@@ -574,16 +575,16 @@ public class MatchService : IMatchCleaner
             return false;
         }
 
-        // A session in this process that is not waiting for a manager is somebody's match:
-        // the loop is on it, or the manager claimed it and is watching it now.
-        if (_sessions.TryGet(match.Id, out var session)
-            && session.Driver is not MatchDriver.LeftForTheManager)
+        // Working memory in this process is a match being played here: the loop is on it, a walk
+        // is, or a manager is watching it. Releasing it would take a game away from whoever is
+        // playing it, which is the mistake this whole rule exists to stop.
+        if (_sessions.TryGet(match.Id, out _))
         {
             return false;
         }
 
         _logger.LogInformation(
-            "Match {MatchId} was left on the touchline and nobody touched it. The world takes the fixture back.",
+            "Match {MatchId} was started and never touched by anybody. The world takes the fixture back.",
             match.Id);
 
         return await AbandonAsync(match.Id, cancellationToken);
@@ -1823,6 +1824,14 @@ public class MatchService : IMatchCleaner
     /// only the control plane moves from the loop to the manager, so a matchday that has
     /// already seen the kick-off keeps on looking like one.
     ///
+    /// <para>
+    /// It is also how he joins his own match halfway through a game the world is playing for
+    /// him, which is a game that is always being played: the world opens a managed fixture and
+    /// hands the clock to the loop rather than waiting for him, so arriving at minute forty is
+    /// arriving, not arriving too late. The claim takes the match from wherever it is — the
+    /// score, the minute and the eleven are all kept.
+    /// </para>
+    ///
     /// A claim for a match that already has a manager, that is not headless, or that is not
     /// the manager's own side, is refused and is a no-op — the manager only ever takes his
     /// own club, and a screen that sent the opposition's id is a screen that never had the
@@ -1865,10 +1874,10 @@ public class MatchService : IMatchCleaner
             session.AutoContinue = false;
             session.ManagerClaimedAt = _clock.UtcNow;
 
-            // And it is his match now: the world left it on the touchline for him and the
-            // background loop was told to keep off it, so the claim is what hands the clock
-            // back. Without this the loop would go on leaving a match alone that the manager
-            // is watching — a match that never moves while he watches it.
+            // The clock was never anybody else's to begin with — the loop is driving this match
+            // until now — so there is nothing to hand over here. It is said anyway because it is
+            // the one line that says who owns the clock, and a match whose owner is not written
+            // down is a match that can be driven twice.
             session.Driver = MatchDriver.None;
         }
 
@@ -2042,7 +2051,12 @@ public class MatchService : IMatchCleaner
                 session.State.ManagerTeamId = null;
                 session.AutoContinue = true;
                 session.ManagerClaimedAt = null;
-                session.Driver = MatchDriver.WalkedByTheWorld;
+
+                // The clock goes back to the loop, which is the only thing in this process that
+                // may move it. Handing it to a walk that is not running is the same freeze the
+                // world used to leave behind on purpose: a live match whose session belongs to
+                // nobody, at whatever minute it was on, holding its fixture and its window.
+                session.Driver = MatchDriver.None;
 
                 events.AddRange(session.Engine.ReleaseTheManager(session.State));
             }

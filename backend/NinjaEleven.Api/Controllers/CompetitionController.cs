@@ -96,6 +96,29 @@ public class CompetitionController : ControllerBase
         Ok(_competitionService.GetCupPrizes().ToDtos());
 
     /// <summary>
+    /// The cup's rules: how many clubs it is drawn from, how a tie is decided, and what the
+    /// winner goes on to play.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The bracket already says which two clubs are in a tie and the prize legend already says
+    /// what the run is worth, and between those two there is nothing saying that a tie is two
+    /// matches, that the aggregate is what decides it, or that a level aggregate goes straight to
+    /// penalties. A manager planning a tie he expects to be level cannot plan it from a bracket.
+    /// </para>
+    /// <para>
+    /// It is asked for rather than written on the screen for the same reason the pyramid's rules
+    /// are: every number here is read out of <c>CompetitionRules</c>, and a client that printed
+    /// "são jogos de ida e volta" from a constant of its own would be a client promising a cup
+    /// the game does not play — wrong the day the cup stops being two-legged, while the bracket it
+    /// was explaining went on being the bracket the game drew.
+    /// </para>
+    /// </remarks>
+    [HttpGet("cup-rules")]
+    public ActionResult<CupRulesDto> GetCupRules() =>
+        Ok(_competitionService.GetCupRules().ToDto());
+
+    /// <summary>
     /// The clubs entered in one edition of a competition.
     ///
     /// This is the list the club picker is built from, and it is asked of the backend because

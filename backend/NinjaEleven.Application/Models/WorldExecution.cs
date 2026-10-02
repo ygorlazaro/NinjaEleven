@@ -122,13 +122,15 @@ public enum FixtureRunStatus
     AlreadyFinished = 3,
 
     /// <summary>
-    /// It is the manager's own club's match, and it was started rather than simulated: a
-    /// manager who cannot watch his own game being played for him is not playing the game,
-    /// so the window opens it, hands the clock to nobody and waits for him. The window stays
-    /// owed until that match reaches the final whistle, and the run that comes back reconciles
-    /// it from the match he finished.
+    /// It is the manager's own club's match, and it was started rather than walked through in
+    /// one go: the world opens it and hands the clock to the loop, so his game is played out in
+    /// the time a match takes and he can watch it, claim it and make his own substitutions
+    /// while it runs — or sleep through it, and find the result of a game that really happened
+    /// rather than a fixture still sitting at minute zero. The window stays owed until that
+    /// match reaches the final whistle, and the window closes on the match he finished or
+    /// nobody did.
     /// </summary>
-    LeftForTheManager = 4
+    StartedForTheManager = 4
 }
 
 /// <summary>
@@ -156,8 +158,8 @@ public record RoundRun(
     /// <summary>The fixtures another process is playing right now.</summary>
     public int PlayedElsewhere => Fixtures.Count(run => run.Status is FixtureRunStatus.PlayedElsewhere);
 
-    /// <summary>The fixtures that were started and are waiting for the manager to play them.</summary>
-    public int LeftForTheManager => Fixtures.Count(run => run.Status is FixtureRunStatus.LeftForTheManager);
+    /// <summary>The fixtures that were started for the manager and are being played live right now.</summary>
+    public int StartedForTheManager => Fixtures.Count(run => run.Status is FixtureRunStatus.StartedForTheManager);
 
     /// <summary>
     /// Whether the window has been played out in full. A window is only completed on this

@@ -419,9 +419,14 @@ button { cursor: pointer; }
 /* The ranking's shield. The table of clubs is a column of numbers with a name in it, so the
    crest sits at the size of a table crest rather than the size of a club page's — and its size
    is said here, in the stylesheet, rather than as an inline measurement on one screen. */
+/* Half the badge it was, at 14×14 with 6px initials. The border stays at a whole pixel rather
+   than halving with the box: at half a pixel it rounds to nothing on half the screens, and a
+   crest that is smaller because its outline vanished is not smaller, it is unfinished. The row's
+   name beside it is what identifies the club, so the shield here is a mark to recognise rather
+   than a thing to read. */
 .ranking-crest {
-  width: 28px; height: 28px; font-size: 11px; border-width: 1px;
-  border-radius: 4px 4px 9px 9px;
+  width: 14px; height: 14px; font-size: 6px; border-width: 1px;
+  border-radius: 2px 2px 4.5px 4.5px;
 }
 
 /* The squad, under the club it belongs to. The men are read in the order a squad is read
@@ -1804,17 +1809,43 @@ button { cursor: pointer; }
 .prize-legend__position svg { flex: 0 0 auto; }
 .prize-legend__amount { color: var(--text); }
 
-/* What the cup pays and who is scoring in it: the two things read before the bracket itself.
-   The money is a narrow list of figures and the chart is a table, so the grid is not even —
-   a legend stretched to half a screen wide is a list of six numbers with a hundred pixels of
-   nothing either side. */
-.cup-top-grid {
-  display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
-  gap: 14px; align-items: start;
-}
+/* The cup's own prize card, drawn by the legend itself and therefore its own panel: it is the
+   whole content of the cup's "Prêmios" page, so it is not wrapped in a panel of its own. */
 .cup-prize-legend {
   padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px; background: #0d1924;
 }
+
+/* The cup's rules. Its own grid rather than the league's: that one spans its first card over two
+   rows because it holds four panels of very different heights, and a two-panel grid inheriting the
+   span would leave an empty cell under the rounds table. The wider column here is the table — five
+   columns of numbers — and the narrower one is three sentences, so the sentences do not get the
+   room and the numbers go on being a column of digits at the left of a wide page. */
+.cup-rules {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 14px; align-items: start; margin-bottom: 14px;
+}
+@media (max-width: 850px) {
+  .cup-rules { grid-template-columns: minmax(0, 1fr); }
+}
+/* The three rules a manager plans a run around, as three blocks rather than a paragraph: they are
+   three separate facts — the two legs, the level tie, what the winner gets — and a paragraph of
+   them is a paragraph nobody can find the one they came for. The lead word is bold because it is
+   the question the sentence under it answers. */
+.cup-rules__facts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.cup-rules__facts li {
+  font-size: 13px; line-height: 1.5; color: var(--text);
+  padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: #0d1924;
+}
+.cup-rules__facts b { display: block; margin-bottom: 2px; color: var(--accent); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+.cup-rules__rounds { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cup-rules__rounds th {
+  text-align: left; padding: 6px 8px; font-size: 11px; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line);
+}
+.cup-rules__rounds td { padding: 6px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+/* The final is the last row and the only one a manager can act on this season rather than next,
+   so it is the one row in the table that is marked rather than left to be found by counting. */
+.cup-rules__round--last td { color: var(--accent); font-weight: 700; }
 /* The trophy is a drawn mark, so it is carried by the line beside it rather than floated: a
    heading with an icon in it is a heading with a baseline, and the baseline is what the other
    screens' headings sit on. */
@@ -1826,9 +1857,6 @@ button { cursor: pointer; }
 .cup-screen__title svg,
 .cup-screen__panel-title svg,
 .prize-legend__title svg { flex: 0 0 auto; }
-@media (max-width: 850px) {
-  .cup-top-grid { grid-template-columns: minmax(0, 1fr); }
-}
 
 /* The cup's money is a consolation per round rather than a share per position, so it is one
    column: the lines are the phases a club is knocked out in, and they read in the order a club
@@ -3602,48 +3630,69 @@ button { cursor: pointer; }
 /* ---------------------------------------------------------------- Táticas
    The board a manager lays his club's next match out on.
 
-   It is three columns rather than one because the decision has three parts and each is
-   read differently: the eleven is short and is checked against a count, the bench is short
-   too, and the squad behind them is twenty-three names the manager is choosing <i>out
-   of</i>. Laying them side by side means a swap is a glance rather than a scroll, which is
-   the whole job of a lineup screen. */
+   Two thirds and one third, and the split is not a decoration: the left side is the decision
+   — a shape, an eleven, a bench and the twenty-three men they are chosen out of — and the right
+   side is the context that decision is made against: the fixture, the two clubs' record, and
+   the last five results. The shape and the squad span the top of the left side so that every
+   man is one drag away from both columns, and the context stays pinned beside them so a manager
+   reading a form guide never loses his place in the eleven. */
 
-.tactics-page { display: flex; flex-direction: column; gap: 16px; }
+.tactics-page { display: flex; flex-direction: column; gap: 16px; --tactics-bar: 46px; }
 
-.tactics-page > header h1 { margin: 0 0 4px; font-size: 22px; }
-.tactics-page > header .page-subtitle { margin: 0; color: var(--muted); font-size: 13px; max-width: 70ch; }
-
-/* The fixture the order is about. It is the first thing on the screen because the whole
-   screen is about one match, and the same eleven is right for a derby and wrong for a
-   relegation game — neither of them wrong on its own. */
-.tactics-next {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 16px;
-  padding: 14px 16px;
-  border: 1px solid var(--line); border-radius: 10px; background: #0a1520;
+/* The screen's own header, pinned to the top of it.
+   The button in here is the only thing this screen writes, and the kick-off that reads it does
+   not wait: a save at the foot of a board two screens tall is a save a manager changes an eleven
+   and walks away from. It is sticky rather than fixed so it stays in the page — it scrolls with
+   the column, never over it, and it never has to know how wide the screen is. */
+.tactics-bar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 12px;
+  min-height: var(--tactics-bar);
+  margin: -4px 0 0; padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: #0d1a26;
 }
 
-.tactics-next__fixture { display: flex; flex-direction: column; gap: 2px; }
-.tactics-next__label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-.tactics-next__competition { font-size: 12px; color: var(--muted); }
-.tactics-next__teams { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 800; }
-.tactics-next__vs { color: var(--muted); font-weight: 400; }
-.tactics-next__venue { font-size: 12px; color: var(--muted); }
+.tactics-bar h1 { margin: 0; font-size: 18px; }
 
-.tactics-next__closed {
-  margin: 0; padding: 6px 10px; border-radius: 8px;
-  border: 1px solid var(--line); color: var(--muted); font-size: 12px;
+/* Whether the order on the board is the order that was written down. It is said here rather
+   than at the foot of the page because the button beside it is always in view: a control that
+   never leaves the screen is a control that can be pressed over an eleven nobody re-read, and
+   the one thing standing between that and a wrong lineup is the manager knowing he changed
+   something. */
+.tactics-bar__status { flex: 1; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tactics-bar__status--dirty { color: var(--orange); }
+
+.tactics-page > .page-subtitle { margin: 0; color: var(--muted); font-size: 13px; max-width: 70ch; }
+
+.tactics-layout {
+  display: grid; gap: 14px;
+  grid-template-columns: minmax(0, 2fr) minmax(290px, 1fr);
+  align-items: start;
 }
 
-/* Head-to-head, counted over every meeting rather than the last few — a club that has
-   beaten this one nine times in ten and lost the last four has two different records and
-   only one of them is the season. */
-.tactics-h2h {
-  display: grid; grid-template-columns: repeat(6, auto); gap: 2px 14px;
-  margin: 0; padding: 0 0 0 16px; border-left: 1px solid var(--line);
-  font-size: 12px;
+@media (max-width: 1180px) {
+  .tactics-layout { grid-template-columns: 1fr; }
 }
-.tactics-h2h dt { color: var(--muted); }
-.tactics-h2h dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.tactics-workspace {
+  display: flex; flex-direction: column; gap: 14px; min-width: 0;
+}
+
+/* The context column, pinned.
+   It is sticky rather than fixed so it scrolls with the page until its top reaches the bar and
+   then stays: a manager who scrolls down a long eleven still has the fixture he is picking the
+   eleven for in front of him. The bar's height is a variable rather than a guess, because a
+   column that stopped twelve pixels short of the bar would slide under it. */
+.tactics-aside {
+  position: sticky; top: calc(var(--tactics-bar) + 12px);
+  display: flex; flex-direction: column; gap: 14px;
+  max-height: calc(100vh - var(--tactics-bar) - 24px); overflow-y: auto;
+}
+
+@media (max-width: 1180px) {
+  .tactics-aside { position: static; max-height: none; }
+}
 
 .tactics-panel {
   border: 1px solid var(--line); border-radius: 10px; background: #0a1520;
@@ -3661,14 +3710,92 @@ button { cursor: pointer; }
   text-transform: none; letter-spacing: 0;
 }
 
-/* The shape, as a row of buttons rather than a dropdown: a manager picks between ten
-   familiar shapes, and a dropdown that hides nine of them behind one is a screen making
-   him work to find the thing he came for. */
-.tactics-selector { display: flex; flex-wrap: wrap; gap: 8px; }
+/* --------------------------------------------------------------- O elenco
+
+   Twenty-three men as cards, each about as wide as a name badge. The four things on a card are
+   the four a choice between men needs and nothing else: the line he plays in, the letters on
+   his back, how good he is and how much he has left. The eight attributes are one click away
+   in the window that opens when a card is pressed — a card carrying all of it would be a card
+   nobody could read at twenty-three to a page. */
+
+.tactics-cards {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 6px;
+}
+
+.tactics-card {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 7px 4px 0;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: #08111a; color: var(--text);
+  cursor: grab; user-select: none;
+}
+
+/* The energy, as a bar across the foot of the card. At the bottom rather than in the middle
+   because that is where a bar reads as the ground a man is standing on instead of as one more
+   number in a column — and a tired man is the one thing on the card a manager must not miss. */
+.tactics-card__energy {
+  align-self: stretch; height: 4px; margin-top: 2px;
+  border-radius: 3px; background: #10202e; overflow: hidden;
+}
+
+.tactics-card__energy-fill { display: block; height: 100%; border-radius: 3px; }
+.tactics-card__energy-fill.energy-red { background: var(--red); }
+.tactics-card__energy-fill.energy-yellow { background: #d8b13c; }
+.tactics-card__energy-fill.energy-green { background: var(--green); }
+
+.tactics-card__pos {
+  font-size: 9px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--muted);
+  padding: 1px 6px; border-radius: 4px;
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+}
+
+.tactics-card__initials {
+  font-size: 17px; font-weight: 800; letter-spacing: .02em; line-height: 1.1;
+}
+
+.tactics-card__stars {
+  font-size: 10px; line-height: 1; color: var(--accent);
+  letter-spacing: -.5px; white-space: nowrap;
+}
+
+/* A man already in the order is still shown in the squad, marked rather than hidden: a squad
+   that hid the chosen eleven would be a squad a manager could not check his own choice
+   against. */
+.tactics-card--chosen { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* The man the window is about. It is a ring and not a fill because a fill would be read as
+   "chosen", and choosing him is a different decision from reading him. */
+.tactics-card--inspected { border-color: var(--accent); }
+
+.tactics-card--out { opacity: .5; cursor: not-allowed; }
+.tactics-card--dragging { opacity: .4; }
+
+/* ------------------------------------------------------------- O tabuleiro
+
+   The shape as a column of ten, then the eleven and the bench beside it. The catalogue is
+   narrow on purpose: it holds one number each and the other two columns hold a name, eight
+   attributes and three buttons, and a three-way split that gave the catalogue a third of the
+   page would have taken the width from the eleven. */
+
+.tactics-board {
+  display: grid; gap: 12px;
+  grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .tactics-board { grid-template-columns: 1fr; }
+}
+
+.tactics-selector { display: flex; flex-direction: column; gap: 6px; }
 
 .tactics-option {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
-  padding: 7px 11px; border: 1px solid var(--line); border-radius: 8px;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 6px;
+  width: 100%; padding: 6px 10px;
+  border: 1px solid var(--line); border-radius: 8px;
   background: #08111a; color: var(--text); cursor: pointer;
 }
 .tactics-option:hover { border-color: #46657d; }
@@ -3677,21 +3804,10 @@ button { cursor: pointer; }
 .tactics-option__shape { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tactics-option.active .tactics-option__shape { color: inherit; }
 
-/* Every row is now as wide as its attribute strip, so the columns are sized by the strip and
-   not by the names. Eight tags are about two hundred and forty pixels; a column narrower than
-   that either clips a third digit or wraps the strip, and a strip that wraps makes some rows
-   three lines and some two — which is worse than a column that is too narrow. Three columns of
-   320 plus the gaps need about a thousand, so the row of three is kept down to 1180 and the
-   stack below it, where each row has the whole page and the question does not arise. */
-.tactics-columns {
-  display: grid; gap: 14px;
-  grid-template-columns: repeat(3, minmax(290px, 1fr));
-  align-items: start;
-}
-
-@media (max-width: 1180px) {
-  .tactics-columns { grid-template-columns: 1fr; }
-}
+/* A shape being filled by the staff. The buttons stop answering rather than queueing, because
+   a manager who clicks 4-3-3 and then 4-4-2 has said two things and the second one is the one
+   he meant; a queue would apply the first after the second. */
+.tactics-option:disabled { opacity: .5; cursor: progress; }
 
 .tactics-group + .tactics-group { margin-top: 8px; }
 
@@ -3743,17 +3859,8 @@ button { cursor: pointer; }
   background: color-mix(in srgb, var(--line) 45%, transparent);
 }
 
-/* A man already in the order is still shown in the squad, marked rather than hidden: a
-   squad that hid the chosen eleven would be a squad a manager could not check his own
-   choice against. */
-.tactics-row--chosen { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .tactics-row--picked { background: #08111a; border-color: var(--line); }
 
-/* Out for the match: still listed, refused if named. A manager needs to see who is out
-   as much as who is on, and a plan that quietly lost two players would be read on the day
-   as the eleven he chose. */
-.tactics-row--out { opacity: .5; }
-.tactics-row--out .tactics-row__name { cursor: not-allowed; }
 .tactics-row__gone { color: var(--muted); font-style: italic; }
 
 .tactics-row__name {
@@ -3762,11 +3869,6 @@ button { cursor: pointer; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .tactics-row__line .tactics-row__meta { flex: none; }
-/* The row's name is a span with a role rather than a button, because the name inside it is
-   itself a button — the door to the player's profile — and a button inside a button is not
-   something a browser will honour. So the refusal is carried by `aria-disabled` rather than
-   by `:disabled`, and it has to be read here or an unavailable man still shows a pointer. */
-.tactics-row__name[aria-disabled='true'] { cursor: not-allowed; }
 
 .tactics-row__meta { display: flex; gap: 8px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
@@ -3794,23 +3896,6 @@ button { cursor: pointer; }
    the man who replaces him — a greyed save button would only tell him the order is wrong. */
 .tactics-hint--warning { color: var(--orange); }
 
-.tactics-footer {
-  display: flex; align-items: center; gap: 12px;
-  padding-top: 4px;
-}
-.tactics-footer__status { font-size: 12px; color: var(--muted); flex: 1; }
-
-.tactics-form { list-style: none; margin: 0; padding: 0; }
-.tactics-form__row {
-  display: grid; grid-template-columns: 130px 1fr 70px 60px 70px;
-  gap: 10px; align-items: center;
-  padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px;
-}
-.tactics-form__comp, .tactics-form__venue { color: var(--muted); font-size: 12px; }
-.tactics-form__score { font-weight: 800; font-variant-numeric: tabular-nums; }
-.tactics-form__link { color: var(--muted); font-size: 12px; }
-.tactics-form__link:hover { color: var(--accent); }
-
 /* The eight attributes beside a name. They are the reason the decision on this screen can be
    made at all: stars say how good a man is and energy says how much he has left, and neither
    says at what. A strip of bare digits would be a column of numbers with no headings, so each
@@ -3833,10 +3918,161 @@ button { cursor: pointer; }
 .tactics-attr.attr-yellow { color: #d8b13c; }
 .tactics-attr.attr-green { color: var(--accent); }
 
-/* A shape being filled by the staff. The buttons stop answering rather than queueing, because
-   a manager who clicks 4-3-3 and then 4-4-2 has said two things and the second one is the one
-   he meant; a queue would apply the first after the second. */
-.tactics-option:disabled { opacity: .5; cursor: progress; }
+/* ---------------------------------------------------------- O contexto
+
+   The fixture the order is about. It is the first thing in this column because the whole
+   screen is about one match, and the same eleven is right for a derby and wrong for a
+   relegation game — neither of them wrong on its own. */
+.tactics-next__fixture { display: flex; flex-direction: column; gap: 2px; }
+.tactics-next__competition { font-size: 12px; color: var(--muted); }
+.tactics-next__teams { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 800; flex-wrap: wrap; }
+.tactics-next__vs { color: var(--muted); font-weight: 400; }
+.tactics-next__venue { font-size: 12px; color: var(--muted); }
+
+.tactics-next__closed {
+  margin: 10px 0 0; padding: 6px 10px; border-radius: 8px;
+  border: 1px solid var(--line); color: var(--muted); font-size: 12px;
+}
+
+/* Head-to-head, counted over every meeting rather than the last few — a club that has
+   beaten this one nine times in ten and lost the last four has two different records and
+   only one of them is the season. Three pairs to a row, because the column is a third of the
+   page and six of them would have wrapped into a shape nobody reads. */
+.tactics-h2h {
+  display: grid; grid-template-columns: repeat(3, auto); gap: 2px 14px;
+  justify-content: start;
+  margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.tactics-h2h dt { color: var(--muted); }
+.tactics-h2h dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* The five results, as one block each: what it was, who it was against and the shape each side
+   went out in, under the score and the letter that say how it went. */
+.tactics-form { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+
+.tactics-form__row {
+  display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px;
+  align-items: start;
+  padding: 7px 9px; border-radius: 7px;
+  border-left: 3px solid var(--line);
+  background: rgba(9, 19, 29, .45); font-size: 13px;
+}
+
+.tactics-form__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+/* The colour of the result, on the same bands the club page's own form guide uses. */
+.tactics-form__row.form-win { border-left-color: var(--green); }
+.tactics-form__row.form-draw { border-left-color: var(--orange); }
+.tactics-form__row.form-loss { border-left-color: var(--red); }
+.tactics-form__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.tactics-form__comp { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tactics-form__score { font-weight: 800; font-variant-numeric: tabular-nums; }
+.tactics-form__fixture { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.tactics-form__venue { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+/* Both shapes, because a scoreline does not say what it was played with: 2-1 is the same
+   evening against 4-4-2 and against 3-5-2. The club's own is the highlighted one, so nobody
+   has to work out which of the two is his, and a dash is a match nobody wrote a shape down
+   for rather than a club that went out with none. */
+.tactics-form__shapes { display: flex; align-items: baseline; gap: 6px; font-size: 12px; }
+.tactics-form__shape { color: var(--muted); font-variant-numeric: tabular-nums; }
+.tactics-form__shape--mine { color: var(--accent); font-weight: 800; }
+.tactics-form__vs { color: #46657d; }
+.tactics-form__link { margin-left: auto; color: var(--muted); font-size: 12px; }
+.tactics-form__link:hover { color: var(--accent); }
+
+/* The run in five numbers, counted by the backend over the rows underneath. It is above them
+   because it is the reading of them: five rows have to be added up one at a time, and this is
+   what a manager wants first. */
+.tactics-form__summary {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: #08111a;
+  font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.tactics-form__run { display: flex; gap: 12px; }
+.tactics-form__run-item { color: var(--muted); }
+.tactics-form__run-item strong { font-size: 15px; margin-right: 2px; }
+.tactics-form__run-item.form-win strong { color: var(--green); }
+.tactics-form__run-item.form-draw strong { color: var(--orange); }
+.tactics-form__run-item.form-loss strong { color: var(--red); }
+.tactics-form__goals { display: flex; gap: 12px; color: var(--muted); font-size: 12px; }
+.tactics-form__goals strong { color: var(--text); font-size: 14px; margin-right: 2px; }
+.tactics-form__diff--up { color: var(--green); }
+.tactics-form__diff--down { color: var(--red); }
+
+/* ------------------------------------------------------------ A ficha
+
+   The window that says the rest of the man. It is fixed rather than drawn inside the page
+   because the two halves of this decision — reading a player and choosing between eleven —
+   happen at the same time, and a panel that reflowed under the board would take one of the
+   two away every time the manager pressed a card. Bottom right, over the page and not over
+   the column of context above it, and under the profile overlay: a name in this window is a
+   door, and the door must open in front of the window it was opened from. */
+.tactics-detail {
+  position: fixed; right: 16px; bottom: 16px; width: 300px; z-index: 30;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px; border: 1px solid var(--line); border-radius: 10px;
+  background: #0a1520; box-shadow: 0 14px 34px rgba(0, 0, 0, .45);
+  font-size: 13px;
+}
+
+.tactics-detail__head { display: flex; align-items: center; gap: 8px; }
+.tactics-detail__pos {
+  font-size: 9px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--muted); padding: 2px 6px; border-radius: 4px;
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+}
+.tactics-detail__name {
+  flex: 1; min-width: 0; text-align: left;
+  font-size: 14px; font-weight: 800;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tactics-detail__close {
+  flex: none; width: 22px; height: 22px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: #08111a; color: var(--muted); cursor: pointer;
+}
+.tactics-detail__close:hover { border-color: #46657d; color: var(--text); }
+
+.tactics-detail__meta { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+.tactics-detail__stars { color: var(--accent); }
+
+.tactics-detail__out {
+  margin: 0; padding: 5px 8px; border-radius: 7px;
+  border: 1px solid var(--line); color: var(--muted); font-size: 12px;
+}
+
+/* The eight, spelled out, each on its own bar. A tag strip is unreadable in a window with one
+   man in it: what a manager is reading is the one attribute that stands out, and eight equally
+   flat numbers have nothing standing out. */
+.tactics-detail__attrs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.tactics-detail__attr {
+  display: grid; grid-template-columns: 96px minmax(0, 1fr) 26px;
+  align-items: center; gap: 8px; font-size: 12px;
+}
+.tactics-detail__attr-label { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tactics-detail__attr-bar { height: 5px; border-radius: 3px; background: #10202e; overflow: hidden; }
+.tactics-detail__attr-fill { display: block; height: 100%; border-radius: 3px; }
+.tactics-detail__attr-fill.attr-red { background: var(--red); }
+.tactics-detail__attr-fill.attr-yellow { background: #d8b13c; }
+.tactics-detail__attr-fill.attr-green { background: var(--green); }
+.tactics-detail__attr-value { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.tactics-detail__attr.attr-red .tactics-detail__attr-value { color: var(--red); }
+.tactics-detail__attr.attr-yellow .tactics-detail__attr-value { color: #d8b13c; }
+.tactics-detail__attr.attr-green .tactics-detail__attr-value { color: var(--accent); }
+
+/* The three moves, here rather than on the card: a drag is unreachable from a keyboard, so the
+   buttons a manager has always had cannot live only where there is room for them. */
+.tactics-detail__actions { display: flex; gap: 6px; }
+.tactics-detail__action {
+  flex: 1; padding: 6px 4px;
+  border: 1px solid var(--line); border-radius: 7px;
+  background: #08111a; color: var(--text); font-size: 12px; cursor: pointer;
+}
+.tactics-detail__action:hover:not(:disabled) { border-color: #46657d; }
+.tactics-detail__action:disabled { opacity: .35; cursor: not-allowed; }
 
 /* ------------------------------------------------- Arrastar entre colunas
 
@@ -3845,14 +4081,13 @@ button { cursor: pointer; }
    already there stay: a drag is unreachable from a keyboard, so removing them would take the
    only way some managers can do this at all. */
 
-.tactics-row { cursor: grab; }
-.tactics-row--picked { cursor: grab; }
+.tactics-row, .tactics-card { cursor: grab; }
 .tactics-row--out { cursor: not-allowed; }
 
 /* The row being dragged is drawn at half. The browser's own drag image is a snapshot taken at
    mousedown, which is a picture of the row before it moved — so without this the manager is
    dragging an image of where the man used to be. */
-.tactics-row--dragging { opacity: .4; }
+.tactics-row--dragging, .tactics-card--dragging { opacity: .4; }
 
 /* Where the man will land. A dashed edge on the column and not on a row, because the decision
    is "he is a starter now" and not "he is fourth in the eleven" — the columns are the answer
@@ -4245,6 +4480,68 @@ button.shirt-number:hover .shirt-number__icon { color: var(--accent); opacity: 1
   font-weight: 700;
 }
 
+/* --- Ranking Ninja ----------------------------------------------------------------------
+   The one list in the game that is four lists on one ladder: the cup runs across the pyramid and
+   so does this ranking, so the top of it is four divisions' best clubs competing on one score. */
+.ranking-screen__hint { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+
+/* The divisions are the screen's whole subject, so they are chips above the table and not a
+   dropdown in a corner: a chip says which one is open without being opened, and it carries the
+   count of what it would leave, so clicking "2ª Divisão" tells the manager sixteen clubs are
+   coming and not four. */
+.ranking-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.ranking-filter__count {
+  margin-left: 5px; font-size: 11px; font-variant-numeric: tabular-nums; opacity: .7;
+}
+
+.ranking-table-wrap { overflow-x: auto; }
+.ranking-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+/* The figures are compared against each other, so they line up on the digit and on the decimal:
+   a column of strengths written ragged is a column of shapes. */
+.ranking-table__num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ranking-table__num--total { color: var(--accent); font-weight: 800; }
+.ranking-table__pos { width: 50px; text-align: right; font-weight: 700; white-space: nowrap; }
+/* The podium is the top of the world, not the top of the screen's list: a filter that repainted
+   1º and 2º whenever a division was opened would be marking the third-best club in the division
+   as though it were the third-best in the game. */
+.ranking-table__pos--podium { color: var(--accent); }
+.ranking-table__division { width: 120px; text-align: center; }
+
+.ranking-division {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; white-space: nowrap; color: #fff;
+}
+/* The four divisions are four tiers, so they are four steps down one scale. They used to be a
+   switch in the page handing out hex codes; a scale is what they are. */
+.ranking-division--t1 { background: var(--accent); color: #1a1f24; }
+.ranking-division--t2 { background: #3a6ea5; }
+.ranking-division--t3 { background: #2a5a8a; }
+.ranking-division--t4 { background: #1a4a6e; }
+/* A club in no division for the season is said to be in none, rather than wearing the fourth
+   step of a scale it is not on — which is what a tier of zero would have painted it with. */
+.ranking-division--none { background: none; border: 1px solid var(--line); color: var(--muted); }
+
+.ranking-row { display: flex; align-items: center; gap: 8px; }
+.ranking-row__info { display: flex; flex-direction: column; min-width: 0; }
+.ranking-row__name { text-align: left; }
+.ranking-row__manager { color: var(--muted); font-size: 12px; }
+/* The manager's own club, in one column of sixty-three. It is marked down the edge of the row
+   in the club's own colour rather than by a background across the width, because a band of
+   colour wide enough to notice becomes the thing the eye lands on before the list — and the list
+   of the whole world is what the screen is for. */
+.ranking-row--mine { background: rgba(255, 255, 255, .035); }
+.ranking-row--mine > td:first-child { box-shadow: inset 3px 0 0 var(--mine-color, var(--accent)); }
+.ranking-row--mine .ranking-row__name { color: var(--mine-color, var(--text)); font-weight: 700; }
+.ranking-row--mine .ranking-row__manager { color: var(--text); }
+/* And the word as well as the colour, because a colour is the club's and a manager whose club
+   wears a colour shared with another club's would be told nothing by it. */
+.ranking-row__you {
+  margin-left: auto; padding: 1px 6px; border: 1px solid var(--mine-color, var(--accent));
+  border-radius: 999px; color: var(--mine-color, var(--accent));
+  font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .filter-check {
   display: inline-flex;
   align-items: center;
@@ -4301,109 +4598,15 @@ button.shirt-number:hover .shirt-number__icon { color: var(--accent); opacity: 1
 
 .filter-clear:hover { border-color: var(--red); color: var(--red); }
 
-/* Base (youth academy) screen */
-.team-header__crest {
-  width: 64px;
-  height: 64px;
-  font-size: 18px;
-  border: 3px solid var(----team-primary, #f2d34f);
-  border-radius: 8px 8px 26px 26px;
-}
-.team-header__info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.team-header__name {
-  margin: 0;
-  font-size: 28px;
-  color: var(--text);
-}
-.team-header__section-title {
-  margin: 0;
-  color: var(--muted);
-  font-size: 14px;
-}
-.team-header__crest-wrapper {
-  flex-shrink: 0;
-}
+/* The base (youth academy) screen.
+   It is drawn in the club screen's frame, so its header, its card and its table box are the ones
+   above rather than a second set of its own: a manager moving between the squad and the men
+   coming up should find the crest, the name and the club's colours in the same place on both. */
 
-.squad-controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-}
-.squad-controls__sort {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.squad-controls__sort label {
-  font-size: 13px;
-  color: var(--muted);
-}
-.squad-controls__sort select {
-  padding: 4px 8px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--panel-alt, #1e2a3a);
-  color: var(--text);
-  font-size: 13px;
-}
-.sort-dir-button {
-  padding: 2px 8px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: none;
-  color: var(--muted);
-  font-size: 14px;
-  cursor: pointer;
-}
-.sort-dir-button:hover { color: var(--text); }
-
-.academy-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-.academy-table th {
-  text-align: left;
-  padding: 8px 10px;
-  border-bottom: 2px solid var(--line);
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.academy-table th.name-col { text-align: left; }
-.academy-table th.num { text-align: center; }
-.academy-table th.stars-col { text-align: center; }
-.academy-table th.action-col { text-align: right; }
-.academy-table td {
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--line);
-  vertical-align: middle;
-}
-.academy-table td.num { text-align: center; }
-.academy-table td.stars-col { text-align: center; }
-.academy-table td.name-col .squad-name {
-  min-width: 160px;
-}
-.academy-table td.action-col {
-  text-align: right;
-  white-space: nowrap;
-}
-.academy-table tbody tr:hover { background: var(--panel-alt, rgba(255,255,255,0.03)); }
-.academy-table .empty-cell {
-  text-align: center;
-  padding: 24px;
-  color: var(--muted);
-}
+/* The base's table is the squad's table — `.history-table.club-squad-table`, whose rules live
+   with the squad's — so it inherits the sticky header, the right-aligned tabular figures, the
+   dimmed injured and unavailable rows and the wrapped cells for free. What is left down here is
+   the two buttons a manager presses on a youth, which the squad has no equivalent of. */
 
 .promote-button {
   padding: 4px 12px;

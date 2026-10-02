@@ -3,8 +3,17 @@ import type { MatchOutcome, TeamMatchRecordDto } from '@/types';
 
 export type Form = 'win' | 'draw' | 'loss';
 
-/** What a match meant for the club, read off its two goals. */
-export const formOf = (record: TeamMatchRecordDto): Form => {
+/**
+ * What a match meant for the club, read off its two goals.
+ *
+ * <p>
+ * It takes the two numbers and nothing else, so every line in the game that has a scoreline can
+ * be asked — a club's own record and the tactics board's form guide are the same question about
+ * the same pair of goals, and two screens each carrying their own copy of the comparison are
+ * two screens that can disagree about whether a club won.
+ * </p>
+ */
+export const formOf = (record: { goalsFor: number; goalsAgainst: number }): Form => {
   if (record.goalsFor > record.goalsAgainst) return 'win';
   if (record.goalsFor < record.goalsAgainst) return 'loss';
   return 'draw';
@@ -13,11 +22,25 @@ export const formOf = (record: TeamMatchRecordDto): Form => {
 const FORM_LABEL: Record<Form, string> = { win: 'V', draw: 'E', loss: 'D' };
 
 /** The same three results, said in full, for anyone the colour or the letter does not reach. */
-const FORM_TITLE: Record<Form, string> = {
+export const FORM_TITLE: Record<Form, string> = {
   win: 'Vitória',
   draw: 'Empate',
   loss: 'Derrota'
 };
+
+/**
+ * One result as the letter that says it.
+ *
+ * <para>
+ * The letter is drawn by the row's own `form-win` / `form-draw` / `form-loss` class rather than
+ * carrying one itself: the rules that colour it are descendant rules, so a badge that coloured
+ * itself would be a second set of bands for one letter. Handed a form, it says what the run
+ * says and nothing more.
+ * </para>
+ */
+export const FormBadge: React.FC<{ form: Form }> = ({ form }) => (
+  <span className="form-result">{FORM_LABEL[form]}</span>
+);
 
 interface FormRunProps {
   matches: TeamMatchRecordDto[];

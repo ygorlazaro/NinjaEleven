@@ -176,21 +176,30 @@ public sealed class HeadlessMatchPlayer : IHeadlessMatchPlayer
     }
 
     /// <summary>
-    /// Starts the manager's own match and walks none of it.
+    /// Starts the manager's own match and leaves it to the loop.
     ///
     /// <para>
     /// The kick-off is the same kick-off a match nobody watches gets — same lineup, same
-    /// bench, same engine, same opening events — and then the walk stops. The session is
-    /// marked as nobody's to drive, so the background loop leaves the clock alone, and the
-    /// match sits there at minute zero until the manager's screen claims it. That is the
-    /// whole difference between a world the manager watches and a world that plays his
-    /// evening for him.
+    /// bench, same engine, same opening events — and then this walk stops. The session is left
+    /// with the loop as its driver and nobody's claim on it, so the background loop plays it
+    /// out in the time a match takes and the window closes on the final whistle, whether the
+    /// manager is at his screen or asleep. That is the whole difference between his own game
+    /// and the other thirty-one: it is played live rather than walked through in one go, and
+    /// he can take the keyboard whenever he arrives.
+    /// </para>
+    ///
+    /// <para>
+    /// There is no third possibility. A session left with no driver at all is a match on a
+    /// scoreboard at 0 x 0 for ever: the loop keeps off a match it does not own, no walk comes
+    /// back for it, the fixture holds its window and the season behind it stops. Every process
+    /// that opens a match therefore runs the loop that finishes it, which is why this is a
+    /// method that says <c>let the loop run</c> rather than one that says <c>leave it</c>.
     /// </para>
     /// </summary>
     /// <param name="fixtureId">The fixture of the manager's own club.</param>
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>The kick-off's own answer.</returns>
-    public async Task<HeadlessMatchResult> StartAndLeaveAsync(
+    public async Task<HeadlessMatchResult> StartAndLetTheLoopRunAsync(
         Guid fixtureId,
         CancellationToken cancellationToken = default)
     {
@@ -214,10 +223,9 @@ public sealed class HeadlessMatchPlayer : IHeadlessMatchPlayer
                 started.ErrorMessage);
         }
 
-        Claim(started.MatchId, MatchDriver.LeftForTheManager);
-
         _logger.LogInformation(
-            "Match {MatchId} was started for the manager and left on the touchline.",
+            "Match {MatchId} is the manager's own and was started for him. It is being played " +
+            "live by this process's loop, and his screen claims it if he arrives.",
             started.MatchId);
 
         return new HeadlessMatchResult(

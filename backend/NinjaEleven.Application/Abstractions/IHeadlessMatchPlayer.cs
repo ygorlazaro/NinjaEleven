@@ -43,19 +43,35 @@ public interface IHeadlessMatchPlayer
     Task<HeadlessMatchResult> PlayAsync(Guid fixtureId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Kicks a match off and walks no part of it: the clock is started, the lineup and the
-    /// bench are locked, the events begin — and then nobody touches it.
+    /// Kicks a match off and hands the clock to this process's loop, which plays it to the
+    /// final whistle in the time a match takes.
     ///
     /// <para>
-    /// It is how the world opens the manager's own match. A manager who cannot watch his own
-    /// game being played for him is not playing the game, and a window that simulated it would
-    /// hand him a result for an evening he sat through on another screen. So the world starts
-    /// it, leaves the session marked as nobody's to drive, and waits: the manager's screen
-    /// claims the match when he gets there, and the window closes on the match he finished.
+    /// It is how the world opens the manager's own match, and it is the only difference between
+    /// that match and the thirty-one others of the day: the same kick-off, the same lineup, the
+    /// same bench, the same events — but played out in real time rather than walked through in
+    /// one go, so the manager's own game is the one thing in the world he can watch live.
     /// </para>
+    ///
+    /// <para>
+    /// It is played whether or not he is there. A club whose manager is asleep does not stop
+    /// playing football: the match runs, the feed runs, the window closes on the final whistle,
+    /// and the manager who opens it the next morning finds the result of a game that really
+    /// happened rather than a fixture stuck at minute zero waiting for him. Nobody has to be
+    /// online for a matchday to finish — and that is a rule about the world, not a courtesy
+    /// extended to the manager who happens to be looking.
+    /// </para>
+    ///
+    /// <para>
+    /// And when he does arrive mid-match, his screen claims it: the clock stays where it is and
+    /// the keyboard changes hands, which is the seam <c>AttachManager</c> is.
+    /// </para>
+    /// </summary>
     /// </summary>
     /// <param name="fixtureId">The fixture of the manager's own club.</param>
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>The kick-off's own answer.</returns>
-    Task<HeadlessMatchResult> StartAndLeaveAsync(Guid fixtureId, CancellationToken cancellationToken = default);
+    Task<HeadlessMatchResult> StartAndLetTheLoopRunAsync(
+        Guid fixtureId,
+        CancellationToken cancellationToken = default);
 }

@@ -1,22 +1,32 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
-using NinjaEleven.Api.Contracts;
-using NinjaEleven.Api.Mappings;
-using NinjaEleven.Api.Realtime;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using NinjaEleven.Application.Abstractions;
-using NinjaEleven.Application.Matches;
-using NinjaEleven.Domain.Common;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Application.Services;
+using NinjaEleven.Domain.Common;
+using NinjaEleven.Domain.Matches;
 
-namespace NinjaEleven.Api.Realtime;
+namespace NinjaEleven.Application.Matches;
 
 /// <summary>
 /// The single simulation loop. It owns no football rules: it walks the matches that are
-/// currently being played, asks the service to advance each one by a tick, and
-/// republishes what came back. Because the loop is the only caller that advances the
-/// clock, a match can never be simulated by two callers at once.
+/// currently being played, asks the service to advance each one by a tick, and republishes
+/// what came back. Because the loop is the only caller that advances the clock, a match can
+/// never be simulated by two callers at once.
+///
+/// <para>
+/// It lives here rather than in the API because <b>every process that can open a match has to
+/// be able to move its clock</b>. The world is moved by more than one process — a hand
+/// pressing a button, the Scheduler's crons — and each of them keeps its match's working
+/// memory in its own registry, so a loop that lived only beside the sockets would leave the
+/// Scheduler holding matches nothing ticks: a live fixture on a scoreboard that says 0 x 0 for
+/// ever, holding a window that can never close, in a season that then stops. Both processes
+/// run this loop; the one with clients attached also republishes, and the one without throws
+/// it away through <see cref="SilentMatchBroadcaster"/>.
+/// </para>
 ///
 /// <para>
 /// It also reads, rather than plays, the matches another process is playing. The Scheduler
@@ -106,64 +116,104 @@ public sealed class MatchLoopService : BackgroundService
 
         await RecoverInterruptedMatchesAsync(stoppingToken);
 
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            var activeMatches = _sessions.ActiveMatchIds;
-            var shortestWait = BaseTickIntervalMs;
-
-            var atTheSpot = 0;
-
-            foreach (var matchId in activeMatches)
+            while (!stoppingToken.IsCancellationRequested)
             {
-                if (stoppingToken.IsCancellationRequested)
+                var activeMatches = _sessions.ActiveMatchIds;
+                var shortestWait = BaseTickIntervalMs;
+
+                var atTheSpot = 0;
+
+                foreach (var matchId in activeMatches)
+                {
+                    if (stoppingToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    var advance = await AdvanceAsync(matchId, stoppingToken);
+                    if (advance.InShootout)
+                    {
+                        atTheSpot++;
+                    }
+                    else if (advance.Speed > 1)
+                    {
+                        shortestWait = Math.Min(shortestWait, BaseTickIntervalMs / advance.Speed);
+                    }
+                }
+
+                if (activeMatches.Count == 0)
+                {
+                    shortestWait = IdlePollIntervalMs;
+                }
+                else if (atTheSpot == activeMatches.Count)
+                {
+                    // Everything on the pitch is at the spot, so the only thing there is to watch
+                    // is a kick, and a kick is not a minute of football.
+                    shortestWait = ShootoutTickIntervalMs;
+                }
+
+                // The matches somebody else is playing, read rather than played. It is on the same
+                // pass as the loop's own because a client watching a matchday should not be able
+                // to tell which process is playing which of its fixtures — and it is skipped
+                // outright by a process with no clients attached, which has nowhere to put what
+                // it would read.
+                if (!_broadcaster.IsSilent)
+                {
+                    await PublishForeignMatchesAsync(stoppingToken);
+                }
+
+                // And the matches nobody is playing any more, on a slower beat than the loop's
+                // own. This is the pass that notices an owner that went away while this process
+                // was already up.
+                if (DateTimeOffset.UtcNow - _lastRecoverySweep >= RecoverySweepInterval)
+                {
+                    _lastRecoverySweep = DateTimeOffset.UtcNow;
+                    await RecoverInterruptedMatchesAsync(stoppingToken);
+                }
+
+                try
+                {
+                    await Task.Delay(shortestWait, stoppingToken);
+                }
+                catch (TaskCanceledException)
                 {
                     return;
                 }
+            }
+        }
+        finally
+        {
+            await ReleaseTheMatchesOfThisProcessAsync();
+        }
+    }
 
-                var advance = await AdvanceAsync(matchId, stoppingToken);
-                if (advance.InShootout)
-                {
-                    atTheSpot++;
-                }
-                else if (advance.Speed > 1)
-                {
-                    shortestWait = Math.Min(shortestWait, BaseTickIntervalMs / advance.Speed);
-                }
-            }
+    /// <summary>
+    /// Hands back every match this process is playing before it goes.
+    ///
+    /// <para>
+    /// The loop is the only thing that knows which matches this process is driving, so it is
+    /// the only place that can say goodbye to them. A process that stops without doing this
+    /// looks exactly like one that was killed, and the next one waits out a five-minute lease
+    /// on a match nobody is playing — which is charged to whoever was watching it, as a frozen
+    /// scoreboard, for a restart that was supposed to cost nothing.
+    /// </para>
+    /// </summary>
+    private async Task ReleaseTheMatchesOfThisProcessAsync()
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var matchService = scope.ServiceProvider.GetRequiredService<MatchService>();
 
-            if (activeMatches.Count == 0)
-            {
-                shortestWait = IdlePollIntervalMs;
-            }
-            else if (atTheSpot == activeMatches.Count)
-            {
-                // Everything on the pitch is at the spot, so the only thing there is to watch
-                // is a kick, and a kick is not a minute of football.
-                shortestWait = ShootoutTickIntervalMs;
-            }
-
-            // The matches somebody else is playing, read rather than played. It is on the same
-            // pass as the loop's own because a client watching a matchday should not be able to
-            // tell which process is playing which of its fixtures.
-            await PublishForeignMatchesAsync(stoppingToken);
-
-            // And the matches nobody is playing any more, on a slower beat than the loop's
-            // own. This is the pass that notices an owner that went away while this process
-            // was already up.
-            if (DateTimeOffset.UtcNow - _lastRecoverySweep >= RecoverySweepInterval)
-            {
-                _lastRecoverySweep = DateTimeOffset.UtcNow;
-                await RecoverInterruptedMatchesAsync(stoppingToken);
-            }
-
-            try
-            {
-                await Task.Delay(shortestWait, stoppingToken);
-            }
-            catch (TaskCanceledException)
-            {
-                return;
-            }
+            await matchService.ReleaseTheMatchesOfThisHostAsync();
+        }
+        catch (Exception exception)
+        {
+            // A shutdown that cannot reach the database is still a shutdown. The matches fall
+            // back to waiting out their lease, which is what happened before this existed.
+            _logger.LogError(exception, "Failed to release the matches of this host on the way out.");
         }
     }
 
@@ -223,19 +273,17 @@ public sealed class MatchLoopService : BackgroundService
 
                 if (events.Count > 0)
                 {
-                    var published = events.Select(played => played.ToDto()).ToEngineDtos();
-
-                    await _broadcaster.PublishEventsAsync(match.Id, published, stoppingToken);
-                    await _broadcaster.PublishMatchdayEventsAsync(row.RoundId, match.Id, published, stoppingToken);
+                    await _broadcaster.PublishEventsAsync(match.Id, events, stoppingToken);
+                    await _broadcaster.PublishMatchdayEventsAsync(row.RoundId, match.Id, events, stoppingToken);
 
                     _republished[match.Id] = events[^1].Sequence;
                 }
 
                 var state = await matchService.GetStateAsync(match.Id, stoppingToken);
-                await _broadcaster.PublishStateAsync(match.Id, state.ToDto(), stoppingToken);
+                await _broadcaster.PublishStateAsync(match.Id, state, stoppingToken);
 
                 var score = await matchService.GetScoreAsync(match.Id, stoppingToken);
-                await _broadcaster.PublishScoreAsync(row.RoundId, score.ToDto(), stoppingToken);
+                await _broadcaster.PublishScoreAsync(row.RoundId, score, stoppingToken);
             }
 
             // A match that has left the live list is one this process will not see again, and
@@ -258,42 +306,6 @@ public sealed class MatchLoopService : BackgroundService
         {
             _logger.LogError(exception, "Failed to republish the matches another process is playing.");
         }
-    }
-
-    /// <summary>
-    /// A live session only exists in memory. A match that was still open when the
-    /// process stopped can therefore never be resumed, so it is abandoned here and its
-    /// fixture goes back on the schedule. Without this a restart would leave a fixture
-    /// that reports "already started" and can neither be played nor watched.
-    /// </summary>
-    /// <summary>
-    /// Hands back every match this process is playing before it goes.
-    ///
-    /// <para>
-    /// The loop is the only thing that knows which matches this process is driving, so it is
-    /// the only place that can say goodbye to them. A process that stops without doing this
-    /// looks exactly like one that was killed, and the next one waits out a five-minute lease
-    /// on a match nobody is playing — which is charged to whoever was watching it, as a frozen
-    /// scoreboard, for a restart that was supposed to cost nothing.
-    /// </para>
-    /// </summary>
-    public override async Task StopAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var matchService = scope.ServiceProvider.GetRequiredService<MatchService>();
-
-            await matchService.ReleaseTheMatchesOfThisHostAsync(cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            // A shutdown that cannot reach the database is still a shutdown. The matches fall
-            // back to waiting out their lease, which is what happened before this existed.
-            _logger.LogError(exception, "Failed to release the matches of this host on the way out.");
-        }
-
-        await base.StopAsync(cancellationToken);
     }
 
     private async Task RecoverInterruptedMatchesAsync(CancellationToken cancellationToken)
@@ -320,7 +332,7 @@ public sealed class MatchLoopService : BackgroundService
                 foreach (var abandonedMatchId in recovered)
                 {
                     var state = await matchService.GetStateAsync(abandonedMatchId, cancellationToken);
-                    await _broadcaster.PublishStateAsync(abandonedMatchId, state.ToDto(), cancellationToken);
+                    await _broadcaster.PublishStateAsync(abandonedMatchId, state, cancellationToken);
                 }
             }
         }
@@ -343,12 +355,12 @@ public sealed class MatchLoopService : BackgroundService
         {
             // A match somebody else is driving is not this loop's to drive. The headless
             // player walks a match of the world's own from kick-off to the final whistle in
-            // one go, and the world can also open the manager's own match and stop — both sit
-            // in the registry like any other, so without this the loop moves the same clock at
-            // the same time, and whichever reaches full time first leaves the other asking for
-            // a second half of a match that is already over. A match left on the touchline for
-            // the manager is nobody's to drive at all until he claims it: a loop that ran it
-            // out from under him is the world playing his evening for him.
+            // one go, and the loop must keep its hands off it while it does — two drivers on
+            // one match is a match played at double speed and then asked for a second half it
+            // does not have. Every other match, including the one the world opened for the
+            // manager, is the loop's: a manager's own fixture is started and then played to
+            // the final whistle like any other, so his club's football does not wait for him
+            // to turn the game on.
             if (_sessions.TryGet(matchId, out var owned) && owned.Driver is not MatchDriver.None)
             {
                 return (Math.Max(1, owned.State.Speed), false);
@@ -372,7 +384,7 @@ public sealed class MatchLoopService : BackgroundService
 
             if (expired.Count > 0)
             {
-                await PublishAsync(matchId, expired.Select(engineEvent => engineEvent.ToDto()).ToList(), cancellationToken);
+                await PublishAsync(matchId, expired, cancellationToken);
             }
 
             var state = await matchService.GetStateAsync(matchId, cancellationToken);
@@ -429,7 +441,7 @@ public sealed class MatchLoopService : BackgroundService
                     return (Math.Max(1, state.Speed), false);
                 }
 
-                await PublishAsync(matchId, resumed.Events.Select(engineEvent => engineEvent.ToDto()).ToList(), cancellationToken);
+                await PublishAsync(matchId, resumed.Events, cancellationToken);
                 await PublishStateAndScoreAsync(matchId, matchService, cancellationToken);
                 return (Math.Max(1, state.Speed), false);
             }
@@ -438,9 +450,8 @@ public sealed class MatchLoopService : BackgroundService
 
             if (result.Accepted && result.Events.Count > 0)
             {
-                var events = result.Events.Select(engineEvent => engineEvent.ToDto()).ToList();
-                await _broadcaster.PublishEventsAsync(matchId, events, cancellationToken);
-                await PublishToTheMatchdayAsync(matchId, events, cancellationToken);
+                await _broadcaster.PublishEventsAsync(matchId, result.Events, cancellationToken);
+                await PublishToTheMatchdayAsync(matchId, result.Events, cancellationToken);
             }
 
             await PublishStateAndScoreAsync(matchId, matchService, cancellationToken);
@@ -498,9 +509,8 @@ public sealed class MatchLoopService : BackgroundService
 
         if (result.Accepted && result.Events.Count > 0)
         {
-            var events = result.Events.Select(engineEvent => engineEvent.ToDto()).ToList();
-            await _broadcaster.PublishEventsAsync(matchId, events, cancellationToken);
-            await PublishToTheMatchdayAsync(matchId, events, cancellationToken);
+            await _broadcaster.PublishEventsAsync(matchId, result.Events, cancellationToken);
+            await PublishToTheMatchdayAsync(matchId, result.Events, cancellationToken);
         }
 
         await PublishStateAndScoreAsync(matchId, matchService, cancellationToken);
@@ -513,16 +523,16 @@ public sealed class MatchLoopService : BackgroundService
     }
 
     /// <summary>
-    /// True while the match the manager is watching has not left the first half yet. The
-    /// interval is a barrier for the whole matchday, but it has a single owner: a round
+    /// True while the match the manager is watching has not left the first half yet.
+    ///
+    /// <para>
+    /// The interval is a barrier for the whole matchday, but it has a single owner: a round
     /// with nobody watching has no break to wait for, and if the watched match ends the
     /// others are free to finish on their own. Only the watched match is asked, never a
     /// peer, so two headless matches can never wait for each other.
-    /// </summary>
-    /// <summary>
-    /// True while the match the manager is watching has not left the first half yet.
-    /// </summary>
+    /// </para>
     ///
+    /// <para>
     /// The question is asked of the whole matchday and not of one round, because a matchday is
     /// the thing that plays together: the first division and the third are in different rounds
     /// and on the same afternoon, and a barrier that only looked inside a round would let the
@@ -530,6 +540,8 @@ public sealed class MatchLoopService : BackgroundService
     /// is one watched match and it is found by that — a session nobody auto-continues is the
     /// manager's — so a headless match never waits on a peer and two headless matches can
     /// never wait on each other.
+    /// </para>
+    /// </summary>
     private bool TheManagerIsStillAtHalfTime(Guid matchId)
     {
         foreach (var otherId in _sessions.ActiveMatchIds)
@@ -560,8 +572,9 @@ public sealed class MatchLoopService : BackgroundService
         return false;
     }
 
-    private async Task PublishAsync(        Guid matchId,
-        IReadOnlyList<MatchEngineEventDto> events,
+    private async Task PublishAsync(
+        Guid matchId,
+        IReadOnlyList<MatchEngineEvent> events,
         CancellationToken cancellationToken)
     {
         if (events.Count > 0)
@@ -584,7 +597,7 @@ public sealed class MatchLoopService : BackgroundService
     /// </summary>
     private async Task PublishToTheMatchdayAsync(
         Guid matchId,
-        IReadOnlyList<MatchEngineEventDto> events,
+        IReadOnlyList<MatchEngineEvent> events,
         CancellationToken cancellationToken)
     {
         if (events.Count == 0 || !_sessions.TryGet(matchId, out var session))
@@ -606,16 +619,16 @@ public sealed class MatchLoopService : BackgroundService
         CancellationToken cancellationToken)
     {
         var updated = await matchService.GetStateAsync(matchId, cancellationToken);
-        await _broadcaster.PublishStateAsync(matchId, updated.ToDto(), cancellationToken);
+        await _broadcaster.PublishStateAsync(matchId, updated, cancellationToken);
 
         if (updated.IsFinished)
         {
             var resultDto = await matchService.GetResultAsync(matchId, cancellationToken);
-            await _broadcaster.PublishResultAsync(matchId, resultDto.ToDto(), cancellationToken);
+            await _broadcaster.PublishResultAsync(matchId, resultDto, cancellationToken);
         }
 
         var score = await matchService.GetScoreAsync(matchId, cancellationToken);
-        await _broadcaster.PublishScoreAsync(score.RoundId, score.ToDto(), cancellationToken);
+        await _broadcaster.PublishScoreAsync(score.RoundId, score, cancellationToken);
 
         return Math.Max(1, updated.Speed);
     }

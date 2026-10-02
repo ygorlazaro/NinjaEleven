@@ -46,6 +46,16 @@ public class TacticsServiceTests
         _matchDays
             .Setup(repo => repo.ListBySeasonAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
+
+        // A club that has not played yet, which every board has to be able to answer for. It
+        // is asked of the match repository rather than left to Moq's default of null, because
+        // null here is not a quiet answer: the board counts the rows it is given.
+        _matches
+            .Setup(repo => repo.GetTeamHistoryAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
     }
 
     private readonly Guid _teamId = Guid.NewGuid();
@@ -341,6 +351,60 @@ public class TacticsServiceTests
         Assert.Equal(3, row.InjuryMatchesRemaining);
     }
 
+    [Fact]
+    public async Task The_form_is_counted_over_the_rows_the_board_is_showing()
+    {
+        var service = CreateService();
+        SquadIs(AFullSquad());
+
+        _matches
+            .Setup(repo => repo.GetTeamHistoryAsync(_teamId, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                AResult("Atlético", goalsFor: 2, goalsAgainst: 1),
+                AResult("Ferroviária", goalsFor: 0, goalsAgainst: 0),
+                AResult("Nautico", goalsFor: 1, goalsAgainst: 2),
+                AResult("Operário", goalsFor: 3, goalsAgainst: 0),
+                AResult("Palmense", goalsFor: 0, goalsAgainst: 1)
+            ]);
+
+        var board = await service.GetBoardAsync(_teamId, _seasonId);
+
+        var summary = board.RecentFormSummary;
+
+        Assert.Equal(5, summary.Played);
+        Assert.Equal(2, summary.Wins);
+        Assert.Equal(1, summary.Draws);
+        Assert.Equal(2, summary.Losses);
+
+        // The two numbers the guide exists to be read for, added up by the service rather than
+        // by the screen: a client summing the same five rows is free to count a different five,
+        // and then the header and the list under it are two accounts of one week.
+        Assert.Equal(6, summary.GoalsFor);
+        Assert.Equal(4, summary.GoalsAgainst);
+        Assert.Equal(2, summary.GoalDifference);
+
+        // And it is over those rows, not over some longer run the repository happened to hold:
+        // the summary is a reading of the list the board sends, never a second question.
+        Assert.Equal(board.RecentForm.Count, summary.Played);
+    }
+
+    [Fact]
+    public async Task A_club_that_has_not_played_has_no_form_rather_than_a_form_of_zero()
+    {
+        var service = CreateService();
+        SquadIs(AFullSquad());
+
+        _matches
+            .Setup(repo => repo.GetTeamHistoryAsync(_teamId, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var board = await service.GetBoardAsync(_teamId, _seasonId);
+
+        Assert.Empty(board.RecentForm);
+        Assert.Equal(RecentFormSummary.None, board.RecentFormSummary);
+    }
+
     private TacticsService CreateService() => new(
         _plans.Object,
         _teams.Object,
@@ -553,6 +617,23 @@ public class TacticsServiceTests
 
     private static Team AClub(string name, Guid id, int rating) =>
         Team.Create(name, name[..3].ToUpperInvariant(), "#000000", "#FFFFFF", rating);
+
+    /// <summary>
+    /// One finished match as the club's own history reads it: the two goals already in the
+    /// club's order rather than the fixture's, which is what the form is counted from.
+    /// </summary>
+    private TeamMatchRecord AResult(string opponent, int goalsFor, int goalsAgainst) =>
+        new()
+        {
+            MatchId = Guid.NewGuid(),
+            TeamId = _teamId,
+            OpponentName = opponent,
+            OpponentTeamId = Guid.NewGuid(),
+            GoalsFor = goalsFor,
+            GoalsAgainst = goalsAgainst,
+            TacticCode = "442",
+            OpponentTacticCode = "352"
+        };
 
     /// <summary>A clock that stands still, so a plan's age is a fact rather than a race.</summary>
     private sealed class FixedClock(DateTimeOffset now) : IClock

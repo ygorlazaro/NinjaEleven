@@ -333,7 +333,9 @@ public class MatchRepository : IMatchRepository
                     CompetitionName = competition.Name,
                     PhaseName = compSeason.IsDivision ? $"Rodada {round.Number}" : (round.Window == 1 ? "Campeonato" : "Copa"),
                     Attendance = match.Attendance,
-                    StadiumName = homeStadium != null ? homeStadium.Name : null
+                    StadiumName = homeStadium != null ? homeStadium.Name : null,
+                    TacticCode = fixture.HomeTeamId == teamId ? match.TacticCode : match.AwayTacticCode,
+                    OpponentTacticCode = fixture.HomeTeamId == teamId ? match.AwayTacticCode : match.TacticCode
                 })
             .Take(limit)
             .ToListAsync(cancellationToken);

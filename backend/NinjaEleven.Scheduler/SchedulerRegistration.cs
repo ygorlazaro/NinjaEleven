@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NinjaEleven.Application.Abstractions;
+using NinjaEleven.Application.Matches;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Scheduler.Jobs;
 using Quartz;
@@ -79,6 +80,16 @@ public static class SchedulerRegistration
         {
             return services;
         }
+
+        // A match this process opens is a match this process has to finish. The crons below
+        // open a window and stop, and a window holding a club somebody is in charge of leaves
+        // that club's fixture with a live match and nobody to move its clock — a scoreboard
+        // frozen at 0 x 0, a fixture nobody can play again and a season that stops behind it.
+        // So the process runs the same loop the API runs, and publishes nothing: there is
+        // nobody attached to this one, and a client watching that match is attached to the
+        // other process, which republishes the football as it is written.
+        services.AddSingleton<IMatchBroadcaster, SilentMatchBroadcaster>();
+        services.AddHostedService<MatchLoopService>();
 
         // The three crons fire once a day at the hour their competition goes out, which is the
         // moment the calendar says the window does. Nothing here decides when a matchday is

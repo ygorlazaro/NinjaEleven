@@ -2,6 +2,8 @@ using System.Text.Json.Serialization;
 using NinjaEleven.Api;
 using NinjaEleven.Api.Middleware;
 using NinjaEleven.Api.Realtime;
+using NinjaEleven.Application.Abstractions;
+using NinjaEleven.Application.Matches;
 using NinjaEleven.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
@@ -106,6 +108,9 @@ builder.Services.AddSignalR()
 
 builder.Services.AddSingleton<IMatchBroadcaster, SignalRMatchBroadcaster>();
 builder.Services.AddSingleton<MatchSimulator>();
+// The loop that moves a match's clock. It is the Application layer's, and this process runs
+// it because this process holds the sockets — the Scheduler runs the same loop against a
+// silent broadcaster, because a process that opens a match has to be able to finish it.
 builder.Services.AddHostedService<MatchLoopService>();
 
 // Whoever issues a match command, the events it produced reach every follower of that

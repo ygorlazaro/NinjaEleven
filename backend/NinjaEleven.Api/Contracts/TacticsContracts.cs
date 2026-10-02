@@ -27,6 +27,13 @@ public class TacticsBoardDto
     /// <summary>The last few finished matches, newest first.</summary>
     public List<TacticsRecentMatchDto> RecentForm { get; set; } = [];
 
+    /// <summary>
+    /// What those same matches add up to. It travels beside the list rather than in a second
+    /// call because the two are one reading: a manager looking at the form wants both at once,
+    /// and asked twice they could be two different sets of matches.
+    /// </summary>
+    public TacticsRecentFormSummaryDto RecentFormSummary { get; set; } = new();
+
     public List<TacticsSquadRowDto> Squad { get; set; } = [];
 
     /// <summary>
@@ -90,6 +97,40 @@ public class TacticsRecentMatchDto
     public string? CompetitionName { get; set; }
     public string? PhaseName { get; set; }
     public DateTimeOffset PlayedAt { get; set; }
+
+    /// <summary>
+    /// The shape this club went out in, and the shape the other club went out in — already
+    /// turned the right way round for the manager reading it.
+    ///
+    /// <para>
+    /// Both are null rather than empty when the match was played before either column was
+    /// written, so a screen can say it does not know rather than print an empty shape as if
+    /// a club had gone out with one.
+    /// </para>
+    /// </summary>
+    public string? TacticCode { get; set; }
+
+    public string? OpponentTacticCode { get; set; }
+}
+
+/// <summary>
+/// The last few results added up, in the same call that listed them.
+///
+/// <para>
+/// The guide shows the matches and this is the run: five numbers read in one glance above
+/// five rows that have to be read one at a time. It is computed by the service from the very
+/// list it sends, so the summary and the rows are always about the same matches.
+/// </para>
+/// </summary>
+public class TacticsRecentFormSummaryDto
+{
+    public int Played { get; set; }
+    public int Wins { get; set; }
+    public int Draws { get; set; }
+    public int Losses { get; set; }
+    public int GoalsFor { get; set; }
+    public int GoalsAgainst { get; set; }
+    public int GoalDifference { get; set; }
 }
 
 /// <summary>One man of the squad, as far as a board needs him.</summary>

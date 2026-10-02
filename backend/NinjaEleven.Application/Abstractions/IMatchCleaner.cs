@@ -36,21 +36,18 @@ public interface IMatchCleaner
     Task<int> AbandonMatchesOnDecidedFixturesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Closes the match of a fixture that somebody started and nobody ever touched: it is
-    /// still on the touchline at minute zero with no manager behind it, so the world takes
-    /// the fixture back and plays it rather than waiting for ever for somebody who is not
-    /// coming.
+    /// Closes the match of a fixture that somebody opened and no process is playing: it is
+    /// still on the pitch at minute zero with no working memory behind it, so the world takes
+    /// the fixture back and plays it rather than holding it for ever.
     ///
     /// <para>
-    /// A match is left for the manager because a manager who cannot watch his own game
-    /// being played for him is not playing the game. He is given the chance, and the chance
-    /// is measured in something other than good intentions: a match that has been ticked is
-    /// being played by somebody, and one that has not been touched since it was opened
-    /// belongs to nobody. Without this a world handed one match nobody wanted could never
-    /// move again, and it would say so by playing nothing at all.
+    /// A match somebody opened and never touched belongs to nobody: it is at minute zero, and
+    /// the only things that can own a match are a walk in progress or the loop. Without this a
+    /// world handed one match nothing was driving could never move again, and it would say so
+    /// by playing nothing at all.
     /// </para>
     /// </summary>
-    /// <param name="fixtureId">The fixture whose match is sitting on the touchline.</param>
+    /// <param name="fixtureId">The fixture whose match is sitting there doing nothing.</param>
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>Whether a match was closed, so the fixture could be played again.</returns>
     Task<bool> ReleaseTheUntouchedMatchAsync(Guid fixtureId, CancellationToken cancellationToken = default);

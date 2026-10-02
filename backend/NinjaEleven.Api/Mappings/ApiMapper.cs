@@ -1184,6 +1184,29 @@ public static class TeamMatchRecordMapping
             })
             .ToList();
 
+    public static CupRulesDto ToDto(this Application.Models.CupRuleSet rules) =>
+        new()
+        {
+            Size = rules.Size,
+            TieRounds = rules.TieRounds,
+            LegsPerTie = rules.LegsPerTie,
+            AllowsExtraTime = rules.AllowsExtraTime,
+            AggregateRule = rules.AggregateRule,
+            LevelTieRule = rules.LevelTieRule,
+            WinnerTakesRule = rules.WinnerTakesRule,
+            Rounds = rules.Rounds
+                .Select(round => new CupRoundRuleDto
+                {
+                    TieRound = round.TieRound,
+                    Name = round.Name,
+                    ClubsIn = round.ClubsIn,
+                    Ties = round.Ties,
+                    FirstLegDay = round.FirstLegDay,
+                    SecondLegDay = round.SecondLegDay
+                })
+                .ToList()
+        };
+
     public static PlayerCareerLineDto ToCareerLineDto(this Application.Models.PlayerCareerLine line) => new()
     {
         Appearances = line.Appearances,

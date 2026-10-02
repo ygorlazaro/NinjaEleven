@@ -14,6 +14,10 @@
     <!-- The scope a fixture is played in. It is the only place the Application layer
          composes a container, and it exists so a match is a unit of work of its own. -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.4" />
+    <!-- The loop that moves a match's clock is a hosted service of the Application layer, and
+         every process that can open a match has to run it: the API and the Scheduler both do,
+         against their own broadcaster. Only the lifecycle contract, no host and no implementation. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.4" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -173,11 +173,10 @@ public class MatchHub : Hub
 
         if (attached)
         {
-            await _publisher.PublishAsync(matchId, new MatchCommandResultDto
+            await _publisher.PublishAsync(matchId, new MatchCommandResult
             {
                 Accepted = true,
-                MatchId = matchId,
-                Events = Array.Empty<MatchEngineEventDto>()
+                MatchId = matchId
             }, Context.ConnectionAborted);
         }
 
@@ -228,6 +227,6 @@ public class MatchHub : Hub
                 result.ErrorMessage);
         }
 
-        return await _publisher.PublishAsync(matchId, result.ToDto(), Context.ConnectionAborted);
+        return await _publisher.PublishAsync(matchId, result, Context.ConnectionAborted);
     }
 }

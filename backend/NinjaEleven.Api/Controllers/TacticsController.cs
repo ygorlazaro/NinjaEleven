@@ -121,9 +121,21 @@ public class TacticsController : ControllerBase
                 RoundNumber = match.RoundNumber,
                 CompetitionName = match.CompetitionName,
                 PhaseName = match.PhaseName,
-                PlayedAt = match.PlayedAt
+                PlayedAt = match.PlayedAt,
+                TacticCode = Recorded(match.TacticCode),
+                OpponentTacticCode = Recorded(match.OpponentTacticCode)
             })
             .ToList(),
+        RecentFormSummary = new TacticsRecentFormSummaryDto
+        {
+            Played = board.RecentFormSummary.Played,
+            Wins = board.RecentFormSummary.Wins,
+            Draws = board.RecentFormSummary.Draws,
+            Losses = board.RecentFormSummary.Losses,
+            GoalsFor = board.RecentFormSummary.GoalsFor,
+            GoalsAgainst = board.RecentFormSummary.GoalsAgainst,
+            GoalDifference = board.RecentFormSummary.GoalDifference
+        },
         Squad = board.Squad
             .Select(row => new TacticsSquadRowDto
             {
@@ -149,4 +161,17 @@ public class TacticsController : ControllerBase
         BenchIds = [.. plan.BenchIds],
         UpdatedAt = plan.UpdatedAt
     };
+
+    /// <summary>
+    /// A shape that was written down, or null when the match was played before it was.
+    ///
+    /// <para>
+    /// The column carries an empty string rather than a null, because that is what the match
+    /// row holds for a game nobody recorded a shape for. On the wire the difference matters:
+    /// null is a screen that says it does not know and draws a dash, and an empty string is a
+    /// shape with no name in it — the one thing that is not a shape.
+    /// </para>
+    /// </summary>
+    private static string? Recorded(string? tacticCode) =>
+        string.IsNullOrWhiteSpace(tacticCode) ? null : tacticCode;
 }

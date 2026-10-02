@@ -22,6 +22,7 @@ import type {
   ClubStandingDto,
   CupBracketDto,
   CupPrizeDto,
+  CupRulesDto,
   DivisionPurseDto,
   PyramidRulesDto,
   TopScorerPrizeListDto,
@@ -329,6 +330,19 @@ export const CompetitionApi = {
    * backend-owned for the same reason the championship's shares are.
    */
   getCupPrizes: () => api.get<CupPrizeDto[]>('/competition/cup-prizes').then(r => r.data),
+
+  /**
+   * The cup's rules: how many clubs it is drawn from, how a tie is decided, and what the winner
+   * goes on to play.
+   *
+   * Asked for rather than written on the screen, for the same reason the pyramid's rules are: the
+   * bracket and the prize legend between them say which clubs are in a tie and what the run is
+   * worth, and neither says that the tie is two matches, that the aggregate decides it, or that a
+   * level aggregate goes to penalties. A client that restated those is a client promising a cup
+   * the game does not play, and the failure is invisible until the constants move — at which
+   * point the bracket it was explaining is still the bracket the game drew.
+   */
+  getCupRules: () => api.get<CupRulesDto>('/competition/cup-rules').then(r => r.data),
 
   /**
    * What an edition pays its artilharia, and who is holding the three places.

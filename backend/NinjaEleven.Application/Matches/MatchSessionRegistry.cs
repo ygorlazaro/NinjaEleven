@@ -96,19 +96,23 @@ public sealed class LiveMatch
     /// Who is moving this match's clock, when the answer is not simply "the loop".
     ///
     /// <para>
-    /// Three things can start a match and only one of them may drive it. The headless player
-    /// walks a match of the world's own from whistle to whistle in one go, and the loop must
-    /// keep its hands off it while it does — two drivers on one match is a match played at
-    /// double speed and then asked for a second half it does not have. The world can also
-    /// open the manager's own match and stop, leaving it on the touchline for him, and then
-    /// nobody may drive that one either: a match nobody is playing is a match the manager can
-    /// still arrive at, and a loop that ran it out from under him is the world playing his
-    /// evening for him.
+    /// Two things can be asked to start a match and only one of them may drive it. The headless
+    /// player walks a match of the world's own from whistle to whistle in one go, and the loop
+    /// must keep its hands off it while it does — two drivers on one match is a match played at
+    /// double speed and then asked for a second half it does not have.
     /// </para>
     ///
     /// <para>
-    /// <see cref="None"/> is every other match — a manager's own from the lineup screen, and a
-    /// wave the matchday opened and left to the loop — and those are the ones the loop drives.
+    /// <see cref="None"/> is every other match: a wave the matchday opened, a match a manager
+    /// started from the lineup screen, and the manager's own match when the world opened it. The
+    /// last one is the important one — a club somebody is in charge of is played by the loop like
+    /// any other, in the time a match takes, so a manager who is not at his screen does not leave
+    /// his fixture stuck at minute zero holding its window and the season behind it.
+    /// </para>
+    ///
+    /// <para>
+    /// There is deliberately no driver that means "nobody". A match with no driver is a match
+    /// that never finishes, and the only two answers to that question are the walk and the loop.
     /// </para>
     /// </summary>
     public MatchDriver Driver { get; set; } = MatchDriver.None;
@@ -132,12 +136,7 @@ public enum MatchDriver
     /// <summary>
     /// The headless player, which is walking it from kick-off to the final whistle in one go.
     /// </summary>
-    WalkedByTheWorld = 1,
-
-    /// <summary>
-    /// Nobody: the world opened it for the manager and stopped. It waits for him.
-    /// </summary>
-    LeftForTheManager = 2
+    WalkedByTheWorld = 1
 }
 
 /// <summary>

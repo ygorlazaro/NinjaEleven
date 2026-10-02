@@ -68,6 +68,39 @@ public class CompetitionService
         return prizes;
     }
 
+    /// <summary>
+    /// The cup's own rules: how many clubs it is drawn from, how a tie is decided, and what the
+    /// winner goes on to play.
+    ///
+    /// It is asked for the same reason the pyramid's rules are, and the reason is the one that
+    /// matters for a knockout: the bracket already says which two clubs are in a tie, and the
+    /// prize legend already says what the run is worth, and between those two nothing says that a
+    /// tie is two matches, that the aggregate decides it, or that a level aggregate goes to
+    /// penalties. A manager planning a tie he expects to be level cannot plan it from a bracket.
+    ///
+    /// Nothing here is a second copy — every number is read from <c>CompetitionRules</c> — so a
+    /// screen printing "são jogos de ida e volta" out of a constant of its own would be a screen
+    /// that is wrong the day the cup stops being two-legged, and the bracket it was explaining
+    /// would still be the bracket the game drew.
+    /// </summary>
+    public CupRuleSet GetCupRules() => new(
+        CupRules.Size,
+        CupRules.TieRounds,
+        CupRules.LegsPerTie,
+        CupRules.AllowsExtraTime,
+        CupRules.AggregateRule,
+        CupRules.LevelTieRule,
+        CupRules.WinnerTakesRule,
+        CupRules.Rounds()
+            .Select(round => new CupRoundRuleLine(
+                round.TieRound,
+                round.Name,
+                round.ClubsIn,
+                round.Ties,
+                round.FirstLegDay,
+                round.SecondLegDay))
+            .ToList());
+
     public async Task<IReadOnlyList<Competition>> GetAllAsync(CancellationToken cancellationToken = default) =>
         await _competitionRepository.ListAsync(cancellationToken);
 

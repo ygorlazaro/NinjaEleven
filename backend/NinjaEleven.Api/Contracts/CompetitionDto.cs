@@ -817,6 +817,80 @@ public class CupPrizeDto
     public bool IsRunnerUp { get; init; }
 }
 
+/// <summary>
+/// The cup's rules: how many clubs it is drawn from, how a tie is decided, and what the winner
+/// goes on to play.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The bracket says which two clubs are in a tie and the prize legend says what the run is worth,
+/// and between those two there is nothing saying that a tie is two matches, that the aggregate is
+/// what decides it, or that a level aggregate goes straight to penalties. Those are the three
+/// facts a manager planning a run needs, and a bracket taken on its own cannot say any of them.
+/// </para>
+/// <para>
+/// It is asked of the backend for the reason <c>PyramidRulesDto</c> is: every number here is read
+/// out of <c>CompetitionRules</c>, and a screen that printed "são jogos de ida e volta" from a
+/// constant of its own would be a screen promising a cup the game does not play — wrong the day
+/// the cup stops being two-legged, while the bracket it was explaining went on being the bracket
+/// the game drew.
+/// </para>
+/// </remarks>
+public class CupRulesDto
+{
+    /// <summary>How many clubs the cup is drawn from — the whole world, all sixty-four of them.</summary>
+    public int Size { get; init; }
+
+    /// <summary>How many tie-rounds the cup is drawn over.</summary>
+    public int TieRounds { get; init; }
+
+    /// <summary>Matches in a cup tie, and the reason a tie needs two matchdays.</summary>
+    public int LegsPerTie { get; init; }
+
+    /// <summary>
+    /// Whether a tie that is level on the aggregate can be played out in extra time. It is sent
+    /// rather than omitted because its absence is the rule: a cup tie goes to penalties.
+    /// </summary>
+    public bool AllowsExtraTime { get; init; }
+
+    /// <summary>
+    /// How the two legs of a tie are added up: the aggregate decides, and not the second leg on
+    /// its own. In the game's own words, so a screen does not restate it.
+    /// </summary>
+    public string AggregateRule { get; init; } = string.Empty;
+
+    /// <summary>What decides a tie that finishes level on the aggregate.</summary>
+    public string LevelTieRule { get; init; } = string.Empty;
+
+    /// <summary>What the cup's winner goes on to play in the season after it.</summary>
+    public string WinnerTakesRule { get; init; } = string.Empty;
+
+    /// <summary>Every tie-round, from the 32-avos to the final.</summary>
+    public IReadOnlyList<CupRoundRuleDto> Rounds { get; init; } = Array.Empty<CupRoundRuleDto>();
+}
+
+/// <summary>One tie-round of the cup, and when it is played.</summary>
+public class CupRoundRuleDto
+{
+    /// <summary>Which tie-round this is, counted from one at the 32-avos.</summary>
+    public int TieRound { get; init; }
+
+    /// <summary>The round's name, in the game's own words: "quartas de final".</summary>
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>How many clubs enter the round.</summary>
+    public int ClubsIn { get; init; }
+
+    /// <summary>How many ties the round is made of, and so how many clubs leave it.</summary>
+    public int Ties { get; init; }
+
+    /// <summary>The day of the season the first legs are played on.</summary>
+    public int FirstLegDay { get; init; }
+
+    /// <summary>The day of the season the returns are played on.</summary>
+    public int SecondLegDay { get; init; }
+}
+
 
 /// <summary>
 /// What a competition pays its artilharia: the three shares, and who is holding each of them.

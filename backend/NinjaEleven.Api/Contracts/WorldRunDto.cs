@@ -29,8 +29,8 @@ public class RoundRunDto
     public required int Failed { get; init; }
     public required int PlayedElsewhere { get; init; }
 
-    /// <summary>The fixtures that were started and are waiting for the manager to play them.</summary>
-    public required int LeftForTheManager { get; init; }
+    /// <summary>The fixtures that were started and are being played live for the manager right now.</summary>
+    public required int StartedForTheManager { get; init; }
 
     public required bool IsComplete { get; init; }
     public required double DurationSeconds { get; init; }
@@ -98,7 +98,7 @@ public static class WorldRunMappings
         AlreadyPlayed = run.AlreadyPlayed,
         Failed = run.Failed,
         PlayedElsewhere = run.PlayedElsewhere,
-        LeftForTheManager = run.LeftForTheManager,
+        StartedForTheManager = run.StartedForTheManager,
         IsComplete = run.IsComplete,
         DurationSeconds = run.Duration.TotalSeconds,
         Fixtures = run.Fixtures.Select(fixture => fixture.ToDto()).ToList()

@@ -56,6 +56,35 @@ export function isPlayerUnavailable(p: PlayerInfo): boolean {
   return !!hasInjury || !!hasSuspension;
 }
 
+/**
+ * A man's name reduced to the two letters that are on the back of his shirt.
+ *
+ * <p>
+ * It is for the places a name will not fit: a card small enough to be held in a hand, a grid of
+ * twenty-three of them. Two letters chosen the way a squad sheet chooses them — the first name
+ * and the last — because those are the two a manager is looking at, and "J. Silva" tells him
+ * less than "JS" does.
+ * </p>
+ *
+ * <p>
+ * The first letter of every word is not the rule. "João dos Santos Ribeiro" would give JSR, and
+ * nobody reads a back like that; a man with one name gives the one letter he has, and a name
+ * with no letters at all gives a dash rather than a hole in the card.
+ * </p>
+ */
+export function initialsOf(name: string): string {
+  const words = (name ?? '').trim().split(/\s+/).filter(word => word.length > 0);
+
+  if (words.length === 0) return '—';
+
+  const first = words[0].charAt(0);
+  const last = words[words.length - 1].charAt(0);
+
+  return words.length === 1
+    ? first.toUpperCase()
+    : `${first}${last}`.toUpperCase();
+}
+
 export function energyClass(energy: number): string {
   if (energy < 35) return 'energy-red';
   if (energy < 70) return 'energy-yellow';

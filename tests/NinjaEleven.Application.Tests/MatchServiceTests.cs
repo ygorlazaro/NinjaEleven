@@ -670,17 +670,19 @@ public class MatchServiceTests
     }
 
     [Fact]
-    public async Task A_manager_who_claims_the_match_the_world_left_him_gets_the_clock_back()
+    public async Task A_manager_who_arrives_at_a_match_the_world_is_playing_takes_over_wherever_it_is()
     {
-        // The world opens the manager's own match and stops, and the background loop is told
-        // to keep its hands off it so the match is still at minute zero when he arrives. The
-        // claim is what hands the clock back: a loop that went on leaving it alone would show
-        // a manager a match that never moves while he watches it.
+        // The world opens his own match and hands the clock to the loop, because a club whose
+        // manager is asleep does not stop playing football. So he arrives at a match that is
+        // already at some minute — his game is being played with or without him, and joining it
+        // is the ordinary case rather than arriving too late. The claim changes who holds the
+        // keyboard and nothing else: the score, the minute and the eleven stay.
         var service = CreateService();
 
         var started = await service.StartAsync(_fixture.Id, 7, headless: true);
-        Assert.True(_sessions.TryGet(started.MatchId, out var left));
-        left.Driver = MatchDriver.LeftForTheManager;
+        Assert.True(_sessions.TryGet(started.MatchId, out var playing));
+        Assert.Equal(MatchDriver.None, playing.Driver);
+        Assert.True(playing.AutoContinue);
 
         Assert.True(service.AttachManager(started.MatchId, _home.Id));
 
@@ -691,28 +693,28 @@ public class MatchServiceTests
     }
 
     [Fact]
-    public async Task A_match_left_on_the_touchline_and_never_touched_is_given_back_to_the_world()
+    public async Task A_match_opened_and_never_touched_is_given_back_to_the_world()
     {
-        // The world leaves the manager's own match open and waits. If he never comes, that
-        // match belongs to nobody: it is still at minute zero, and a world waiting for ever
-        // for a manager who is not coming is a world that never plays another day.
+        // A live match holds its fixture, so a match whose working memory is gone — a run that
+        // created it and stopped before the first tick — is a fixture the world can never play
+        // again, holding a window that can never close. With no session in this process to say
+        // somebody is playing it, it belongs to nobody.
         var service = CreateService();
 
         var started = await service.StartAsync(_fixture.Id, 7, headless: true);
-        Assert.True(_sessions.TryGet(started.MatchId, out var left));
-        left.Driver = MatchDriver.LeftForTheManager;
+        _sessions.Remove(started.MatchId);
 
         Assert.True(await service.ReleaseTheUntouchedMatchAsync(_fixture.Id));
         Assert.Equal(FixtureStatus.Scheduled, _fixture.Status);
-        Assert.False(_sessions.TryGet(started.MatchId, out _));
     }
 
     [Fact]
-    public async Task A_match_the_loop_is_driving_is_nobody_untouched()
+    public async Task A_match_this_process_is_playing_is_nobody_untouched()
     {
-        // The other side of the same question: a match that is not waiting for a manager is
-        // somebody's match, whatever minute it is on. Releasing it would take a game away
-        // from whoever is playing it, which is the mistake this whole rule exists to stop.
+        // The other side of the same question: a match with working memory here is a match this
+        // process is playing — the loop is on it, or a walk is, or a manager is watching it —
+        // whatever minute it is on. Releasing it would take a game away from whoever is playing
+        // it, which is the mistake this whole rule exists to stop.
         var service = CreateService();
 
         await service.StartAsync(_fixture.Id, 7, headless: true);
@@ -783,6 +785,37 @@ public class MatchServiceTests
         Assert.NotEmpty(events);
         Assert.False(session.State.PenaltyAwaitingSelection);
         Assert.Null(session.PenaltyEndsAt);
+    }
+
+    [Fact]
+    public async Task A_claim_nobody_answered_hands_the_clock_back_to_the_loop()
+    {
+        // The freeze this guards is the one the world used to leave on purpose. A claim expires,
+        // and the clock it was holding goes back to whoever is playing the match — which is the
+        // loop and nobody else. Handing it to a walk that is not running is the same scoreboard
+        // frozen at 0 x 0: the loop keeps off a match it does not own, no walk comes back for
+        // it, and the fixture holds its window for ever.
+        var service = CreateService();
+
+        var started = await service.StartAsync(_fixture.Id, 7, headless: false, userTeamId: _home.Id);
+        Assert.True(_sessions.TryGet(started.MatchId, out var session));
+
+        lock (session!.Gate)
+        {
+            session.State.PenaltyTeam = 1;
+            session.State.PenaltyAwaitingSelection = true;
+            session.AutoContinue = false;
+            session.ManagerClaimedAt = MatchTestContext.Clock.UtcNow;
+        }
+
+        MatchTestContext.Advance(TimeSpan.FromSeconds(MatchRules.ManagerDecisionTimeoutSeconds + 1));
+
+        Assert.True(await service.ReleaseAStaleClaimAsync(started.MatchId));
+
+        Assert.Equal(MatchDriver.None, session.Driver);
+        Assert.True(session.AutoContinue);
+        Assert.Null(session.State.ManagerTeamId);
+        Assert.False(session.State.PenaltyAwaitingSelection);
     }
 
     [Fact]

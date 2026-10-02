@@ -2116,6 +2116,59 @@ export interface CupPrizeDto {
 }
 
 /**
+ * The cup's rules: how many clubs it is drawn from, how a tie is decided, and what the winner
+ * goes on to play.
+ *
+ * The bracket says which two clubs are in a tie and the prize legend says what the run is worth,
+ * and between those two there is nothing saying that a tie is two matches, that the aggregate is
+ * what decides it, or that a level aggregate goes straight to penalties. A manager planning a
+ * tie he expects to be level cannot plan it from a bracket.
+ *
+ * It is asked of the backend rather than written here for the same reason the pyramid's rules are:
+ * every number on it is read out of `CompetitionRules` in the backend, and a screen printing
+ * "são jogos de ida e volta" out of a constant of its own is a screen promising a cup the game
+ * does not play — wrong the day the cup stops being two-legged, while the bracket it was
+ * explaining went on being the bracket the game drew.
+ */
+export interface CupRulesDto {
+  /** How many clubs the cup is drawn from — the whole world, all sixty-four of them. */
+  size: number;
+  /** How many tie-rounds the cup is drawn over. */
+  tieRounds: number;
+  /** Matches in a cup tie, and the reason a tie needs two matchdays. */
+  legsPerTie: number;
+  /**
+   * Whether a tie level on the aggregate can be played out in extra time. It is carried as a flag
+   * and not left to be inferred, because its absence is the rule: a cup tie goes to penalties.
+   */
+  allowsExtraTime: boolean;
+  /** How the two legs of a tie are added up, in the backend's own words. */
+  aggregateRule: string;
+  /** What decides a tie that finishes level on the aggregate. */
+  levelTieRule: string;
+  /** What the cup's winner goes on to play in the season after it. */
+  winnerTakesRule: string;
+  /** Every tie-round, from the 32-avos to the final. */
+  rounds: CupRoundRuleDto[];
+}
+
+/** One tie-round of the cup, and when it is played. */
+export interface CupRoundRuleDto {
+  /** Which tie-round this is, counted from one at the 32-avos. */
+  tieRound: number;
+  /** The round's name, in the game's own words: "quartas de final". */
+  name: string;
+  /** How many clubs enter the round. */
+  clubsIn: number;
+  /** How many ties the round is made of, and so how many clubs leave it. */
+  ties: number;
+  /** The day of the season the first legs are played on. */
+  firstLegDay: number;
+  /** The day of the season the returns are played on. */
+  secondLegDay: number;
+}
+
+/**
  * What a competition pays its artilharia: the three shares, and who is holding each of them.
  *
  * It is asked of an edition and not of a season because a season's championship is three
@@ -2367,9 +2420,26 @@ export interface TacticsBoardDto {
   opponent?: TacticsOpponentDto | null;
   headToHead?: TacticsHeadToHeadDto | null;
   recentForm: TacticsRecentMatchDto[];
+  /**
+   * What those same matches add up to, counted by the backend. It travels with the list
+   * rather than beside it because the two are one reading: a screen that summed five rows
+   * itself could be summing five other rows and answering a different question.
+   */
+  recentFormSummary: TacticsRecentFormSummaryDto;
   squad: TacticsSquadRowDto[];
   /** Null for a manager who has never set one — which is not the same as an empty one. */
   plan?: TacticsPlanDto | null;
+}
+
+/** The run the last few results add up to, in five numbers a manager reads at a glance. */
+export interface TacticsRecentFormSummaryDto {
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
 }
 
 export interface TacticsNextFixtureDto {
@@ -2414,6 +2484,15 @@ export interface TacticsRecentMatchDto {
   competitionName?: string | null;
   phaseName?: string | null;
   playedAt: string;
+  /**
+   * The shape each side went out in, already turned the right way up for the manager: this
+   * club's own first, the opponent's second.
+   *
+   * Null is not a shape and not a zero — it is a match played before the column existed, and
+   * the screen draws a dash rather than inventing a system the club did not choose.
+   */
+  tacticCode?: string | null;
+  opponentTacticCode?: string | null;
 }
 
 export interface TacticsSquadRowDto {

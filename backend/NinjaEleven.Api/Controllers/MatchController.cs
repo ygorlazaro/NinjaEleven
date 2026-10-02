@@ -273,9 +273,8 @@ public class MatchController : ControllerBase
         CancellationToken cancellationToken) =>
         Ok(await _publisher.PublishAsync(
             matchId,
-            (await _matchService.SubstituteAsync(
-                matchId, teamId, request.PlayerOutId, request.PlayerInId, cancellationToken))
-            .ToDto(),
+            await _matchService.SubstituteAsync(
+                matchId, teamId, request.PlayerOutId, request.PlayerInId, cancellationToken),
             cancellationToken));
 
     /// <summary>
@@ -290,8 +289,7 @@ public class MatchController : ControllerBase
         CancellationToken cancellationToken) =>
         Ok(await _publisher.PublishAsync(
             matchId,
-            (await _matchService.SelectPenaltyTakerAsync(matchId, teamId, request.PlayerId, cancellationToken))
-            .ToDto(),
+            await _matchService.SelectPenaltyTakerAsync(matchId, teamId, request.PlayerId, cancellationToken),
             cancellationToken));
 
     /// <summary>
@@ -308,9 +306,7 @@ public class MatchController : ControllerBase
         CancellationToken cancellationToken) =>
         Ok(await _publisher.PublishAsync(
             matchId,
-            (await _matchService.NameShootoutOrderAsync(
-                matchId, teamId, request.TakerIds, cancellationToken))
-            .ToDto(),
+            await _matchService.NameShootoutOrderAsync(matchId, teamId, request.TakerIds, cancellationToken),
             cancellationToken));
 
     [HttpPost("pause/{matchId:guid}")]

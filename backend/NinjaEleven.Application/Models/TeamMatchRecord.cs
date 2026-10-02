@@ -56,6 +56,33 @@ public class TeamMatchRecord
 
     // Stadium info
     public string? StadiumName { get; init; }
+
+    /// <summary>
+    /// The shape this club went out in, and the shape the other one went out in.
+    ///
+    /// <para>
+    /// Both are here because a manager picking an order is answering a question about the
+    /// match he is about to play, and "we won 2-1 away last month" does not tell him what it
+    /// was against: 4-4-2 and 3-5-2 are the same scoreline and two different games. The
+    /// columns live on the match and are stamped at the whistle, so they are the shapes that
+    /// were actually on the pitch rather than what anybody intended.
+    /// </para>
+    ///
+    /// <para>
+    /// They are flipped with the rest of the line: a match at home carries the home shape in
+    /// <see cref="TacticCode"/> and a match away carries this club's own there, so a reader
+    /// never has to know which side of the fixture it is looking at.
+    /// </para>
+    ///
+    /// <para>
+    /// Empty rather than absent, and empty is not a shape: a match played before the away
+    /// column existed has one and not the other, and a reader that turned the gap into a
+    /// zero would be claiming the club played no shape at all.
+    /// </para>
+    /// </summary>
+    public string TacticCode { get; init; } = string.Empty;
+
+    public string OpponentTacticCode { get; init; } = string.Empty;
 }
 
 /// <summary>

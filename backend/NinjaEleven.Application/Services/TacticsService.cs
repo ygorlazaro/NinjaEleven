@@ -116,6 +116,7 @@ public class TacticsService
             Opponent = opponent,
             HeadToHead = headToHead,
             RecentForm = recent,
+            RecentFormSummary = RecentFormSummary.Of(recent),
             Squad = squad
                 .Select(TacticsSquadRow.From)
                 .OrderBy(row => PositionOrder.Of(row.Position))
@@ -326,8 +327,82 @@ public sealed class TacticsBoard
     public TacticsOpponent? Opponent { get; init; }
     public HeadToHeadSummary? HeadToHead { get; init; }
     public IReadOnlyList<TeamMatchRecord> RecentForm { get; init; } = [];
+
+    /// <summary>
+    /// The last few matches added up, counted by the service rather than by the screen.
+    ///
+    /// <para>
+    /// The five lines above it are read to be looked at; this is what they add up to, and a
+    /// screen that summed them itself would be a second account of the same five matches —
+    /// two boards saying two different things about how a club has been playing.
+    /// </para>
+    /// </summary>
+    public RecentFormSummary RecentFormSummary { get; init; } = RecentFormSummary.None;
+
     public IReadOnlyList<TacticsSquadRow> Squad { get; init; } = [];
     public TacticsPlan? Plan { get; init; }
+}
+
+/// <summary>
+/// What the last few results add up to.
+///
+/// <para>
+/// A form guide shows the games; this is the run, in five numbers. It is asked of the same set
+/// the guide is drawn from and never of a longer one, so the line "3V 1E 1D" and the five rows
+/// above it are always about the same matches.
+/// </para>
+/// </summary>
+public sealed record RecentFormSummary(
+    int Played,
+    int Wins,
+    int Draws,
+    int Losses,
+    int GoalsFor,
+    int GoalsAgainst)
+{
+    /// <summary>A club that has not played has a form of nothing, not a form of zeroes drawn.</summary>
+    public static RecentFormSummary None { get; } = new(0, 0, 0, 0, 0, 0);
+
+    /// <summary>
+    /// Goals for less goals against, computed rather than carried: a stored difference is a
+    /// number that can be wrong, and a difference of two numbers that are both on the same
+    /// row cannot.
+    /// </summary>
+    public int GoalDifference => GoalsFor - GoalsAgainst;
+
+    /// <summary>
+    /// The same rows counted, in the one place this counting is written down.
+    ///
+    /// <para>
+    /// It counts what is handed to it rather than asking the repository again, which is what
+    /// makes the summary and the list under it impossible to disagree: there is one set of
+    /// matches and one pass over it.
+    /// </para>
+    /// </summary>
+    public static RecentFormSummary Of(IReadOnlyList<TeamMatchRecord> matches)
+    {
+        ArgumentNullException.ThrowIfNull(matches);
+
+        if (matches.Count == 0) return None;
+
+        var wins = 0;
+        var draws = 0;
+        var losses = 0;
+        var goalsFor = 0;
+        var goalsAgainst = 0;
+
+        foreach (var match in matches)
+        {
+            if (match.GoalsFor > match.GoalsAgainst) wins++;
+            else if (match.GoalsFor == match.GoalsAgainst) draws++;
+            else losses++;
+
+            goalsFor += match.GoalsFor;
+            goalsAgainst += match.GoalsAgainst;
+        }
+
+        return new RecentFormSummary(matches.Count, wins, draws, losses, goalsFor, goalsAgainst);
+    }
 }
 
 /// <summary>

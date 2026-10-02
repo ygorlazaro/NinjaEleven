@@ -161,13 +161,19 @@ memory by `IMatchSessionRegistry`; the persisted `Match` row is the source of tr
 history and is written on every tick.
 
 SignalR (`/matchHub`) is the live channel. `MatchHub` is thin: command DTO in, service
-call, DTOs out — no football rules, no repository access. `MatchLoopService`
-(`BackgroundService`) is the single simulation loop: it walks the active sessions, asks
-the service for one tick each and republishes the result through `IMatchBroadcaster`, so
-a match is never advanced by two callers at once. Events carry `Match.Sequence` so a
-client can detect gaps; a reconnecting client re-subscribes, which returns the current
-snapshot before the next event. Pause, resume and half-time are client driven: the loop
-stops on its own at half-time and on a finished match.
+call, DTOs out — no football rules, no repository access. `MatchLoopService` is the single
+simulation loop: it walks the active sessions, asks the service for one tick each and
+republishes the result through `IMatchBroadcaster`, so a match is never advanced by two
+callers at once. It lives in the Application layer rather than beside the sockets, and
+**every process that can open a match runs it** — the API against `SignalRMatchBroadcaster`,
+the Scheduler against `SilentMatchBroadcaster`. That is not tidiness: a match's working
+memory lives in the process that kicked it off, so a process with no loop of its own would
+hold matches nothing ticks — a live fixture on a scoreboard that says 0 x 0 for ever,
+holding a window that can never close. The seam speaks models, not DTOs, precisely so the
+same loop runs in both and the mapping to the wire happens on the side that has a wire.
+Events carry `Match.Sequence` so a client can detect gaps; a reconnecting client
+re-subscribes, which returns the current snapshot before the next event. Pause, resume and
+half-time are client driven: the loop stops on its own at half-time and on a finished match.
 
 A client follows a whole matchday on the same connection: `MatchGroup` carries the match it
 is watching in full, and `RoundGroup` carries the score *and the events* of the other
@@ -362,28 +368,31 @@ PostgreSQL — an in-memory provider has no rows to lock and would answer "yes" 
   playing; taking those matches over abandoned and restarted them under whoever was watching.
   `PlayFixtureAsync` reads a fixture's own state and reports `PlayedElsewhere` instead, which
   is also the answer that keeps the window owed.
-- **The manager's own fixture is started and left, not simulated.** A window that holds a
-  match of a club somebody is in charge of opens that fixture — a real kick-off, a real
-  session — and stops, reporting it as `LeftForTheManager`. The window is owed until he
-  finishes it, and the run that comes back reconciles it from the match he played. A world
-  that simulates the game its manager is waiting to watch is a game he never played. The club
-  is read from the world (`IManagedClubReader`: the managers with a user behind them) and not
+- **The manager's own fixture is played live, and played without him.** A window that holds a
+  match of a club somebody is in charge of opens that fixture — a real kick-off, a real session
+  — and hands the clock to the loop, reporting it as `StartedForTheManager`. The loop carries
+  it to the final whistle in the time a match takes, so his game is the one thing in the world
+  he can watch: he claims it while it runs (`AttachManager` keeps the score, the minute and the
+  eleven and changes only who holds the keyboard), or he is asleep and it finishes anyway.
+  There is no third answer, and that is the point. A window that opened his match and stopped —
+  handing the clock to nobody — held a live match that nothing ticked, at minute zero, for
+  ever: the fixture could not be played again, the window could not close, and the season
+  behind it stopped. It reported nothing and looked like a route that did nothing. The club is
+  read from the world (`IManagedClubReader`: the managers with a user behind them) and not
   from the request, because the scheduler walking the same season is walking it for the same
   man; a club the caller names is added to that answer rather than replacing it.
-- **A match left on the touchline and never touched is nobody's match.** The world waits for
-  the manager, and a world that waited for ever would say so by playing nothing at all — the
-  same window, the same fixture, the same hundredth of a second, over and over, which is
-  indistinguishable from a broken route. So `MatchService.ReleaseTheUntouchedMatchAsync`
-  asks the match rather than a clock: minute zero, unfinished, and either no session here or
-  one still marked `LeftForTheManager`. A match the loop is driving and a match the manager
-  has claimed are both somebody's, and are refused.
+- **A match nobody is playing is nobody's match.** A live match holds its fixture — the
+  database refuses a second one — so a match opened at minute zero whose working memory is not
+  in this process is a fixture the world can never play again, holding a window that can never
+  close. `MatchService.ReleaseTheUntouchedMatchAsync` asks the match rather than a clock:
+  minute zero, unfinished, and no session here. A session here *is* somebody's match, whether
+  the loop is on it, a walk is, or a manager is watching, and is refused.
 - **One match, one driver, and the driver is named.** `LiveMatch.Driver` says whether the
-  headless walk is on it (`WalkedByTheWorld`), whether it is waiting on the touchline for the
-  manager (`LeftForTheManager`), or whether the background loop may have it (`None`). The
-  loop moves a clock that is nobody else's, the walk stops the moment it is not the driver
-  any more, and `AttachManager` hands the clock back — a match left for a manager and then
-  claimed is a match the manager is watching, and a loop that kept off it would show him a
-  game that never moves.
+  headless walk is on it (`WalkedByTheWorld`) or whether the background loop has it (`None`),
+  and there is deliberately no third value. The loop moves a clock that is nobody else's, the
+  walk stops the moment it is not the driver any more, and a claim nobody answers hands the
+  clock back to the loop rather than to a walk that may not be running — which is the same
+  freeze under another name.
 - **A matchday that is behind is owed, not skipped.** The calendar is read from its beginning
   up to today, never from yesterday: a bound of "yesterday" caps how far behind the world may
   fall at the price of never playing anything again, and it fails silently, reporting nothing

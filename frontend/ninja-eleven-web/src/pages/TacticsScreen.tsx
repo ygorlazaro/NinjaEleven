@@ -7,20 +7,22 @@ import type {
   TacticsBoardDto,
   TacticsSquadRowDto
 } from '@/types';
-import { positionLabel, attributeToneClass, energyTextClass } from '@/services/formatters';
+import {
+  positionLabel,
+  attributeToneClass,
+  energyTextClass,
+  energyClass,
+  energyPercent,
+  initialsOf,
+  starsToString
+} from '@/services/formatters';
 import { PlayerName, ClubName } from '@/components/Common/Names';
+import { formOf, FormBadge, FORM_TITLE } from '@/components/Club/FormRun';
 import PlayerStatusMarks from '@/components/Common/PlayerStatusMarks';
 
 /** The eleven on the pitch and the seven beside it. The two numbers the Laws settle on. */
 const STARTERS = 11;
 const BENCH_SIZE = 7;
-
-/**
- * The order a table of players is read in: goalkeepers, defenders, midfielders and
- * attackers, alphabetically inside each group. It is the same order the backend hands the
- * rows in, so this only has to group them under a heading rather than sort them again.
- */
-const POSITION_ORDER = ['GK', 'DEF', 'MID', 'ATT'] as const;
 
 /**
  * The eight, with the short labels the squad table and the training sheet already use.
@@ -33,6 +35,30 @@ const POSITION_ORDER = ['GK', 'DEF', 'MID', 'ATT'] as const;
  * </para>
  */
 const ATTRIBUTE_LABELS = ['Vel', 'Fin', 'Dri', 'Cab', 'For', 'Gol', 'Ref', 'Est'] as const;
+
+/**
+ * The same eight, spelled out, for the window that has room for a word.
+ *
+ * <para>
+ * The abbreviation is a bargain made in a strip eight numbers wide, where "Cabeceio" would
+ * have made every row three lines tall. The detail window holds one man at a time with nothing
+ * beside him, so the bargain buys nothing there and costs the one thing a manager is reading
+ * for: a column of "Cab For Ref" tells him nothing about what he is being shown.
+ * </para>
+ */
+const DETAIL_ATTRIBUTE_LABELS = [
+  'Velocidade',
+  'Finalização',
+  'Drible',
+  'Cabeceio',
+  'Força',
+  'Poder de goleiro',
+  'Reflexos',
+  'Resistência'
+] as const;
+
+/** The two goalkeeper numbers, whose place in the list is theirs and not a manager's. */
+const GOALKEEPER_ATTRIBUTE_INDEXES = [5, 6] as const;
 
 /**
  * The colour of a number: the squad table's bands, asked of the one function that owns them.
@@ -84,16 +110,6 @@ const absenceReason = (row: TacticsSquadRowDto): string => {
   return 'Indisponível';
 };
 
-type Group = (typeof POSITION_ORDER)[number];
-
-/**
- * Where a man can be put: the eleven, the bench, or back on the squad list.
- *
- * <p>
- * A union and not a string, because every handler that takes one has to handle all three and
- * a string would let a fourth arrive at runtime and fall through every branch of it.
- * </p>
- */
 type Zone = 'starters' | 'bench' | 'squad';
 
 /**
@@ -113,6 +129,16 @@ type Zone = 'starters' | 'bench' | 'squad';
  * save. Everything else on the screen exists to make that one decision easier: who is out,
  * who the opponent is, how the two clubs have done against each other, and what this club
  * has been doing lately.
+ * </para>
+ *
+ * <para>
+ * <b>The two halves.</b> The board on the left is the decision and the column on the right is
+ * the context for it — the fixture, the two clubs' record, and the last five results, which
+ * stay where a manager can read them without losing his place in the eleven. The split is two
+ * thirds and one third because the thing being decided is a column of names and the things
+ * informing it are five rows of prose: a column that has to share its width with a form guide
+ * gives eleven names about two hundred pixels each, and an eleven you have to scroll is an
+ * eleven you cannot read at a glance.
  * </para>
  */
 const TacticsScreen: React.FC = () => {
@@ -139,6 +165,19 @@ const TacticsScreen: React.FC = () => {
    */
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropZone, setDropZone] = useState<Zone | null>(null);
+
+  /**
+   * The man the detail window is about.
+   *
+   * <para>
+   * A card is too small to carry the eight attributes and far too small to carry the words
+   * that say why a man is out, so twenty-three cards that each had all of it would be twenty-
+   * three small things nobody could read. They carry four things instead — the line he plays,
+   * the letters on his back, how good he is and how much he has left — and the rest of the
+   * man is one click away in a window that stays where it is while the board is worked on.
+   * </para>
+   */
+  const [inspected, setInspected] = useState<string | null>(null);
 
   // The order as the manager currently has it, which is not yet what is written down. Keeping
   // the two apart is what lets a manager walk away from a half-made change: nothing on the
@@ -214,19 +253,37 @@ const TacticsScreen: React.FC = () => {
     return byId;
   }, [board]);
 
-  const grouped = useMemo(() => {
-    const rows = board?.squad ?? [];
-
-    return POSITION_ORDER.map(group => ({
-      group,
-      rows: rows.filter(row => row.position === group)
-    })).filter(section => section.rows.length > 0);
-  }, [board]);
-
   const chosen = useMemo(
     () => [...starters, ...bench],
     [starters, bench]
   );
+
+  /**
+   * A shape as the manager says it, out of the catalogue this screen already holds.
+   *
+   * <para>
+   * A match remembers the code it kicked off in ("352"), and the code is not what anybody
+   * reads: a column of codes is a column of numbers and the manager has to remember which is
+   * which. The name is asked of the catalogue the screen was given for the ten buttons
+   * rather than of a second endpoint, and a code the catalogue does not know is printed as
+   * itself — a shape nobody has a name for is still a shape, and hiding it behind a dash
+   * would claim the game never played it.
+   * </para>
+   *
+   * <p>
+   * And a match with no shape recorded is a dash, which is the difference between "this club
+   * went out in nothing" and "nobody wrote this down".
+   * </p>
+   */
+  const shapeOf = useMemo(() => {
+    const byCode = new Map(tactics.map(tactic => [tactic.code.toLowerCase(), tactic.name]));
+
+    return (code?: string | null): string => {
+      if (!code) return '—';
+
+      return byCode.get(code.toLowerCase()) ?? code;
+    };
+  }, [tactics]);
 
   /**
    * Puts a man somewhere, which is the only way anything moves on this screen.
@@ -243,7 +300,7 @@ const TacticsScreen: React.FC = () => {
    * is the worse answer on a board: the manager has dragged somebody in front of the eleven and
    * watching nothing happen teaches him the screen is broken. Which man leaves is the last of
    * the column, and the column is written best-first, so that is the one the club was least
-   </para>
+   * </para>
    *
    * <para>
    * attached to.
@@ -302,7 +359,7 @@ const TacticsScreen: React.FC = () => {
     [starters, bench, place]
   );
 
-  /** The one-click version, for the button and for anybody using a keyboard. */
+  /** The one-click version, for the buttons and for anybody using a keyboard. */
   const swap = useCallback(
     (playerId: string, target: 'starters' | 'bench') => place(playerId, target),
     [place]
@@ -334,7 +391,7 @@ const TacticsScreen: React.FC = () => {
    * </para>
    *
    * <para>
-   * The squad column is a target and not only a source: putting somebody back is the thing a
+   * The squad is a target and not only a source: putting somebody back is the thing a
    * manager does when the eleven is full and the man in it has just been suspended, and making
    * him find an empty column first would be the screen rearranging his problem.
    * </para>
@@ -471,13 +528,17 @@ const TacticsScreen: React.FC = () => {
   const opponent = board?.opponent;
   const hasFixture = Boolean(next && opponent);
 
+  const squad = board?.squad ?? [];
+  const recentForm = board?.recentForm ?? [];
+  const summary = board?.recentFormSummary;
+
   // Exactly one goalkeeper, and the count is read off the eleven rather than off the squad:
   // a team sheet with two names in that band is two goalkeepers on the pitch, because a
   // replacement for one of them comes from the line the man plays and a keeper's line has
   // nobody to replace it from. The backend refuses it, and a save button that offers a save
   // the backend will refuse is a control the server has already said no to.
   const keeperCount = starters.filter(playerId =>
-    (board?.squad ?? []).some(player => player.playerId === playerId && player.position === 'GK')
+    squad.some(player => player.playerId === playerId && player.position === 'GK')
   ).length;
   const completeEleven = starters.length === STARTERS;
   const oneGoalkeeper = keeperCount === 1;
@@ -487,331 +548,34 @@ const TacticsScreen: React.FC = () => {
   // outright — eleven names are on this panel and the manager is choosing a keeper in the middle
   // of them, not reading an absence list.
   const startersOutOfAction = starters
-    .map(playerId => board?.squad.find(player => player.playerId === playerId))
+    .map(playerId => squad.find(player => player.playerId === playerId))
     .filter((row): row is TacticsSquadRowDto => !!row && !row.isAvailable)
     .map(row => `${row.name} (${absenceReason(row)})`);
 
   const canSave =
     completeEleven && oneGoalkeeper && !saving && (touched || starters.length > 0);
 
+  const inspectedRow = inspected ? squadById.get(inspected) : undefined;
+
   return (
     <div className="page tactics-page">
-      <header className="page-header">
+      {/* The screen's own header, and it stays where it is.
+          The order the manager leaves here is the one the kick-off reads, and the kick-off is
+          not waiting for him: a save button at the foot of a page that is two screens tall is a
+          button a manager changes an eleven and walks away from. So the button lives at the top
+          and the top does not move — which also means the question "is this saved?" has to be
+          answered up there, because a button that is always in view is a button that can be
+          pressed without anybody having looked at what changed. */}
+      <div className="tactics-bar">
         <h1>Táticas</h1>
-        <p className="page-subtitle">
-          A ordem que o seu clube vai usar na próxima partida. Ela fica valendo até você
-          trocar — a partida é aberta pelo calendário, não por aqui.
-        </p>
-      </header>
-
-      {error && <p className="error">{error}</p>}
-
-      {/* The fixture the order is about. It is at the top and not at the bottom because the
-          whole screen is about one match, and a manager who does not know which one cannot
-          read the rest of it: the same eleven is right for a derby and wrong for a relegation
-          six-pointer, and neither is wrong on its own. */}
-      <section className="tactics-next">
-        {hasFixture ? (
-          <>
-            <div className="tactics-next__fixture">
-              <span className="tactics-next__label">Próxima partida</span>
-              <span className="tactics-next__competition">
-                {next!.competitionName}
-                {next!.matchDayNumber ? ` · Dia ${next!.matchDayNumber}` : ''}
-                {next!.roundNumber ? ` · Rodada ${next!.roundNumber}` : ''}
-              </span>
-              <span className="tactics-next__teams">
-                {opponent!.isHome ? (
-                  <>
-                    <span>{board!.teamName}</span>
-                    <span className="tactics-next__vs">×</span>
-                    <ClubName teamId={opponent!.id}>{opponent!.name}</ClubName>
-                  </>
-                ) : (
-                  <>
-                    <ClubName teamId={opponent!.id}>{opponent!.name}</ClubName>
-                    <span className="tactics-next__vs">×</span>
-                    <span>{board!.teamName}</span>
-                  </>
-                )}
-              </span>
-              <span className="tactics-next__venue">
-                {opponent!.isHome ? 'Fora de casa' : 'Em casa'}
-              </span>
-            </div>
-
-            {board!.headToHead && board!.headToHead.played > 0 && (
-              <dl className="tactics-h2h">
-                <dt>Confrontos</dt>
-                <dd>{board!.headToHead.played}</dd>
-                <dt>Vitórias</dt>
-                <dd>{board!.headToHead.wins}</dd>
-                <dt>Empates</dt>
-                <dd>{board!.headToHead.draws}</dd>
-                <dt>Derrotas</dt>
-                <dd>{board!.headToHead.losses}</dd>
-                <dt>Saldo</dt>
-                <dd>{board!.headToHead.goalDifference}</dd>
-              </dl>
-            )}
-
-            {/* The window may already have gone. Saying so is the difference between an
-                order that will be used and one written after the whistle. */}
-            {!next!.waveOpen && (
-              <p className="tactics-next__closed">
-                A janela desta partida já começou. A ordem vale a partir da próxima.
-              </p>
-            )}
-          </>
-        ) : (
-          <p className="empty">
-            Não há próxima partida marcada para esta temporada. O elenco continua abaixo.
-          </p>
-        )}
-      </section>
-
-      {board && board.recentForm.length > 0 && (
-        <section className="tactics-panel">
-          <h2 className="tactics-panel__title">Últimos jogos</h2>
-          <ul className="tactics-form">
-            {board.recentForm.map(match => (
-              <li key={match.matchId} className="tactics-form__row">
-                <span className="tactics-form__comp">
-                  {match.competitionName ?? `Rodada ${match.roundNumber}`}
-                </span>
-                <span className="tactics-form__fixture">
-                  <ClubName teamId={match.opponentTeamId}>
-                    {match.opponentName}
-                  </ClubName>
-                </span>
-                <span className="tactics-form__score">
-                  {match.goalsFor} × {match.goalsAgainst}
-                </span>
-                <span className="tactics-form__venue">{match.isHome ? 'Casa' : 'Fora'}</span>
-                <Link className="tactics-form__link" to={`/match/${match.matchId}`}>
-                  Resumo
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* The shape, and the eleven it is built for.
-
-          They sit below the recent form because a manager picks an eleven out of what the
-          club has been doing rather than out of a shape: the shape is the container and the
-          last five results are the reason one container is right today and another was right
-          three weeks ago. Above the form and the answer is a preference; below it, it is a
-          decision. */}
-      <section className="tactics-panel">
-        <h2 className="tactics-panel__title">
-          Esquema
-          {suggesting && <span className="tactics-count">montando…</span>}
-        </h2>
-        <div className="tactics-selector">
-          {tactics.map(tactic => (
-            <button
-              key={tactic.code}
-              type="button"
-              className={`tactics-option ${tacticCode === tactic.code ? 'active' : ''}`}
-              onClick={() => void pickTactic(tactic.code)}
-              disabled={suggesting}
-            >
-              <span className="tactics-option__name">{tactic.name}</span>
-              <span className="tactics-option__shape">
-                {tactic.defenders}-{tactic.midfielders}-{tactic.attackers}
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <div className="tactics-columns">
-        <section
-          className={`tactics-panel ${dropZone === 'starters' ? 'tactics-panel--over' : ''}`}
+        <span
+          className={`tactics-bar__status ${touched ? 'tactics-bar__status--dirty' : ''}`}
         >
-          <h2 className="tactics-panel__title">
-            Titulares
-            <span className="tactics-count">
-              {starters.length}/{STARTERS}
-            </span>
-          </h2>
-          <ul
-            className="tactics-list"
-            {...dropTarget('starters')}
-          >
-            {starters.map(playerId => (
-              <TacticsRow
-                key={playerId}
-                row={squadById.get(playerId)}
-                playerId={playerId}
-                dragging={dragging === playerId}
-                onDragStart={startDragging}
-                onDragEnd={endDragging}
-                onRemove={() => toggle(playerId)}
-                onPromote={() => swap(playerId, 'bench')}
-                actionLabel="Reserva"
-              />
-            ))}
-          </ul>
-          {starters.length < STARTERS && (
-            <p className="tactics-hint">
-              Faltam {STARTERS - starters.length} para fechar o time.
-            </p>
-          )}
-          {startersOutOfAction.length > 0 && (
-            /* Not a refusal and not a red panel: naming him is refused by the backend, and a
-               control that saves an eleven the server will reject is a control the server has
-               already said no to. This says who and why, so the choice of the replacement is the
-               manager's before he presses anything. */
-            <p className="tactics-hint tactics-hint--warning" role="status">
-              Não jogam: {startersOutOfAction.join(', ')}. O salvamento é recusado pelo servidor
-              enquanto eles estiverem escalados.
-            </p>
-          )}
-          {completeEleven && !oneGoalkeeper && (
-            <p className="tactics-hint">
-              {keeperCount === 0
-                ? 'Falta um goleiro no time.'
-                : `O time tem ${keeperCount} goleiros. Só um joga.`}
-            </p>
-          )}
-        </section>
-
-        <section
-          className={`tactics-panel ${dropZone === 'bench' ? 'tactics-panel--over' : ''}`}
-        >
-          <h2 className="tactics-panel__title">
-            Reservas
-            <span className="tactics-count">
-              {bench.length}/{BENCH_SIZE}
-            </span>
-          </h2>
-          <ul
-            className="tactics-list"
-            {...dropTarget('bench')}
-          >
-            {bench.map(playerId => (
-              <TacticsRow
-                key={playerId}
-                row={squadById.get(playerId)}
-                playerId={playerId}
-                dragging={dragging === playerId}
-                onDragStart={startDragging}
-                onDragEnd={endDragging}
-                onRemove={() => toggle(playerId)}
-                onPromote={() => swap(playerId, 'starters')}
-                actionLabel="Titular"
-              />
-            ))}
-          </ul>
-        </section>
-
-        <section
-          className={`tactics-panel tactics-panel--squad ${dropZone === 'squad' ? 'tactics-panel--over' : ''}`}
-        >
-          <h2 className="tactics-panel__title">Elenco</h2>
-          {/* The rows are ordered by line and each one says which line it is, so there are no
-              headings above the groups. A heading saying "Defensor" above six rows that each
-              say "DEF" is the same fact twice, and it was one of the things making this screen
-              read as a wall. The badge column groups them by itself: it is constant down a
-              group and changes on the row that starts the next one. */}
-          {grouped.map(section => (
-            <div key={section.group} className="tactics-group">
-              <ul
-                className="tactics-list"
-                {...dropTarget('squad')}
-              >
-                {section.rows.map(row => (
-                  <li
-                    key={row.playerId}
-                    draggable={row.isAvailable}
-                    onDragStart={event => {
-                      event.dataTransfer.setData('text/plain', row.playerId);
-                      startDragging(row.playerId);
-                    }}
-                    onDragEnd={endDragging}
-                    className={`tactics-row ${chosen.includes(row.playerId) ? 'tactics-row--chosen' : ''} ${row.isAvailable ? '' : 'tactics-row--out'} ${dragging === row.playerId ? 'tactics-row--dragging' : ''}`}
-                    title={absenceReason(row) || undefined}
-                  >
-                    <span className="tactics-row__pos">
-                      {positionLabel(row.position)}
-                    </span>
-                    <div className="tactics-row__line">
-                      {/*
-                        The row is the pick, and the name inside it is a door to the profile —
-                        which is why this is not a <button> wrapping a <button>: the name is
-                        one, and nesting a button in a button is not a thing a browser will
-                        honour. The role, the tab stop and the key handling are what make the
-                        row pressable, and the name stops the click so that reading a player
-                        never changes the eleven.
-                      */}
-                      <span
-                        role="button"
-                        tabIndex={row.isAvailable ? 0 : -1}
-                        aria-disabled={!row.isAvailable}
-                        className="tactics-row__name"
-                        onClick={() => row.isAvailable && toggle(row.playerId)}
-                        onKeyDown={event => {
-                          if (!row.isAvailable) return;
-                          if (event.key !== 'Enter' && event.key !== ' ') return;
-                          event.preventDefault();
-                          toggle(row.playerId);
-                        }}
-                        title={
-                          row.isAvailable
-                            ? 'Entrar ou sair do time'
-                            : absenceReason(row)
-                        }
-                      >
-                        <PlayerName playerId={row.playerId}>{row.name}</PlayerName>
-                        <PlayerStatusMarks
-                          suspensionMatches={row.suspensionMatches}
-                          injuryMatchesRemaining={row.injuryMatchesRemaining}
-                        />
-                      </span>
-                      <span className="tactics-row__meta">
-                        <span className={energyTextClass(row.energy)}>{row.energy}</span>
-                        <span>{row.age}</span>
-                      </span>
-                    </div>
-                    {row.isAvailable ? (
-                      <span className="tactics-row__buttons">
-                        <button
-                          type="button"
-                          className="tactics-row__move"
-                          onClick={() => swap(row.playerId, 'starters')}
-                          disabled={starters.length >= STARTERS || starters.includes(row.playerId)}
-                        >
-                          T
-                        </button>
-                        <button
-                          type="button"
-                          className="tactics-row__move"
-                          onClick={() => swap(row.playerId, 'bench')}
-                          disabled={bench.length >= BENCH_SIZE || bench.includes(row.playerId)}
-                        >
-                          R
-                        </button>
-                      </span>
-                    ) : (
-                      <span className="tactics-row__out">{absenceReason(row)}</span>
-                    )}
-                    <AttributeStrip values={row.attributes} position={row.position} />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </section>
-      </div>
-
-      <footer className="tactics-footer">
-        <span className="tactics-footer__status">
-          {board?.plan
-            ? `Salvo em ${new Date(board.plan.updatedAt).toLocaleString('pt-BR')}`
-            : 'Nenhuma ordem salva ainda'}
+          {touched
+            ? 'Alterações não salvas'
+            : board?.plan
+              ? `Salvo em ${new Date(board.plan.updatedAt).toLocaleString('pt-BR')}`
+              : 'Nenhuma ordem salva ainda'}
         </span>
         <button
           type="button"
@@ -821,9 +585,505 @@ const TacticsScreen: React.FC = () => {
         >
           {saving ? 'Salvando…' : 'Salvar ordem'}
         </button>
-      </footer>
+      </div>
 
+      <p className="page-subtitle">
+        A ordem que o seu clube vai usar na próxima partida. Ela fica valendo até você
+        trocar — a partida é aberta pelo calendário, não por aqui.
+      </p>
+
+      {error && <p className="error">{error}</p>}
+
+      <div className="tactics-layout">
+        {/* -------------------------------------------------- A decisão
+            Two thirds of the screen, and everything in it is being decided: the shape, the
+            eleven, the bench and the twenty-three men they are chosen out of. */}
+        <div className="tactics-workspace">
+          <section
+            className={`tactics-panel tactics-squad ${dropZone === 'squad' ? 'tactics-panel--over' : ''}`}
+          >
+            <h2 className="tactics-panel__title">
+              Elenco
+              <span className="tactics-count">{squad.length}</span>
+            </h2>
+
+            {/* Every man in the club, as a card small enough to hold twenty-three of on one
+                screen. The four things on it are the four a choice between men needs: which
+                line he plays in, who he is, how good he is and how much he has left. A card
+                carrying all eight attributes instead would be a card nobody could read at
+                twenty-three to a page, and the attributes are one click away in the window
+                that opens when a card is pressed. */}
+            <ul className="tactics-cards" {...dropTarget('squad')}>
+              {squad.map(row => (
+                <li
+                  key={row.playerId}
+                  draggable={row.isAvailable}
+                  onDragStart={event => {
+                    event.dataTransfer.setData('text/plain', row.playerId);
+                    startDragging(row.playerId);
+                  }}
+                  onDragEnd={endDragging}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={inspected === row.playerId}
+                  title={row.name}
+                  className={`tactics-card ${chosen.includes(row.playerId) ? 'tactics-card--chosen' : ''} ${row.isAvailable ? '' : 'tactics-card--out'} ${dragging === row.playerId ? 'tactics-card--dragging' : ''} ${inspected === row.playerId ? 'tactics-card--inspected' : ''}`}
+                  onClick={() =>
+                    setInspected(current => (current === row.playerId ? null : row.playerId))
+                  }
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    setInspected(current =>
+                      current === row.playerId ? null : row.playerId
+                    );
+                  }}
+                >
+                  <span className="tactics-card__pos">
+                    {positionLabel(row.position)}
+                  </span>
+                  {/* The letters are a door like any other name: a manager who has twenty
+                      pixels of a man still has to be able to ask who he is. */}
+                  <PlayerName
+                    playerId={row.playerId}
+                    className="tactics-card__initials"
+                  >
+                    {initialsOf(row.name)}
+                  </PlayerName>
+                  <span
+                    className="tactics-card__stars"
+                    title={`${row.stars.toFixed(1)} estrelas`}
+                  >
+                    {starsToString(row.stars)}
+                  </span>
+                  {/* Energy at the foot of the card, where a bar reads as the ground a man
+                      is standing on rather than as one more number in a column. */}
+                  <span
+                    className="tactics-card__energy"
+                    title={`Energia ${row.energy}`}
+                  >
+                    <span
+                      className={`tactics-card__energy-fill ${energyClass(row.energy)}`}
+                      style={{ width: energyPercent(row.energy) }}
+                    />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <div className="tactics-board">
+            {/* The shape, listed. Beside the eleven and not above it: a manager picks a shape
+                and an eleven together, and a catalogue sitting under the eleven made the order
+                of the screen the opposite of the order of the thought. */}
+            <section className="tactics-panel tactics-shapes">
+              <h2 className="tactics-panel__title">
+                Esquema
+                {suggesting && <span className="tactics-count">montando…</span>}
+              </h2>
+              <div className="tactics-selector">
+                {tactics.map(tactic => (
+                  <button
+                    key={tactic.code}
+                    type="button"
+                    className={`tactics-option ${tacticCode === tactic.code ? 'active' : ''}`}
+                    onClick={() => void pickTactic(tactic.code)}
+                    disabled={suggesting}
+                  >
+                    <span className="tactics-option__name">{tactic.name}</span>
+                    <span className="tactics-option__shape">
+                      {tactic.defenders}-{tactic.midfielders}-{tactic.attackers}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section
+              className={`tactics-panel ${dropZone === 'starters' ? 'tactics-panel--over' : ''}`}
+            >
+              <h2 className="tactics-panel__title">
+                Titulares
+                <span className="tactics-count">
+                  {starters.length}/{STARTERS}
+                </span>
+              </h2>
+              <ul
+                className="tactics-list"
+                {...dropTarget('starters')}
+              >
+                {starters.map(playerId => (
+                  <TacticsRow
+                    key={playerId}
+                    row={squadById.get(playerId)}
+                    playerId={playerId}
+                    dragging={dragging === playerId}
+                    onDragStart={startDragging}
+                    onDragEnd={endDragging}
+                    onRemove={() => toggle(playerId)}
+                    onPromote={() => swap(playerId, 'bench')}
+                    actionLabel="Reserva"
+                  />
+                ))}
+              </ul>
+              {starters.length < STARTERS && (
+                <p className="tactics-hint">
+                  Faltam {STARTERS - starters.length} para fechar o time.
+                </p>
+              )}
+              {startersOutOfAction.length > 0 && (
+                /* Not a refusal and not a red panel: naming him is refused by the backend, and a
+                   control that saves an eleven the server will reject is a control the server has
+                   already said no to. This says who and why, so the choice of the replacement is the
+                   manager's before he presses anything. */
+                <p className="tactics-hint tactics-hint--warning" role="status">
+                  Não jogam: {startersOutOfAction.join(', ')}. O salvamento é recusado pelo servidor
+                  enquanto eles estiverem escalados.
+                </p>
+              )}
+              {completeEleven && !oneGoalkeeper && (
+                <p className="tactics-hint">
+                  {keeperCount === 0
+                    ? 'Falta um goleiro no time.'
+                    : `O time tem ${keeperCount} goleiros. Só um joga.`}
+                </p>
+              )}
+            </section>
+
+            <section
+              className={`tactics-panel ${dropZone === 'bench' ? 'tactics-panel--over' : ''}`}
+            >
+              <h2 className="tactics-panel__title">
+                Reservas
+                <span className="tactics-count">
+                  {bench.length}/{BENCH_SIZE}
+                </span>
+              </h2>
+              <ul
+                className="tactics-list"
+                {...dropTarget('bench')}
+              >
+                {bench.map(playerId => (
+                  <TacticsRow
+                    key={playerId}
+                    row={squadById.get(playerId)}
+                    playerId={playerId}
+                    dragging={dragging === playerId}
+                    onDragStart={startDragging}
+                    onDragEnd={endDragging}
+                    onRemove={() => toggle(playerId)}
+                    onPromote={() => swap(playerId, 'starters')}
+                    actionLabel="Titular"
+                  />
+                ))}
+              </ul>
+            </section>
+          </div>
+        </div>
+
+        {/* -------------------------------------------------- O contexto
+            One third, and pinned where it stands while the board is worked on. The fixture
+            the order is about, and the last five results — which are the reason one shape is
+            right today and another was right three weeks ago. */}
+        <aside className="tactics-aside">
+          <section className="tactics-panel">
+            <h2 className="tactics-panel__title">Próxima partida</h2>
+            {hasFixture ? (
+              <>
+                <div className="tactics-next__fixture">
+                  <span className="tactics-next__competition">
+                    {next!.competitionName}
+                    {next!.matchDayNumber ? ` · Dia ${next!.matchDayNumber}` : ''}
+                    {next!.roundNumber ? ` · Rodada ${next!.roundNumber}` : ''}
+                  </span>
+                  <span className="tactics-next__teams">
+                    {opponent!.isHome ? (
+                      <>
+                        <span>{board!.teamName}</span>
+                        <span className="tactics-next__vs">×</span>
+                        <ClubName teamId={opponent!.id}>{opponent!.name}</ClubName>
+                      </>
+                    ) : (
+                      <>
+                        <ClubName teamId={opponent!.id}>{opponent!.name}</ClubName>
+                        <span className="tactics-next__vs">×</span>
+                        <span>{board!.teamName}</span>
+                      </>
+                    )}
+                  </span>
+                  <span className="tactics-next__venue">
+                    {opponent!.isHome ? 'Fora de casa' : 'Em casa'}
+                  </span>
+                </div>
+
+                {board!.headToHead && board!.headToHead.played > 0 && (
+                  <dl className="tactics-h2h">
+                    <dt>Confrontos</dt>
+                    <dd>{board!.headToHead.played}</dd>
+                    <dt>Vitórias</dt>
+                    <dd>{board!.headToHead.wins}</dd>
+                    <dt>Empates</dt>
+                    <dd>{board!.headToHead.draws}</dd>
+                    <dt>Derrotas</dt>
+                    <dd>{board!.headToHead.losses}</dd>
+                    <dt>Saldo</dt>
+                    <dd>{board!.headToHead.goalDifference}</dd>
+                  </dl>
+                )}
+
+                {/* The window may already have gone. Saying so is the difference between an
+                    order that will be used and one written after the whistle. */}
+                {!next!.waveOpen && (
+                  <p className="tactics-next__closed">
+                    A janela desta partida já começou. A ordem vale a partir da próxima.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="empty">
+                Não há próxima partida marcada para esta temporada. O elenco continua ao lado.
+              </p>
+            )}
+          </section>
+
+          {recentForm.length > 0 && (
+            <section className="tactics-panel">
+              <h2 className="tactics-panel__title">Últimos jogos</h2>
+
+              {/* The five rows say which games; these five numbers say what they add up to,
+                  and the backend counts them over the very rows underneath — so the header
+                  and the list can never be about two different weeks. */}
+              {summary && summary.played > 0 && (
+                <div className="tactics-form__summary">
+                  <span className="tactics-form__run">
+                    <span className="tactics-form__run-item form-win">
+                      <strong>{summary.wins}</strong> V
+                    </span>
+                    <span className="tactics-form__run-item form-draw">
+                      <strong>{summary.draws}</strong> E
+                    </span>
+                    <span className="tactics-form__run-item form-loss">
+                      <strong>{summary.losses}</strong> D
+                    </span>
+                  </span>
+                  <span className="tactics-form__goals">
+                    <span>
+                      <strong>{summary.goalsFor}</strong> pró
+                    </span>
+                    <span>
+                      <strong>{summary.goalsAgainst}</strong> contra
+                    </span>
+                    <span
+                      className={
+                        summary.goalDifference >= 0
+                          ? 'tactics-form__diff--up'
+                          : 'tactics-form__diff--down'
+                      }
+                    >
+                      {summary.goalDifference >= 0 ? '+' : ''}
+                      {summary.goalDifference} saldo
+                    </span>
+                  </span>
+                </div>
+              )}
+
+              <ul className="tactics-form">
+                {recentForm.map(match => (
+                  <FormRow key={match.matchId} match={match} shapeOf={shapeOf} />
+                ))}
+              </ul>
+            </section>
+          )}
+        </aside>
+      </div>
+
+      {/* The window that says the rest of the man. It stays where it is while the board is
+          worked on, because reading a player and choosing between eleven are two halves of
+          one decision and a window that jumped about would break the second one. */}
+      {inspectedRow && (
+        <PlayerDetail
+          row={inspectedRow}
+          starters={starters}
+          bench={bench}
+          onClose={() => setInspected(null)}
+          onPlace={swap}
+          onRemove={playerId => place(playerId, 'free')}
+        />
+      )}
     </div>
+  );
+};
+
+/**
+ * One of the last few matches, with the shape each side went out in.
+ *
+ * <para>
+ * The colour is the result and the letter says it again, because one of the two reaching a
+ * manager is not guaranteed and the other one is a guess — and the two classes are the game's
+ * own, so a form guide here is drawn exactly as the club's page draws the same five games.
+ * </para>
+ *
+ * <p>
+ * Both shapes are on the line because a scoreline does not say what it was played with: 2-1 is
+ * the same evening against 4-4-2 and against 3-5-2, and the manager picking a shape for
+ * Saturday is reading these five lines for exactly that. The club's own shape is the one in
+ * the highlight, so nobody has to work out which of the two is his.
+ * </p>
+ */
+const FormRow: React.FC<{
+  match: TacticsBoardDto['recentForm'][number];
+  shapeOf: (code?: string | null) => string;
+}> = ({ match, shapeOf }) => {
+  const form = formOf(match);
+
+  return (
+    <li
+      className={`tactics-form__row form-${form}`}
+      title={`${FORM_TITLE[form]} ${match.goalsFor} x ${match.goalsAgainst} — ${match.opponentName}`}
+    >
+      <FormBadge form={form} />
+      <div className="tactics-form__body">
+        <div className="tactics-form__head">
+          <span className="tactics-form__comp">
+            {match.competitionName ?? `Rodada ${match.roundNumber}`}
+          </span>
+          <span className="tactics-form__score">
+            {match.goalsFor} × {match.goalsAgainst}
+          </span>
+        </div>
+        <div className="tactics-form__fixture">
+          <ClubName teamId={match.opponentTeamId}>{match.opponentName}</ClubName>
+          <span className="tactics-form__venue">
+            {match.isHome ? 'Casa' : 'Fora'}
+          </span>
+        </div>
+        <div className="tactics-form__shapes">
+          <span className="tactics-form__shape tactics-form__shape--mine">
+            {shapeOf(match.tacticCode)}
+          </span>
+          <span className="tactics-form__vs">×</span>
+          <span className="tactics-form__shape">{shapeOf(match.opponentTacticCode)}</span>
+          <Link className="tactics-form__link" to={`/match/${match.matchId}`}>
+            Resumo
+          </Link>
+        </div>
+      </div>
+    </li>
+  );
+};
+
+/**
+ * One man, whole, in a window that does not move.
+ *
+ * <para>
+ * Everything a card could not carry: the eight attributes by name, how old he is, how good he
+ * is and what is keeping him off the pitch. It is also where the three moves are made, because
+ * a card seventy pixels wide has no room for the buttons that let a manager put a man in the
+ * eleven without dragging him — and a drag is unreachable from a keyboard, so the buttons
+ * cannot live only where there is room for them.
+ * </para>
+ */
+const PlayerDetail: React.FC<{
+  row: TacticsSquadRowDto;
+  starters: string[];
+  bench: string[];
+  onClose: () => void;
+  onPlace: (playerId: string, target: 'starters' | 'bench') => void;
+  onRemove: (playerId: string) => void;
+}> = ({ row, starters, bench, onClose, onPlace, onRemove }) => {
+  const isKeeper = row.position === 'GK';
+  const inEleven = starters.includes(row.playerId);
+  const onBench = bench.includes(row.playerId);
+
+  return (
+    <aside className="tactics-detail" aria-label={`Ficha de ${row.name}`}>
+      <header className="tactics-detail__head">
+        <span className="tactics-detail__pos">{positionLabel(row.position)}</span>
+        <PlayerName playerId={row.playerId} className="tactics-detail__name">
+          {row.name}
+        </PlayerName>
+        <button
+          type="button"
+          className="tactics-detail__close"
+          onClick={onClose}
+          title="Fechar a ficha"
+          aria-label="Fechar a ficha"
+        >
+          ✕
+        </button>
+      </header>
+
+      <div className="tactics-detail__meta">
+        <span className="tactics-detail__stars" title={`${row.stars.toFixed(1)} estrelas`}>
+          {starsToString(row.stars)}
+        </span>
+        <span className={energyTextClass(row.energy)}>{row.energy} de energia</span>
+        <span>{row.age} anos</span>
+        <PlayerStatusMarks
+          suspensionMatches={row.suspensionMatches}
+          injuryMatchesRemaining={row.injuryMatchesRemaining}
+        />
+      </div>
+
+      {!row.isAvailable && (
+        <p className="tactics-detail__out">{absenceReason(row)}</p>
+      )}
+
+      <ul className="tactics-detail__attrs">
+        {DETAIL_ATTRIBUTE_LABELS.map((label, index) => {
+          const value = row.attributes[index];
+
+          if (value === undefined) return null;
+
+          // A centre back's goalkeeper numbers are zero because he is not a goalkeeper, and two
+          // red zeroes on the window would read as "the worst keeper in the country" rather than
+          // as "not his job".
+          if (GOALKEEPER_ATTRIBUTE_INDEXES.includes(index as 5 | 6) && !isKeeper) return null;
+
+          return (
+            <li key={label} className={`tactics-detail__attr ${attributeTextClass(value)}`}>
+              <span className="tactics-detail__attr-label">{label}</span>
+              <span className="tactics-detail__attr-bar" aria-hidden="true">
+                <span
+                  className={`tactics-detail__attr-fill ${attributeTextClass(value)}`}
+                  style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+                />
+              </span>
+              <span className="tactics-detail__attr-value">{value}</span>
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* A control that cannot be pressed rather than one that saves an eleven the server will
+          refuse: an unavailable man is not named, and a full column has no place for him. */}
+      <div className="tactics-detail__actions">
+        <button
+          type="button"
+          className="tactics-detail__action"
+          onClick={() => onPlace(row.playerId, 'starters')}
+          disabled={!row.isAvailable || inEleven || starters.length >= STARTERS}
+        >
+          Titular
+        </button>
+        <button
+          type="button"
+          className="tactics-detail__action"
+          onClick={() => onPlace(row.playerId, 'bench')}
+          disabled={!row.isAvailable || onBench || bench.length >= BENCH_SIZE}
+        >
+          Reserva
+        </button>
+        <button
+          type="button"
+          className="tactics-detail__action"
+          onClick={() => onRemove(row.playerId)}
+          disabled={!inEleven && !onBench}
+        >
+          Remover
+        </button>
+      </div>
+    </aside>
   );
 };
 

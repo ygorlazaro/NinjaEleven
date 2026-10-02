@@ -880,10 +880,11 @@ public class CompetitionExecutionService
     ///
     /// The answers are the whole of the idempotency contract at fixture level. A fixture that
     /// is already finished is never started; a fixture that somebody is already playing is
-    /// left to them; a fixture of the manager's own club is started and handed over rather
-    /// than simulated; and a fixture that throws is reported and stepped over, keeping
-    /// whatever state the failure left it in so the next run of the window comes back to this
-    /// one rather than starting the window again.
+    /// left to them; a fixture of the manager's own club is started and handed to the loop
+    /// rather than walked through in one go, so his game is watchable and still reaches the
+    /// final whistle without him; and a fixture that throws is reported and stepped over,
+    /// keeping whatever state the failure left it in so the next run of the window comes back
+    /// to this one rather than starting the window again.
     /// </summary>
     private async Task<FixtureRun> PlayFixtureAsync(
         Fixture fixture,
@@ -903,11 +904,10 @@ public class CompetitionExecutionService
         // and begun again under whoever is watching. One match, one driver: a match in
         // progress is left to whoever started it, and the window stays owed until it is over.
         //
-        // Except a match nobody ever touched. A match at minute zero with nobody behind it is
-        // nobody's match — the world left the manager's own on the touchline and stopped, and a
-        // world that waited for ever would answer every press with the same nothing, which is
-        // indistinguishable from a broken route. So the fixture goes back on the schedule and
-        // the day is played out without him.
+        // Except a match nobody is playing at all. A match at minute zero whose working memory
+        // is not in this process belongs to nobody — a run that created it and stopped before
+        // the first tick — and a fixture held by one of those can never be played again. So the
+        // fixture goes back on the schedule and the day is played out without it.
         var takenBack = false;
 
         if (fixture.Status is FixtureStatus.InProgress)
@@ -934,29 +934,30 @@ public class CompetitionExecutionService
             takenBack = true;
 
             _logger.LogInformation(
-                "Fixture {FixtureId} was holding a match nobody ever touched. The world takes the fixture back.",
+                "Fixture {FixtureId} was holding a match nobody is playing. The world takes the fixture back.",
                 fixture.Id);
         }
 
-        // The manager's own match is his to play, but only while it is still his to play. The
-        // world starts it — a lineup, a bench, an engine and a set of events, exactly as any
-        // other — and then stops: nobody ticks it, the loop leaves it alone, and the window
-        // waits for the manager to take it. A world that simulates the game its manager is
-        // waiting to watch is a game he never played.
+        // The manager's own match is his to watch, so it is played in the time a match takes
+        // rather than walked through in one go — but it is played all the same. The world
+        // opens it and hands the clock to this process's loop, which carries it to the final
+        // whistle whether the manager is at his screen or asleep: a club whose manager is not
+        // online does not stop playing football, and a fixture waiting for a manager who never
+        // came is a fixture holding its window, and a season that stops behind it. When he does
+        // arrive, his screen claims the match and the clock stays where it is.
         //
         // It is asked after the release above, and not before it, because a branch here that
         // re-opened the match would be a branch that undid the release: the abandoned fixture
         // came straight back to this line and was handed a second identical match to wait
-        // about. A manager pressing "advance" was left with a window that does not move and a
-        // fixture that grew one abandoned row per press — eleven of them, for an evening he
-        // had never had the chance to play. The fixture he has not touched is now played by
-        // the run below instead, which is the answer the release was written for.
+        // about. A fixture the world has just taken back belongs to the world, and the run
+        // below plays it.
         if (!takenBack && managersTeams.Count > 0 && IsTheManagersFixture(fixture, managersTeams))
         {
-            var opened = await _player.StartAndLeaveAsync(fixture.Id, cancellationToken);
+            var opened = await _player.StartAndLetTheLoopRunAsync(fixture.Id, cancellationToken);
 
             _logger.LogInformation(
-                "Fixture {FixtureId} is the manager's own. It was started and left for him: match {MatchId}.",
+                "Fixture {FixtureId} is the manager's own. It was started for him and the loop is " +
+                "playing it: match {MatchId}.",
                 fixture.Id,
                 opened.MatchId);
 
@@ -965,7 +966,7 @@ public class CompetitionExecutionService
                 opened.MatchId == Guid.Empty ? null : opened.MatchId,
                 null,
                 null,
-                FixtureRunStatus.LeftForTheManager);
+                FixtureRunStatus.StartedForTheManager);
         }
 
         try

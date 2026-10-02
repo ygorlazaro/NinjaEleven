@@ -617,13 +617,13 @@ public class CompetitionExecutionServiceTests
     }
 
     [Fact]
-    public async Task A_match_left_on_the_touchline_that_nobody_touched_is_taken_back_and_played()
+    public async Task A_match_nobody_is_playing_is_taken_back_and_played()
     {
-        // The world leaves the manager's own match open and waits for him. If he never comes,
-        // a world that waited for ever would answer every advance with the same nothing — the
-        // same window, the same fixture, the same 0.01 seconds — which is indistinguishable
-        // from a broken route. A match still at minute zero with nobody behind it belongs to
-        // nobody, so the fixture goes back on the schedule and the day is played out.
+        // A live match holds its fixture, so one that was opened and never touched — a run that
+        // created it and stopped before the first tick — is a fixture the world can never play
+        // again, and the window above it that can never close. It goes back on the schedule and
+        // the day is played out without it, rather than the world answering every advance with
+        // the same nothing, which is indistinguishable from a broken route.
         var untouched = _window[0];
         untouched.MarkInProgress();
 
@@ -648,9 +648,8 @@ public class CompetitionExecutionServiceTests
     {
         // The take-back used to be undone four lines later. The release reopened the fixture,
         // the branch below it saw the manager's own club and started a second identical match
-        // to wait about, and every press of "advance" did it again: eleven abandoned rows for
-        // one evening the manager never had the chance to play. A fixture the world has just
-        // taken back belongs to the world.
+        // for it, and every press of "advance" did it again: eleven abandoned rows for one
+        // evening. A fixture the world has just taken back belongs to the world.
         var hisClub = Guid.NewGuid();
         var fixture = Fixture.Create(_round.Id, hisClub, Guid.NewGuid());
         _window.Add(fixture);
@@ -663,11 +662,11 @@ public class CompetitionExecutionServiceTests
 
         var run = await CreateService().PlayRoundAsync(_round.Id, hisClub);
 
-        Assert.Equal(0, run.LeftForTheManager);
+        Assert.Equal(0, run.StartedForTheManager);
         Assert.Equal(5, run.Played);
 
         _player.Verify(
-            player => player.StartAndLeaveAsync(
+            player => player.StartAndLetTheLoopRunAsync(
                 It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
         _player.Verify(
@@ -701,28 +700,29 @@ public class CompetitionExecutionServiceTests
     }
 
     [Fact]
-    public async Task The_managers_own_fixture_is_started_and_left_for_him_rather_than_simulated()
+    public async Task The_managers_own_fixture_is_started_for_the_loop_rather_than_walked_through()
     {
-        // A manager who cannot watch his own game being played for him is not playing the
-        // game. The window opens his fixture — a real kick-off, a real session — and stops:
-        // the loop leaves that clock alone, the manager's screen claims the match, and the
-        // window closes on the match he finished. Everything else in the day is played out.
+        // His own game is the one match of the day he is meant to be able to watch, so it is
+        // not walked through in one go: the window opens it and hands the clock to the loop,
+        // which carries it to the final whistle in the time a match takes — while he is there
+        // and while he is not. The window closes on the match he finished or nobody did, and
+        // everything else in the day is played out.
         var hisClub = Guid.NewGuid();
         var fixture = Fixture.Create(_round.Id, hisClub, Guid.NewGuid());
         _window.Add(fixture);
 
-        _player.Setup(player => player.StartAndLeaveAsync(
+        _player.Setup(player => player.StartAndLetTheLoopRunAsync(
                 It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new HeadlessMatchResult(true, Guid.NewGuid(), MatchRefusal.None, null));
 
         var run = await CreateService().PlayRoundAsync(_round.Id, hisClub);
 
-        Assert.Equal(1, run.LeftForTheManager);
+        Assert.Equal(1, run.StartedForTheManager);
         Assert.Equal(4, run.Played);
         Assert.False(run.IsComplete);
 
         _player.Verify(
-            player => player.StartAndLeaveAsync(fixture.Id, It.IsAny<CancellationToken>()),
+            player => player.StartAndLetTheLoopRunAsync(fixture.Id, It.IsAny<CancellationToken>()),
             Times.Once);
         _player.Verify(
             player => player.PlayAsync(fixture.Id, It.IsAny<CancellationToken>()),
@@ -743,13 +743,13 @@ public class CompetitionExecutionServiceTests
         _managedClubs.Setup(reader => reader.ListManagedClubsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Guid> { hisClub });
 
-        _player.Setup(player => player.StartAndLeaveAsync(
+        _player.Setup(player => player.StartAndLetTheLoopRunAsync(
                 It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new HeadlessMatchResult(true, Guid.NewGuid(), MatchRefusal.None, null));
 
         var run = await CreateService().PlayRoundAsync(_round.Id);
 
-        Assert.Equal(1, run.LeftForTheManager);
+        Assert.Equal(1, run.StartedForTheManager);
         Assert.Equal(4, run.Played);
         Assert.False(run.IsComplete);
     }
@@ -766,7 +766,7 @@ public class CompetitionExecutionServiceTests
         var run = await CreateService().PlayRoundAsync(_round.Id);
 
         Assert.Equal(5, run.Played);
-        Assert.Equal(0, run.LeftForTheManager);
+        Assert.Equal(0, run.StartedForTheManager);
         _player.Verify(
             player => player.PlayAsync(fixture.Id, It.IsAny<CancellationToken>()),
             Times.Once);

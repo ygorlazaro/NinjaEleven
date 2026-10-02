@@ -4,8 +4,16 @@ import { ClubName } from '@/components/Common/Names';
 import ClubCrest from '@/components/Club/ClubCrest';
 import { formatLimo } from '@/services/limo';
 
-/** How many clubs a page of the podium holds. Eight is a screen of names and no more. */
-const PageSize = 8;
+/**
+ * How many clubs a page of the podium holds.
+ *
+ * Sixteen is a division's table, which is the unit a manager already reads a list of clubs in, so
+ * a page of the cup's ranking looks like the thing he looks at every week of the season. It is
+ * also four pages of the whole cup rather than eight: sixty-four clubs over eight pages is a
+ * turner pressed as often as the table is, and a pager a manager has to click through to find his
+ * own club is a club he stops looking for.
+ */
+const PageSize = 16;
 
 /**
  * The cup as a ranking: every club it drew, the one that got furthest first.
@@ -22,10 +30,10 @@ const PageSize = 8;
  * second way would be a second answer to "which of these two had the better cup", and it would
  * be the second one to disagree with the table at the top of the league page.
  *
- * **Eight to a page, and the turner says where it is.** Sixty-four clubs is eight pages, and a
+ * **Sixteen to a page, and the turner says where it is.** Sixty-four clubs is four pages, and a
  * list that shows all sixty-four at once is a list nobody reads to the end — which is exactly
  * where a club knocked out in the first round is. The pager carries the count, because a screen
- * showing eight of sixty-four with no count is indistinguishable from a cup of eight.
+ * showing sixteen of sixty-four with no count is indistinguishable from a cup of sixteen.
  */
 const CupPodium: React.FC<{
   ranking: CupRankingRowDto[];

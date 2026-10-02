@@ -1,5 +1,7 @@
 using NinjaEleven.Api.Contracts;
 using NinjaEleven.Api.Mappings;
+using NinjaEleven.Application.Abstractions;
+using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Services;
 
 namespace NinjaEleven.Api.Realtime;
@@ -30,18 +32,18 @@ public sealed class MatchCommandPublisher
 
     public async Task<MatchCommandResultDto> PublishAsync(
         Guid matchId,
-        MatchCommandResultDto result,
+        MatchCommandResult result,
         CancellationToken cancellationToken = default)
     {
         await _broadcaster.PublishEventsAsync(matchId, result.Events, cancellationToken);
         await PublishStateAsync(matchId, cancellationToken);
 
-        return result;
+        return result.ToDto();
     }
 
     private async Task PublishStateAsync(Guid matchId, CancellationToken cancellationToken)
     {
-        var state = (await _matchService.GetStateAsync(matchId, cancellationToken)).ToDto();
+        var state = await _matchService.GetStateAsync(matchId, cancellationToken);
         await _broadcaster.PublishStateAsync(matchId, state, cancellationToken);
     }
 }
