@@ -483,14 +483,16 @@ export const SponsorApi = {
    */
   getBook: (teamId: string, seasonId: string) =>
     api.get<SponsorBookDto>(`/team/${teamId}/sponsor?seasonId=${seasonId}`).then(r => r.data),
-  /** Signs a new shirt deal. Fails if the current one is still active. */
-  sign: (teamId: string, seasonId: string, sponsorId: string, perMatchFee?: number, contractMatches?: number) =>
+  /**
+   * Signs a new shirt deal. Fails if the current one is still active.
+   *
+   * The fee and the length are not sent, and there is nowhere to send them to: both are the
+   * sponsor's to decide and both are on the offer the screen was already showing. A client
+   * that could name a price would be quoting a number the book had never agreed to.
+   */
+  sign: (teamId: string, seasonId: string, sponsorId: string) =>
     api
-      .post<SponsorBookDto>(`/team/${teamId}/sponsor/sign?seasonId=${seasonId}`, {
-        sponsorId,
-        perMatchFee,
-        contractMatches
-      })
+      .post<SponsorBookDto>(`/team/${teamId}/sponsor/sign?seasonId=${seasonId}`, { sponsorId })
       .then(r => r.data),
 };
 

@@ -60,6 +60,39 @@ public sealed class LiveMatch
     public DateTimeOffset? ManagerClaimedAt { get; set; }
 
     /// <summary>
+    /// When the window for naming a penalty taker closes, or null when none is open.
+    ///
+    /// <para>
+    /// The window is the only one in a match that still stops the clock, and it is the
+    /// backend's window: <see cref="MatchRules.PenaltySelectionSeconds"/> from the moment
+    /// the penalty is awarded, after which the engine sends somebody to the spot by itself.
+    /// The screen draws the count that is left; it does not own it, because a rule kept in
+    /// the client is a rule a closed tab stops applying.
+    /// </para>
+    /// </summary>
+    public DateTimeOffset? PenaltyEndsAt { get; set; }
+
+    /// <summary>
+    /// When the interval closes by itself, or null while the match is not at one.
+    ///
+    /// <para>
+    /// Twenty seconds of break, the backend's number, after which the second half begins
+    /// whether or not anybody pressed anything. A manager may end it early — that is what
+    /// the button on the interval is for — but he may not keep it open, because a break
+    /// that waits for a screen is a fixture that never finishes and a window that never
+    /// closes.
+    /// </para>
+    /// </summary>
+    public DateTimeOffset? HalfTimeEndsAt { get; set; }
+
+    /// <summary>
+    /// When the window for replacing a man who cannot carry on closes, or null when none
+    /// is open. The clock does not stop for this one: the club plays the man down until
+    /// somebody is named or the engine names somebody.
+    /// </summary>
+    public DateTimeOffset? InjuryWindowEndsAt { get; set; }
+
+    /// <summary>
     /// Who is moving this match's clock, when the answer is not simply "the loop".
     ///
     /// <para>

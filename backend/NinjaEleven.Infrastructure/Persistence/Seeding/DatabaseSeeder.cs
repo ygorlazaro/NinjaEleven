@@ -437,6 +437,16 @@ public class DatabaseSeeder : IDataSeeder
     /// The master sponsor catalog: the companies that can appear on a shirt. Seeded only
     /// once, so a world re-seeded keeps its sponsors and a sponsor that has been signed by a
     /// club is the same row it always was.
+    ///
+    /// <para>
+    /// A book of thirty identical companies would be a book with no pyramid in it: every
+    /// sponsor paying the same for the same shirt, so a club's place, form and crowd would
+    /// decide the price but the company would never decide whether it wanted the club at all.
+    /// So the size is dealt out of each sponsor's own name, which is the same in a world seeded
+    /// today and in a world migrated onto the columns — one rule, in one place
+    /// (<see cref="SponsorRules.SizeFor"/>), and the catalog is not sorted into three piles
+    /// by hand.
+    /// </para>
     /// </summary>
     private async Task SeedSponsorsAsync(CancellationToken cancellationToken)
     {
@@ -445,8 +455,11 @@ public class DatabaseSeeder : IDataSeeder
             return;
         }
 
-        _dbContext.Sponsors.AddRange(SponsorCatalog.Select(
-            sponsor => Sponsor.Create(sponsor.Name, sponsor.Industry, sponsor.Color)));
+        _dbContext.Sponsors.AddRange(SponsorCatalog.Select(sponsor => Sponsor.Create(
+            sponsor.Name,
+            sponsor.Industry,
+            sponsor.Color,
+            SponsorRules.SizeFor(sponsor.Name))));
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 

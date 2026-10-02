@@ -2,6 +2,7 @@ import React from 'react';
 import { positionLabel } from '@/services/formatters';
 import type { MatchPlayerDto } from '@/types';
 import HurtBadge from '@/components/Match/HurtBadge';
+import { useCountdown } from '@/hooks/useCountdown';
 
 interface PenaltyModalProps {
   show: boolean;
@@ -10,9 +11,16 @@ interface PenaltyModalProps {
   onClose: () => void;
   /** Why the last attempt was refused, said where the manager is looking. */
   error?: string | null;
+  /**
+   * When the window closes, in the backend's clock. It is a moment and not a duration: the
+   * fifteen seconds are the engine's, and this only shows what is left of them.
+   */
+  endsAt?: string | null;
 }
 
-const PenaltyModal: React.FC<PenaltyModalProps> = ({ show, candidates, onSelected, onClose, error }) => {
+const PenaltyModal: React.FC<PenaltyModalProps> = ({ show, candidates, onSelected, onClose, error, endsAt }) => {
+  const seconds = useCountdown(endsAt);
+
   if (!show) return null;
 
   // The engine already sends the taker list best chance first, and the chance it sends is
@@ -21,11 +29,12 @@ const PenaltyModal: React.FC<PenaltyModalProps> = ({ show, candidates, onSelecte
   const best = candidates[0]?.penaltyChance ?? null;
 
   return (
-    <div className="modal">
-      <div className="modal-card">
+    <div className="modal" onClick={onClose}>
+      <div className="modal-card" onClick={event => event.stopPropagation()}>
         <h2 id="penaltyTitle">⚽ Pênalti!</h2>
         <p id="penaltyDescription" style={{ color: 'var(--muted)' }}>
-          Escolha o jogador que vai cobrar. O relógio espera a sua decisão.
+          Escolha o jogador que vai cobrar. O jogo espera {seconds != null ? `${seconds}s` : 'uns segundos'} pela
+          sua decisão — depois disso o motor chama o melhor cobrador do time.
           {best != null && ' A chance é a mesma que o motor vai sortear.'}
         </p>
         {error && (

@@ -363,6 +363,18 @@ public sealed class MatchLoopService : BackgroundService
             // the only thing that keeps looking at the match while nobody does.
             await matchService.ReleaseAStaleClaimAsync(matchId, cancellationToken);
 
+            // A window whose time is up is closed here, by the backend's clock and not by
+            // anything a screen did: the penalty goes to somebody drawn from the eleven, the
+            // man who cannot carry on is replaced by the bench, and an interval nobody ended
+            // ends itself. What came out of it is published, because a penalty taken in
+            // silence is a goal the manager never saw scored.
+            var expired = await matchService.CloseTheExpiredWindowsAsync(matchId, cancellationToken);
+
+            if (expired.Count > 0)
+            {
+                await PublishAsync(matchId, expired.Select(engineEvent => engineEvent.ToDto()).ToList(), cancellationToken);
+            }
+
             var state = await matchService.GetStateAsync(matchId, cancellationToken);
 
             if (state.IsFinished || state.IsPaused)
@@ -379,27 +391,24 @@ public sealed class MatchLoopService : BackgroundService
                     await AdvanceShootoutAsync(matchId, matchService, state, cancellationToken));
             }
 
-            // A penalty of the manager's own club is waiting for him to name the taker.
-            // The clock stands still until he does, exactly as it does at the interval, so
-            // the loop leaves the match alone instead of ticking it for nothing.
+            // A penalty of the manager's own club is the one window in a match that still
+            // stops the clock, and it stops for fifteen seconds and no longer: the loop
+            // leaves the match alone until the deadline above takes the decision away.
             if (state.Penalty.AwaitingSelection)
             {
                 return (Math.Max(1, state.Speed), false);
             }
 
-            // A man who cannot carry on is waiting for the manager to name who comes on.
-            // Same answer as the penalty: the loop leaves the match alone, because a tick
-            // here would move the clock over a decision nobody has made yet.
-            if (state.Injury.AwaitingSubstitution)
-            {
-                return (Math.Max(1, state.Speed), false);
-            }
+            // A man who cannot carry on no longer stops anything. The window is open and the
+            // match goes on around it, and the deadline above is what puts somebody on for
+            // him if the manager has not named one.
 
             if (state.IsHalfTime)
             {
-                // A watched match waits for the manager to press "second half". A match
-                // of another club has nobody watching, so the loop leaves the interval
-                // for it: that is what keeps the whole matchday moving together.
+                // A watched match keeps the break the backend is counting down, and the count
+                // ending it is above: the manager may end it early, he may not keep it. A
+                // match of another club has nobody watching, so the loop leaves the interval
+                // for it at once — that is what keeps the whole matchday moving together.
                 if (!_sessions.TryGet(matchId, out var headless) || !headless.AutoContinue)
                 {
                     return (Math.Max(1, state.Speed), false);

@@ -13,6 +13,15 @@ public class SponsorOffer
     public decimal PerMatchFee { get; init; }
     public int ContractMatches { get; init; }
     public string Color { get; init; } = "#f2d34f";
+
+    /// <summary>How big a company this is: 1 local, 2 regional, 3 national.</summary>
+    public int Weight { get; init; }
+
+    /// <summary>How many clubs this sponsor already has on its shirt.</summary>
+    public int ClubsSponsored { get; init; }
+
+    /// <summary>How many it is willing to have. A full slate pays less for the next one.</summary>
+    public int MaxClubs { get; init; }
 }
 
 /// <summary>

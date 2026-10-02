@@ -26,8 +26,19 @@ public static class MatchTestContext
     /// <summary>The world's own tolerances, at their defaults.</summary>
     public static IOptions<WorldExecutionOptions> World() => Options.Create(new WorldExecutionOptions());
 
-    /// <summary>A clock that only ever says <see cref="Now"/>.</summary>
+    /// <summary>A clock that only ever says <see cref="Now"/> until a test moves it.</summary>
     public static IClock Clock { get; } = new FixedClock(Now);
+
+    /// <summary>
+    /// Moves the fixed clock forward.
+    ///
+    /// <para>
+    /// The windows a match waits in are counted in seconds of waiting, so they can only be
+    /// tested by a clock that goes somewhere: a test that cannot move time cannot say that a
+    /// penalty left the manager's hands after fifteen seconds rather than never.
+    /// </para>
+    /// </summary>
+    public static void Advance(TimeSpan by) => ((FixedClock)Clock).UtcNow = Clock.UtcNow.Add(by);
 
     private sealed class FixedClock(DateTimeOffset now) : IClock
     {

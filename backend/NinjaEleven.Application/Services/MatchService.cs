@@ -344,6 +344,15 @@ public class MatchService : IMatchCleaner
         var homeTactic = askedForHome ? tactic : Tactics.Find(orderHome?.TacticCode);
         var awayTactic = askedForAway ? tactic : Tactics.Find(orderAway?.TacticCode);
 
+        // The absences of this matchday are served at its kick-off: a player whose
+        // suspension or injury expires with this match has their counter served now,
+        // before the squad is read. The recovery must precede the squad check so a
+        // player whose last match of a ban is this one is available to be picked.
+        // The changes are persisted immediately because BuildSquadAsync reads through
+        // AsNoTracking and would not see them otherwise.
+        await ServeAbsencesAsync(homeTeam, awayTeam, seasonId, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
         var homeSquad = await BuildSquadAsync(homeTeam, seasonId, homeTactic, cancellationToken);
         var awaySquad = await BuildSquadAsync(awayTeam, seasonId, awayTactic, cancellationToken);
 
@@ -399,11 +408,6 @@ public class MatchService : IMatchCleaner
                 awaySquad = ApplyTheStandingOrder(awaySquad, awayStarterIds, orderAway.BenchIds, awayTactic);
             }
         }
-
-        // The absences of this matchday are served at its kick-off: a player who was
-        // suspended or injured stays out of the squad built above, and his counter is one
-        // match closer to being available again.
-        await ServeAbsencesAsync(homeTeam, awayTeam, seasonId, cancellationToken);
 
         var matchSeed = seed ?? Random.Shared.Next(int.MinValue, int.MaxValue);
 
@@ -1302,7 +1306,7 @@ public class MatchService : IMatchCleaner
 
         lock (session.Gate)
         {
-            return ToView(session.State, match.Status, match);
+            return ToView(session.State, match.Status, match, session);
         }
     }
 
@@ -1357,6 +1361,7 @@ public class MatchService : IMatchCleaner
 
             session.Engine.Tick(session.State);
             produced = DrainFeed(session.State);
+            KeepTheWindowsInStep(session);
         }
 
         var finished = session.State.MatchFinished;
@@ -1781,6 +1786,10 @@ public class MatchService : IMatchCleaner
             match.ReachHalfTime();
             match.StartSecondHalf();
 
+            // The break is over by whichever hand ended it — the manager's button or the
+            // backend's twenty seconds — and the countdown beside the clock goes with it.
+            session.HalfTimeEndsAt = null;
+
             produced = DrainFeed(session.State);
         }
 
@@ -1891,6 +1900,118 @@ public class MatchService : IMatchCleaner
     /// was that he is there.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Stamps every window that is open with the moment it closes, and forgets the ones that
+    /// have just been answered.
+    ///
+    /// <para>
+    /// The stamp is written the first time the window is seen open and is never moved: a
+    /// window whose count restarted on every tick would never close, which is the same hang
+    /// the deadline exists to prevent. And the windows are the backend's — the screen draws
+    /// what is left of them and never owns them, because a rule kept in a client is a rule a
+    /// closed tab stops applying.
+    /// </para>
+    /// </summary>
+    private void KeepTheWindowsInStep(LiveMatch session)
+    {
+        var now = _clock.UtcNow;
+
+        // The penalty is the one window that stops the clock, so it is the one whose countdown
+        // the manager watches next to the score.
+        session.PenaltyEndsAt = session.State.PenaltyAwaitingSelection
+            ? session.PenaltyEndsAt ?? now.AddSeconds(MatchRules.PenaltySelectionSeconds)
+            : null;
+
+        // This one does not stop the clock: the man is off the pitch and the match goes on
+        // around him until somebody is named or the window closes itself.
+        session.InjuryWindowEndsAt = session.State.InjuryAwaitingSubstitution
+            ? session.InjuryWindowEndsAt ?? now.AddSeconds(MatchRules.InjuryReplacementSeconds)
+            : null;
+
+        // A match nobody is watching has no technician to give the break to, so its interval
+        // is left by the loop at once and carries no deadline at all. A watched one gets the
+        // backend's twenty seconds and ends them itself.
+        session.HalfTimeEndsAt = session.State.HalfTimePauseActive && !session.AutoContinue
+            ? session.HalfTimeEndsAt ?? now.AddSeconds(MatchRules.HalfTimeSeconds)
+            : null;
+    }
+
+    /// <summary>
+    /// Closes a window whose time is up, answering for the manager who did not.
+    ///
+    /// <para>
+    /// A penalty is taken by somebody drawn from the eleven, an injured man is replaced by
+    /// the best of the bench, and an interval nobody ended ends itself. Each of them is the
+    /// same decision the manager would have made, so a match never waits on a screen that is
+    /// not there: the fixture finishes, the window closes and the world carries on.
+    /// </para>
+    ///
+    /// <para>
+    /// What came out of it is handed back so the caller can publish it: a penalty taken
+    /// without a word in the feed is a goal the manager never saw scored.
+    /// </para>
+    /// </summary>
+    public async Task<IReadOnlyList<MatchEngineEvent>> CloseTheExpiredWindowsAsync(
+        Guid matchId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_sessions.TryGet(matchId, out var session))
+        {
+            return Array.Empty<MatchEngineEvent>();
+        }
+
+        var now = _clock.UtcNow;
+        var events = new List<MatchEngineEvent>();
+        var halfTimeIsOver = false;
+
+        lock (session.Gate)
+        {
+            var penaltyExpired =
+                session.State.PenaltyAwaitingSelection
+                && session.PenaltyEndsAt is { } penaltyEndsAt
+                && now >= penaltyEndsAt;
+
+            var injuryExpired =
+                session.State.InjuryAwaitingSubstitution
+                && session.InjuryWindowEndsAt is { } injuryEndsAt
+                && now >= injuryEndsAt;
+
+            halfTimeIsOver =
+                session.State.HalfTimePauseActive
+                && session.HalfTimeEndsAt is { } halfTimeEndsAt
+                && now >= halfTimeEndsAt;
+
+            if (penaltyExpired || injuryExpired)
+            {
+                events.AddRange(session.Engine.ReleaseTheExpiredWindow(session.State));
+            }
+
+            KeepTheWindowsInStep(session);
+        }
+
+        if (events.Count > 0)
+        {
+            DrainFeed(session.State);
+
+            var match = await GetMatchAsync(matchId, cancellationToken);
+            await PersistEventsAsync(match, events, cancellationToken);
+        }
+
+        if (halfTimeIsOver)
+        {
+            // The break ends by the backend's clock, and the events of the second half are
+            // the manager's to hear as surely as if he had pressed the button himself.
+            var resumed = await ContinueSecondHalfAsync(matchId, cancellationToken);
+
+            if (resumed.Accepted)
+            {
+                events.AddRange(resumed.Events);
+            }
+        }
+
+        return events;
+    }
+
     public async Task<bool> ReleaseAStaleClaimAsync(Guid matchId, CancellationToken cancellationToken = default)
     {
         if (!_sessions.TryGet(matchId, out var session))
@@ -3606,7 +3727,11 @@ public class MatchService : IMatchCleaner
         await _matchRepository.AddEventsAsync(persisted, cancellationToken);
     }
 
-    private static MatchStateView ToView(MatchState state, MatchStatus status, Match match) => new()
+    private static MatchStateView ToView(
+        MatchState state,
+        MatchStatus status,
+        Match match,
+        LiveMatch? session = null) => new()
     {
         MatchId = state.MatchId,
         HomeScore = state.HomeScore,
@@ -3638,6 +3763,8 @@ public class MatchService : IMatchCleaner
         SubstitutionsUsedHome = state.SubstitutionsHome,
         SubstitutionsUsedAway = state.SubstitutionsAway,
         PenaltyAwaitingSelection = state.PenaltyAwaitingSelection,
+        PenaltyEndsAt = session?.PenaltyEndsAt,
+        HalfTimeEndsAt = session?.HalfTimeEndsAt,
         Injury = InjuryViewFor(state),
         PossessionTeam = state.PossessionTeam,
         PossessionPlayerId = state.PossessionPlayerId,

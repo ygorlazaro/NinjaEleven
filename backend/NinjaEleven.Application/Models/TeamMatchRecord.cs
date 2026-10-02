@@ -11,6 +11,14 @@ namespace NinjaEleven.Application.Models;
 public class TeamMatchRecord
 {
     public Guid MatchId { get; init; }
+
+    /// <summary>
+    /// The club this line is about. It is the same club on every line of a club's own
+    /// history, and it is what lets a reader hand back several clubs' histories in one
+    /// answer without asking who each line belongs to.
+    /// </summary>
+    public Guid TeamId { get; init; }
+
     public string OpponentName { get; init; } = string.Empty;
 
     /// <summary>
@@ -33,6 +41,18 @@ public class TeamMatchRecord
     public string? CompetitionName { get; init; }
     public string? PhaseName { get; init; }
     public int? Attendance { get; init; }
+
+    /// <summary>
+    /// Whether this was a league match rather than a cup one.
+    ///
+    /// <para>
+    /// A form guide is about the league and a run of results read across both competitions is
+    /// a different number: a club that lost three cup ties on penalties has not lost three
+    /// matches. Whoever asks for form says which they meant, and a reader that could not tell
+    /// would have to answer with the wrong one.
+    /// </para>
+    /// </summary>
+    public bool IsDivision { get; init; }
 
     // Stadium info
     public string? StadiumName { get; init; }

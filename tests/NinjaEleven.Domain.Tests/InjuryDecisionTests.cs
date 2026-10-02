@@ -140,7 +140,7 @@ public class InjuryDecisionTests
     }
 
     [Fact]
-    public void ASevereInjuryToTheManagersOwnClubStopsTheMatchAndNamesThePlayer()
+    public void ASevereInjuryToTheManagersOwnClubOpensTheWindowAndNamesThePlayer()
     {
         var running = FindHeldMatch();
 
@@ -171,31 +171,51 @@ public class InjuryDecisionTests
     }
 
     [Fact]
-    public void TheClockDoesNotMoveWhileTheManagerHasNotAnswered()
+    public void TheClockKeepsMovingWhileTheManagerHasNotAnswered()
     {
         var running = FindHeldMatch();
         Assert.NotNull(running);
 
         var state = running!.State;
         var minute = state.Minute;
-        var second = state.Seconds;
 
+        // The window is open and nobody has answered, and that is not a reason to stop the
+        // match: the knock happened, the question is on the screen, and the afternoon goes on
+        // around it. A decision worth a name is worth twenty seconds of waiting — it is not
+        // worth a stopped game, and a stopped game is a fixture that never finishes.
         for (var tick = 0; tick < 20; tick++)
         {
-            Assert.Empty(running.Engine.Tick(state));
+            running.Engine.Tick(state);
         }
 
-        Assert.Equal(minute, state.Minute);
-        Assert.Equal(second, state.Seconds);
+        Assert.True(state.Minute > minute);
         Assert.True(state.InjuryAwaitingSubstitution);
+    }
+
+    [Fact]
+    public void AWindowNobodyAnsweredIsClosedByTheEngine()
+    {
+        var running = FindHeldMatch();
+        Assert.NotNull(running);
+
+        var state = running!.State;
+        Assert.True(state.InjuryAwaitingSubstitution);
+
+        // What the service does when the window's own time is up: the same answer the engine
+        // gives a manager who has gone away, so a match is never left waiting on a tab.
+        var events = running.Engine.ReleaseTheExpiredWindow(state);
+
+        Assert.False(state.InjuryAwaitingSubstitution);
+        Assert.Null(state.InjuryPlayerId);
+        Assert.NotEmpty(events);
     }
 
     [Fact]
     public void AManagerWhoNeverAnswersIsReplacedByTheEngine()
     {
-        // The clock is held for a manager who claimed the match. A manager who closes the tab
-        // leaves it held for ever, and the world behind it stops: the fixture stays owed and
-        // the window never closes. So the engine answers the question itself, exactly as it
+        // The window is the manager's for twenty seconds and no longer. A manager who closes the
+        // tab does not get to keep it, and the world behind him does not stop for it: the
+        // engine answers the question itself, exactly as it
         // does for a match nobody ever claimed.
         var running = FindHeldMatch();
         Assert.NotNull(running);

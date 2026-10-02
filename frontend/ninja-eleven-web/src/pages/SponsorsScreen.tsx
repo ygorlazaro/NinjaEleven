@@ -15,6 +15,17 @@ import { useGameState } from '@/state';
 /// long deal at a low fee look like the same offer as a short one at a high fee, and they are
 /// not the same money.
 /// </summary>
+/// <summary>
+/// What a company is, in the three words the rest of the game uses for it. The number comes
+/// from the backend because the backend is what decides which of these a sponsor is, and a
+/// screen that guessed the name would be able to call a national brand a local shop.
+/// </summary>
+const SizeLabel: React.FC<{ weight: number }> = ({ weight }) => (
+  <span className="sponsor-card__size">
+    {weight >= 3 ? 'Nacional' : weight === 2 ? 'Regional' : 'Local'}
+  </span>
+);
+
 const OfferCard: React.FC<{
   offer: SponsorOfferDto;
   /// The sponsor the club is carrying, which is never offered back as a candidate.
@@ -29,8 +40,18 @@ const OfferCard: React.FC<{
     <article className={`sponsor-card${isCurrent ? ' sponsor-card--current' : ''}`}>
       <header className="sponsor-card__head" style={{ borderColor: offer.color }}>
         <span className="sponsor-card__name">{offer.name}</span>
-        <span className="sponsor-card__industry">{offer.industry}</span>
+        <span className="sponsor-card__industry">
+          {offer.industry} <SizeLabel weight={offer.weight} />
+        </span>
       </header>
+
+      {/* The slate is why a price is what it is: a company signing its eighth club is taking a
+          slot it barely needs, and one signing its first is filling a gap. Showing it is what
+          turns the fee from a number into a choice between two kinds of deal. */}
+      <p className="sponsor-card__slate">
+        {offer.clubsSponsored} de {offer.maxClubs} clubes no portfólio
+        {offer.clubsSponsored >= offer.maxClubs && ' • no limite'}
+      </p>
 
       <div className="sponsor-card__figures">
         <div className="sponsor-card__figure">
@@ -127,13 +148,7 @@ const SponsorsScreen: React.FC = () => {
     if (!selectedTeam || !seasonId) return;
 
     try {
-      const data = await SponsorApi.sign(
-        selectedTeam.id,
-        seasonId,
-        offer.id,
-        offer.perMatchFee,
-        offer.contractMatches
-      );
+      const data = await SponsorApi.sign(selectedTeam.id, seasonId, offer.id);
       setBook(data);
       setSignedWith(offer.id);
     } catch (err) {
@@ -252,8 +267,8 @@ const SponsorsScreen: React.FC = () => {
 
             {canChange && (
               <p className="sponsor-lock sponsor-lock--open">
-                O contrato terminou. Qualquer um dos cinco abaixo pode ser assinado, e a escolha
-                vale a partir do próximo jogo.
+                O contrato terminou. Qualquer um dos convites abaixo pode ser assinado, e a
+                escolha vale a partir do próximo jogo.
               </p>
             )}
           </>
@@ -271,14 +286,15 @@ const SponsorsScreen: React.FC = () => {
             </section>
 
             <p className="sponsor-lock sponsor-lock--open">
-              Ainda não há patrocinador no nome da camisa. Assine um dos cinco convites abaixo para
-              começar a faturar.
+              Ainda não há patrocinador no nome da camisa. Assine um dos {book.candidates.length}{' '}
+              convites abaixo para começar a faturar.
             </p>
           </>
         )}
 
-        {/* Five offers, a shortlist and not a market: enough to be a decision and few enough
-            that a manager reads all of them. */}
+        {/* A shortlist and not a market: however many companies would take the club, which is
+            how many there are. A screen that padded it to a round number would be showing a
+            manager companies that do not want its name on anything. */}
         <section className="sponsor-shortlist">
           <h3 className="club-section-title">Na mesa</h3>
           <div className="sponsor-grid">

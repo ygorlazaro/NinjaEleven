@@ -191,6 +191,21 @@ public interface IMatchRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The same finished matches, for a whole set of clubs at once.
+    ///
+    /// <para>
+    /// A sponsor pass asks every club in the country how it has been doing, and asking one
+    /// club at a time is how that pass became sixty-four identical queries. The rows come back
+    /// newest first per club — the same order <see cref="GetTeamHistoryAsync"/> returns — so a
+    /// caller that wants the last five takes five.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<Application.Models.TeamMatchRecord>>> GetTeamHistoryByTeamsAsync(
+        IEnumerable<Guid> teamIds,
+        int limit,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The shape a club last put on the pitch with, or null when it has not finished a match
     /// that recorded one.
     ///

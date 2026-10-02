@@ -14,8 +14,8 @@ const EndModal: React.FC<EndModalProps> = ({ show, result, onClose, onBackToLeag
 
   if (!result) {
     return (
-      <div className="modal">
-        <div className="modal-card">
+      <div className="modal" onClick={onClose}>
+        <div className="modal-card" onClick={event => event.stopPropagation()}>
           <h2>Fim de jogo</h2>
           <button className="ctrl" onClick={onClose}>Fechar</button>
         </div>
@@ -30,8 +30,8 @@ const EndModal: React.FC<EndModalProps> = ({ show, result, onClose, onBackToLeag
   ];
 
   return (
-    <div className="modal">
-      <div className="modal-card">
+    <div className="modal" onClick={onClose}>
+      <div className="modal-card" onClick={event => event.stopPropagation()}>
         <h2>Fim de jogo</h2>
         <div className="modal-score" id="finalScore">{result.homeScore} × {result.awayScore}</div>
 

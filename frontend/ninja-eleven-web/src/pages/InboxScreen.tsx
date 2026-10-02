@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { InboxBoxDto, InboxMessageDto } from '@/types';
 import { InboxApi } from '@/api';
@@ -14,6 +14,17 @@ import type { NameIndex } from '@/components/Match/NarrativeText';
  * wall, and a wall is a thing a manager gives up on.
  */
 const PAGE_SIZE = 20;
+
+/**
+ * How often a box that is already open asks the server whether anything has arrived.
+ *
+ * The same thirty seconds the navbar's badge polls on, and for the same reason: the box is
+ * written from the match loop, the season close and the market, so a manager who is *reading*
+ * the box while a match finishes is exactly the manager a one-shot read leaves behind. It is
+ * polled rather than pushed because the badge is polled rather than pushed, and a second live
+ * channel kept alive for one screen is a channel nobody maintains.
+ */
+const POLL_MS = 30_000;
 
 /**
  * The mark a category is read by, and the words beside it.
@@ -114,6 +125,16 @@ const InboxScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * How many "mark as read" requests are on the wire.
+   *
+   * A poll that lands while one of these is in flight would put the unread mark back on a
+   * line the manager has just opened, and the badge above the column would count a message he
+   * is reading right now. The count is a ref rather than state because it is read by the poll
+   * and written by the click, and a re-render in between must not be what decides it.
+   */
+  const readsInFlight = useRef(0);
+
   useEffect(() => {
     if (!selectedTeam) {
       setBox(null);
@@ -122,24 +143,45 @@ const InboxScreen: React.FC = () => {
     }
 
     let alive = true;
+    let asking = false;
     setLoading(true);
 
-    InboxApi.getBox(selectedTeam.id, page, PAGE_SIZE)
-      .then(answer => {
-        if (!alive) return;
-        setBox(answer);
-        setError(null);
-        // The message open is whichever of the page's lines is asked for, and it is opened
-        // again when the page changes: landing on page three with page two's message still
-        // open is a reading pane showing a line that is not on the screen.
-        setOpenId(current => (current && answer.messages.some(m => m.id === current) ? current : null));
-      })
-      .catch(() => {
-        if (alive) setError('Não foi possível carregar a caixa de entrada do clube.');
-      })
-      .finally(() => { if (alive) setLoading(false); });
+    const load = (first: boolean) => {
+      if (asking) return;
+      asking = true;
 
-    return () => { alive = false; };
+      InboxApi.getBox(selectedTeam.id, page, PAGE_SIZE)
+        .then(answer => {
+          if (!alive) return;
+          // A read that has not been answered yet wins over a poll: the server's answer to
+          // "open this line" is newer than the page it was read from.
+          if (!first && readsInFlight.current > 0) return;
+          setBox(answer);
+          setError(null);
+          // The message open is whichever of the page's lines is asked for, and it is opened
+          // again when the page changes: landing on page three with page two's message still
+          // open is a reading pane showing a line that is not on the screen.
+          setOpenId(current => (current && answer.messages.some(m => m.id === current) ? current : null));
+        })
+        .catch(() => {
+          // A poll that fails leaves the lines already on the screen alone and says nothing:
+          // a box that emptied itself because one request failed is a box that lost mail.
+          if (alive && first) setError('Não foi possível carregar a caixa de entrada do clube.');
+        })
+        .finally(() => {
+          asking = false;
+          if (alive && first) setLoading(false);
+        });
+    };
+
+    load(true);
+
+    const timer = window.setInterval(() => load(false), POLL_MS);
+
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
   }, [selectedTeam?.id, page]);
 
   const open = useMemo(
@@ -160,6 +202,8 @@ const InboxScreen: React.FC = () => {
 
     if (message.isRead || !selectedTeam) return;
 
+    readsInFlight.current += 1;
+
     InboxApi.markRead(selectedTeam.id, message.id)
       .then(marked => {
         setBox(current => current
@@ -170,11 +214,15 @@ const InboxScreen: React.FC = () => {
             }
           : current);
       })
-      .catch(() => { /* the badge stays until the box is read again: better late than wrong */ });
+      // The badge stays until the box is read again: better late than wrong.
+      .catch(() => { /* nothing to undo here: the mark was never moved */ })
+      .finally(() => { readsInFlight.current = Math.max(0, readsInFlight.current - 1); });
   };
 
   const catchUp = () => {
     if (!selectedTeam || !box) return;
+
+    readsInFlight.current += 1;
 
     InboxApi.markAllRead(selectedTeam.id)
       .then(() => {
@@ -186,7 +234,9 @@ const InboxScreen: React.FC = () => {
             }
           : current);
       })
-      .catch(() => { /* the same: a badge that clears itself and was not cleared is a lie */ });
+      // The same: a badge that clears itself and was not cleared is a lie.
+      .catch(() => { /* nothing to undo here: the mark was never moved */ })
+      .finally(() => { readsInFlight.current = Math.max(0, readsInFlight.current - 1); });
   };
 
   if (!selectedTeam) {

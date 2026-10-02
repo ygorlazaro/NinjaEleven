@@ -374,19 +374,20 @@ const CalendarScreen: React.FC = () => {
                   const isFirstOfDay = shown[index - 1]?.matchDay?.id !== matchDay?.id;
 
                   return (
-                    <tr
-                      key={fixture.id}
-                      className={[
-                        'history-row',
-                        'calendar-row',
-                        isFirstOfDay ? 'opens-a-day' : '',
-                        isManagerMatch ? 'is-mine' : ''
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                      onClick={fixture.matchId ? () => navigate(`/match/${fixture.matchId}`) : undefined}
-                      title={fixture.matchId ? 'Ver a partida' : 'Ainda não disputada'}
-                    >
+                      <tr
+                        key={fixture.id}
+                        className={[
+                          'history-row',
+                          'calendar-row',
+                          isFirstOfDay ? 'opens-a-day' : '',
+                          isManagerMatch ? 'is-mine' : '',
+                          fixture.status === 'InProgress' ? 'calendar-row--live' : ''
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                        onClick={fixture.matchId ? () => navigate(`/match/${fixture.matchId}`) : undefined}
+                        title={fixture.matchId ? 'Ver a partida' : 'Ainda não disputada'}
+                      >
                       <td className="calendar-day">
                         {isFirstOfDay ? dayOf(matchDay) : <span className="calendar-day__same">·</span>}
                       </td>
@@ -413,7 +414,7 @@ const CalendarScreen: React.FC = () => {
                         ) : '…'}
                       </td>
                       <td className="calendar-score">
-                        {fixture.status === 'Finished' && fixture.homeGoals !== null && fixture.homeGoals !== undefined ? (
+                        {(fixture.status === 'Finished' || fixture.status === 'InProgress') && fixture.homeGoals !== null && fixture.homeGoals !== undefined ? (
                           // The score is the door, and it is a real button rather than a row
                           // that happens to be clickable: a row that navigates on click is a
                           // row a keyboard cannot reach and a screen reader never announces,
@@ -423,13 +424,14 @@ const CalendarScreen: React.FC = () => {
                           fixture.matchId ? (
                             <button
                               type="button"
-                              className="calendar-score__link"
+                              className={`calendar-score__link${fixture.status === 'InProgress' ? ' calendar-score__link--live' : ''}`}
                               title="Ver a partida"
                               onClick={event => {
                                 event.stopPropagation();
                                 navigate(`/match/${fixture.matchId}`);
                               }}
                             >
+                              {fixture.status === 'InProgress' && <span className="calendar-live-badge" title="Ao vivo" />}
                               {fixture.homeGoals} x {fixture.awayGoals}
                             </button>
                           ) : (

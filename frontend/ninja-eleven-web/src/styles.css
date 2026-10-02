@@ -921,6 +921,24 @@ button { cursor: pointer; }
 .feed-row.managed-event .minute { color: var(--team-primary, var(--accent)); }
 
 /* The half sits inside the clock without competing with the minutes it follows. */
+/* The wait the backend is counting down, under the clock: a manager deciding whether to
+   hurry over a penalty taker sees how much of the decision is still his. */
+.clock-window {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #09141e;
+  white-space: nowrap;
+}
+.clock-window b { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.clock-window__count { font-size: 15px; font-weight: 850; color: var(--accent); font-variant-numeric: tabular-nums; }
+.clock-window__hint { font-size: 11px; color: var(--muted); }
+
 .clock-half { font-size: 15px; font-weight: 700; margin-left: 2px; opacity: .8; }
 
 .icon-own-goal, .icon-save { cursor: help; }
@@ -1568,9 +1586,21 @@ button { cursor: pointer; }
   color: inherit; font: inherit; font-variant-numeric: tabular-nums; cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
+.cup-club__leg--live {
+  color: var(--danger); font-weight: 700;
+  animation: pulse 1.5s ease-in-out infinite;
+}
 .cup-club__leg:hover, .cup-club__leg:focus-visible {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   border-color: var(--accent); color: var(--text); outline: none;
+}
+.cup-club__live-badge {
+  display: inline-block; width: 6px; height: 6px; margin-left: 3px;
+  background: var(--danger); border-radius: 50%; vertical-align: middle;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 .cup-tie__aggregate {
   display: flex; justify-content: space-between; gap: 6px; flex-wrap: wrap;
@@ -1578,6 +1608,7 @@ button { cursor: pointer; }
 }
 .cup-tie__penalties { color: var(--accent); }
 .cup-tie__pending { color: var(--muted); font-style: italic; }
+.cup-tie__live { color: var(--danger); font-weight: 700; font-style: italic; }
 .cup-tie__watch {
   display: flex; gap: 4px; margin-top: 2px; flex-wrap: wrap;
 }
@@ -1588,6 +1619,10 @@ button { cursor: pointer; }
 }
 .cup-tie__watch-btn:hover { background: color-mix(in srgb, var(--accent) 80%, white); }
 .cup-tie__watch-btn:active { transform: scale(0.97); }
+.cup-tie__watch-btn--live {
+  background: var(--danger); color: var(--bg);
+  animation: pulse 1.5s ease-in-out infinite;
+}
 .cup-champion {
   display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 8px 12px;
   border: 1px solid var(--accent); border-radius: 8px; color: var(--accent); font-size: 14px;
@@ -2142,6 +2177,14 @@ button { cursor: pointer; }
 .calendar-score__link:hover, .calendar-score__link:focus-visible {
   color: var(--text); text-decoration-color: var(--text); outline: none;
 }
+.calendar-score__link--live {
+  color: var(--danger); text-decoration-color: var(--danger);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.calendar-live-badge {
+  display: inline-block; width: 6px; height: 6px; margin-right: 3px;
+  background: var(--danger); border-radius: 50%; vertical-align: middle;
+}
 /* A played game is a door to the match; one that has not been is a row of the season, and
    a row that looks like a door and is not is worse than a row that obviously is not. */
 .calendar-row { cursor: default; }
@@ -2151,6 +2194,10 @@ button { cursor: pointer; }
 /* The manager's own club, said once and quietly rather than shouted. */
 .calendar-row.is-mine { background: rgba(242, 211, 79, .07); }
 .calendar-row.is-mine .calendar-team { color: var(--accent); }
+.calendar-row--live {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border-left: 2px solid var(--danger);
+}
 /* A knockout stage is a name, not a number to line up on the digit: "16-avos de final" read
    right-aligned in a narrow column is the one column on the screen nobody can scan. */
 .calendar-phase { width: 140px; white-space: nowrap; color: var(--muted); }
@@ -2775,6 +2822,22 @@ button { cursor: pointer; }
 }
 
 .sponsor-card__industry {
+  font-size: 13.84px;
+  color: var(--muted);
+}
+
+.sponsor-card__size {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  font-size: 12.38px;
+  color: var(--muted);
+}
+
+.sponsor-card__slate {
+  margin: 0;
   font-size: 13.84px;
   color: var(--muted);
 }

@@ -141,8 +141,8 @@ const OfferModal: React.FC<OfferModalProps> = ({ request, onClose, onProposed })
   };
 
   return (
-    <div className="modal">
-      <div className="modal-card offer-modal">
+    <div className="modal" onClick={onClose}>
+      <div className="modal-card offer-modal" onClick={event => event.stopPropagation()}>
         <header className="transfer-detail__head">
           <h3>
             {player ? (

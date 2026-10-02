@@ -14,6 +14,15 @@ public class SponsorOfferDto
     public decimal PerMatchFee { get; init; }
     public int ContractMatches { get; init; }
     public string Color { get; init; } = "#f2d34f";
+
+    /// <summary>How big a company this is: 1 local, 2 regional, 3 national.</summary>
+    public int Weight { get; init; }
+
+    /// <summary>How many clubs it already has on its shirt.</summary>
+    public int ClubsSponsored { get; init; }
+
+    /// <summary>How many it is willing to have. A full slate pays less for the next one.</summary>
+    public int MaxClubs { get; init; }
 }
 
 /// <summary>
@@ -40,10 +49,16 @@ public class SponsorBookDto
 
 /// <summary>
 /// A request to sign a shirt deal for a club.
+///
+/// <para>
+/// It carries the company and nothing else. The price and the length were fields here once,
+/// and a field a client can fill in is a number the backend did not decide: the manager
+/// budgeted his season against a fee the book had never agreed to pay, and a length nobody
+/// had quoted. Both are the sponsor's to decide now, and they are on the offer the screen
+/// was already showing.
+/// </para>
 /// </summary>
 public class SponsorSignRequestDto
 {
     public Guid SponsorId { get; init; }
-    public decimal? PerMatchFee { get; init; }
-    public int? ContractMatches { get; init; }
 }

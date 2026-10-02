@@ -314,6 +314,8 @@ public class MatchServiceTests
             _teams.Object,
             _finance.Object,
             _seasons.Object,
+            _competitions.Object,
+            SponsorFactsTestFactory.Create(Guid.NewGuid(), Guid.NewGuid()).Facts,
             InboxTestFactory.Create(_teams),
             _unitOfWork.Object,
             NullLogger<SponsorOfferService>.Instance),
@@ -715,6 +717,70 @@ public class MatchServiceTests
 
         Assert.False(await service.ReleaseTheUntouchedMatchAsync(_fixture.Id));
         Assert.Equal(FixtureStatus.InProgress, _fixture.Status);
+    }
+
+    [Fact]
+    public async Task The_interval_ends_by_itself_after_the_backends_twenty_seconds()
+    {
+        // The break belongs to the manager and its length belongs to the backend. He may end
+        // it early with the button on the dialog; nobody keeps it open by not pressing, and a
+        // break that waits for a screen is a fixture that never finishes and a window of the
+        // world that never closes.
+        var service = CreateService();
+
+        var started = await service.StartAsync(_fixture.Id, 7, headless: false, userTeamId: _home.Id);
+        Assert.True(_sessions.TryGet(started.MatchId, out var session));
+
+        lock (session!.Gate)
+        {
+            session.State.HalfTimePauseActive = true;
+        }
+
+        // First pass is what stamps the window: the count starts when the break starts.
+        Assert.Empty(await service.CloseTheExpiredWindowsAsync(started.MatchId));
+        Assert.NotNull(session.HalfTimeEndsAt);
+        Assert.True(session.State.HalfTimePauseActive);
+
+        MatchTestContext.Advance(TimeSpan.FromSeconds(MatchRules.HalfTimeSeconds - 1));
+        Assert.Empty(await service.CloseTheExpiredWindowsAsync(started.MatchId));
+        Assert.True(session.State.HalfTimePauseActive);
+
+        MatchTestContext.Advance(TimeSpan.FromSeconds(2));
+
+        var events = await service.CloseTheExpiredWindowsAsync(started.MatchId);
+
+        Assert.NotEmpty(events);
+        Assert.False(session.State.HalfTimePauseActive);
+        Assert.Null(session.HalfTimeEndsAt);
+    }
+
+    [Fact]
+    public async Task A_penalty_window_the_manager_did_not_answer_is_taken_by_the_engine()
+    {
+        // The one window that stops the clock stops it for fifteen seconds, and then the match
+        // goes on: somebody from the eleven is sent to the spot. A match that waits for a
+        // manager who is not there is a fixture nobody finishes.
+        var service = CreateService();
+
+        var started = await service.StartAsync(_fixture.Id, 7, headless: false, userTeamId: _home.Id);
+        Assert.True(_sessions.TryGet(started.MatchId, out var session));
+
+        lock (session!.Gate)
+        {
+            session.State.PenaltyTeam = 1;
+            session.State.PenaltyAwaitingSelection = true;
+        }
+
+        Assert.Empty(await service.CloseTheExpiredWindowsAsync(started.MatchId));
+        Assert.NotNull(session.PenaltyEndsAt);
+
+        MatchTestContext.Advance(TimeSpan.FromSeconds(MatchRules.PenaltySelectionSeconds + 1));
+
+        var events = await service.CloseTheExpiredWindowsAsync(started.MatchId);
+
+        Assert.NotEmpty(events);
+        Assert.False(session.State.PenaltyAwaitingSelection);
+        Assert.Null(session.PenaltyEndsAt);
     }
 
     [Fact]
@@ -2252,10 +2318,10 @@ public class MatchServiceTests
     /// answer it the way the client does.
     /// </summary>
     /// <summary>
-    /// Answers the other thing a match can stop and wait for. A serious injury to the
-    /// manager's own club holds the clock until he names the replacement, so a test that
-    /// plays a match out has to answer it the way a manager would — otherwise the match
-    /// stands still for the rest of the test and never reaches full time.
+    /// Answers the other question a match asks. A serious injury to the manager's own club
+    /// opens a window and the match goes on around it, so nothing forces a test to answer —
+    /// but a test that plays a match out the way a manager would names the replacement here
+    /// rather than leaving a club a man short for ninety minutes.
     /// </summary>
     private async Task ReplaceAPlayerWhoCannotContinueAsync(MatchService service, Guid matchId, Guid? keepOnBench = null)
     {

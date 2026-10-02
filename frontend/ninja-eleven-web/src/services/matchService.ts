@@ -59,17 +59,15 @@ export function useMatchEngine() {
     return await MatchApi.changeSpeed(matchId, speed);
   };
 
-  const pauseMatch = async (matchId: string) => {
-    const result = await MatchApi.pause(matchId);
-    useGameState.getState().setIsPaused(true);
-    return result;
-  };
-
-  const resumeMatch = async (matchId: string) => {
-    const result = await MatchApi.resume(matchId);
-    useGameState.getState().setIsPaused(false);
-    return result;
-  };
+  /**
+   * There is no `pauseMatch` and no `resumeMatch`.
+   *
+   * A manager watching a match is a spectator of a clock the backend owns, and a screen that
+   * could stop it would be stopping it for the other thirty-nine people watching the same
+   * matchday — and for nobody deciding anything, because the match goes on the moment the page
+   * is refreshed. The two moments the game does wait for a person are the penalty, whose
+   * fifteen seconds are the engine's, and the interval, whose twenty are as well.
+   */
 
   const continueSecondHalf = async (matchId: string) => {
     return await MatchApi.continueSecondHalf(matchId);
@@ -89,8 +87,6 @@ export function useMatchEngine() {
     makeSubstitution,
     selectPenaltyTaker,
     changeSpeed,
-    pauseMatch,
-    resumeMatch,
     continueSecondHalf,
     getMatchResult,
     getLineup,

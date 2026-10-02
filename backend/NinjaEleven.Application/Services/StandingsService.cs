@@ -1,3 +1,4 @@
+using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
@@ -20,7 +21,7 @@ namespace NinjaEleven.Application.Services;
 /// with its own arithmetic is a second set of rules, and a second set of rules is a table that
 /// disagrees with itself about who is above whom.
 /// </summary>
-public class StandingsService
+public class StandingsService : IStandingsReader
 {
     private readonly IRoundRepository _roundRepository;
     private readonly IFixtureRepository _fixtureRepository;

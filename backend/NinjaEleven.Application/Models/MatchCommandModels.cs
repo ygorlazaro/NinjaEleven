@@ -148,6 +148,22 @@ public class MatchStateView
     public required bool PenaltyAwaitingSelection { get; init; }
 
     /// <summary>
+    /// When the window for naming a penalty taker closes, or null when none is open.
+    ///
+    /// <para>
+    /// It is a moment and not a number of seconds because the count is the backend's: a
+    /// screen that counted down from a duration it was told would be running a clock of its
+    /// own, and would keep counting after the match had moved on without it.
+    /// </para>
+    /// </summary>
+    public DateTimeOffset? PenaltyEndsAt { get; init; }
+
+    /// <summary>
+    /// When the interval closes by itself, or null while the match is not at one.
+    /// </summary>
+    public DateTimeOffset? HalfTimeEndsAt { get; init; }
+
+    /// <summary>
     /// Which side has the ball right now, and which of its players. It is not the same
     /// question as the share of the ball: a side can be behind on possession and still be
     /// the one holding it, and the eleven cards under the scoreboard highlight whoever it

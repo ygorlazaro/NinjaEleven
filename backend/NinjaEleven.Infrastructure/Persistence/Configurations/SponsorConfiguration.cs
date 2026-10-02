@@ -16,6 +16,10 @@ public class SponsorConfiguration : IEntityTypeConfiguration<Sponsor>
         builder.Property(sponsor => sponsor.Name).HasMaxLength(120).IsRequired();
         builder.Property(sponsor => sponsor.Industry).HasMaxLength(80).IsRequired();
         builder.Property(sponsor => sponsor.Color).HasMaxLength(9).IsRequired();
+        builder.Property(sponsor => sponsor.Weight).IsRequired();
+        builder.Property(sponsor => sponsor.MaxClubs).IsRequired();
+        builder.Property(sponsor => sponsor.MinAppeal).IsRequired();
+        builder.Property(sponsor => sponsor.MaxTier).IsRequired();
 
         builder.HasIndex(sponsor => sponsor.Name).IsUnique();
     }

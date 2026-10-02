@@ -1,3 +1,5 @@
+using NinjaEleven.Domain.Common;
+
 namespace NinjaEleven.Domain.Teams;
 
 /// <summary>
@@ -75,20 +77,10 @@ public static class ClubIdentityDefaults
             ClubColours.InkOn(primary));
     }
 
-    /// <summary>FNV-1a, over UTF-16 code units, as an unsigned 32-bit value.</summary>
-    private static uint Hash(string value)
-    {
-        const uint offset = 2166136261;
-        const uint prime = 16777619;
-
-        var hash = offset;
-
-        foreach (var character in value)
-        {
-            hash ^= character;
-            hash *= prime;
-        }
-
-        return hash;
-    }
+    /// <summary>
+    /// FNV-1a, over UTF-16 code units, as an unsigned 32-bit value — the world's own hash,
+    /// shared with the sponsor catalog, which deals a company's size out of its name the same
+    /// way this deals a crest out of a club's.
+    /// </summary>
+    private static uint Hash(string value) => StableHash.Of(value);
 }

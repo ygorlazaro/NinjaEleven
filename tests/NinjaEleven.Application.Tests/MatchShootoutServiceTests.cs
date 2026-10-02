@@ -625,6 +625,8 @@ public class MatchShootoutServiceTests
             _teams.Object,
             _finance.Object,
             _seasons.Object,
+            _competitions.Object,
+            SponsorFactsTestFactory.Create(Guid.NewGuid(), Guid.NewGuid()).Facts,
             InboxTestFactory.Create(_teams),
             _unitOfWork.Object,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<SponsorOfferService>.Instance),

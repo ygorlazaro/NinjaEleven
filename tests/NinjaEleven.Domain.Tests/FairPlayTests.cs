@@ -619,6 +619,54 @@ public class FairPlayTests
         return state.HomeScore == 1;
     }
 
+    /// <summary>
+    /// A penalty whose window nobody answered is taken anyway — by the best man on the pitch.
+    ///
+    /// <para>
+    /// The fifteen seconds decide <i>who decides</i>, not what a good taker is: a team whose
+    /// manager was not there is a team whose best striker still takes the kick, which is the
+    /// same answer the engine gives for a match nobody is watching.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void A_penalty_nobody_named_is_taken_by_the_best_man_on_the_pitch()
+    {
+        var random = new ScriptedRandomSource(Enumerable.Repeat(0.5, 40));
+        var homeTeam = new TeamInfo(Guid.NewGuid(), "Home", "H", "#FF0000", "#FFFFFF", 55);
+        var awayTeam = new TeamInfo(Guid.NewGuid(), "Away", "A", "#0000FF", "#FFFFFF", 50);
+
+        var positions = new[]
+        {
+            Position.GK, Position.DEF, Position.DEF, Position.MID, Position.MID,
+            Position.ATT, Position.ATT, Position.DEF, Position.MID, Position.MID, Position.ATT
+        };
+
+        var context = new MatchContext(
+            Guid.NewGuid(), homeTeam, awayTeam,
+            CreateLineup(homeTeam, positions), CreateLineup(awayTeam, positions),
+            [], [], random, homeTeam.Id);
+
+        var state = new MatchState(context);
+        var engine = new MatchEngine(random);
+        engine.Initialize(state, 0);
+
+        // The best man is read before the kick, from the very number the roll will use, so
+        // the assertion is about the choice and not about a seed.
+        var best = MatchEngine.PenaltyTakerCandidates(state, home: true).First();
+
+        state.PenaltyAwaitingSelection = true;
+        state.PenaltyTeam = 1;
+
+        var events = engine.ReleaseTheExpiredWindow(state).ToList();
+
+        // The window is closed and the kick happened: PenaltyTaken is emitted for a miss as
+        // well, so it is asked about as "a kick was taken", which is exactly what it says.
+        Assert.False(state.PenaltyAwaitingSelection);
+
+        var kick = Assert.Single(events.Where(e => e.Type == MatchEventType.PenaltyTaken));
+        Assert.Equal(best.PlayerId, kick.PlayerId);
+    }
+
     private static MatchPlayerSnapshot Shooter(int accuracy, int dribbling, Position position = Position.ATT) =>
         BuildPlayer(new TeamInfo(Guid.NewGuid(), "Home", "H", "#FF0000", "#FFFFFF", 55), "Taker", position, accuracy, dribbling);
 

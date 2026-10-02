@@ -36,6 +36,27 @@ public class SponsorContractRepository : ISponsorContractRepository
             .OrderByDescending(contract => contract.SignedAt)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<SponsorContract>>> ListActiveBySponsorIdsAsync(
+        IEnumerable<Guid> sponsorIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = sponsorIds.ToList();
+
+        var contracts = await _dbContext.SponsorContracts
+            .AsNoTracking()
+            .Where(contract => ids.Contains(contract.SponsorId))
+            .Where(contract => contract.Status == SponsorContractStatus.Active
+                               && contract.ContractMatches > contract.MatchesPlayed)
+            .OrderByDescending(contract => contract.SignedAt)
+            .ToListAsync(cancellationToken);
+
+        return contracts
+            .GroupBy(contract => contract.SponsorId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<SponsorContract>)group.ToList());
+    }
+
     public async Task AddAsync(SponsorContract contract, CancellationToken cancellationToken = default) =>
         await _dbContext.SponsorContracts.AddAsync(contract, cancellationToken);
 

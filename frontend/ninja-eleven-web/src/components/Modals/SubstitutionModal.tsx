@@ -17,13 +17,13 @@ interface SubstitutionModalProps {
   preselectOut?: string | null;
   /**
    * A player who cannot carry on, when the screen was opened because of him rather than
-   * because the manager asked. The clock is held for that decision, so there is nowhere to
-   * go until somebody is named.
+   * because the manager asked. The match goes on around that decision, so the dialog can be
+   * put aside: the engine names somebody from the bench if nobody does.
    */
   forcedFor?: string | null;
   busy?: boolean;
   onSubstitute: (playerOutId: string, playerInId: string) => void;
-  /** Omitted when the match is waiting on the answer: the screen cannot be dismissed. */
+  /** Optional on purpose: a dialog nobody can put aside is a dialog that traps the manager. */
   onClose?: () => void;
 }
 
@@ -48,15 +48,15 @@ const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
   if (!show) return null;
 
   return (
-    <div className="modal">
-      <div className="modal-card">
+    <div className="modal" onClick={onClose}>
+      <div className="modal-card" onClick={event => event.stopPropagation()}>
         <h2>{forcedFor ? '🩹 Substituição obrigatória' : '🔁 Substituições'}</h2>
         <p style={{ color: 'var(--muted)', fontSize: '14px' }}>{team.name}</p>
 
         {forcedFor && (
           <p style={{ color: 'var(--danger)', fontSize: '15px', margin: '0 0 8px' }}>
-            {forcedFor} não pode continuar. O relógio está parado até alguém entrar no lugar
-            dele.
+            {forcedFor} não pode continuar. O jogo continua — se ninguém escolher, o motor
+            traz o melhor do banco.
           </p>
         )}
 

@@ -73,6 +73,12 @@ public class CupBracketTie
 
     public Guid? SecondLegMatchId { get; init; }
 
+    /// <summary>Whether the first leg's match is currently in progress.</summary>
+    public bool FirstLegLive { get; init; }
+
+    /// <summary>Whether the second leg's match is currently in progress.</summary>
+    public bool SecondLegLive { get; init; }
+
     public bool IsResolved => Clubs.Any(club => club.IsWinner);
 }
 

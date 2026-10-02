@@ -160,7 +160,10 @@ public class MatchEngine
         }
 
         // A penalty has to be taken before the clock moves on: whoever is waiting to pick
-        // the taker is deciding the outcome of a goal, not of the next minute.
+        // the taker is deciding the outcome of a goal, not of the next minute. It is the
+        // one window in a match that still stops the clock — and it stops for a while, not
+        // for ever, because the caller closes it after MatchRules.PenaltySelectionSeconds
+        // and asks for the taker to be drawn at random.
         if (state.PenaltyAwaitingSelection)
         {
             TakeAutomaticPenalty(state, events);
@@ -168,12 +171,10 @@ public class MatchEngine
             return events;
         }
 
-        // A man who cannot continue has to be replaced, and his manager is the one who
-        // names the replacement. The clock waits for that the way it waits for a taker.
-        if (state.InjuryAwaitingSubstitution)
-        {
-            return events;
-        }
+        // A man who cannot carry on is off the pitch and his club is a man short, and the
+        // match goes on around him. The window for naming who comes on is open the whole
+        // time and the clock never waits for it: the caller closes that window on its own
+        // and the engine puts the best of the bench on for him.
 
         // A goal, a red card and a serious injury all need a moment before the next half
         // minute. The clock waits; the rest of the match is unaffected.
@@ -553,6 +554,23 @@ public class MatchEngine
             return;
         }
 
+        TakeTheBestTakerOnThePitch(state, events);
+    }
+
+    /// <summary>
+    /// The penalty goes to the best man on the pitch, whoever is answering for the manager.
+    ///
+    /// <para>
+    /// It is the same rule and the same order in every case — a manager who named somebody
+    /// got the list best first and picked from it, a match nobody is watching picks the top
+    /// of it, and a window that closed unanswered picks the top of it too. What the fifteen
+    /// seconds decide is <i>who decides</i>, not what a good taker is: a team whose manager
+    /// was not there is a team whose best striker still takes the kick.
+    /// </para>
+    /// </summary>
+    private void TakeTheBestTakerOnThePitch(MatchState state, List<MatchEngineEvent> events)
+    {
+        var home = state.PenaltyTeam is 1;
         var lineup = home ? state.HomeLineup : state.AwayLineup;
         var taker = BestPenaltyTaker(lineup, GoalkeeperOf(home ? state.AwayLineup : state.HomeLineup));
 
@@ -564,6 +582,37 @@ public class MatchEngine
         }
 
         events.AddRange(TakePenalty(state, home, taker));
+    }
+
+    /// <summary>
+    /// Answers the two windows the manager did not answer inside the time they were given.
+    ///
+    /// <para>
+    /// It is the engine doing what a stand-in would have done: the match does not wait for a
+    /// screen that is not there. A penalty nobody named is taken by the best man on the
+    /// pitch, and a man who cannot carry on is replaced by the best of what is on the bench —
+    /// the same two answers the engine gives for a match nobody is watching, which is exactly
+    /// what a manager who is not there has left the game to.
+    /// </para>
+    ///
+    /// <para>
+    /// Both windows close here and both emit their own events, so a manager who comes back
+    /// to a match that moved on without him reads what happened in the feed rather than
+    /// finding the eleven quietly changed.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<MatchEngineEvent> ReleaseTheExpiredWindow(MatchState state)
+    {
+        var events = new List<MatchEngineEvent>();
+
+        if (state.PenaltyAwaitingSelection)
+        {
+            TakeTheBestTakerOnThePitch(state, events);
+        }
+
+        events.AddRange(ReleaseThePendingInjury(state));
+
+        return events;
     }
 
     /// <summary>
@@ -1858,21 +1907,36 @@ public class MatchEngine
             TakeAutomaticPenalty(state, events);
         }
 
-        if (state.InjuryAwaitingSubstitution)
+        events.AddRange(ReleaseThePendingInjury(state));
+
+        return events;
+    }
+
+    /// <summary>
+    /// A man who cannot carry on is off the pitch and somebody from the bench is on for him,
+    /// whoever was going to name the replacement.
+    /// </summary>
+    private IReadOnlyList<MatchEngineEvent> ReleaseThePendingInjury(MatchState state)
+    {
+        var events = new List<MatchEngineEvent>();
+
+        if (!state.InjuryAwaitingSubstitution)
         {
-            var home = state.InjuryTeam == 1;
-            var lineup = home ? state.HomeLineup : state.AwayLineup;
-            var outgoing = lineup.FirstOrDefault(player => player.PlayerId == state.InjuryPlayerId);
+            return events;
+        }
 
-            state.InjuryAwaitingSubstitution = false;
-            state.InjuryPlayerId = null;
+        var home = state.InjuryTeam == 1;
+        var lineup = home ? state.HomeLineup : state.AwayLineup;
+        var outgoing = lineup.FirstOrDefault(player => player.PlayerId == state.InjuryPlayerId);
 
-            if (outgoing is not null)
-            {
-                outgoing.Injure(Injury.Grave, state.PendingInjuryMatchesOut, state.Minute);
-                Hold(state);
-                ForceInjurySubstitution(state, events, home, outgoing);
-            }
+        state.InjuryAwaitingSubstitution = false;
+        state.InjuryPlayerId = null;
+
+        if (outgoing is not null)
+        {
+            outgoing.Injure(Injury.Grave, state.PendingInjuryMatchesOut, state.Minute);
+            Hold(state);
+            ForceInjurySubstitution(state, events, home, outgoing);
         }
 
         return events;

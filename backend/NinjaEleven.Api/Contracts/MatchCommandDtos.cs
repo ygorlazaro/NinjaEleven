@@ -240,9 +240,25 @@ public class MatchStateDto
     public bool PenaltyAwaitingSelection { get; init; }
 
     /// <summary>
+    /// When the window for naming a taker closes, or null when none is open.
+    ///
+    /// <para>
+    /// A moment and not a number of seconds, because the count is the backend's: the screen
+    /// draws what is left of it and never starts a clock of its own over a decision the
+    /// engine has already decided how long to wait for.
+    /// </para>
+    /// </summary>
+    public DateTimeOffset? PenaltyEndsAt { get; init; }
+
+    /// <summary>
+    /// When the interval closes by itself, or null while the match is not at one.
+    /// </summary>
+    public DateTimeOffset? HalfTimeEndsAt { get; init; }
+
+    /// <summary>
     /// The player who cannot continue and whose replacement the manager has to name. The
-    /// clock is held while it is out, so this is not a notification about something that
-    /// already happened: it is the question the match is waiting on.
+    /// window is open and the match goes on around it, so this is a question the manager may
+    /// answer late rather than one the match is stopped for.
     /// </summary>
     public MatchInjuryDto Injury { get; init; } = new();
 

@@ -130,8 +130,8 @@ const KitEditor: React.FC<KitEditorProps> = ({ team, onClose, onSaved }) => {
   };
 
   return (
-    <div className="modal" role="dialog" aria-label="Editor de uniforme">
-      <div className="modal-card kit-editor">
+    <div className="modal" role="dialog" aria-label="Editor de uniforme" onClick={onClose}>
+      <div className="modal-card kit-editor" onClick={event => event.stopPropagation()}>
         <h2>Uniformes do {team.name}</h2>
 
         <div className="kit-editor__tabs">

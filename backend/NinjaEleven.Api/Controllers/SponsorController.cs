@@ -56,8 +56,6 @@ public class SponsorController : ControllerBase
             teamId,
             seasonId,
             request.SponsorId,
-            request.PerMatchFee,
-            request.ContractMatches,
             cancellationToken);
 
         return Ok(ToDto(book));
@@ -72,7 +70,10 @@ public class SponsorController : ControllerBase
             Industry = offer.Industry,
             PerMatchFee = offer.PerMatchFee,
             ContractMatches = offer.ContractMatches,
-            Color = offer.Color
+            Color = offer.Color,
+            Weight = offer.Weight,
+            ClubsSponsored = offer.ClubsSponsored,
+            MaxClubs = offer.MaxClubs
         };
     }
 

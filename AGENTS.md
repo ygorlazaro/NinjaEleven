@@ -671,6 +671,44 @@ was wrong from the first season.
   history read one season per season and one scorer line per striker is the old mistake at a
   smaller scale.
 
+## The Shirt
+
+A sponsor pays for exposure, so the price of a shirt is priced the way a crowd is priced. The
+whole vocabulary is `Domain/Sponsors/SponsorPricing.cs` and `SponsorRules.cs`, and nothing in
+the game prices a shirt outside them.
+
+- **The price is a product of five facts and a base.** `BaseFeeForTier(tier) × WeightFactor ×
+  PositionFactor × FormFactor × CupFactor × CrowdFactor × PortfolioFactor`, rounded to the
+  hundred. The base carries the division and the size of the company; everything after it is
+  the club asking for more or less than that base says, which is the only part a season moves.
+- **A missing fact is neutral and not zero.** `ClubSponsorFacts` holds nulls, and a club that
+  has not played a match has no position, no form and no crowd of its own. A club whose facts
+  are all zero is a club with a terrible season, and a fee that could not tell them apart would
+  price a season's first day like its last.
+- **A crowd is not extrapolated.** `CrowdSpread` holds both ends flat, like the price of a seat:
+  a sponsor does not pay six times the fee for a ground three times as full.
+- **A brand does not put two shirts in one championship.** `WantsThisClub` refuses a company
+  that already has a club in this division, and a company whose slate is full. Both are real
+  reasons and both are reasons a human sponsor has.
+- **The size of a company is one decision, not four.** `SponsorSize` carries the weight, the
+  slate, the appeal floor and the highest division together, and `Sponsor.Create` takes it as
+  one argument — a national brand seeded with a local club's appetite is a company nothing
+  downstream can reason about.
+- **A company's size is dealt out of its name.** `SponsorRules.SizeFor` hashes the name with
+  `Domain/Common/StableHash` (FNV-1a, shared with `ClubIdentityDefaults`) and takes a third, so
+  a freshly seeded world and a migrated one arrive at the same book, and the catalog is not
+  sorted into three piles by hand. The migration spells the same hash out in SQL rather than
+  using the database's `hashtext`, which would have been a different answer.
+- **The shortlist is not drawn.** It is every company that would take the club, ordered by what
+  it pays, capped at `CandidateOffers`. A list that redrew itself on every visit would be three
+  different boards of three different prices for the same shirt, and a decision taken on one
+  would not be a decision. Only the *length* is drawn, from the club's own seed, so a club that
+  signs without looking is paid the price the list would have shown.
+- **A client cannot name a price or a length.** `SponsorSignRequestDto` carries the company and
+  nothing else: a fee a screen could fill in was a number the book had never agreed to, and a
+  manager budgeting his season against it was budgeting against a lie. `A sign pays what the
+  list quoted` holds the seam.
+
 ## The Club's Scorers
 
 `GET /team/{teamId}/scorer` is the league's own list with the club's name on it, and the

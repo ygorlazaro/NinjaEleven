@@ -140,6 +140,8 @@ public class CupBracketService
             SecondLegScore = secondLeg is null ? null : secondLeg.HomeScore,
             FirstLegMatchId = firstLeg?.Id,
             SecondLegMatchId = secondLeg?.Id,
+            FirstLegLive = firstLeg?.IsLive ?? false,
+            SecondLegLive = secondLeg?.IsLive ?? false,
             Clubs =
             [
                 ClubLine(
@@ -198,9 +200,10 @@ public class CupBracketService
             : (leg.AwayScore, leg.HomeScore);
 
     /// <summary>
-    /// The match of a leg, and only when the leg has been played. A leg that is scheduled has a
-    /// fixture and no match, and a bracket that read its 0 x 0 as a result would show a tie of
-    /// nil-nil as though two clubs had gone out to it.
+    /// The match of a leg, and only when the leg has been played or is live. A leg that is
+    /// scheduled has a fixture and no match, and a bracket that read its 0 x 0 as a result
+    /// would show a tie of nil-nil as though two clubs had gone out to it. A leg that is
+    /// in progress is returned so the screen can offer a link to watch it.
     /// </summary>
     private static Match? LegMatchOf(
         CupTie tie,
@@ -208,7 +211,7 @@ public class CupBracketService
         Guid? fixtureId) =>
         fixtureId is { } id
         && matchByFixture.TryGetValue(id, out var match)
-        && match.IsFinished
+        && (match.IsFinished || match.IsLive)
             ? match
             : null;
 

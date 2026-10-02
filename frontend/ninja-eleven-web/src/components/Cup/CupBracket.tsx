@@ -82,43 +82,61 @@ const TieCard: React.FC<{
 
   return (
     <div className={`cup-tie ${tie.clubs.some(club => club.isWinner) ? 'cup-tie--decided' : ''}`}>
-      <ClubLine club={home} matchId={tie.firstLegMatchId} userTeamId={userTeamId} onGoToMatch={goToMatch} />
-      <ClubLine club={away} matchId={tie.secondLegMatchId} userTeamId={userTeamId} onGoToMatch={goToMatch} />
-      <div className="cup-tie__aggregate">
-        {home?.aggregateGoals != null ? (
-          <>
-            <span>Agregado {home.aggregateGoals} x {home.aggregateConceded}</span>
-            {home.penaltyGoals != null && (
-              <span className="cup-tie__penalties">
-                Pênaltis {home.penaltyGoals} x {away?.penaltyGoals}
-              </span>
+      <ClubLine
+        club={home}
+        firstLegMatchId={tie.firstLegMatchId}
+        secondLegMatchId={tie.secondLegMatchId}
+        firstLegLive={tie.firstLegLive}
+        secondLegLive={tie.secondLegLive}
+        userTeamId={userTeamId}
+        onGoToMatch={goToMatch}
+      />
+      <ClubLine
+        club={away}
+        firstLegMatchId={tie.firstLegMatchId}
+        secondLegMatchId={tie.secondLegMatchId}
+        firstLegLive={tie.firstLegLive}
+        secondLegLive={tie.secondLegLive}
+        userTeamId={userTeamId}
+        onGoToMatch={goToMatch}
+      />
+        <div className="cup-tie__aggregate">
+          {home?.aggregateGoals != null ? (
+            <>
+              <span>Agregado {home.aggregateGoals} x {home.aggregateConceded}</span>
+              {home.penaltyGoals != null && (
+                <span className="cup-tie__penalties">
+                  Pênaltis {home.penaltyGoals} x {away?.penaltyGoals}
+                </span>
+              )}
+            </>
+          ) : tie.firstLegLive || tie.secondLegLive ? (
+            <span className="cup-tie__live">Ao vivo</span>
+          ) : (
+            <span className="cup-tie__pending">Em andamento</span>
+          )}
+          <div className="cup-tie__watch">
+            {(tie.firstLegMatchId || tie.firstLegLive) && (
+              <button
+                type="button"
+                className={`cup-tie__watch-btn${tie.firstLegLive ? ' cup-tie__watch-btn--live' : ''}`}
+                onClick={() => goToMatch(tie.firstLegMatchId)}
+                title="Assistir ao 1º jogo"
+              >
+                1º jogo
+              </button>
             )}
-          </>
-        ) : (
-          <span className="cup-tie__pending">Em andamento</span>
-        )}
-        <div className="cup-tie__watch">
-          {tie.firstLegMatchId && (
-            <button
-              type="button"
-              className="cup-tie__watch-btn"
-              onClick={() => goToMatch(tie.firstLegMatchId)}
-              title="Assistir ao 1º jogo"
-            >
-              1º jogo
-            </button>
-          )}
-          {tie.secondLegMatchId && (
-            <button
-              type="button"
-              className="cup-tie__watch-btn"
-              onClick={() => goToMatch(tie.secondLegMatchId)}
-              title="Assistir ao 2º jogo"
-            >
-              2º jogo
-            </button>
-          )}
-        </div>
+            {(tie.secondLegMatchId || tie.secondLegLive) && (
+              <button
+                type="button"
+                className={`cup-tie__watch-btn${tie.secondLegLive ? ' cup-tie__watch-btn--live' : ''}`}
+                onClick={() => goToMatch(tie.secondLegMatchId)}
+                title="Assistir ao 2º jogo"
+              >
+                2º jogo
+              </button>
+            )}
+          </div>
       </div>
     </div>
   );
@@ -136,10 +154,13 @@ const TieCard: React.FC<{
  */
 const ClubLine: React.FC<{
   club?: CupBracketClubDto;
-  matchId?: string | null;
+  firstLegMatchId?: string | null;
+  secondLegMatchId?: string | null;
+  firstLegLive?: boolean;
+  secondLegLive?: boolean;
   userTeamId?: string | null;
   onGoToMatch: (matchId?: string | null) => void;
-}> = ({ club, matchId, userTeamId, onGoToMatch }) => {
+}> = ({ club, firstLegMatchId, secondLegMatchId, firstLegLive, secondLegLive, userTeamId, onGoToMatch }) => {
   if (!club) return null;
 
   const isMine = !!userTeamId && club.teamId === userTeamId;
@@ -171,13 +192,15 @@ const ClubLine: React.FC<{
         <LegScore
           score={legScore(club.firstLegGoals, club.firstLegConceded)}
           title="Primeiro jogo"
-          matchId={matchId}
+          matchId={firstLegMatchId}
+          isLive={firstLegLive}
           onGoToMatch={onGoToMatch}
         />
         <LegScore
           score={legScore(club.secondLegGoals, club.secondLegConceded)}
           title="Segundo jogo"
-          matchId={matchId}
+          matchId={secondLegMatchId}
+          isLive={secondLegLive}
           onGoToMatch={onGoToMatch}
         />
       </span>
@@ -186,18 +209,20 @@ const ClubLine: React.FC<{
 };
 
 /**
- * One leg's score, which is a link when the leg has been played and plain text when it has not.
+ * One leg's score, which is a link when the leg has been played or is live, and plain text
+ * when it has not.
  *
  * A leg that was never played has no match to go to, so it prints a dash and offers nothing —
  * a button that goes nowhere is worse than a number that does not, because a manager presses it
- * expecting the whistle.
+ * expecting the whistle. A leg that is in progress shows the live score and a badge.
  */
 const LegScore: React.FC<{
   score: string;
   title: string;
   matchId?: string | null;
+  isLive?: boolean;
   onGoToMatch: (matchId?: string | null) => void;
-}> = ({ score, title, matchId, onGoToMatch }) => {
+}> = ({ score, title, matchId, isLive, onGoToMatch }) => {
   if (!matchId) {
     return <span title={title}>{score}</span>;
   }
@@ -205,11 +230,12 @@ const LegScore: React.FC<{
   return (
     <button
       type="button"
-      className="cup-club__leg"
-      title={`${title} — ver a partida`}
+      className={`cup-club__leg${isLive ? ' cup-club__leg--live' : ''}`}
+      title={`${title}${isLive ? ' — ao vivo' : ' — ver a partida'}`}
       onClick={() => onGoToMatch(matchId)}
     >
       {score}
+      {isLive && <span className="cup-club__live-badge" title="Ao vivo" />}
     </button>
   );
 };

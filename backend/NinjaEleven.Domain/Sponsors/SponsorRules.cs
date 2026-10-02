@@ -1,3 +1,5 @@
+using NinjaEleven.Domain.Common;
+
 namespace NinjaEleven.Domain.Sponsors;
 
 /// <summary>
@@ -6,17 +8,17 @@ namespace NinjaEleven.Domain.Sponsors;
 /// </summary>
 public static class SponsorRules
 {
-    /// <summary>The minimum number of sponsor candidates offered to a club without a deal.</summary>
-    public const int MinCandidateOffers = 3;
-
-    /// <summary>The maximum number of sponsor candidates offered to a club without a deal.</summary>
-    public const int MaxCandidateOffers = 5;
-
-    /// <summary>The upper bound on the per-match fee a sponsor will offer, in limos.</summary>
-    public const decimal MaxPerMatchFee = 500_000m;
-
-    /// <summary>The lower bound on the per-match fee a sponsor will offer, in limos.</summary>
-    public const decimal MinPerMatchFee = 10_000m;
+    /// <summary>
+    /// How many sponsors a club is offered at once.
+    ///
+    /// <para>
+    /// Three, and exactly three: fewer is a short list to choose from and more is a list
+    /// nobody reads. A club that only attracts two is shown two — a short list is a fact
+    /// about the club, and padding it with companies that would refuse it would be a screen
+    /// lying about who wants its name on the shirt.
+    /// </para>
+    /// </summary>
+    public const int CandidateOffers = 3;
 
     /// <summary>
     /// The length band of a sponsor's first offer: between this many and twice this many
@@ -25,8 +27,32 @@ public static class SponsorRules
     public const int BaseOfferLength = 5;
 
     /// <summary>
-    /// The maximum number of sponsor candidates kept on a club's list at once. When a deal
-    /// is signed the list is cleared; when it is paid off a new list is drawn.
+    /// The deal a club is offered a new set of candidates for.
+    ///
+    /// <para>
+    /// A club whose deal has one match left is a club about to be playing a match with
+    /// nothing on the shirt, which is the moment a sponsor in the market actually signs
+    /// somebody. The same rule is what an NPC follows without anybody watching.
+    /// </para>
     /// </summary>
-    public const int MaxCandidatesHeld = 7;
+    public const int MatchesLeftBeforeRenewalWindow = 1;
+
+    /// <summary>
+    /// What size of company a sponsor is, dealt out of its own name.
+    ///
+    /// <para>
+    /// A catalog of thirty identical sponsors is a catalog with no pyramid in it: every company
+    /// paying the same for the same shirt, so a club's place, form and crowd would decide the
+    /// price but the company would never decide whether it wanted the club at all. Keyed on the
+    /// name rather than on a counter, because a name is the same in a world seeded today and in
+    /// a world migrated onto the columns — the two arrive at the same book, and an identity
+    /// column would hand a different one to every database it was seeded into.
+    /// </para>
+    /// </summary>
+    public static SponsorSize SizeFor(string name)
+    {
+        var weight = (int)(StableHash.Of(name) % 3) + 1;
+
+        return SponsorSize.ForWeight(weight);
+    }
 }

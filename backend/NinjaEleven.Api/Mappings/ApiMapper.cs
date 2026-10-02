@@ -534,7 +534,9 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
         FirstLegScore = tie.FirstLegScore,
         SecondLegScore = tie.SecondLegScore,
         FirstLegMatchId = tie.FirstLegMatchId,
-        SecondLegMatchId = tie.SecondLegMatchId
+        SecondLegMatchId = tie.SecondLegMatchId,
+        FirstLegLive = tie.FirstLegLive,
+        SecondLegLive = tie.SecondLegLive
     };
 
     public static CupBracketClubDto ToDto(this Application.Models.CupBracketClub club) => new()
@@ -773,6 +775,8 @@ public static MatchContextDto ToDto(this Application.Models.MatchContextView con
         HomePossessionPercent = state.HomePossession,
         AwayPossessionPercent = state.AwayPossession,
         PenaltyAwaitingSelection = state.PenaltyAwaitingSelection,
+        PenaltyEndsAt = state.PenaltyEndsAt,
+        HalfTimeEndsAt = state.HalfTimeEndsAt,
         Penalty = state.Penalty.ToDto(),
         Injury = new MatchInjuryDto
         {

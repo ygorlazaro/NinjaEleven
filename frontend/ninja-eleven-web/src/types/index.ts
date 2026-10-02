@@ -768,13 +768,21 @@ export interface MatchStateDto {
    */
   homePossessionPercent: number;
   awayPossessionPercent: number;
-  penaltyAwaitingSelection: boolean;
+penaltyAwaitingSelection: boolean;
+  /**
+   * When the window for naming a taker closes, in the backend's own clock. It is a moment
+   * and not a number of seconds so that the count drawn beside the score is the server's
+   * wait being watched, not a wait this screen invented.
+   */
+  penaltyEndsAt: string | null;
+  /** When the interval closes by itself, or null while the match is not at one. */
+  halfTimeEndsAt: string | null;
   /** Who can take the penalty the engine awarded, when one is waiting for the manager. */
   penalty: PenaltyTakerOptionsDto;
   /**
-   * A man who cannot carry on and whose replacement the manager has to name. It is not a
-   * notification about something that has happened: the clock is held while it is out, so
-   * while this is set the match is waiting on this and nothing else is moving.
+   * A man who cannot continue and whose replacement the manager may name. The window is
+   * open and the match goes on around it: while this is set the question is on the screen,
+   * and the engine answers it himself if nobody does.
    */
   injury: MatchInjuryDto;
   /** The club the manager is watching: what commands are sent for. */
@@ -1724,6 +1732,16 @@ export type SponsorOfferDto = {
   contractMatches: number;
   /** The mark's own colour, so a sponsor is a thing the screen can draw. */
   color: string;
+  /**
+   * How big a company this is: 1 local, 2 regional, 3 national. A bigger company pays more
+   * for the same shirt and works in fewer places, so the number is what tells a manager
+   * *why* one offer is above another.
+   */
+  weight: number;
+  /** How many clubs this sponsor already has on its shirt. */
+  clubsSponsored: number;
+  /** How many it is willing to have. A full slate pays less for the next one. */
+  maxClubs: number;
 };
 
 /**
@@ -1855,9 +1873,15 @@ export interface CupBracketTieDto {
   secondLegScore?: number | null;
   /** The two matches, so a manager can watch or re-watch either leg. */
   firstLegMatchId?: string | null;
-  secondLegMatchId?: string | null;
-}
 
+  secondLegMatchId?: string | null;
+
+  /** Whether the first leg's match is currently in progress. */
+  firstLegLive?: boolean;
+
+  /** Whether the second leg's match is currently in progress. */
+  secondLegLive?: boolean;
+}
 /** One club's line of a tie: who it is, what it scored, and whether it went through. */
 export interface CupBracketClubDto {
   teamId: string;

@@ -384,21 +384,58 @@ public static class MatchRules
     public const int MaxSubstitutions = 5;
 
     /// <summary>
-    /// How long a manager's claim on a match is honoured before the engine answers for him.
+    /// How long the game waits at the spot for the manager to name who takes the penalty.
     ///
     /// <para>
-    /// Two decisions hold the clock still for a manager: who takes a penalty of his club's,
-    /// and who comes on for a man who cannot carry on. Both are worth waiting for a person
-    /// to answer. Neither is worth waiting for ever, because a manager who closes the tab
-    /// leaves a match that stops mid-afternoon and takes the whole world down with it — the
-    /// fixture stays owed and the window never closes.
+    /// Fifteen seconds of waiting, and then the engine sends somebody to the spot by itself.
+    /// It is the only window in a match that still stops the clock, because a penalty is the
+    /// one decision with nowhere to put the ball until it is answered: the match is at a dead
+    /// ball and everybody is looking at the eleven that is going to take it.
     /// </para>
     ///
     /// <para>
     /// It is measured in seconds of waiting and not in match minutes, because the clock is
-    /// the thing that has stopped: a rule counted in minutes would never be reached by a
-    /// match that is not advancing. It is long enough that a manager thinking about the right
-    /// man is not robbed of the choice.
+    /// the thing that has stopped. The count is the backend's and the screen only draws it:
+    /// a manager who does not answer is a manager whose match has to finish anyway, and a
+    /// rule that lived in the client would be a rule a closed tab could keep forgetting.
+    /// </para>
+    /// </summary>
+    public const int PenaltySelectionSeconds = 15;
+
+    /// <summary>
+    /// How long the interval lasts, in seconds, before the second half begins by itself.
+    ///
+    /// <para>
+    /// The break belongs to the manager: twenty seconds to look at the eleven, make a change
+    /// or simply let the game go on. It is the backend's twenty seconds and not the manager's
+    /// patience — a screen that waits for a button is a screen that a closed tab leaves the
+    /// whole world waiting on, and a break that lasts for ever is a fixture that is never
+    /// finished and a window that is never closed.
+    /// </para>
+    /// </summary>
+    public const int HalfTimeSeconds = 20;
+
+    /// <summary>
+    /// How long a man who cannot carry on waits for the manager to name his replacement.
+    ///
+    /// <para>
+    /// The clock does not stop for this one. The man is off the pitch from the moment the
+    /// knock happens, the club is a man short while the window is open, and the engine puts
+    /// the best of what is on the bench on for him when the window closes unanswered. A
+    /// decision worth a name is worth twenty seconds; it is not worth a stopped match.
+    /// </para>
+    /// </summary>
+    public const int InjuryReplacementSeconds = 20;
+
+    /// <summary>
+    /// How long a manager's claim on a match is honoured before the engine answers for him.
+    ///
+    /// <para>
+    /// This is the backstop behind the three windows above: whatever else has been decided,
+    /// a match a manager claimed and then abandoned is a match the engine finishes on its
+    /// own. Without it a manager who closes the tab leaves a match that stops mid-afternoon
+    /// and takes the whole world down with it — the fixture stays owed and the window never
+    /// closes.
     /// </para>
     /// </summary>
     public const int ManagerDecisionTimeoutSeconds = 45;

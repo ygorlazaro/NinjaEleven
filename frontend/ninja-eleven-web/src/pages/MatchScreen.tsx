@@ -28,6 +28,7 @@ import { MatchContextBar, FirstLegStrip } from '@/components/Match/MatchContextB
 import ShootoutPanel from '@/components/Match/ShootoutPanel';
 import { FixtureApi } from '@/api';
 import { useMatchAudio } from '@/hooks/useMatchAudio';
+import { useCountdown } from '@/hooks/useCountdown';
 import { formatLimo } from '@/services/limo';
 import { ClubName } from '@/components/Common/Names';
 import ClubCrest from '@/components/Club/ClubCrest';
@@ -71,6 +72,25 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null);
   const [substitution, setSubstitution] = useState<{ out: string; in: string } | null>(null);
   const [showSubstitutionModal, setShowSubstitutionModal] = useState(false);
+
+  /**
+   * Which injured man the manager has already put aside, or null when none has.
+   *
+   * It is the man's id and not a flag because a flag would carry over: a striker hurt in the
+   * first half and the same striker hurt again in the second is two questions, and the
+   * second one has to be asked.
+   */
+  const [dismissedInjuryFor, setDismissedInjuryFor] = useState<string | null>(null);
+
+  /**
+   * Whether the penalty dialog is on the screen.
+   *
+   * It follows the state the server publishes — a penalty that happened while this screen was
+   * closed still has to reach the manager — and the local flag only records that he has put
+   * it aside, so the question does not jump back in front of a manager who answered nothing
+   * yet on purpose. The window stays open either way and the countdown keeps running.
+   */
+  const [showPenaltyModal, setShowPenaltyModal] = useState(false);
   /** The player the manager clicked, already picked to leave the pitch. */
   const [substitutionFor, setSubstitutionFor] = useState<string | null>(null);
   const [substituting, setSubstituting] = useState(false);
@@ -297,13 +317,28 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
         loadLineup();
       }
 
-      // The server stops the loop by itself at the interval; the client owns the
-      // decision to leave it. It is a decision about the manager's own club, so it is
-      // only raised for a match he is playing: a match of two other clubs has its
-      // interval left by the loop that is simulating it, and a manager watching it has
-      // no button to press about a second half that is not his.
+      // The interval is the backend's twenty seconds and the screen only raises the question:
+      // the manager may leave the break early by pressing it, and nobody keeps it open by
+      // not pressing. It is a decision about the manager's own club, so it is only raised
+      // for a match he is playing: a match of two other clubs has its interval left by the
+      // loop that is simulating it, and a manager watching it has no button to press about
+      // a second half that is not his.
       if (next.isHalfTime && next.userTeamId) {
         setShowHalfTimeModal(true);
+      }
+
+      // And it is raised once: a state that keeps saying "half time" while the break counts
+      // down would pull the dialog back in front of a manager who had already put it aside.
+      if (!next.isHalfTime) {
+        setShowHalfTimeModal(false);
+      }
+
+      // And the same for the penalty: the dialog follows the server's window, and a manager
+      // who has put it aside is not pulled back into it by the next snapshot.
+      if (next.penaltyAwaitingSelection) {
+        setShowPenaltyModal(true);
+      } else {
+        setShowPenaltyModal(false);
       }
 
       // An abandoned match is finished and is not a match that was played: it is one whose
@@ -607,6 +642,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
       // is bound to the question, and the backend has answered it.
       setShowSubstitutionModal(false);
       setSubstitutionFor(null);
+      setDismissedInjuryFor(null);
 
       await loadLineup();
     } catch (err: any) {
@@ -737,6 +773,24 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   const otherMatches = matchdayScores.filter(score => score.matchId !== matchId).length;
   const minute = state ? `${state.minute.toString().padStart(2, '0')}:${state.second.toString().padStart(2, '0')}` : '00:00';
   const halfLabel = state?.currentHalf === 'Second' ? '2º' : '';
+
+  /**
+   * The two moments the backend is counting down on its own, drawn next to the clock.
+   *
+   * A penalty is the one window that stops the match, and it stops for fifteen seconds: the
+   * number says what is left of that before the engine sends somebody to the spot by itself.
+   * The interval is twenty seconds of break, and the number says when the second half begins
+   * whether or not anybody pressed anything. Both deadlines are the server's — the screen
+   * only shows the wait, and it never decides that a wait is over.
+   */
+  const penaltySeconds = useCountdown(state?.penaltyEndsAt);
+  const halfTimeSeconds = useCountdown(state?.halfTimeEndsAt);
+  const windowWaiting =
+    penaltySeconds != null
+      ? { label: 'Pênalti', seconds: penaltySeconds, hint: 'o melhor cobrador entra se você não escolher' }
+      : halfTimeSeconds != null
+        ? { label: 'Intervalo', seconds: halfTimeSeconds, hint: 'o segundo tempo começa sozinho' }
+        : null;
   /**
    * A change is available only in a match the manager's club is playing in, and only while
    * it is being played. The first half of that test is the one that matters here: a manager
@@ -817,6 +871,16 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
               {minute}
               {halfLabel && <span className="clock-half">{halfLabel}</span>}
             </div>
+            {/* The wait the backend is counting down, under the clock and beside the score:
+                a manager deciding whether to hurry sees how much is left of the decision
+                being his. */}
+            {windowWaiting && (
+              <div className="clock-window" role="status">
+                <b>{windowWaiting.label}</b>
+                <span className="clock-window__count">{windowWaiting.seconds}s</span>
+                <span className="clock-window__hint">{windowWaiting.hint}</span>
+              </div>
+            )}
           </div>
           <div className={`team-name away ${userTeamIdx === 1 ? 'user-team team-colored' : 'team-colored'}`}>
             <ClubCrest
@@ -1105,13 +1169,20 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
         busy={substituting}
         onSubstitute={substitute}
         onContinue={continueSecondHalf}
+        onClose={() => setShowHalfTimeModal(false)}
+        endsAt={state?.halfTimeEndsAt}
       />
-      {/* A man who cannot carry on holds the clock until somebody is named, so this screen
-          opens on its own and cannot be dismissed. The pick follows the state the server
-          publishes, the way the penalty dialog does, rather than a local flag: an injury
-          that happened while the screen was closed still has to reach the manager. */}
+      {/* A man who cannot carry on opens a window that does not stop the match: the dialog
+          follows the state the server publishes rather than a local flag, because an injury
+          that happened while the screen was closed still has to reach the manager — and it
+          can be put aside, because the engine names somebody from the bench when nobody does
+          and a question the match is not waiting on is not one that has to be answered now. */}
       <SubstitutionModal
-        show={isInThisMatch && (showSubstitutionModal || !!state?.injury?.awaitingSubstitution)}
+        show={
+          isInThisMatch &&
+          !dismissedInjuryFor &&
+          (showSubstitutionModal || !!state?.injury?.awaitingSubstitution)
+        }
         team={userTeamIdx === 0 ? homeTeam : awayTeam}
         kitSide={userTeamIdx === 0 ? lineup.homeKitSide : lineup.awayKitSide}
         lineup={userLineup}
@@ -1121,20 +1192,22 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
         forcedFor={state?.injury?.awaitingSubstitution ? state.injury.playerName : null}
         busy={substituting}
         onSubstitute={substitute}
-        onClose={
-          state?.injury?.awaitingSubstitution
-            ? undefined
-            : () => {
-                setShowSubstitutionModal(false);
-                setSubstitutionFor(null);
-                setSubstitutionError(null);
-              }
-        }
+        onClose={() => {
+          // Putting the window aside remembers *which* man it was about, so a second injury
+          // in the same match asks again instead of staying dismissed for ever.
+          if (state?.injury?.awaitingSubstitution) {
+            setDismissedInjuryFor(state.injury.playerId ?? null);
+          }
+
+          setShowSubstitutionModal(false);
+          setSubstitutionFor(null);
+          setSubstitutionError(null);
+        }}
       />
       {/* A penalty of the manager's own club stops the clock until he names the taker, so
           the dialog follows the state the server publishes rather than a local flag. */}
       <PenaltyModal
-        show={!!state?.penalty?.awaitingSelection}
+        show={!!state?.penalty?.awaitingSelection && showPenaltyModal}
         candidates={state?.penalty?.candidates ?? []}
         onSelected={async playerId => {
           if (!userTeamId) return;
@@ -1155,7 +1228,14 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
           }
         }}
         error={penaltyError}
-        onClose={() => setPenaltyError(null)}
+        endsAt={state?.penaltyEndsAt}
+        onClose={() => {
+          // Putting the dialog aside does not answer the question: the window stays open and
+          // the countdown above it keeps going down, because the decision is still the
+          // manager's until the backend takes it.
+          setShowPenaltyModal(false);
+          setPenaltyError(null);
+        }}
       />
     </div>
   );

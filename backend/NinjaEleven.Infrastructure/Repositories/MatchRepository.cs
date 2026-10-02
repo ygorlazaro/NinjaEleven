@@ -335,6 +335,121 @@ public class MatchRepository : IMatchRepository
             .Take(limit)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Application.Models.TeamMatchRecord>>> GetTeamHistoryByTeamsAsync(
+        IEnumerable<Guid> teamIds,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = teamIds.ToList();
+
+        var rows = await (
+                from match in _dbContext.Matches.AsNoTracking()
+                join fixture in _dbContext.Fixtures.AsNoTracking()
+                    on match.FixtureId equals fixture.Id
+                join round in _dbContext.Rounds.AsNoTracking()
+                    on fixture.RoundId equals round.Id
+                join compSeason in _dbContext.CompetitionSeasons.AsNoTracking()
+                    on round.CompetitionSeasonId equals compSeason.Id
+                join competition in _dbContext.Competitions.AsNoTracking()
+                    on compSeason.CompetitionId equals competition.Id
+                join home in _dbContext.Teams.AsNoTracking()
+                    on fixture.HomeTeamId equals home.Id
+                join away in _dbContext.Teams.AsNoTracking()
+                    on fixture.AwayTeamId equals away.Id
+                where ids.Contains(fixture.HomeTeamId) || ids.Contains(fixture.AwayTeamId)
+                where match.Status == MatchStatus.Finished
+                orderby match.CreatedAt descending, match.Id descending
+                select new
+                {
+                    match.Id,
+                    match.FixtureId,
+                    fixture.HomeTeamId,
+                    fixture.AwayTeamId,
+                    match.HomeScore,
+                    match.AwayScore,
+                    HomeName = home.Name,
+                    AwayName = away.Name,
+                    round.Number,
+                    match.CreatedAt,
+                    match.Attendance,
+                    competition.Name,
+                    compSeason.IsDivision
+                })
+            .ToListAsync(cancellationToken);
+
+        var byTeam = new Dictionary<Guid, List<Application.Models.TeamMatchRecord>>();
+
+        // One fixture is one row here and two lines of history — one for each side that was
+        // asked about. Reading the two sides apart in the query is what a match between two
+        // clubs of the set needs, and a match where only one side is in the set must still
+        // reach that one.
+        foreach (var row in rows)
+        {
+            if (ids.Contains(row.HomeTeamId))
+            {
+                Add(byTeam, row.HomeTeamId, new Application.Models.TeamMatchRecord
+                {
+                    MatchId = row.Id,
+                    TeamId = row.HomeTeamId,
+                    OpponentName = row.AwayName,
+                    OpponentTeamId = row.AwayTeamId,
+                    IsHome = true,
+                    GoalsFor = row.HomeScore,
+                    GoalsAgainst = row.AwayScore,
+                    RoundNumber = row.Number,
+                    PlayedAt = row.CreatedAt,
+                    CompetitionName = row.Name,
+                    IsDivision = row.IsDivision,
+                    Attendance = row.Attendance
+                }, limit);
+            }
+
+            if (ids.Contains(row.AwayTeamId))
+            {
+                Add(byTeam, row.AwayTeamId, new Application.Models.TeamMatchRecord
+                {
+                    MatchId = row.Id,
+                    TeamId = row.AwayTeamId,
+                    OpponentName = row.HomeName,
+                    OpponentTeamId = row.HomeTeamId,
+                    IsHome = false,
+                    GoalsFor = row.AwayScore,
+                    GoalsAgainst = row.HomeScore,
+                    RoundNumber = row.Number,
+                    PlayedAt = row.CreatedAt,
+                    CompetitionName = row.Name,
+                    IsDivision = row.IsDivision,
+                    Attendance = row.Attendance
+                }, limit);
+            }
+        }
+
+        return byTeam.ToDictionary(
+            entry => entry.Key,
+            entry => (IReadOnlyList<Application.Models.TeamMatchRecord>)entry.Value);
+
+        // The rows arrive newest first for the whole set rather than per club, so each club's
+        // own list is cut here rather than in the query: five recent matches per club cannot
+        // be expressed as a Take on a query that spans sixty-four clubs at once.
+        static void Add(
+            Dictionary<Guid, List<Application.Models.TeamMatchRecord>> map,
+            Guid teamId,
+            Application.Models.TeamMatchRecord record,
+            int cap)
+        {
+            if (!map.TryGetValue(teamId, out var list))
+            {
+                list = [];
+                map[teamId] = list;
+            }
+
+            if (list.Count < cap)
+            {
+                list.Add(record);
+            }
+        }
+    }
+
     public async Task<string?> GetLastTacticCodeAsync(
         Guid teamId,
         CancellationToken cancellationToken = default) =>

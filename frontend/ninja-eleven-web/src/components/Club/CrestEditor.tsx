@@ -266,8 +266,8 @@ const CrestEditor: React.FC<CrestEditorProps> = ({ team, onClose, onSaved }) => 
   };
 
   return (
-    <div className="modal" role="dialog" aria-label="Editor de escudo">
-      <div className="modal-card crest-editor">
+    <div className="modal" role="dialog" aria-label="Editor de escudo" onClick={onClose}>
+      <div className="modal-card crest-editor" onClick={event => event.stopPropagation()}>
         <h2>Escudo do {team.name}</h2>
 
         <div className="crest-editor__body">
