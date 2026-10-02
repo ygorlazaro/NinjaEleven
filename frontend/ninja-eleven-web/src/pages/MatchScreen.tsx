@@ -722,11 +722,16 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
   }, [state?.homeScore, state?.awayScore]);
 
   /**
-   * The share of the ball the home side has had, as a number the engine decided. Before
-   * there is a state there is no share, so the bar is left even rather than claiming a 50%
-   * nobody has earned.
+   * The share of the ball the home side has had, as a number the engine decided — or null
+   * when the engine has not said.
+   *
+   * It used to fall back to 50 and the bar was drawn even, which is right for a bar that only
+   * has a width. The two labels beside it were the problem: they are printed in bold above
+   * the pitch, so the screen was stating a possession split nobody had earned, and "50% — 50%"
+   * is the shape of a real answer. Both ends now read the same value or neither of them does.
    */
-  const possessionHome = state ? state.homePossessionPercent : 50;
+  const possessionHome = state ? state.homePossessionPercent : null;
+  const possessionAway = state ? state.awayPossessionPercent : null;
 
   /** How many other matches of the matchday are running, which is what the tab is for. */
   const otherMatches = matchdayScores.filter(score => score.matchId !== matchId).length;
@@ -769,7 +774,11 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
 
         <div className="competition" style={{ marginTop: 6 }}>
           <span style={{ float: 'right' }}>
-            90 MIN + <span id="stoppageLabel">{state?.stoppageTimeMinutes ?? 3}</span>
+            {/* The added time is drawn by the engine at the kick-off and announced by each
+                half, so there is nothing to print before it arrives. It used to be a 3 in the
+                client, which is a referee's decision nobody made. */}
+            90 MIN +{' '}
+            <span id="stoppageLabel">{state?.stoppageTimeMinutes ?? '—'}</span>
             {` • ~${estimatedMinutes} min no ritmo do servidor`}
           </span>
         </div>
@@ -833,19 +842,23 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
             className="possession-bar"
             style={
               {
-                '--possession-home': `${possessionHome}%`,
+                '--possession-home': `${possessionHome ?? 50}%`,
                 '--home-team': homeTeam.primaryColor || '#2f6f4f',
                 '--away-team': awayTeam.primaryColor || '#2a4a63',
               } as React.CSSProperties
             }
-            title={`Posse de bola: ${homeTeam.shortName ?? homeTeam.name} ${possessionHome}% — ${
-              awayTeam.shortName ?? awayTeam.name
-            } ${100 - possessionHome}%`}
+            title={
+              possessionHome == null
+                ? 'Posse de bola: o jogo ainda não começou'
+                : `Posse de bola: ${homeTeam.shortName ?? homeTeam.name} ${possessionHome}% — ${
+                    awayTeam.shortName ?? awayTeam.name
+                  } ${possessionAway}%`
+            }
           >
             <span className="possession-bar__share" aria-hidden="true" />
             <span className="possession-bar__labels">
-              <span>{possessionHome}%</span>
-              <span>{100 - possessionHome}%</span>
+              <span>{possessionHome == null ? '—' : `${possessionHome}%`}</span>
+              <span>{possessionAway == null ? '—' : `${possessionAway}%`}</span>
             </span>
           </div>
         </div>
@@ -920,8 +933,11 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
               >
                 <div className="event-icon" id="heroIcon">{latest?.icon || '⚽'}</div>
                 <div className="event-title" id="heroTitle">{headline}</div>
+                {/* The engine's own words, or nothing. A sentence written here would be the
+                    only narration in the game that no match ever said, above the feed that is
+                    telling the story of the same evening. */}
                 <div className="event-desc" id="heroDesc">
-                  {latest?.description || 'Os times se estudam nos primeiros minutos.'}
+                  {latest?.description}
                 </div>
               </div>
             );

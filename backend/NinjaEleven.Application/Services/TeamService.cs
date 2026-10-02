@@ -19,6 +19,7 @@ public class TeamService
     private readonly IPlayerRepository _playerRepository;
     private readonly ISeasonRepository _seasonRepository;
     private readonly IMatchRepository _matchRepository;
+    private readonly IClubEventRepository _clubEventRepository;
     private readonly IUnitOfWork _unitOfWork;
 
     public TeamService(
@@ -26,12 +27,14 @@ public class TeamService
         IPlayerRepository playerRepository,
         ISeasonRepository seasonRepository,
         IMatchRepository matchRepository,
+        IClubEventRepository clubEventRepository,
         IUnitOfWork unitOfWork)
     {
         _teamRepository = teamRepository;
         _playerRepository = playerRepository;
         _seasonRepository = seasonRepository;
         _matchRepository = matchRepository;
+        _clubEventRepository = clubEventRepository;
         _unitOfWork = unitOfWork;
     }
 
@@ -105,6 +108,13 @@ public class TeamService
     /// <summary>
     /// Updates the name of a club that the manager has taken charge of.
     /// </summary>
+    /// <remarks>
+    /// The rename is recorded, and by this call rather than by anything that asks the club's
+    /// page to remember it. <see cref="Team"/> keeps one name column, so without a row here a
+    /// rename ends the story: the club's own history would show a founding and a title and no
+    /// mention of the year the manager renamed it, and a page that could have said it and did
+    /// not is indistinguishable from a game that never let him.
+    /// </remarks>
     public async Task<Team> UpdateNameAsync(
         Guid teamId,
         string name,
@@ -113,8 +123,18 @@ public class TeamService
         var team = await _teamRepository.GetAsync(teamId, cancellationToken)
             ?? throw new EntityNotFoundException(nameof(Team), teamId);
 
+        var previousName = team.Name;
+
         team.SetName(name);
         _teamRepository.Update(team);
+
+        await RecordAsync(
+            team.Id,
+            ClubEventKind.NameChange,
+            previousName,
+            team.Name,
+            cancellationToken);
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return team;
@@ -132,12 +152,52 @@ public class TeamService
         var team = await _teamRepository.GetAsync(teamId, cancellationToken)
             ?? throw new EntityNotFoundException(nameof(Team), teamId);
 
+        var previousColors = $"{team.PrimaryColor} / {team.SecondaryColor}";
+
         team.SetPrimaryColor(primaryColor);
         team.SetSecondaryColor(secondaryColor);
         _teamRepository.Update(team);
+
+        // Recorded for the same reason a rename is: two columns overwritten in place are the
+        // whole of the world's memory of what this club used to look like.
+        await RecordAsync(
+            team.Id,
+            ClubEventKind.ColorsChange,
+            previousColors,
+            $"{team.PrimaryColor} / {team.SecondaryColor}",
+            cancellationToken);
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return team;
+    }
+
+    /// <summary>
+    /// Stages one moment of the club's life against the change that just happened.
+    /// </summary>
+    /// <remarks>
+    /// Staged and not saved: the moment and the change it describes are one fact, and a page
+    /// that showed a rename without the new name — or a new name without the rename — would be
+    /// a page that has half of an event. The unit of work that writes the club writes both.
+    ///
+    /// <para>
+    /// The season is whatever is currently being played, and it may be none: a manager renames
+    /// a club between seasons and the row is still worth having, so a null season is passed
+    /// through rather than treated as a reason to skip.
+    /// </para>
+    /// </remarks>
+    private async Task RecordAsync(
+        Guid teamId,
+        ClubEventKind kind,
+        string? previousValue,
+        string? newValue,
+        CancellationToken cancellationToken)
+    {
+        var seasonId = (await _seasonRepository.GetCurrentAsync(cancellationToken))?.Id;
+
+        await _clubEventRepository.AddAsync(
+            ClubEvent.Create(teamId, kind, seasonId, previousValue, newValue),
+            cancellationToken);
     }
 
     /// <summary>
@@ -158,8 +218,22 @@ public class TeamService
     {
         var team = await GetDrawableClubAsync(teamId, cancellationToken);
 
+        var previousCrest = team.Crest;
+
         team.SetCrest(crest);
         _teamRepository.Update(team);
+
+        // The crest is recorded whether it was drawn or taken away, and the difference is kept
+        // in the row rather than decided here: whether the club now has a shield is the fact
+        // itself, and a page that only knew "something was drawn" could not tell a new badge
+        // from an empty one.
+        await RecordAsync(
+            team.Id,
+            ClubEventKind.CrestChange,
+            previousCrest is null ? null : "desenhado",
+            crest is null ? null : "desenhado",
+            cancellationToken);
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return team;
@@ -364,6 +438,12 @@ public class TeamService
         var season = await _seasonRepository.GetAsync(seasonId, cancellationToken)
             ?? throw new EntityNotFoundException("Season", seasonId);
 
+        // One fact about the calendar for the whole squad: a release settlement counts the
+        // rounds the club still has to pay for, and every man on the list is owed the same
+        // number of them.
+        var roundsLeft = await _seasonRepository.GetChampionshipRoundsLeftAsync(
+            seasonId, cancellationToken);
+
         var memberships = await _teamRepository.GetSquadAsync(teamId, seasonId, cancellationToken);
         var squad = new List<SquadPlayer>(memberships.Count);
 
@@ -402,7 +482,8 @@ public class TeamService
                 Player = player,
                 SeasonState = seasonState,
                 Membership = membership,
-                Season = season
+                Season = season,
+                RoundsLeftInSeason = roundsLeft
             });
         }
 

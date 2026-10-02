@@ -112,7 +112,9 @@ const StandingsTable: React.FC<StandingsTableProps> = ({ standings, userId, team
 
             const isUser = team.id === userId;
             const colors = team.primaryColor || '#f2d34f';
-            const stars = row.stars ?? team.stars ?? 0;
+            // No rating is not zero stars: the row and the club are both asked, and if
+            // neither answered then nobody has settled this club's strength yet.
+            const stars = row.stars ?? team.stars;
             const zone: TableZone = row.zone ?? 'None';
 
             const rowClass = [

@@ -12,6 +12,7 @@ import type {
   MatchDto, MatchEventDto, MatchLineupDto, MatchStateDto, MatchContextDto, LiveMatchDto,
   MatchCommandResult, MatchEngineEventDto, MatchResult, RoundSimulationResult, TacticDto, Guid, MatchdayReportDto,
   PlayerProfileDto,
+  ClubProfileDto,
   SquadSuggestionDto,
   FinanceLedgerDto,
   InboxBoxDto,
@@ -102,6 +103,25 @@ export const TeamApi = {
     api.post<TeamDto>(`/team/${id}/manager-club`).then(r => r.data),
   getSquad: (teamId: string, seasonId: string) =>
     api.get<SquadPlayerDto[]>(`/team/${teamId}/squad/${seasonId}`).then(r => r.data),
+
+  /**
+   * The club's page, whole: who it is, who runs it, what it costs, its shelf and its history.
+   *
+   * One call because the page is one thing. This screen used to ask for the balance here, the
+   * roster there and the rest of the club from a stand-in it drew itself, which meant the page
+   * showed a club's size beside a club's balance from two different years and a history that
+   * was invented — and invented *stably*, so two clubs never looked alike and no manager could
+   * tell it from a page that worked.
+   *
+   * The season is optional and moves one number, the size of the roster: the balance is
+   * deliberately not narrowed to a season and the history is the club's whole career.
+   */
+  getProfile: (teamId: string, seasonId?: string) =>
+    api
+      .get<ClubProfileDto>(
+        `/team/${teamId}/profile` + (seasonId ? `?seasonId=${seasonId}` : '')
+      )
+      .then(r => r.data),
   /**
    * The club's place in a season: the division it is in and the line it holds there.
    *

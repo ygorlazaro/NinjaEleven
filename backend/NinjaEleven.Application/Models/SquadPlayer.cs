@@ -2,6 +2,8 @@ using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Teams;
+using NinjaEleven.Domain.Competitions;
+using NinjaEleven.Domain.Transfers;
 
 namespace NinjaEleven.Application.Models;
 
@@ -103,6 +105,40 @@ public class SquadPlayer
     /// is paying now.
     /// </summary>
     public decimal WageOnRenewal => PlayerValuation.SeasonWage(Player, SeasonState);
+
+    /// <summary>
+    /// How many rounds of the season the club still has to play, set by whoever read the
+    /// season's calendar.
+    ///
+    /// It is the one fact about the world a contract has to be settled against, and it is a
+    /// fact about the calendar rather than about the club: every club in a division has the
+    /// same rounds left, so it is read once for a squad instead of once per man.
+    /// </summary>
+    public int RoundsLeftInSeason { get; init; }
+
+    /// <summary>
+    /// What it would cost the club to let this man go today, in limos.
+    ///
+    /// <para>
+    /// It is on the squad row because releasing a player is a decision a manager takes from
+    /// this screen, and it used to be taken against a percentage written on the screen: a flat
+    /// "+20%" beside a man's contract, which is not the rule anywhere in the game. The
+    /// settlement is half of what the club still owes him, and it is worked out by
+    /// <see cref="ReleaseRules"/> — the same function the release command charges with — so
+    /// the figure read here and the figure taken from the bank cannot differ.
+    /// </para>
+    /// <para>
+    /// A man on no contract is owed nothing, and that is a real zero rather than an absence:
+    /// there is no settlement for a contract that does not exist.
+    /// </para>
+    /// </summary>
+    public decimal ReleaseCost => Membership is null
+        ? 0m
+        : ReleaseRules.QuoteReleaseCost(
+            PlayerValuation.SeasonWage(Player, SeasonState),
+            CompetitionRules.LeagueMatchDays,
+            RoundsLeftInSeason,
+            SeasonsLeft);
 }
 
 /// <summary>

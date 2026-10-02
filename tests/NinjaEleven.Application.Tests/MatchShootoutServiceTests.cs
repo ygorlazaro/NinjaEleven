@@ -603,6 +603,7 @@ public class MatchShootoutServiceTests
                 _players.Object,
                 _seasons.Object,
                 _matches.Object,
+                Mock.Of<IClubEventRepository>(),
                 _unitOfWork.Object),
             matchday,
             _unitOfWork.Object,

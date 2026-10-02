@@ -1,3 +1,4 @@
+using NinjaEleven.Application.Models;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Teams;
 
@@ -114,6 +115,25 @@ public interface ITeamRepository
     Task<Dictionary<Guid, int>> GetTeamDivisionsAsync(
         Guid seasonId,
         IEnumerable<Guid> teamIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every season of a club's career, and the division it was in that season.
+    /// </summary>
+    /// <remarks>
+    /// The whole career in one read, and in season order, because this is the answer to "which
+    /// divisions has this club moved between" — and a promotion or a relegation is not a row
+    /// anywhere in the world. The pyramid is rebuilt from the final tables each season and the
+    /// only trace a move leaves is that this season's division is not last season's, so the
+    /// movement has to be two of these read side by side rather than a movements table that
+    /// nobody writes.
+    ///
+    /// Championship editions only. A club is enrolled in the cup as well and the cup has no
+    /// division, so a reader that took every participation would give a club four rows a season
+    /// and a quarter of them null.
+    /// </remarks>
+    Task<IReadOnlyList<ClubDivisionSeason>> ListDivisionSeasonsAsync(
+        Guid teamId,
         CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -7,7 +7,7 @@ import type {
   TacticsBoardDto,
   TacticsSquadRowDto
 } from '@/types';
-import { positionLabel } from '@/services/formatters';
+import { positionLabel, attributeToneClass, energyTextClass } from '@/services/formatters';
 import { PlayerName, ClubName } from '@/components/Common/Names';
 
 /** The eleven on the pitch and the seven beside it. The two numbers the Laws settle on. */
@@ -34,18 +34,22 @@ const POSITION_ORDER = ['GK', 'DEF', 'MID', 'ATT'] as const;
 const ATTRIBUTE_LABELS = ['Vel', 'Fin', 'Dri', 'Cab', 'For', 'Gol', 'Ref', 'Est'] as const;
 
 /**
- * The colour of a number, on the same bands the squad table uses.
+ * The colour of a number: the squad table's bands, asked of the one function that owns them.
  *
  * <p>
  * A tag strip of eight numbers is unreadable without them: what a manager is looking for is
  * the one attribute that stands out, and eight equally flat numbers have nothing standing out.
  * </p>
+ *
+ * <p>
+ * This used to carry its own copy of the rule — <c>under 8</c> red, <c>under 14</c> yellow,
+ * the bands an attribute was written on when the scale was 1..20. Attributes are 1..100 and
+ * have been for a long time, so on this board every attribute above 14 came out green and a
+ * squad of fourteen and a squad of ninety were drawn identically. The rule lives in
+ * <c>attributeToneClass</c> and a second copy of it is a second answer to the same question.
+ * </p>
  */
-function attributeTextClass(value: number): string {
-  if (value < 8) return 'attr-red';
-  if (value < 14) return 'attr-yellow';
-  return 'attr-green';
-}
+const attributeTextClass = attributeToneClass;
 
 type Group = (typeof POSITION_ORDER)[number];
 
@@ -58,12 +62,6 @@ type Group = (typeof POSITION_ORDER)[number];
  * </p>
  */
 type Zone = 'starters' | 'bench' | 'squad';
-
-function energyTextClass(energy: number): string {
-  if (energy < 35) return 'energy-red-text';
-  if (energy < 70) return 'energy-yellow-text';
-  return 'energy-green-text';
-}
 
 /**
  * The manager's board.

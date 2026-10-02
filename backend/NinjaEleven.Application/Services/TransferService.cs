@@ -452,16 +452,15 @@ window.ArrivalRoundNumber);
             ?? throw new EntityNotFoundException("PlayerSeasonState", playerId);
 
         var salary = PlayerValuation.SeasonWage(player, state);
-        var salaryPerRound = salary / CompetitionRules.LeagueMatchDays;
-        var roundsPlayed = await LastCompletedChampionshipRoundAsync(season, cancellationToken);
-        var roundsLeft = Math.Max(0, CompetitionRules.LeagueMatchDays - roundsPlayed);
-        var seasonsLeftAfter = Math.Max(0, contract.SeasonsLeft(season.Number) - 1);
+        var roundsLeft = await _seasons.GetChampionshipRoundsLeftAsync(season.Id, cancellationToken);
 
-        var cost = ReleaseRules.ReleaseCost(
-            salaryPerRound,
+        // The same rule the squad list and a player's card quote from, so the figure a manager
+        // read before pressing the button is the figure that is charged.
+        var cost = ReleaseRules.QuoteReleaseCost(
+            salary,
+            CompetitionRules.LeagueMatchDays,
             roundsLeft,
-            seasonsLeftAfter,
-            CompetitionRules.LeagueMatchDays);
+            contract.SeasonsLeft(season.Number));
 
         var today = DateOnly.FromDateTime(DateTime.Now);
         contract.End(today);
@@ -2136,45 +2135,12 @@ return new TransferInbox
     }
 
     /// <summary>
-    /// The championship's windows for a season, across all four divisions. The championship is
-    /// three editions of one competition and a season's rounds are only readable by walking all
-    /// three, so this is the one place that walk happens.
-    /// </summary>
-    private async Task<IReadOnlyList<Round>> ChampionshipRoundsAsync(
-        Season season, CancellationToken ct)
-    {
-        var views = await _competitions.ListSeasonViewsAsync(season.Id, ct);
-        var rounds = new List<Round>();
-
-        foreach (var view in views.Where(view => view.Type == CompetitionType.League))
-        {
-            rounds.AddRange(await _rounds.ListByCompetitionSeasonAsync(view.Id, ct));
-        }
-
-        return rounds;
-    }
-
-    /// <summary>
-    /// The last championship round that has actually been played, or zero in a season that has
-    /// not started. A round is counted as played when its window is closed, which means every
-    /// one of its fixtures is finished — not merely that its date has passed, which a season
-    /// left running over a weekend would answer differently from a season that had been watched.
-    /// </summary>
-    private async Task<int> LastCompletedChampionshipRoundAsync(Season season, CancellationToken ct)
-    {
-        var rounds = await ChampionshipRoundsAsync(season, ct);
-        return rounds.Where(round => round.IsCompleted)
-            .Select(round => round.Number)
-            .DefaultIfEmpty(0)
-            .Max();
-    }
-
-    /// <summary>
     /// The round the world is in: the one after the last that was played.
     /// </summary>
     private async Task<int> CurrentChampionshipRoundAsync(Season season, CancellationToken ct)
     {
-        var played = await LastCompletedChampionshipRoundAsync(season, ct);
+        var played = CompetitionRules.LeagueMatchDays -
+            await _seasons.GetChampionshipRoundsLeftAsync(season.Id, ct);
         return Math.Min(CompetitionRules.LeagueMatchDays, played + 1);
     }
 

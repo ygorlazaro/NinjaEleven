@@ -173,6 +173,15 @@ export interface SquadPlayerDto {
    */
   marketValue: number;
   askingPrice: number;
+  /**
+   * What it would cost this club to let him go today: half of the wages it still owes him,
+   * the rounds left in the season plus every season the contract promised after it.
+   *
+   * It is the engine's own figure rather than a percentage printed beside the contract,
+   * because the two are different things and only one of them is ever charged. It is zero
+   * for a man on no contract, which is a real zero and not a missing number.
+   */
+  releaseCost: number;
   salary: number;
   /** Seasons of the contract, and how many of them are left. */
   contractSeasons: number;
@@ -1416,6 +1425,8 @@ export type PlayerProfileDto = {
    */
   marketValue: number;
   askingPrice: number;
+  /** What releasing him would cost the club that holds him. See `SquadPlayerDto.releaseCost`. */
+  releaseCost: number;
   salary: number;
   contractSeasons: number;
   seasonsLeft: number;
@@ -1595,42 +1606,61 @@ export type ClubHistoryKind =
   | 'FirstSeason'
   | 'NameChange'
   | 'CrestChange'
-  | 'StadiumUpgrade'
+  | 'ColorsChange'
   | 'TopScorer'
   | 'Title'
   | 'Promotion'
   | 'Relegation';
 
-/** One moment in a club's history, as the shelf of memory says it. */
+/**
+ * One moment in a club's history, as the shelf of memory says it.
+ *
+ * The kinds split into the ones the world derives and the ones it records, and the screen does
+ * not have to know which is which: a founding, a promotion, a title and an artilharia are
+ * worked out of the competition tables, while a rename, a crest and a change of colours are
+ * rows written at the moment the decision was taken. Where a fact comes from is the backend's
+ * business; this screen only draws the two families the same way.
+ */
 export type ClubHistoryEventDto = {
+  /**
+   * The moment's identity, stable across two reads of the same page.
+   *
+   * A string and not a guid because most of a club's history has no row behind it — a
+   * promotion is two seasons of the pyramid compared — so its id is built from what it was
+   * derived from. It is stable anyway, which is what lets the screen hold on to it across two
+   * reads and know it is looking at the same line both times.
+   */
   id: string;
   kind: ClubHistoryKind | string;
-  seasonNumber: number;
-  seasonName: string;
+  /**
+   * The season the moment belongs to, and its name and number when it belongs to one.
+   *
+   * All three are null for a moment that happened between seasons — a manager renames a club
+   * in the winter quite often — and a screen that had to invent a season for those would be
+   * dating a decision by a football season that had nothing to do with it.
+   */
+  seasonId: string | null;
+  seasonNumber: number | null;
+  seasonName: string | null;
   /** The club's account of what happened, in a sentence. */
   description: string;
-  /** What the moment carried, when it carried a number: goals in a season, a season won. */
+  /** What the moment carried, when it carried a number: goals in a season, a tier. */
   value?: number | null;
 };
 
-/**
- * A place on a podium, which is a different claim from the place next to it.
- *
- * "Champion of the 1st division" and "champion of the 3rd" are not the same trophy, and the
- * division is carried with it so a shelf can say which one it is holding rather than a number
- * of medals with nothing to tell them apart.
- */
+/** A place on a podium, which is a different claim from the place next to it. */
 export type ClubTrophyDto = {
   id: string;
-  /** The competition as the shelf names it. */
+  /** The competition as the shelf names it: a division's own name, or the cup's. */
   competition: string;
   kind: 'Champion' | 'RunnerUp' | 'Third';
+  seasonId: string;
   seasonNumber: number;
   seasonName: string;
+  /** "1ª Divisão", or null for a competition that is not a division's table. */
   divisionName?: string | null;
   /**
-   * Which division of the pyramid, counted from one at the top, and null for a competition that
-   * is not one of its divisions at all.
+   * Which division of the pyramid, counted from one at the top, and null for a cup.
    *
    * The name is for reading and this is for deciding: a shelf holding the 1ª and the 3ª has to
    * draw two different cups, and a client that recovered the tier out of the name's leading
@@ -1640,13 +1670,12 @@ export type ClubTrophyDto = {
 };
 
 /**
- * A club, whole: who it is, who runs it, what it costs to keep, what it has won, where it
- * has been and what has happened to it.
+ * A club, whole: who it is, who runs it, what it costs to keep, what it has won, where it has
+ * been and what has happened to it.
  *
- * The fields are the ones the screen shows and the numbers are the ones a club is judged by,
- * so a screen that assembled its own totals would be answering a question the backend already
- * has. `squadSize` and `balance` are read from the roster and the book rather than counted
- * here: a club's strength is the sum of the two the game already keeps.
+ * One call, because the page is one thing. The fields are the ones the screen shows and the
+ * numbers are the ones a club is judged by, so a screen that assembled its own totals would be
+ * answering a question the backend has already answered.
  */
 export type ClubProfileDto = {
   teamId: Guid;
@@ -1654,7 +1683,12 @@ export type ClubProfileDto = {
   shortName: string;
   primaryColor: string;
   secondaryColor: string;
-  /** The manager's name. A club has a manager before it has a stadium. */
+  /**
+   * The manager's name, or an empty string for a club nobody is in charge of.
+   *
+   * Empty rather than a stand-in: an NPC club has no manager, and a page that filled the gap
+   * with a name would be the game inventing a man who does not exist.
+   */
   coachName: string;
   /** How many men are on the books, which is not the eleven. */
   squadSize: number;
@@ -1669,29 +1703,6 @@ export type ClubProfileDto = {
   history: ClubHistoryEventDto[];
 };
 
-/**
- * A ground, as a manager sees it: where it is, how big it is and what a seat costs.
- *
- * The two prices are two numbers on purpose. A league match and a cup tie are not the same
- * occasion — a cup tie is a match somebody will travel for, and a season ticket is worth
- * nothing on a night when the opposition is a second-division club — and a ground that sells
- * both at the championship price prices the league and the cup at the same thing. The
- * `league` and `cup` names are the screen's; the division factor the attendance model
- * applies to a price is the engine's and is not restated here.
- */
-export type StadiumProfileDto = {
-  teamId: Guid;
-  name: string;
-  city: string;
-  capacity: number;
-  /** What a seat costs for a match of the championship. */
-  leagueTicketPrice: number;
-  /** What a seat costs for a match of the cup. */
-  cupTicketPrice: number;
-  /** The club's colours, so the ground can be drawn in them. */
-  primaryColor: string;
-  secondaryColor: string;
-};
 
 /**
  * A sponsor's offer, which is money a club does not have to earn on a Saturday.

@@ -83,16 +83,32 @@ const CupPrizeLegend: React.FC<{
         <div className="cup-prize-legend__artilharia">
           <h4 className="prize-legend__subtitle">Artilharia — {scorerPrize.competitionName}</h4>
           <p className="prize-legend__hint">
-            Cada artilheiro da copa leva uma parte do prêmio do campeão da copa, que é de{' '}
-            <b>{formatLimo(scorerPrize.baseAmount ?? 0)}</b>:{' '}
-            {scorerPrize.rates.map((share, index) => (
-              <span key={share.place}>
-                {index > 0 && ' • '}
-                {shareLabel(share.place)} {formatRate(share.rate)}
-              </span>
-            ))}
-            . É dinheiro a mais: não sai do prêmio do campeão, e um clube que ganha a copa
-            tendo o artilheiro dela leva os dois prêmios.
+            {scorerPrize.baseAmount == null ? (
+              <>
+                Esta copa não tem prêmio de campeão definido, então a artilharia não tem valor
+                a repartir. As cotas continuam sendo{' '}
+                {scorerPrize.rates.map((share, index) => (
+                  <span key={share.place}>
+                    {index > 0 && ' • '}
+                    {shareLabel(share.place)} {formatRate(share.rate)}
+                  </span>
+                ))}
+                .
+              </>
+            ) : (
+              <>
+                Cada artilheiro da copa leva uma parte do prêmio do campeão da copa, que é de{' '}
+                <b>{formatLimo(scorerPrize.baseAmount)}</b>:{' '}
+                {scorerPrize.rates.map((share, index) => (
+                  <span key={share.place}>
+                    {index > 0 && ' • '}
+                    {shareLabel(share.place)} {formatRate(share.rate)}
+                  </span>
+                ))}
+                . É dinheiro a mais: não sai do prêmio do campeão, e um clube que ganha a copa
+                tendo o artilheiro dela leva os dois prêmios.
+              </>
+            )}
           </p>
           <TopScorerPrizeRows prize={scorerPrize} />
         </div>

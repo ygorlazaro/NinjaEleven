@@ -70,6 +70,7 @@ public class NinjaElevenDbContext : DbContext
     public DbSet<Manager> Managers => Set<Manager>();
     public DbSet<User> Users => Set<User>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
+    public DbSet<ClubEvent> ClubEvents => Set<ClubEvent>();
 
     public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Division> Divisions => Set<Division>();

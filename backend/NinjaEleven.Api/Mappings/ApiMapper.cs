@@ -72,6 +72,7 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
     IsInLastSeason = squadPlayer.IsInLastSeason,
     MarketValue = squadPlayer.MarketValue,
     AskingPrice = squadPlayer.AskingPrice,
+    ReleaseCost = squadPlayer.ReleaseCost,
     Salary = squadPlayer.Salary,
     WageOnRenewal = squadPlayer.WageOnRenewal,
     ShirtNumber = squadPlayer.ShirtNumber,
@@ -975,6 +976,7 @@ public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profi
     SeasonsLeft = profile.SeasonsLeft,
     IsInLastSeason = profile.IsInLastSeason,
     AskingPrice = profile.AskingPrice,
+    ReleaseCost = profile.ReleaseCost,
     Season = profile.Season.ToDto(),
     Total = profile.Total.ToDto(),
     History = profile.History.Select(line => new PlayerMatchLineDto
@@ -1324,5 +1326,57 @@ public static class TrainingQuoteMapper
         SessionsAllowed = quotes.SessionsAllowed,
         SessionsSpent = quotes.SessionsSpent,
         Players = quotes.Players.Select(player => player.ToDto()).ToList()
+    };
+}
+
+/// <summary>
+/// A club's own page, as the client receives it.
+///
+/// <para>
+/// The mapping is a rename and nothing else: every value the service decided is carried
+/// across unchanged. That is the point of putting the assembly in the service — a mapping that
+/// worked out a season's name, or a tier, or a division, would be a second place where the
+/// facts of a club are decided, and the two would eventually disagree.
+/// </para>
+/// </summary>
+public static class ClubProfileMapping
+{
+    public static ClubHistoryEventDto ToDto(this ClubHistoryEvent entry) => new()
+    {
+        Id = entry.Id,
+        Kind = entry.Kind,
+        SeasonId = entry.SeasonId,
+        SeasonNumber = entry.SeasonNumber,
+        SeasonName = entry.SeasonName,
+        Description = entry.Description,
+        Value = entry.Value
+    };
+
+    public static ClubTrophyDto ToDto(this ClubTrophy trophy) => new()
+    {
+        Id = trophy.Id,
+        Competition = trophy.Competition,
+        Kind = trophy.Kind,
+        SeasonId = trophy.SeasonId,
+        SeasonNumber = trophy.SeasonNumber,
+        SeasonName = trophy.SeasonName,
+        DivisionName = trophy.DivisionName,
+        DivisionTier = trophy.DivisionTier
+    };
+
+    public static ClubProfileDto ToDto(this ClubProfile profile) => new()
+    {
+        TeamId = profile.TeamId,
+        Name = profile.Name,
+        ShortName = profile.ShortName,
+        PrimaryColor = profile.PrimaryColor,
+        SecondaryColor = profile.SecondaryColor,
+        CoachName = profile.CoachName,
+        SquadSize = profile.SquadSize,
+        Balance = profile.Balance,
+        Promotions = profile.Promotions,
+        Relegations = profile.Relegations,
+        Trophies = profile.Trophies.Select(trophy => trophy.ToDto()).ToList(),
+        History = profile.History.Select(entry => entry.ToDto()).ToList()
     };
 }

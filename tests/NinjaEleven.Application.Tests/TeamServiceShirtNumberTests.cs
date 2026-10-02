@@ -52,6 +52,7 @@ public class TeamServiceShirtNumberTests
         Mock.Of<IPlayerRepository>(),
         Mock.Of<ISeasonRepository>(),
         Mock.Of<IMatchRepository>(),
+        Mock.Of<IClubEventRepository>(),
         _unitOfWork.Object);
 
     private TeamMembership Given(string name, int? shirtNumber)

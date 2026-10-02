@@ -101,7 +101,9 @@ GET  /player/{id}/profile?seasonId=
 
 GET  /team/{teamId}/scorer?seasonId=&competition=&topN=
 
-GET /competition/{editionId}/top-scorer-prize
+GET  /team/{teamId}/profile?seasonId=
+
+GET  /competition/{editionId}/top-scorer-prize
 
 GET  /world/due?wave=          POST /world/advance?teamId=
 POST /world/play-due?wave=&teamId=
@@ -625,6 +627,50 @@ Two rules the code depends on:
   `match_statistics` carries the two formations so a results screen cannot report 4-3-3 for
   a match that was played 4-4-2.
 
+## The Club's Page
+
+`GET /team/{teamId}/profile?seasonId=` answers a club whole: who it is, who runs it, how many
+men it keeps, what it has in the bank, what it has won and everything that has ever happened to
+it. It is one call because the page is one thing — a screen that asked for the balance here, the
+roster there and the rest of the club from a stand-in it drew itself was a page that could show a
+club's size beside a club's balance from two different years and a history that was invented.
+The stand-in was *stable* per club, which is what made it worse: it looked correct forever and
+was wrong from the first season.
+
+- **A club's history is two kinds of fact, and they are kept apart.** The founding, the moves
+  up and down the pyramid, the titles and the artilharias are **derived** by
+  `ClubProfileService` from the competitions themselves — a promotion is two editions of the
+  pyramid compared, and a title is a row that already exists. A rename, a crest and a change of
+  colours are **recorded**, because nothing anywhere can work them out: they are decisions, and
+  `club_events` is written in the same unit of work as the decision itself
+  (`TeamService.UpdateNameAsync`, `UpdateColorsAsync`, `UpdateCrestAsync`). A page that derived
+  them could only guess, and a guess that looks like a memory is the one kind of lie a club's
+  page cannot carry.
+- **An event carries the season it belongs to, or none.** A manager renames a club in the
+  winter quite often, and dating that decision by a football season that had nothing to do with it
+  would be a small invention on the one page a manager reads to find out what actually happened to
+  his club. So `seasonId`/`seasonNumber`/`seasonName` are nullable, and the screen says "—" rather
+  than borrowing the nearest season.
+- **An event's id is derived when there is no row behind it.** A promotion has no guid, so its id
+  is built from what it was derived from. It is stable anyway — which is all an id has to be for a
+  list of lines to hold on to across two reads.
+- **A club nobody manages has no manager, and the endpoint says so with an empty string.** There
+  is no coach entity in the world; the profile reads the manager row if there is one. An empty
+  name is not a value to fill in with a stand-in, and the screen offers no rename control for a
+  club whose manager he is not — a control that can only ever fail is not a control.
+- **`seasonId` moves one number and not the rest.** It sizes the roster; the balance is
+  deliberately *not* narrowed to a season (it is the club's money today, which is the number a
+  manager has to pay a wage with) and the history is the club's whole career.
+- **The trophies on the shelf name their division and carry its tier.** "Campeão" and "Campeão"
+  are not the same trophy, and a shelf holding the 1ª and the 3ª has to draw two different cups.
+  `divisionTier` exists so that decision does not have to be made by parsing the leading number out
+  of a label.
+- **A read is a read.** The service takes two set-readers —
+  `IPlayerRepository.ListEditionScorerLinesForEditionsAsync` and
+  `ITeamRepository.ListDivisionSeasonsAsync` — and asks each of them once, because a club's whole
+  history read one season per season and one scorer line per striker is the old mistake at a
+  smaller scale.
+
 ## The Club's Scorers
 
 `GET /team/{teamId}/scorer` is the league's own list with the club's name on it, and the
@@ -854,6 +900,77 @@ Two rules the sound depends on:
    substitution panel and the interval button are not drawn, and the half-time dialog follows
    the server's `userTeamId` rather than the clock. The backend refuses a command for either
    club, so a control that appears anyway is a control the server has already said no to.
+
+## A Number a Manager Budgets Against
+
+Three screens used to print a rule the engine does not have, and they were the same rule: a
+flat **"+20%"** beside a player's contract, on the squad table, on the player's page and in the
+match's profile modal. A release is settled by `ReleaseRules` at half of what the club still
+owes — the wages of the rounds left in the season plus the wages of every season the contract
+promised after it — and no part of the game charges a fifth of anything. A manager reading
+"+20%" beside a price is budgeting against a number the release will not take off his book, and
+he finds out at the moment he presses the button.
+
+- **A settlement is quoted by the rule that charges it.** `ReleaseRules.QuoteReleaseCost` takes
+  what a squad row and a card actually hold — a season's wage, the rounds left in the season,
+  the seasons left on the contract — and returns what `ReleaseRules.ReleaseCost` returns for
+  the same contract. `SquadPlayerDto.ReleaseCost` and `PlayerProfileDto.ReleaseCost` are that
+  number; the release command settles with the same call. Three answers to one question, and
+  they cannot differ.
+- **The rounds left are a fact about the calendar, not about a club.** Every club in a division
+  has the same rounds left, so it is read once per squad from
+  `ISeasonRepository.GetChampionshipRoundsLeftAsync` — which is why that question is asked of
+  the season and not injected into every service as a helper. A round counts as played when its
+  window is closed, never because its date has passed.
+- **A percentage is not a currency and a currency is not a rule.** Any figure on a card that a
+  manager would spend money on arrives from the DTO. A screen that cannot be told the number
+  says so — it does not print a plausible one.
+
+## An Absence Is Not a Zero
+
+A missing value and a value of zero are different facts, and on this game's screens the
+difference is the whole reading:
+
+- **A club's balance is never drawn as L$ 0 before the books answer.** `FinanceiroScreen` used
+  to render its summary and its pager outside the branch that guards the ledger, so a club with
+  money in the bank was shown as penniless for as long as the request was in flight or kept
+  failing. Both blocks are drawn only when `ledger` is there.
+- **A statistics table is never drawn before the match has said it.** `MatchStats` fell back on
+  seven rows of zeros with a 50/50 possession — and a goalless first half is *legitimately*
+  seven rows of zeros, so the fallback could not be told from the result. It says the numbers
+  are coming.
+- **Added time and possession have no client-side default.** The engine draws the stoppage total
+  at the whistle and announces each half; before it arrives the header says "—" rather than
+  inventing three minutes, and the possession labels say "—" rather than claiming a split nobody
+  has earned. The bar itself stays even, because a bar only has a width.
+- **A `null` purse is not L$ 0.** `baseAmount` is null by design for an edition with no title's
+  prize to share; the panels say the artilharia is not priced and leave the rows' em dashes
+  alone. The percentages are still shown as the rule, against nothing.
+- **A missing career, price or rating is a dash.** `TransferScreen` reads money and career
+  totals as "—", and `StarRating` distinguishes a club with no stars from a club whose strength
+  nobody has settled. Per-season card counts keep their zero, because a season in which he
+  collected none is a real zero.
+- **The narration belongs to the engine.** `MatchScreen`'s hero line draws
+  `MatchNarration`'s own words or nothing; a sentence written in the client would be the only
+  narration in the game no match ever said.
+
+## One Rule, One Place
+
+- **The attribute bands live in `attributeToneClass`** (`services/formatters.ts`, 1..100:
+  `<35` red, `<65` amber, `>=65` green). `TacticsScreen` carried its own copy on the old 1..20
+  bands (`<8`/`<14`), which painted every attribute above 14 green and made a squad of fourteen
+  and a squad of ninety look the same.
+- **The energy bands live in `energyClass` and `energyTextClass`,** side by side, for the bar and
+  for the number. Four screens each had their own copy of the text version; they agreed by
+  accident.
+- **A domain constant is read, not restated.** `MatchRules.MaxSubstitutions`, the shootout's
+  five kicks and the eleven plus seven of a squad are the engine's. Where a screen needs one as
+  a bound and the DTO does not carry it, the honest answer is still not a second opinion in the
+  client — so it is left as the one place it is written, and not copied.
+- **A ground has the numbers the world keeps.** `StadiumScreen` reads `team.stadium` — a name, a
+  capacity, one ticket price — and says what it does not have rather than filling it in. The
+  city, the cup price at two and a half times the league one and the two sliders that wrote
+  nowhere are gone; a control that moves a number nothing reads is a control that lied.
 
 ## Reading a Player
 

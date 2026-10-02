@@ -20,9 +20,6 @@ const amount = new Intl.NumberFormat('pt-BR', {
   maximumFractionDigits: 2
 });
 
-/** What every club is given when a season's world is drawn. */
-export const STARTING_BALANCE_LIMOS = 1_000_000;
-
 /** An amount, in the game's money: `L$ 1.234.567`, or `L$ 3.943,33` when there are cents. */
 export const formatLimo = (value: number): string => `${LIMO_SYMBOL} ${amount.format(value)}`;
 

@@ -14,6 +14,32 @@
   --team-secondary: var(--accent);
 }
 
+/* ---------------------------------------------------------------------------
+   The widths the game is drawn at, and why there are four of them.
+
+   There are three screens to answer to and they are not the same screen: a phone in a
+   hand, a desktop on a desk, and a desktop that is wider than it is tall by a good deal.
+   A rule written for the second one is a rule that is simply wrong on the first, and a
+   layout that stretches to fill the third one is a page of a hundred and fifty characters
+   a line. So the widths are named once, here, and every screen adapts to them.
+
+   They are counted against the *whole viewport*, not against the column beside the
+   sidebar, because the shell has already taken its 216px before a rule is asked: on a
+   1280px desktop the screen is reading in about 1020px, and a rule that believes it has
+   1280px to spend is a rule that has already overflowed.
+
+     480px  — the narrow end of a phone. One thing per line, and no name cut in half.
+     860px  — the shell lies down: the column becomes a strip along the top. This is the
+              one width every screen already shares, so it is the one nothing may move.
+    1280px  — a desktop on a desk. The screen beside the column has room for two columns.
+    1600px  — a wide desktop, where a single column of text stops being readable and the
+              page earns a second one.
+
+   The first three are written as `max-width` and the last two as `min-width`, because a
+   rule is either a rescue (something is being taken away) or an upgrade (something is
+   being given), and dressing an upgrade as a rescue only makes the sheet harder to read.
+   -------------------------------------------------------------------------- */
+
 * { box-sizing: border-box; }
 
 body {
@@ -180,6 +206,32 @@ button { cursor: pointer; }
      of its own instead of stretching to whatever is left of the line. */
   .sidebar-club { flex: 0 0 auto; width: 96px; }
   .next-match { flex: 1 1 200px; min-width: 0; }
+}
+
+/* A phone cannot show a dozen doors side by side, and it cannot stack them either: a
+   sidebar that has been turned into a vertical list of twelve links pushes the screen the
+   manager came for a long way below the fold before he can reach it. So the strip scrolls
+   sideways instead of wrapping, and it scrolls as itself rather than making the whole page
+   scroll sideways — which is the failure this is here to prevent: a single row too wide for
+   the viewport is a page a manager has to pinch out of, on every screen, forever. */
+@media (max-width: 860px) {
+  .sidebar-nav {
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sidebar-nav::-webkit-scrollbar { display: none; }
+  .sidebar-link { white-space: nowrap; }
+}
+
+/* The frame itself gives up a fifth of its padding on a phone. Twenty-two pixels on each
+   side is forty-four of a phone's three hundred and seventy-five, and a card inside it is
+   then reading in under three hundred — narrow enough that a club's name wraps in the
+   middle of a word and a row of figures has to stack four deep. */
+@media (max-width: 480px) {
+  .shell-main { padding: 12px 12px 32px; }
 }
 
 .sidebar-club-card {
@@ -2175,6 +2227,13 @@ button { cursor: pointer; }
   display: flex; align-items: center; gap: 16px; margin-bottom: 18px;
   flex-wrap: wrap;
 }
+/* The page is a page and not a dialog. It carries `club-modal` because it is the club's
+   card in the club's own colours, and that class brings a height cap and a scroller with
+   it — which is right for a card that sits over another screen and wrong for the screen
+   itself: a scroller inside the page means the wheel is spent twice over before anything
+   moves, and on a phone it means a panel that scrolls sideways-and-down in a way nothing
+   on the platform does. The page scrolls because the frame scrolls. */
+.club-page { max-height: none; overflow: visible; }
 /* The shield, until the club has one. A blank space would read as a page that failed
    to load; a shield in the club's own colours reads as a page whose artwork is not
    finished yet, which is what it is. */
@@ -2242,7 +2301,12 @@ button { cursor: pointer; }
 .returned-note p { margin: 0; flex: 1 1 auto; }
 .returned-note__close { flex: 0 0 auto; padding: 2px 8px; }
 
-.club-page__actions { display: flex; gap: 8px; flex: 0 0 auto; }
+/* The six doors out of this page. They wrap, because six buttons in one unwrapped row are
+   about six hundred pixels: on a desktop that is a shelf under the club's name, and on a
+   phone it is a row wider than the screen, so the page scrolls sideways to reach "Estádio"
+   and the manager never finds it. Wrapping is not a concession to the phone — a row that
+   cannot wrap is a row that has to be told how wide it is allowed to be. */
+.club-page__actions { display: flex; gap: 8px; flex: 0 0 auto; flex-wrap: wrap; }
 .club-page__actions .ctrl { text-decoration: none; }
 
 /* The four figures. The balance is the one that answers a question worth asking:
@@ -2256,7 +2320,14 @@ button { cursor: pointer; }
   border: 1px solid var(--line); border-radius: 9px; background: #0a1520;
 }
 .club-figure__icon { font-size: 18px; }
-.club-figure__value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* A coach's name is the one figure on this page that is a sentence rather than a number, so
+   it is the one that does not fit the box it is given. It breaks inside the word rather than
+   pushing the grid wider: a card that is dragged sideways by the length of a man's surname
+   takes the shelf and the history with it. */
+.club-figure__value {
+  font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums;
+  min-width: 0; overflow-wrap: anywhere;
+}
 .club-figure__label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .club-figure--accent { border-color: var(--accent); }
 .club-figure--accent .club-figure__value { color: var(--accent); }
@@ -2267,15 +2338,21 @@ button { cursor: pointer; }
 }
 
 .club-sponsor { margin-bottom: 20px; }
+/* Three things on one line: who sponsors, what they do, and how long the deal has left.
+   They wrap rather than compress, because the second and third are the ones a manager is
+   actually looking for and neither of them can be shortened to make room — "Restante" is
+   not the answer to "how many games". */
 .club-sponsor__line {
   display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap;
   padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px;
   background: #0a1520; gap: 10px;
 }
-.club-sponsor__name { font-weight: 700; }
+.club-sponsor__name { font-weight: 700; overflow-wrap: anywhere; }
 .club-sponsor__industry { color: var(--muted); font-size: 14px; margin-left: 6px; }
 .club-sponsor__left {
   color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
+  margin-left: auto;
 }
 .club-sponsor__none { color: var(--muted); }
 
@@ -2295,7 +2372,8 @@ button { cursor: pointer; }
 .club-shelf__division { display: inline-flex; align-items: center; gap: 6px; }
 .club-shelf__division svg { flex: 0 0 auto; }
 .club-shelf__plank {
-  display: flex; align-items: flex-end; gap: 4px; min-height: 40px;
+  display: flex; align-items: flex-end; flex-wrap: wrap; row-gap: 4px;
+  min-height: 40px; min-width: 0;
   padding: 0 8px 4px; border-bottom: 3px solid #2c4459; border-radius: 3px;
   background: linear-gradient(180deg, rgba(255, 255, 255, .04), transparent);
 }
@@ -2322,10 +2400,90 @@ button { cursor: pointer; }
 .club-timeline__text { font-size: 15px; }
 .club-timeline__season { color: var(--muted); font-size: 13px; white-space: nowrap; }
 
+/* ---------------------------------------------------------------------------
+   The lower half of the club's page: the shelf and the history, side by side once there
+   is room for both.
+
+   They are the two halves of the same question — what the club has won and what has been
+   done to it — and a career is read from now backwards, so the history is the half a
+   manager comes back for. Below sixteen hundred they are one column because there is not
+   room for two; above it, a single column of a list is a column of words with half a
+   screen of empty wall beside it, which is the thing a wide desktop is worst at.
+   -------------------------------------------------------------------------- */
+.club-page__lower { min-width: 0; }
+
+@media (min-width: 1600px) {
+  .club-page__lower {
+    display: grid; gap: 0 32px; align-items: start;
+    grid-template-columns: minmax(0, 4fr) minmax(0, 5fr);
+  }
+  /* The shelf's rows are three columns — name, plank, count — and a plank is only a shelf
+     if it is wider than the medals standing on it. Handed half a page it stops being the
+     longest run of trophies on the club's own wall and starts being a row of icons with a
+     name beside it. */
+  .club-page__lower .club-shelf { margin-bottom: 0; }
+  .club-page__lower .club-history { margin-top: 20px; }
+}
+
+/* On a wide desktop the page stops before the frame does. There is a point past which a
+   single column of text is not a page but a scroll, and every extra pixel the frame hands
+   it is a pixel no line of it can use: the shelf's plank stops being a plank and the
+   timeline rows stop being rows. The club's card is centred in what is left rather than
+   stretched across all of it. */
+@media (min-width: 1280px) {
+  .club-page { max-width: 1500px; margin-inline: auto; }
+}
+
+/* ---------------------------------------------------------------------------
+   The phone.
+
+   One thing per line, and nothing cut in half. The rules above are written for a screen
+   that has room to be generous; these are the ones that take the generosity back.
+   -------------------------------------------------------------------------- */
 @media (max-width: 620px) {
   .club-shelf__row { grid-template-columns: 1fr; gap: 6px; align-items: start; }
   .club-timeline__item { grid-template-columns: 34px 1fr; }
   .club-timeline__season { grid-column: 2; }
+
+  /* The figures go two by two rather than four by one. `auto-fit` with a hundred and fifty
+     pixel floor drops to a single column under three hundred and ten, so a phone was being
+     given four full-width bars where two squares would say the same four things in half
+     the height. */
+  .club-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  /* Six doors, three to a line. They wrap on their own — see `.club-page__actions` — and
+     this is what they wrap into: two even rows rather than three ragged ones, because a
+     button's width on a phone is set by the word in it and "Patrocinadores" is a third
+     wider than "Estádio". */
+  .club-page__actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .club-page__actions .ctrl { text-align: center; padding: 9px 6px; }
+
+  /* The crest is the one thing on the header that is not text, so it is the one thing that
+     may keep its size: a manager recognises his club by its badge before he reads its
+     name, and a badge small enough to fit beside the name on a phone is a badge he has to
+     look at twice. */
+  .club-page__head { gap: 12px; }
+}
+
+@media (max-width: 480px) {
+  /* The card gives back the padding it was holding for a screen with room to spare.
+     Twenty pixels on each side is forty of a phone's three hundred and seventy-five, and
+     everything inside it — a crest, a name, two buttons per line — is then reading in less
+     than three hundred. */
+  .team-view-card { padding: 14px; }
+
+  /* Two medals side by side instead of one, because a shelf is a run of things and one
+     medal per line is a list with a border under it. */
+  .club-medal { font-size: 20px; }
+  .club-shelf__row { margin-bottom: 14px; }
+
+  /* The rename editor is an input, two buttons and a message, and it was refusing to wrap —
+     which put a hundred and forty pixel input and its error message past the edge of a
+     three hundred pixel card. It wraps, and the error takes its own line rather than
+     sitting beside the input it belongs to. */
+  .coach-edit { flex-wrap: wrap; }
+  .coach-edit__input { width: 100%; }
+  .coach-edit__error { white-space: normal; flex: 1 1 100%; }
 }
 
 /* ---------------------------------------------------------------------------
@@ -2364,6 +2522,16 @@ button { cursor: pointer; }
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+/* Two shirts are three hundred and twenty pixels with the gap between them, so a phone sees
+   them one at a time — which is the one way of showing a pair that does not show a pair.
+   Scaled down they fit on the line the row already has, and the comparison the manager came
+   for — "are these two distinguishable?" — is the whole reason the wall is a wall and not
+   one shirt with a link under it. */
+@media (max-width: 480px) {
+  .kit-wall__row { gap: 1rem; justify-content: center; }
+  .kit__shirt { width: 112px; height: 112px; }
 }
 
 /* The ground: a stand, a pitch, a stand. Drawn in the club's own colours, because a

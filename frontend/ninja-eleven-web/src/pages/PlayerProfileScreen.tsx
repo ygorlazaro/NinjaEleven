@@ -275,12 +275,19 @@ const PlayerProfileScreen: React.FC = () => {
               title={
                 profile.isInLastSeason
                   ? 'Última temporada de contrato: um rival paga o valor, sem multa'
-                  : `Contrato até ${profile.contractSeasons} temporada${profile.contractSeasons > 1 ? 's' : ''}, ${profile.seasonsLeft} restante${profile.seasonsLeft > 1 ? 's' : ''}: multa de 20% para tirar o jogador`
+                  : `Contrato até ${profile.contractSeasons} temporada${profile.contractSeasons > 1 ? 's' : ''}, ${profile.seasonsLeft} restante${profile.seasonsLeft > 1 ? 's' : ''}. Rescindir agora custa ${formatLimo(profile.releaseCost)}.`
               }
             >
               <span className="career-value">
                 {formatLimo(profile.askingPrice)}
-                {!profile.isInLastSeason && <span className="contract-fine">+20%</span>}
+                {/* The settlement, not a percentage. "Metade do que o clube ainda deve" is the
+                    rule, and it was printed here as a flat +20% that the engine has never
+                    charged — a number a manager budgets against. */}
+                {!profile.isInLastSeason && (
+                  <span className="contract-fine" title="Custo de rescindir o contrato agora">
+                    {formatLimo(profile.releaseCost)}
+                  </span>
+                )}
               </span>
               <span className="career-label">Preço de compra</span>
             </div>

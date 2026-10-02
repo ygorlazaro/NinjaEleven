@@ -1,3 +1,4 @@
+using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
@@ -6,6 +7,7 @@ using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Seasons;
 using NinjaEleven.Domain.Teams;
+using NinjaEleven.Domain.Transfers;
 
 namespace NinjaEleven.Application.Services;
 
@@ -119,6 +121,19 @@ public class PlayerService
                     profile.AskingPrice = PlayerValuation.AskingPrice(
                         profile.MarketValue,
                         profile.IsInLastSeason);
+
+                    // What letting him go would cost, quoted by the rule that charges it. It
+                    // used to be a flat "+20%" printed on the card, which is not a settlement
+                    // anywhere in this game; a manager reading the card and pressing the
+                    // button has to be quoted the same figure twice.
+                    profile.RoundsLeftInSeason =
+                        await _seasonRepository.GetChampionshipRoundsLeftAsync(
+                            state.SeasonId, cancellationToken);
+                    profile.ReleaseCost = ReleaseRules.QuoteReleaseCost(
+                        PlayerValuation.SeasonWage(player, state),
+                        CompetitionRules.LeagueMatchDays,
+                        profile.RoundsLeftInSeason,
+                        profile.SeasonsLeft);
                 }
             }
         }

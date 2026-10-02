@@ -23,17 +23,20 @@ public class TeamController : ControllerBase
     private readonly FinanceService _financeService;
     private readonly ManagerService _managerService;
     private readonly StandingsService _standingsService;
+    private readonly ClubProfileService _clubProfileService;
 
     public TeamController(
         TeamService teamService,
         FinanceService financeService,
         ManagerService managerService,
-        StandingsService standingsService)
+        StandingsService standingsService,
+        ClubProfileService clubProfileService)
     {
         _teamService = teamService;
         _financeService = financeService;
         _managerService = managerService;
         _standingsService = standingsService;
+        _clubProfileService = clubProfileService;
     }
 
     [HttpGet]
@@ -106,6 +109,43 @@ public class TeamController : ControllerBase
     }
 
 /// <summary>
+    /// The club's page, whole: who it is, who runs it, what it costs to keep, what it has won
+    /// and what has happened to it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One call, because the page is one thing. A screen that asked for the balance here, the
+    /// roster there, the shelf from a third place and each of its four moments from a fourth
+    /// would be making eight requests to draw one card, and would have to invent an answer for
+    /// each of them while they were in flight — which is exactly how a page ends up showing a
+    /// manager a club's size next to a club's balance from two different years.
+    /// </para>
+    /// <para>
+    /// The season is optional and it moves exactly one number, the size of the roster: the
+    /// balance is deliberately not narrowed to a season, the shelf is the club's whole career,
+    /// and the history is read from the beginning of time. A career is longer than a season,
+    /// and a page that only remembered this season would be a page about a team rather than a
+    /// page about a club.
+    /// </para>
+    /// </remarks>
+    [HttpGet("{teamId:guid}/profile")]
+    public async Task<ActionResult<ClubProfileDto>> GetProfile(
+        Guid teamId,
+        [FromQuery] Guid? seasonId = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var profile = await _clubProfileService.GetProfileAsync(teamId, seasonId, cancellationToken);
+            return Ok(profile.ToDto());
+        }
+        catch (EntityNotFoundException)
+        {
+            return NotFound(new { code = "TeamNotFound", teamId });
+        }
+    }
+
+    /// <summary>
     /// The club's book: a page of its movements, newest first, and the totals of whatever the
     /// page was narrowed to. No season filter means the whole career, which is the only
     /// reading in which the lines of two seasons sit in one list in the order they happened.

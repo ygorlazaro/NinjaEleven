@@ -114,6 +114,16 @@ public class SquadPlayerDto
     public decimal AskingPrice { get; init; }
 
     /// <summary>
+    /// What the club would owe to let this man go today, in limos.
+    ///
+    /// It travels with the contract rather than being worked out on the client because the
+    /// settlement is half of the wages the club still owes — the rounds left in the season
+    /// plus every season the contract promised after it — and a client that guessed it would
+    /// be quoting a manager a number the release will not charge.
+    /// </summary>
+    public decimal ReleaseCost { get; init; }
+
+    /// <summary>
     /// The number he wears for this club, null when nobody has dealt him one.
     ///
     /// It is the contract's number and not the player's, so the same man in two clubs over a
@@ -203,6 +213,16 @@ public class PlayerProfileDto
     public int SeasonsLeft { get; init; }
     public bool IsInLastSeason { get; init; }
     public decimal AskingPrice { get; init; }
+
+    /// <summary>
+    /// What the club would owe to let this man go today, in limos.
+    ///
+    /// It travels with the contract rather than being worked out on the client because the
+    /// settlement is half of the wages the club still owes — the rounds left in the season
+    /// plus every season the contract promised after it — and a client that guessed it would
+    /// be quoting a manager a number the release will not charge.
+    /// </summary>
+    public decimal ReleaseCost { get; init; }
 
     /// <summary>
     /// The player's face as the raw JSON of a faces.js <c>FaceConfig</c>, null when he has

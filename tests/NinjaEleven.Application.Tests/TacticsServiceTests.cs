@@ -300,6 +300,7 @@ public class TacticsServiceTests
             _players.Object,
             _seasons.Object,
             _matches.Object,
+            Mock.Of<IClubEventRepository>(),
             _unitOfWork.Object),
         CreateMatchdayService(),
         _unitOfWork.Object,

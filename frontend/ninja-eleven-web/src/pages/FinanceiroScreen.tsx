@@ -175,21 +175,30 @@ const FinanceiroScreen: React.FC = () => {
         </div>
 
         {/* Three numbers, and the balance is the one that is said twice as large: what the
-            club has, and the two streams that decided it. */}
-        <div className="finance-summary">
-          <div className="finance-summary__main">
-            <span className="finance-summary__label">Saldo em caixa</span>
-            <span className="finance-summary__balance">{formatLimo(ledger?.balance ?? 0)}</span>
+            club has, and the two streams that decided it.
+
+            They are drawn only when the books have answered. This block used to sit outside the
+            loading and failure branch that guards the ledger below it, so a club's balance was
+            stated as L$ 0 while the first request was in flight and stayed L$ 0 for as long as
+            the request kept failing. A balance is the one number on this screen a manager
+            cannot afford to misread — it is what a wage is paid out of — and "the club has no
+            money" is a very different statement from "the club's money has not arrived". */}
+        {ledger && (
+          <div className="finance-summary">
+            <div className="finance-summary__main">
+              <span className="finance-summary__label">Saldo em caixa</span>
+              <span className="finance-summary__balance">{formatLimo(ledger.balance)}</span>
+            </div>
+            <div className="finance-summary__side">
+              <span className="finance-summary__label">Entradas</span>
+              <span className="finance-in">{formatLimo(ledger.income)}</span>
+            </div>
+            <div className="finance-summary__side">
+              <span className="finance-summary__label">Saídas</span>
+              <span className="finance-out">-{formatLimo(ledger.expenses)}</span>
+            </div>
           </div>
-          <div className="finance-summary__side">
-            <span className="finance-summary__label">Entradas</span>
-            <span className="finance-in">{formatLimo(ledger?.income ?? 0)}</span>
-          </div>
-          <div className="finance-summary__side">
-            <span className="finance-summary__label">Saídas</span>
-            <span className="finance-out">-{formatLimo(ledger?.expenses ?? 0)}</span>
-          </div>
-        </div>
+        )}
 
         <div className="calendar-list finance-list">
           {error ? (
@@ -257,7 +266,11 @@ const FinanceiroScreen: React.FC = () => {
         </div>
 
         {/* The page turner says where it is in the book, because a ledger that shows ten
-            lines with no count is a list, and a manager cannot tell a list from a whole. */}
+            lines with no count is a list, and a manager cannot tell a list from a whole. It
+            is drawn with the ledger for the same reason the summary is: a count of zero
+            movements is a fact about a club's book, and it must not be the shape a book takes
+            while nobody has read it. */}
+        {ledger && (
         <div className="squad-actions finance-pager">
           <button className="ctrl" onClick={() => setPage(1)} disabled={shownPage === 1}>
             « Início
@@ -270,8 +283,8 @@ const FinanceiroScreen: React.FC = () => {
             ‹ Anterior
           </button>
           <span className="finance-pager__status">
-            Página {shownPage} de {totalPages} • {ledger?.totalItems ?? 0}{' '}
-            {ledger?.totalItems === 1 ? 'movimentação' : 'movimentações'}
+            Página {shownPage} de {totalPages} • {ledger.totalItems}{' '}
+            {ledger.totalItems === 1 ? 'movimentação' : 'movimentações'}
           </span>
           <button
             className="ctrl"
@@ -288,6 +301,7 @@ const FinanceiroScreen: React.FC = () => {
             Fim »
           </button>
         </div>
+        )}
       </div>
     </div>
   );

@@ -45,7 +45,12 @@ public class TeamServiceScorersTests
     private readonly List<Player> _roster = new();
 
     private TeamService Service() => new(
-        _teams.Object, _players.Object, _seasons.Object, _matches.Object, Mock.Of<IUnitOfWork>());
+        _teams.Object,
+        _players.Object,
+        _seasons.Object,
+        _matches.Object,
+        Mock.Of<IClubEventRepository>(),
+        Mock.Of<IUnitOfWork>());
 
     private Player GivenPlayer(string name, int age = 26)
     {

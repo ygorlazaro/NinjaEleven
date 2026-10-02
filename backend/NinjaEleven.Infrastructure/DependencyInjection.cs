@@ -49,6 +49,7 @@ public static class DependencyInjection
         services.AddScoped<IMatchRepository, MatchRepository>();
         services.AddScoped<ICupTieRepository, CupTieRepository>();
         services.AddScoped<ITrophyRepository, TrophyRepository>();
+        services.AddScoped<IClubEventRepository, ClubEventRepository>();
         services.AddScoped<IFinanceRepository, FinanceRepository>();
         services.AddScoped<ITransferRepository, TransferRepository>();
     services.AddScoped<ISponsorRepository, SponsorRepository>();
@@ -72,6 +73,11 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddScoped<TeamService>();
+        // A club's own page: the shelf, the history and the numbers, assembled in one place
+        // from set-readers. A screen that assembled its own would be a second opinion about
+        // the pyramid, and the numbers it would be second-guessing are the ones the game pays
+        // wages and prizes from.
+        services.AddScoped<ClubProfileService>();
         // The board a manager reads before a match and the order he leaves on it. The
         // kick-off asks it for the order, which is why it is a service and not a pair of
         // arguments that arrive with the request: a match opened by the world's schedule has

@@ -1,3 +1,4 @@
+using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Players;
@@ -287,6 +288,45 @@ public class TeamRepository : ITeamRepository
                 d => d.Id,
                 (x, d) => new { x.TeamId, d.Tier })
             .ToDictionaryAsync(x => x.TeamId, x => x.Tier, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ClubDivisionSeason>> ListDivisionSeasonsAsync(
+        Guid teamId,
+        CancellationToken cancellationToken = default)
+    {
+        var rows =
+            from participant in _dbContext.CompetitionParticipants.AsNoTracking()
+            join edition in _dbContext.CompetitionSeasons.AsNoTracking()
+                on participant.CompetitionSeasonId equals edition.Id
+            join division in _dbContext.Divisions.AsNoTracking()
+                on edition.DivisionId!.Value equals division.Id
+            join season in _dbContext.Seasons.AsNoTracking()
+                on edition.SeasonId equals season.Id
+            where participant.TeamId == teamId && edition.DivisionId.HasValue
+            select new
+            {
+                SeasonId = edition.SeasonId,
+                edition.Id,
+                DivisionId = edition.DivisionId!.Value,
+                division.Tier,
+                season.Number
+            };
+
+        // Ordered by the season's own number rather than by anything the rows carry, because a
+        // club's career is read forwards — this season's division is compared with last
+        // season's, and a list in the wrong order would compare two random neighbours and
+        // report a movement that never happened.
+        return await rows
+            .OrderBy(row => row.Number)
+            .Select(row => new ClubDivisionSeason
+            {
+                SeasonId = row.SeasonId,
+                CompetitionSeasonId = row.Id,
+                DivisionId = row.DivisionId,
+                Tier = row.Tier
+            })
+            .ToListAsync(cancellationToken);
     }
 
     /// <summary>

@@ -29,6 +29,18 @@ const TopScorerPrizePanel: React.FC<{ prize: TopScorerPrizeListDto | null }> = (
   const isCup = prize.tier == null;
   const shares = prize.rates;
 
+  /**
+   * The base the shares are taken from, said honestly.
+   *
+   * `baseAmount` is null when the edition has no title's prize to be a share of — an edition
+   * that is neither a division nor a cup, or a competition whose purse has not been set. It
+   * used to be printed as L$ 0, which turned "this artilharia is not priced" into "the
+   * champion won nothing" and then computed the percentages against that zero. The rows below
+   * already print an em dash for a prize nobody can be paid, so the sentence says the same
+   * thing rather than a number the service refused to invent.
+   */
+  const base = prize.baseAmount == null ? null : <b>{formatLimo(prize.baseAmount)}</b>;
+
   return (
     <div className="prize-legend top-scorer-prize">
       <h3 className="prize-legend__title">
@@ -36,10 +48,22 @@ const TopScorerPrizePanel: React.FC<{ prize: TopScorerPrizeListDto | null }> = (
         Premiação da artilharia — {prize.competitionName}
       </h3>
       <p className="prize-legend__hint">
-        {isCup ? (
+        {base == null ? (
           <>
-            Cada artilheiro da copa leva uma parte do prêmio do campeão da copa, que é de{' '}
-            <b>{formatLimo(prize.baseAmount ?? 0)}</b>:{' '}
+            {isCup
+              ? 'Esta copa não tem prêmio de campeão definido, então a artilharia não tem valor a repartir.'
+              : 'Esta edição não tem prêmio de campeão definido, então a artilharia não tem valor a repartir.'}{' '}
+            As cotas continuam sendo {shares.map((share, index) => (
+              <span key={share.place}>
+                {index > 0 && ' • '}
+                {shareLabel(share.place)} {formatRate(share.rate)}
+              </span>
+            ))}
+            .
+          </>
+        ) : isCup ? (
+          <>
+            Cada artilheiro da copa leva uma parte do prêmio do campeão da copa, que é de {base}:{' '}
             {shares.map((share, index) => (
               <span key={share.place}>
                 {index > 0 && ' • '}
@@ -51,8 +75,7 @@ const TopScorerPrizePanel: React.FC<{ prize: TopScorerPrizeListDto | null }> = (
           </>
         ) : (
           <>
-            Cada artilheiro leva uma parte do prêmio do campeão da divisão, que é de{' '}
-            <b>{formatLimo(prize.baseAmount ?? 0)}</b>:{' '}
+            Cada artilheiro leva uma parte do prêmio do campeão da divisão, que é de {base}:{' '}
             {shares.map((share, index) => (
               <span key={share.place}>
                 {index > 0 && ' • '}

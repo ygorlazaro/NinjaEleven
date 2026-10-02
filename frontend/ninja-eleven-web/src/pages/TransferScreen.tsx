@@ -4,7 +4,7 @@ import { SeasonApi, TransferApi, TeamApi } from '@/api';
 import { useGameState } from '@/state';
 import { useOffer } from '@/state/OfferProvider';
 import { formatLimo } from '@/services/limo';
-import { starsToString, positionLabel, attributeToneClass } from '@/services/formatters';
+import { starsToString, positionLabel, attributeToneClass, energyTextClass } from '@/services/formatters';
 import { PlayerName, ClubName } from '@/components/Common/Names';
 import type {
   SeasonDto,
@@ -37,11 +37,19 @@ const STATUS_LABELS: Record<TransferStatus, string> = {
   Expired: 'Expirada'
 };
 
-const energyTextClass = (energy: number): string => {
-  if (energy < 35) return 'energy-red-text';
-  if (energy < 70) return 'energy-yellow-text';
-  return 'energy-green-text';
-};
+/**
+ * Money and counts that the answer did not carry, said as absent rather than as zero.
+ *
+ * <p>
+ * A missing market value is not a player worth nothing, a missing asking price is not a free
+ * transfer and a missing career block is not a man who never kicked a ball. Each of them was
+ * read as <c>?? 0</c>, so a screen that had not been told the price was showing a price — and
+ * the per-season card counts beside them are the one place a zero is honest, because a season
+ * line that says nothing about a card is a season in which he collected none.
+ * </p>
+ */
+const money = (value?: number | null): string => (value == null ? '—' : formatLimo(value));
+const count = (value?: number | null): string => (value == null ? '—' : String(value));
 
 /** One box of the filter row, read as a number the manager typed. */
 const numberFilter = (value: string): number | undefined =>
@@ -288,15 +296,15 @@ const PlayerDetail: React.FC<{
           <h4 className="transfer-detail__section-title">Financeiro</h4>
           <div className="transfer-detail__kv">
             <span className="transfer-detail__k">Valor de mercado</span>
-            <span className="transfer-detail__v">{formatLimo(player.marketValue ?? 0)}</span>
+            <span className="transfer-detail__v">{money(player.marketValue)}</span>
             <span className="transfer-detail__k">Preço de saída</span>
             <span className="transfer-detail__v">
               {player.isFreeAgent
-                ? `Contratação — ${formatLimo(player.askingPrice ?? 0)}`
-                : formatLimo(player.askingPrice ?? 0)}
+                ? `Contratação — ${money(player.askingPrice)}`
+                : money(player.askingPrice)}
             </span>
             <span className="transfer-detail__k">Salário</span>
-            <span className="transfer-detail__v">{formatLimo(player.salary ?? 0)}</span>
+            <span className="transfer-detail__v">{money(player.salary)}</span>
             <span className="transfer-detail__k">Contrato</span>
             <span className="transfer-detail__v">
               {player.teamId
@@ -324,17 +332,17 @@ const PlayerDetail: React.FC<{
           <h4 className="transfer-detail__section-title">Carreira</h4>
           <div className="transfer-detail__kv">
             <span className="transfer-detail__k">Jogos</span>
-            <span className="transfer-detail__v">{player.total?.appearances ?? 0}</span>
+            <span className="transfer-detail__v">{count(player.total?.appearances)}</span>
             <span className="transfer-detail__k">Titulares</span>
-            <span className="transfer-detail__v">{player.total?.started ?? 0}</span>
+            <span className="transfer-detail__v">{count(player.total?.started)}</span>
             <span className="transfer-detail__k">Reservas</span>
-            <span className="transfer-detail__v">{player.total?.cameOn ?? 0}</span>
+            <span className="transfer-detail__v">{count(player.total?.cameOn)}</span>
             <span className="transfer-detail__k">Gols</span>
-            <span className="transfer-detail__v accent">{player.total?.goals ?? 0}</span>
+            <span className="transfer-detail__v accent">{count(player.total?.goals)}</span>
             <span className="transfer-detail__k">Amarelos</span>
-            <span className="transfer-detail__v">{player.total?.yellowCards ?? 0}</span>
+            <span className="transfer-detail__v">{count(player.total?.yellowCards)}</span>
             <span className="transfer-detail__k">Vermelhos</span>
-            <span className="transfer-detail__v">{player.total?.redCards ?? 0}</span>
+            <span className="transfer-detail__v">{count(player.total?.redCards)}</span>
           </div>
         </div>
       </div>

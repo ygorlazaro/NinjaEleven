@@ -1,69 +1,5 @@
-import type { PlayerInfo, Position, TeamInfo } from '@/types';
+import type { PlayerInfo, Position } from '@/types';
 import type { FeedEvent } from '@/state';
-
-export const NAMES = ['João', 'Pedro', 'Ricardo', 'Danilo', 'Lucas', 'Marcos', 'Carlos', 'Rafael', 'Bruno', 'Gabriel', 'Felipe', 'Diego', 'André', 'Caio', 'Gustavo', 'Henrique', 'Matheus', 'Vinícius', 'Rodrigo', 'Thiago', 'Leonardo', 'Samuel', 'Igor', 'Arthur', 'Murilo', 'Eduardo', 'Renato', 'Vitor', 'Wesley', 'Alex'];
-
-export const SURNAMES = ['Silva', 'Ferraz', 'Machado', 'Pires', 'Costa', 'Moura', 'Ribeiro', 'Almeida', 'Barbosa', 'Teixeira', 'Nunes', 'Campos', 'Vieira', 'Lima', 'Souza', 'Mendes', 'Rocha', 'Cardoso', 'Dias', 'Moreira'];
-
-export const TEAM_COLOR_PALETTES = [
-  { primary: '#36c2ff', secondary: '#0b5ea8' },
-  { primary: '#ff5b6e', secondary: '#a91f36' },
-  { primary: '#43d17a', secondary: '#167a43' },
-  { primary: '#ffb84d', secondary: '#b76800' },
-  { primary: '#c77dff', secondary: '#6a35a8' },
-  { primary: '#00d4b8', secondary: '#08796c' },
-  { primary: '#ff78c8', secondary: '#a52f78' },
-  { primary: '#9fb4c8', secondary: '#4d657a' },
-];
-
-export const FORMATIONS = ['4-4-2', '4-3-3', '4-5-1', '3-5-2', '3-4-3', '5-3-2', '5-4-1', '4-2-3-1'];
-
-let _seed = 0;
-
-export function seedRandom(seed: number) {
-  _seed = seed;
-  let state = seed;
-  const random = () => {
-    state = (state * 1103515245 + 12345) & 0x7fffffff;
-    return state / 0x7fffffff;
-  };
-  Math.random = random;
-}
-
-export function rand(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-export function pick<T>(array: T[]): T {
-  return array[Math.floor(Math.random() * array.length)];
-}
-
-export function weightedAge(): number {
-  const r = Math.random();
-  if (r < 0.06) return rand(16, 18);
-  if (r < 0.34) return rand(19, 21);
-  if (r < 0.65) return rand(22, 25);
-  if (r < 0.84) return rand(26, 29);
-  if (r < 0.94) return rand(30, 33);
-  if (r < 0.985) return rand(34, 37);
-  return rand(38, 41);
-}
-
-export function ageFactor(age: number) {
-  return {
-    speed: age < 21 ? 1.08 : age < 29 ? 1.03 : age < 34 ? 0.98 : 0.88,
-    energy: age < 22 ? 1.1 : age < 29 ? 1.04 : age < 34 ? 0.94 : 0.82,
-    accuracy: age < 20 ? 0.84 : age < 27 ? 1.02 : age < 34 ? 1.08 : 1.05,
-    strength: age < 20 ? 0.86 : age < 28 ? 1.02 : age < 35 ? 1.07 : 0.98,
-  };
-}
-
-export function goaliePower(p: PlayerInfo): number {
-  if (p.position === 'GK') {
-    return Math.max(1, Math.round((p.speed + p.strength + p.accuracy) / 3));
-  }
-  return Math.max(1, Math.round((p.speed + p.strength + p.accuracy) / 3));
-}
 
 /**
  * The order players are read in everywhere: goalkeepers, defenders, midfielders and
@@ -124,6 +60,24 @@ export function energyClass(energy: number): string {
   if (energy < 35) return 'energy-red';
   if (energy < 70) return 'energy-yellow';
   return 'energy-green';
+}
+
+/**
+ * The same bands as {@link energyClass}, drawn as coloured text rather than as a bar.
+ *
+ * <p>
+ * It is a second function and not an argument because the two answers are two different
+ * classes, and a function that took the suffix as a parameter would be called once per screen
+ * with the same suffix anyway. What must not happen is four screens each carrying their own
+ * copy of the bands: they agreed by accident, and the day one of them was edited the game
+ * would be reading a tired player in two colours on two screens. The bands live here, beside
+ * <c>energyClass</c>, which is the bar that says the same thing.
+ * </p>
+ */
+export function energyTextClass(energy: number): string {
+  if (energy < 35) return 'energy-red-text';
+  if (energy < 70) return 'energy-yellow-text';
+  return 'energy-green-text';
 }
 
 export function energyPercent(energy: number): string {

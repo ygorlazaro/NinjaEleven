@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NinjaEleven.Application.Abstractions;
@@ -53,6 +54,7 @@ public class CompetitionExecutionService
     private readonly IRoundExecutionStore _claims;
     private readonly IHeadlessMatchPlayer _player;
     private readonly IMatchCleaner _cleaner;
+    private readonly IServiceScopeFactory _scopes;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ISeasonCloser _seasonCloser;
     private readonly IManagedClubReader _managedClubs;
@@ -73,6 +75,7 @@ public class CompetitionExecutionService
         IRoundExecutionStore claims,
         IHeadlessMatchPlayer player,
         IMatchCleaner cleaner,
+        IServiceScopeFactory scopes,
         IUnitOfWork unitOfWork,
         ISeasonCloser seasonCloser,
         IManagedClubReader managedClubs,
@@ -94,6 +97,7 @@ public class CompetitionExecutionService
         _statements = statements;
         _player = player;
         _cleaner = cleaner;
+        _scopes = scopes;
         _unitOfWork = unitOfWork;
         _seasonCloser = seasonCloser;
         _options = options;
@@ -891,14 +895,26 @@ public class CompetitionExecutionService
         // and begun again under whoever is watching. One match, one driver: a match in
         // progress is left to whoever started it, and the window stays owed until it is over.
         //
-        // Except a match nobody ever touched. The world leaves the manager's own match on the
-        // touchline and waits for him, and a world that waited for ever would say so by
-        // playing nothing at all — the same answer, over and over, indistinguishable from a
-        // broken route. So a match that is still at minute zero with nobody behind it is
-        // nobody's match any more, the world takes the fixture back and plays it.
+        // Except a match nobody ever touched. A match at minute zero with nobody behind it is
+        // nobody's match — the world left the manager's own on the touchline and stopped, and a
+        // world that waited for ever would answer every press with the same nothing, which is
+        // indistinguishable from a broken route. So the fixture goes back on the schedule and
+        // the day is played out without him.
+        var takenBack = false;
+
         if (fixture.Status is FixtureStatus.InProgress)
         {
-            if (!await _cleaner.ReleaseTheUntouchedMatchAsync(fixture.Id, cancellationToken))
+            // The release is asked in a scope of its own, because this branch runs inside the
+            // parallel walk and the walk's own context is one pipe that takes one stream: eight
+            // fixtures releasing at once through the same DbContext threw "a second operation
+            // was started on this context instance" on a cup window of thirty-two, the window
+            // failed, and the world could never get past the 32-avos. The player already
+            // resolves a scope per match for the same reason; the cleaner is resolved the same
+            // way rather than shared.
+            using var releaseScope = _scopes.CreateScope();
+            var cleaner = releaseScope.ServiceProvider.GetRequiredService<IMatchCleaner>();
+
+            if (!await cleaner.ReleaseTheUntouchedMatchAsync(fixture.Id, cancellationToken))
             {
                 _logger.LogInformation(
                     "Fixture {FixtureId} is already being played. It is left to whoever is playing it.",
@@ -906,13 +922,28 @@ public class CompetitionExecutionService
 
                 return new FixtureRun(fixture.Id, null, null, null, FixtureRunStatus.PlayedElsewhere);
             }
+
+            takenBack = true;
+
+            _logger.LogInformation(
+                "Fixture {FixtureId} was holding a match nobody ever touched. The world takes the fixture back.",
+                fixture.Id);
         }
 
-        // The manager's own match is his to play. The world starts it — a lineup, a bench, an
-        // engine and a set of events, exactly as any other — and then stops: nobody ticks it,
-        // the loop leaves it alone, and the window waits for the manager to take it. A world
-        // that simulates the game its manager is waiting to watch is a game he never played.
-        if (managersTeams.Count > 0 && IsTheManagersFixture(fixture, managersTeams))
+        // The manager's own match is his to play, but only while it is still his to play. The
+        // world starts it — a lineup, a bench, an engine and a set of events, exactly as any
+        // other — and then stops: nobody ticks it, the loop leaves it alone, and the window
+        // waits for the manager to take it. A world that simulates the game its manager is
+        // waiting to watch is a game he never played.
+        //
+        // It is asked after the release above, and not before it, because a branch here that
+        // re-opened the match would be a branch that undid the release: the abandoned fixture
+        // came straight back to this line and was handed a second identical match to wait
+        // about. A manager pressing "advance" was left with a window that does not move and a
+        // fixture that grew one abandoned row per press — eleven of them, for an evening he
+        // had never had the chance to play. The fixture he has not touched is now played by
+        // the run below instead, which is the answer the release was written for.
+        if (!takenBack && managersTeams.Count > 0 && IsTheManagersFixture(fixture, managersTeams))
         {
             var opened = await _player.StartAndLeaveAsync(fixture.Id, cancellationToken);
 

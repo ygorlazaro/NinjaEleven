@@ -162,6 +162,53 @@ public class TransferMarketRulesTests
         Assert.Equal(38_000m, long_);
     }
 
+    // ------------------------------------------------------------- the quote on a card
+
+    [Fact]
+    public void The_quote_on_a_card_is_the_settlement_the_release_charges()
+    {
+        // The same four facts the release command works from, in the shape a squad row and a
+        // player's card hold them: a season's wage, how many rounds are left in the season and
+        // how many seasons the contract has left counting this one.
+        var quoted = ReleaseRules.QuoteReleaseCost(
+            seasonWage: 22_000m,
+            roundsPerSeason: 22,
+            roundsLeftThisSeason: 8,
+            seasonsLeftIncludingThisOne: 3);
+
+        var charged = ReleaseRules.ReleaseCost(
+            salaryPerRound: 22_000m / 22,
+            roundsLeftThisSeason: 8,
+            seasonsLeftAfterThis: 2,
+            roundsPerSeason: 22);
+
+        Assert.Equal(charged, quoted);
+    }
+
+    [Fact]
+    public void A_man_in_his_last_season_is_quoted_only_the_rounds_that_are_left()
+    {
+        // One season counting the current one, so nothing is promised after it: the settlement
+        // is half a season's remaining wages and no more.
+        var quoted = ReleaseRules.QuoteReleaseCost(
+            seasonWage: 22_000m,
+            roundsPerSeason: 22,
+            roundsLeftThisSeason: 8,
+            seasonsLeftIncludingThisOne: 1);
+
+        Assert.Equal(4_000m, quoted);
+    }
+
+    [Fact]
+    public void A_quote_is_not_worked_out_of_a_negative_contract()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => ReleaseRules.QuoteReleaseCost(1_000m, 22, 5, -1));
+
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => ReleaseRules.QuoteReleaseCost(-1m, 22, 5, 2));
+    }
+
     [Theory]
     [InlineData(-1, 5, 1, 22)]
     [InlineData(1000, -1, 1, 22)]

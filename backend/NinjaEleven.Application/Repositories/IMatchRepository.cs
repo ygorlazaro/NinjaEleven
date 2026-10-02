@@ -117,6 +117,27 @@ public interface IMatchRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Takes back the lines of a match that is being given up on.
+    ///
+    /// <para>
+    /// A match that is abandoned never happened as football: its fixture is reopened and
+    /// played again from the whistle, so the twenty-two lines it wrote when the whistle went
+    /// are a record of an evening that was thrown away. Left in place they are read as
+    /// football — a scorers table is counted from these lines and nothing on that walk knows
+    /// the match was void — so a process that restarted at minute eighty leaves goals in a
+    /// season's artilharia that no table will ever explain, and a striker is credited with a
+    /// game the fixture has already had a different answer to.
+    /// </para>
+    ///
+    /// <para>
+    /// The match row and its events stay: the fact that it was started and given up on is what
+    /// explains the fixture being played twice, and a record of the attempt is not the problem.
+    /// The lines are, because they are the ones that are summed.
+    /// </para>
+    /// </summary>
+    Task RemovePlayerStatisticsAsync(Guid matchId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The match lines of a set of matches, keyed by match.
     ///
     /// A report is written about a whole match at once: the eleven that started, the men who

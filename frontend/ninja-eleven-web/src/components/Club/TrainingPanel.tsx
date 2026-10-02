@@ -1,6 +1,6 @@
 import React from 'react';
 import type { SquadTrainingQuotesDto, TrainingQuoteDto, PlayerAttribute, TeamDto } from '@/types';
-import { positionLabel } from '@/services/formatters';
+import { positionLabel, energyTextClass } from '@/services/formatters';
 import { formatLimo } from '@/services/limo';
 import { PlayerName } from '@/components/Common/Names';
 import KitChip from '@/components/Club/KitChip';
@@ -23,12 +23,6 @@ const ATTRIBUTES: ReadonlyArray<{ key: PlayerAttribute; label: string }> = [
   { key: 'Reflexes', label: 'Ref' },
   { key: 'Stamina', label: 'Est' }
 ];
-
-function energyTextClass(energy: number): string {
-  if (energy < 35) return 'energy-red-text';
-  if (energy < 70) return 'energy-yellow-text';
-  return 'energy-green-text';
-}
 
 interface TrainingPanelProps {
   /** The club these men belong to, so the shirt sits beside the name. */

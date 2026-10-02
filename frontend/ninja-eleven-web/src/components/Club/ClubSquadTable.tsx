@@ -1,9 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import type { SquadPlayerDto, TeamDto } from '@/types';
-import { positionLabel } from '@/services/formatters';
+import { positionLabel, starsToString, attributeToneClass, energyTextClass } from '@/services/formatters';
 import { formatLimo } from '@/services/limo';
 import { PlayerName } from '@/components/Common/Names';
-import { starsToString, attributeToneClass } from '@/services/formatters';
 import KitChip from '@/components/Club/KitChip';
 import ShirtNumberCell from '@/components/Club/ShirtNumberCell';
 
@@ -24,16 +23,6 @@ interface Column {
   key: SortKey;
   label: string;
   className?: string;
-}
-
-/**
- * Returns CSS class for energy text color coding:
- * < 35: red (energy-red-text), < 70: yellow (energy-yellow-text), >= 70: green (energy-green-text)
- */
-function energyTextClass(energy: number): string {
-  if (energy < 35) return 'energy-red-text';
-  if (energy < 70) return 'energy-yellow-text';
-  return 'energy-green-text';
 }
 
 /**
@@ -328,11 +317,17 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
                   title={
                     player.isInLastSeason
                       ? 'Última temporada de contrato: sem multa'
-                      : `${player.contractSeasons - player.seasonsLeft} de ${player.contractSeasons} temporadas de contrato ainda a correr: multa de 20%`
+                      : `${player.contractSeasons - player.seasonsLeft} de ${player.contractSeasons} temporadas de contrato ainda a correr. Rescindir agora custa ${formatLimo(player.releaseCost)}.`
                   }
                 >
                   {formatLimo(player.askingPrice)}
-                  {!player.isInLastSeason && <span className="contract-fine">+20%</span>}
+                  {/* What letting him go costs, quoted by the rule that charges it. It used to
+                      read "+20%", which is not a settlement anywhere in the game. */}
+                  {!player.isInLastSeason && (
+                    <span className="contract-fine" title="Custo de rescindir o contrato agora">
+                      {formatLimo(player.releaseCost)}
+                    </span>
+                  )}
                 </td>
                 <td className="num money">{formatLimo(player.salary)}</td>
                 <td className="num contract-cell">

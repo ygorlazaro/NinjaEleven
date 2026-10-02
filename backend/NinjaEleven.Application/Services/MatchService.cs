@@ -641,6 +641,7 @@ public class MatchService : IMatchCleaner
         {
             match.Abandon();
             _matchRepository.Update(match);
+            await _matchRepository.RemovePlayerStatisticsAsync(match.Id, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             return true;
         }
@@ -664,6 +665,15 @@ public class MatchService : IMatchCleaner
 
         match.Abandon();
         _matchRepository.Update(match);
+
+        // Its lines go with it. A match given up on is void — the fixture is played again from
+        // the whistle below — and the twenty-two lines it wrote when the whistle went are a
+        // record of an evening that was thrown away. They are not harmless: a scorers table is
+        // counted from them and nothing on that walk knows the match was void, so a process
+        // that stopped at minute eighty leaves goals in a season's artilharia that no table can
+        // explain. The match row and its events stay, because the attempt is the reason the
+        // fixture was played twice.
+        await _matchRepository.RemovePlayerStatisticsAsync(match.Id, cancellationToken);
 
         fixture.Reopen();
         _fixtureRepository.Update(fixture);
@@ -799,6 +809,7 @@ public class MatchService : IMatchCleaner
             {
                 match.Abandon();
                 _matchRepository.Update(match);
+                await _matchRepository.RemovePlayerStatisticsAsync(match.Id, cancellationToken);
                 abandoned.Add(match.Id);
                 continue;
             }
@@ -917,6 +928,11 @@ public class MatchService : IMatchCleaner
 
             match.Abandon();
             _matchRepository.Update(match);
+
+            // Its lines go with it, as everywhere else a match is given up on: a match left
+            // running over a fixture that was already decided is void, and its goals are read
+            // by a scorers table that knows nothing of the fixture underneath.
+            await _matchRepository.RemovePlayerStatisticsAsync(match.Id, cancellationToken);
 
             _logger.LogDebug(
                 "Match {MatchId} was left running on fixture {FixtureId}, which was already " +

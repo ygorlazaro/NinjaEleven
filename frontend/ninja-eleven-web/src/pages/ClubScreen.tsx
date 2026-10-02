@@ -1,13 +1,12 @@
-import { SeasonApi, TeamApi, SponsorApi, ManagerApi } from '@/api';
-import KitShirt from '@/components/Club/KitShirt';
+import { ManagerApi, SeasonApi, SponsorApi, TeamApi } from '@/api';
 import ClubCrest from '@/components/Club/ClubCrest';
 import CrestEditor from '@/components/Club/CrestEditor';
 import KitEditor from '@/components/Club/KitEditor';
-import { kitOf } from '@/services/clubKits';
+import KitShirt from '@/components/Club/KitShirt';
 import ClubOwnershipIcon from '@/components/Common/ClubOwnershipIcon';
 import DivisionTrophy from '@/components/League/DivisionTrophy';
-import { mockClubProfile } from '@/mock/clubProfile';
 import { useClubWindow } from '@/services/clubColors';
+import { kitOf } from '@/services/clubKits';
 import { formatLimo } from '@/services/limo';
 import { useGameState } from '@/state';
 import { useAuthStore } from '@/state/auth';
@@ -27,7 +26,7 @@ const EVENTS: Record<string, { label: string; icon: string }> = {
   FirstSeason: { label: 'Fundação', icon: '🏁' },
   NameChange: { label: 'Mudança de nome', icon: '✍️' },
   CrestChange: { label: 'Novo escudo', icon: '🛡' },
-  StadiumUpgrade: { label: 'Estádio', icon: '🏟' },
+  ColorsChange: { label: 'Novas cores', icon: '🎨' },
   TopScorer: { label: 'Artilharia', icon: '🎯' },
   Title: { label: 'Título', icon: '🏆' },
   Promotion: { label: 'Acesso', icon: '⬆️' },
@@ -145,15 +144,17 @@ const TrophyShelf: React.FC<{ trophies: ClubTrophyDto[] }> = ({ trophies }) => {
  * career starts: the screen the game opens on is a club, and a club that is a row in a
  * dropdown is not a thing anybody manages.
  *
- * **This page reads a stand-in.** The screen, the layout and the numbers are the ones the
- * endpoint will serve, and the mock lives in `mock/clubProfile` — one file, one swap.
+ * **Every number on this page is the backend's.** It used to read a stand-in that drew its own
+ * history out of the club's id, which was stable per club and therefore looked right forever
+ * while being wrong from the first season — a manager had no way to tell it from a page that
+ * worked. It is now `GET /team/{id}/profile`, which derives what the world already knows (the
+ * founding, the movements up and down the pyramid, the titles, the artilharias) and reads what
+ * was recorded when it was decided (a rename, a crest, a change of colours).
  *
- * Most of what it says is already a fact the game keeps: the size of the roster, the balance,
- * the divisions the club has moved between, and the trophies on the shelf. Two are not, and
- * both are the two a page is *for*. **A club has no manager anywhere in the world** — there is
- * no coach entity, no column, nothing — and a club has no record of having been renamed or of
- * having rebuilt its stadium, because no event has ever been written down. The history is the
- * bigger of the two pieces of work behind this page, and the one that makes it worth having.
+ * The one thing the page asks for separately is the shirt sponsor, because a sponsorship is
+ * paid per match and its length in games is a live fact of the current deal rather than part
+ * of what the club *is* — and because it is also wanted twice on this page, by the panel and
+ * by the shirt it is printed on.
  */
 const ClubScreen: React.FC = () => {
   const selectedTeam = useGameState((s) => s.selectedTeam);
@@ -162,9 +163,8 @@ const ClubScreen: React.FC = () => {
   const returnedAfterDismissal = useAuthStore((s) => s.returnedAfterDismissal);
   const clearReturnedAfterDismissal = useAuthStore((s) => s.clearReturnedAfterDismissal);
   const clubWindow = useClubWindow(selectedTeam);
-  const [seasonId, setSeasonId] = useState<string>('');
-  const [balance, setBalance] = useState<number | null>(null);
-  const [squadSize, setSquadSize] = useState<number | null>(null);
+  const [club, setClub] = useState<ClubProfileDto | null>(null);
+  const [failed, setFailed] = useState(false);
   const [sponsorName, setSponsorName] = useState<string | null>(null);
   const [sponsorIndustry, setSponsorIndustry] = useState<string | null>(null);
   const [sponsorMatchesLeft, setSponsorMatchesLeft] = useState<number>(0);
@@ -183,56 +183,50 @@ const ClubScreen: React.FC = () => {
   const [editor, setEditor] = useState<'crest' | 'kits' | null>(null);
 
   useEffect(() => {
+    if (!selectedTeam) return;
+
     let alive = true;
 
-    SeasonApi.current()
-      .then(season => {
-        if (alive) setSeasonId(season.id);
+    // The club and its sponsor are two questions about two different things, so they are asked
+    // together rather than in sequence: the page is not drawn until both have answered, and a
+    // page that waited for one to show the other would be a page with a hole in it.
+    TeamApi.getProfile(selectedTeam.id)
+      .then(profile => {
+        if (!alive) return;
+        setClub(profile);
+        setFailed(false);
+        // The manager's own name, which the endpoint carries, and which is empty for a club
+        // nobody is running. An empty one is not an error: an NPC club has no manager and the
+        // screen says so rather than inviting a manager to rename a man who does not exist.
+        setCoachName(profile.coachName || null);
       })
-      .catch(() => {});
+      .catch(() => {
+        // No stand-in. A club's page that failed to load says it failed, because the alternative
+        // is the page this one used to draw — a history that looks like a memory and is not one,
+        // which a manager cannot tell from a real one and would be lied to by.
+        if (!alive) return;
+        setClub(null);
+        setFailed(true);
+      });
+
+    SeasonApi.current()
+      .then(season => SponsorApi.getBook(selectedTeam.id, season.id))
+      .then(book => {
+        if (!alive) return;
+        setSponsorName(book.current?.name ?? null);
+        setSponsorIndustry(book.current?.industry ?? null);
+        setSponsorMatchesLeft(book.matchesLeft);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setSponsorName(null);
+        setSponsorIndustry(null);
+      });
 
     return () => {
       alive = false;
     };
-  }, []);
-
-  useEffect(() => {
-    if (!selectedTeam || !seasonId) return;
-
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        const [finance, squad, book] = await Promise.all([
-          TeamApi.getFinance(selectedTeam.id, seasonId),
-          TeamApi.getSquad(selectedTeam.id, seasonId),
-          SponsorApi.getBook(selectedTeam.id, seasonId),
-        ]);
-
-        if (cancelled) return;
-
-        setBalance(finance.balance);
-        setSquadSize(squad.length);
-        setSponsorName(book.current?.name ?? null);
-        setSponsorIndustry(book.current?.industry ?? null);
-        setSponsorMatchesLeft(book.matchesLeft);
-        ManagerApi.getByTeam(selectedTeam.id)
-          .then(manager => { if (!cancelled) setCoachName(manager.name); })
-          .catch(() => {});
-      } catch {
-        if (!cancelled) {
-          setBalance(0);
-          setSquadSize(23);
-        }
-      }
-    };
-
-    load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedTeam, seasonId]);
+  }, [selectedTeam]);
 
   if (!selectedTeam) {
     return (
@@ -251,6 +245,27 @@ const ClubScreen: React.FC = () => {
     try {
       const manager = await ManagerApi.rename(selectedTeam.id, coachInput.trim());
       setCoachName(manager.name);
+      // The rename is also a moment of the club's history now, and the page has to show it
+      // without being reloaded: the manager has just watched his club change its name, and a
+      // history that only gained the line after a refresh would be a history that arrives late.
+      setClub(current =>
+        current
+          ? {
+            ...current,
+            history: [
+              {
+                id: `rename-${manager.name}`,
+                kind: 'NameChange',
+                seasonId: null,
+                seasonNumber: null,
+                seasonName: null,
+                description: `O clube passou a chamar-se ${manager.name}.`
+              },
+              ...current.history.filter(entry => entry.kind !== 'NameChange')
+            ]
+          }
+          : current
+      );
       setEditingCoach(false);
       setCoachInput('');
       setCoachError(null);
@@ -272,13 +287,27 @@ const ClubScreen: React.FC = () => {
     setCoachError(null);
   };
 
-  // The stand-in fills the parts of the page the backend has not grown into yet — the titles
-  // on the shelf, the career's arc — and the screen overrides the numbers the backend now owns:
-  // the balance, the squad size, the shirt sponsor, and the manager's name.
-  const club: ClubProfileDto = { ...mockClubProfile(selectedTeam) };
-  club.balance = balance ?? club.balance;
-  club.squadSize = squadSize ?? club.squadSize;
-  if (coachName) club.coachName = coachName;
+  if (failed) {
+    return (
+      <div className="app">
+        <div className="card match-header club-modal">
+          <h2 className="profile-name">{selectedTeam.name}</h2>
+          <p className="competition">Não foi possível carregar a página do clube.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!club) {
+    return (
+      <div className="app">
+        <div className="card match-header club-modal">
+          <h2 className="profile-name">{selectedTeam.name}</h2>
+          <p className="competition">Carregando…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -336,14 +365,19 @@ const ClubScreen: React.FC = () => {
                   </span>
                 ) : (
                   <>
-                    {club.coachName}
-                    <button
-                      className="coach-edit__icon"
-                      title="Renomear técnico"
-                      onClick={() => startCoachEdit(club.coachName)}
-                    >
-                      ✏️
-                    </button>
+                      {/* No manager and no button to rename one. An NPC club has no manager, and
+                        offering a rename on a man who does not exist is a control that can only
+                        ever fail — the backend has nobody to attach the name to. */}
+                      {(coachName ?? club.coachName) || 'Sem técnico'}
+                      {yourClubId === club.teamId && (
+                        <button
+                          className="coach-edit__icon"
+                          title="Renomear técnico"
+                          onClick={() => startCoachEdit(coachName ?? club.coachName)}
+                        >
+                          ✏️
+                        </button>
+                      )}
                   </>
                 )}
               </span>
@@ -373,7 +407,7 @@ const ClubScreen: React.FC = () => {
         <figure className="club-figures">
           <span className="club-figure">
             <span className="club-figure__icon">🧑‍💼</span>
-            <span className="club-figure__value">{club.coachName}</span>
+            <span className="club-figure__value">{(coachName ?? club.coachName) || '—'}</span>
             <span className="club-figure__label">Técnico</span>
           </span>
           <Figure label="Jogadores" value={String(club.squadSize)} icon="👥" />
@@ -405,7 +439,7 @@ const ClubScreen: React.FC = () => {
           )}
         </section>
 
-        <KitWall team={selectedTeam} onEdit={() => setEditor('kits')} />
+        <KitWall team={selectedTeam} sponsorName={sponsorName ?? ''} onEdit={() => setEditor('kits')} />
 
         {editor === 'crest' && (
           <CrestEditor
@@ -419,23 +453,29 @@ const ClubScreen: React.FC = () => {
           <KitEditor team={selectedTeam} onClose={() => setEditor(null)} onSaved={setSelectedTeam} />
         )}
 
-        <TrophyShelf trophies={club.trophies} />
+        {/* The two halves of the same question — what the club has won and what has been
+            done to it — wrapped in one element so a wide desktop can put them side by
+            side. Below that width it is not a grid at all, and the two are one column
+            again: the wrapper exists to be divided, not to be a row of its own. */}
+        <div className="club-page__lower">
+          <TrophyShelf trophies={club.trophies} />
 
-        {/* The history, newest first. A club's history is a career and a career is read from
-            now backwards, so the moment a manager is living through is the first line he sees
-            and the season the club was founded is the last. */}
-        <section className="club-history">
-          <h3 className="club-section-title">Grandes momentos</h3>
-          {club.history.length === 0 ? (
-            <p className="league-empty">Nada aconteceu ainda. A história começa no próximo jogo.</p>
-          ) : (
-            <ol className="club-timeline">
-              {club.history.map(event => (
-                <TimelineEvent event={event} key={event.id} />
-              ))}
-            </ol>
-          )}
-        </section>
+          {/* The history, newest first. A club's history is a career and a career is read from
+              now backwards, so the moment a manager is living through is the first line he sees
+              and the season the club was founded is the last. */}
+          <section className="club-history">
+            <h3 className="club-section-title">Grandes momentos</h3>
+            {club.history.length === 0 ? (
+              <p className="league-empty">Nada aconteceu ainda. A história começa no próximo jogo.</p>
+            ) : (
+              <ol className="club-timeline">
+                {club.history.map(event => (
+                  <TimelineEvent event={event} key={event.id} />
+                ))}
+              </ol>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   );
@@ -455,22 +495,37 @@ const ClubScreen: React.FC = () => {
  * away shirt does not, because a strip that is only there to be a different shape is a real
  * thing too.
  */
-const KitWall: React.FC<{ team: TeamDto; onEdit: () => void }> = ({ team, onEdit }) => {
-  const seed = [...team.id].reduce((sum, character) => sum + character.charCodeAt(0), 0);
-  const [sponsorName, setSponsorName] = useState('');
+const KitWall: React.FC<{ team: TeamDto; sponsorName: string; onEdit: () => void }> = ({ team, sponsorName, onEdit }) => {
+  /**
+   * The two numbers printed on the shirts, which are two men's own numbers and not a guess.
+   *
+   * This used to be worked out of the club's id so that every club had a different pair and the
+   * same pair for ever. That is the mock this page came to be without: a shirt is a thing a
+   * player wears, and a number drawn out of a guid is a number nobody wears. So it is read off
+   * the squad — two distinct men of the current season's list — and a club whose squad could
+   * not be read is drawn without a number rather than with one invented.
+   */
+  const [shirtNumbers, setShirtNumbers] = useState<number[]>([]);
 
   useEffect(() => {
     let alive = true;
 
     SeasonApi.current()
-      .then(season => SponsorApi.getBook(team.id, season.id))
-      .then(book => {
-        if (alive) {
-          setSponsorName(book.current?.name ?? '');
-        }
+      .then(season => TeamApi.getSquad(team.id, season.id))
+      .then(squad => {
+        if (!alive) return;
+        // A squad's shirt numbers are unique inside a club, so taking the first two distinct
+        // ones gives two different men rather than the same number printed twice.
+        setShirtNumbers(
+          squad
+            .map(player => player.shirtNumber)
+            .filter((number): number is number => number != null && number > 0)
+            .filter((number, index, all) => all.indexOf(number) === index)
+            .slice(0, 2)
+        );
       })
       .catch(() => {
-        if (alive) setSponsorName('');
+        if (alive) setShirtNumbers([]);
       });
 
     return () => {
@@ -493,7 +548,7 @@ const KitWall: React.FC<{ team: TeamDto; onEdit: () => void }> = ({ team, onEdit
         {home && (
           <KitShirt
             kit={home}
-            number={(seed % 20) + 1}
+            number={shirtNumbers[0]}
             sponsor={sponsorName}
             caption="Casa"
             label={`Uniforme principal do ${team.name}`}
@@ -502,7 +557,8 @@ const KitWall: React.FC<{ team: TeamDto; onEdit: () => void }> = ({ team, onEdit
         {away ? (
           <KitShirt
             kit={away}
-            number={((seed * 7) % 20) + 1}
+            number={shirtNumbers[1]}
+            sponsor={sponsorName}
             caption="Fora"
             label={`Uniforme reserva do ${team.name}`}
           />
@@ -517,7 +573,8 @@ const KitWall: React.FC<{ team: TeamDto; onEdit: () => void }> = ({ team, onEdit
   );
 };
 
-const TimelineEvent: React.FC<{ event: ClubHistoryEventDto }> = ({ event }) => {  const known = EVENTS[event.kind];
+const TimelineEvent: React.FC<{ event: ClubHistoryEventDto }> = ({ event }) => {
+  const known = EVENTS[event.kind];
 
   return (
     <li className="club-timeline__item">
@@ -526,7 +583,11 @@ const TimelineEvent: React.FC<{ event: ClubHistoryEventDto }> = ({ event }) => {
         <span className="club-timeline__label">{known?.label ?? event.kind}</span>
         <span className="club-timeline__text">{event.description}</span>
       </div>
-      <span className="club-timeline__season">{event.seasonName}</span>
+      {/* A moment that belongs to no season says so, rather than being handed the nearest one.
+          A manager renames a club in the winter quite often, and dating that decision by a
+          football season that had nothing to do with it is a small lie in the one place on
+          this page a manager is reading a record of what actually happened to his club. */}
+      <span className="club-timeline__season">{event.seasonName ?? '—'}</span>
     </li>
   );
 };

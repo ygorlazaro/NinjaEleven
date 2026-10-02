@@ -277,6 +277,62 @@ public class PlayerRepository : IPlayerRepository
         return ReadLines(await GroupAsync(query, cancellationToken));
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<EditionScorerLine>> ListEditionScorerLinesForEditionsAsync(
+        IEnumerable<Guid> competitionSeasonIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = competitionSeasonIds.Distinct().ToList();
+
+        // An empty set is an empty answer, and it is answered without going to the database at
+        // all. A club in its first season has no career's worth of editions behind it, and a
+        // reader that asked with an empty list would hand PostgreSQL an `IN ()` and a plan for
+        // it, which is a page that waits on the database to tell it there was nothing to read.
+        if (ids.Count == 0)
+        {
+            return Array.Empty<EditionScorerLine>();
+        }
+
+        var query =
+            from line in _dbContext.MatchPlayerStatistics.AsNoTracking()
+            join match in _dbContext.Matches.AsNoTracking() on line.MatchId equals match.Id
+            join fixture in _dbContext.Fixtures.AsNoTracking() on match.FixtureId equals fixture.Id
+            join round in _dbContext.Rounds.AsNoTracking() on fixture.RoundId equals round.Id
+            where ids.Contains(round.CompetitionSeasonId)
+            select new { line, EditionId = round.CompetitionSeasonId };
+
+        // Grouped by the edition as well as the man, because the caller is asking about several
+        // editions at once and two of them are two separate charts: one line per man per
+        // edition is what makes "who topped each of these" a question about the set rather than
+        // a question per edition.
+        var rows = await query
+            .GroupBy(entry => new
+            {
+                entry.EditionId,
+                entry.line.PlayerId,
+                entry.line.TeamId
+            })
+            .Select(group => new EditionScorerLine
+            {
+                CompetitionSeasonId = group.Key.EditionId,
+                PlayerId = group.Key.PlayerId,
+                TeamId = group.Key.TeamId,
+                Goals = group.Sum(line => line.line.Goals),
+                OwnGoals = group.Sum(line => line.line.OwnGoals),
+                Started = group.Sum(line => line.line.Started ? 1 : 0),
+                CameOn = group.Sum(line => line.line.CameOn ? 1 : 0),
+                YellowCards = group.Sum(line => line.line.YellowCards),
+                RedCards = group.Sum(line => line.line.RedCards)
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Where(row => row.Goals > 0)
+            .OrderByDescending(row => row.Goals)
+            .ThenBy(row => row.PlayerId)
+            .ToList();
+    }
+
     /// <summary>
     /// Sums a set of match lines into one row per player and club.
     /// </summary>

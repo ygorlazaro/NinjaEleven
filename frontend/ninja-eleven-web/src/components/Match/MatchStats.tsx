@@ -9,16 +9,20 @@ interface MatchStatsProps {
  * The one statistics view. It used to be two tabs reading the same numbers, one of them
  * hiding the fouls and the cards, so there is a single list here with every row the match
  * produces and a bar wherever there is a share to see.
+ *
+ * **Nothing here is drawn before the match has said it.** The panel used to fall back on a
+ * table of zeros with a 50/50 possession, and that fallback is the one thing a statistics
+ * table must never be: a match in which nothing happened legitimately *is* seven rows of
+ * zeros, so a reader cannot tell an unstarted panel from a goalless first half — and the
+ * number that decides the panel is the one number that would be wrong. It says the numbers
+ * are coming instead.
  */
 const MatchStats: React.FC<MatchStatsProps> = ({ state }) => {
-  if (!state) {
-    return <div className="stat"><div className="stat-head"><span>Posse</span><span><b>50%</b> — <b>50%</b></span></div></div>;
-  }
+  const stats = state?.stats;
 
-  const stats = state.stats || [
-    { shots: 0, shotsOnTarget: 0, corners: 0, cards: 0, fouls: 0, possession: 50, saves: 0 },
-    { shots: 0, shotsOnTarget: 0, corners: 0, cards: 0, fouls: 0, possession: 50, saves: 0 },
-  ];
+  if (!stats || stats.length < 2) {
+    return <p className="league-empty">As estatísticas aparecem assim que a bola rolar.</p>;
+  }
 
   const home = stats[0];
   const away = stats[1];

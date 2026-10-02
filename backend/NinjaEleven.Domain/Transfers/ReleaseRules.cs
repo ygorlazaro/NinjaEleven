@@ -58,4 +58,51 @@ public static class ReleaseRules
 
         return decimal.Round(owed * ReleaseFraction, 2, MidpointRounding.AwayFromZero);
     }
+
+    /// <summary>
+    /// What a club would owe to release a player right now, in limos, from the facts a club's
+    /// own pages already hold.
+    ///
+    /// <para>
+    /// A release is quoted in three places — the release command, a squad line and a player's
+    /// card — and each of them holds the season's wage and how many seasons the contract has
+    /// left rather than a per-round wage and a count of seasons after this one. This is the
+    /// translation between the two, so the three answers cannot drift: a manager who reads a
+    /// figure on a squad list and then presses the button has to be quoted the same number
+    /// twice, and a screen that worked the arithmetic out for itself would be free to get it
+    /// wrong in a way nobody would ever notice until the money left the club.
+    /// </para>
+    /// </summary>
+    /// <param name="seasonWage">What the player costs the club for the whole of this season.</param>
+    /// <param name="roundsPerSeason">How many rounds a season holds.</param>
+    /// <param name="roundsLeftThisSeason">How many rounds of this season the club still pays for.</param>
+    /// <param name="seasonsLeftIncludingThisOne">
+    /// How many seasons the contract has left, counting the one in progress.
+    /// </param>
+    /// <returns>The settlement, rounded to the cent.</returns>
+    public static decimal QuoteReleaseCost(
+        decimal seasonWage,
+        int roundsPerSeason,
+        int roundsLeftThisSeason,
+        int seasonsLeftIncludingThisOne)
+    {
+        if (seasonWage < 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(seasonWage), "A wage is not a negative number.");
+        }
+
+        if (seasonsLeftIncludingThisOne < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(seasonsLeftIncludingThisOne),
+                seasonsLeftIncludingThisOne,
+                "A contract does not owe negative seasons.");
+        }
+
+        return ReleaseCost(
+            seasonWage / roundsPerSeason,
+            roundsLeftThisSeason,
+            seasonsLeftIncludingThisOne - 1,
+            roundsPerSeason);
+    }
 }

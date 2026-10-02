@@ -127,6 +127,27 @@ public interface IPlayerRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The goals of a set of editions, by player, with the edition each set of goals is of.
+    /// </summary>
+    /// <remarks>
+    /// The set reader, and it exists because the per-edition one above is a question per row
+    /// the moment a caller wants more than one edition. A club's own page wants every
+    /// competition it has been in across its whole career — four divisions a season plus the
+    /// cup, which is twenty-odd editions for a five-season club — and asking for those one at a
+    /// time is a page that reads in half a second per competition and a hundred round trips
+    /// under it.
+    ///
+    /// It returns every club's lines in every edition asked for, not only one club's: a
+    /// scorers table is ranked over everybody in the edition, so a reader that filtered to the
+    /// club first would rank a division of sixteen down to the two men of one club and crown
+    /// whichever of them scored most, which is not the artilharia of anything.
+    /// </remarks>
+    /// <param name="competitionSeasonIds">The editions to read. Empty is an empty answer.</param>
+    Task<IReadOnlyList<EditionScorerLine>> ListEditionScorerLinesForEditionsAsync(
+        IEnumerable<Guid> competitionSeasonIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Every player's season state for one season, so age-dependent rules (retirement, market
     /// value, NPC acceptance) are applied in one pass rather than per player.
     /// </summary>

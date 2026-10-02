@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -96,10 +97,21 @@ public class CompetitionExecutionServiceTests
         Func<Guid, Task<HeadlessMatchResult>>? play = null) =>
         BuildWithStore(new InMemoryRoundExecutionStore(_round, _window), MatchTestContext.World(), play);
 
+    /// <summary>
+    /// The same service over a scope factory the test supplies, for the assertions that are
+    /// about the scope rather than about the football.
+    /// </summary>
+    private CompetitionExecutionService CreateService(IServiceScopeFactory scopes) =>
+        BuildWithStore(
+            new InMemoryRoundExecutionStore(_round, _window),
+            MatchTestContext.World(),
+            scopes: scopes);
+
     private CompetitionExecutionService BuildWithStore(
         IRoundExecutionStore store,
         IOptions<WorldExecutionOptions> options,
-        Func<Guid, Task<HeadlessMatchResult>>? play = null)
+        Func<Guid, Task<HeadlessMatchResult>>? play = null,
+        IServiceScopeFactory? scopes = null)
     {
         if (play is not null)
         {
@@ -113,6 +125,9 @@ public class CompetitionExecutionServiceTests
                     true, Guid.NewGuid(), MatchRefusal.None, null, 2, 1));
         }
 
+        // A match is walked in a scope of its own, so the factory is handed the one service a
+        // scope has to be able to resolve. A loose mock would hand back nothing, and the first
+        // thing the window tries to resolve would come back null.
         return new CompetitionExecutionService(
             MatchTestContext.Clock,
             MatchTestContext.Host,
@@ -125,6 +140,7 @@ public class CompetitionExecutionServiceTests
             store,
             _player.Object,
             _cleaner.Object,
+            scopes ?? new TestScopeFactory(_cleaner.Object),
             _unitOfWork.Object,
             _closer.Object,
             _managedClubs.Object,
@@ -586,6 +602,63 @@ public class CompetitionExecutionServiceTests
 
         _player.Verify(
             player => player.PlayAsync(untouched.Id, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task A_match_the_world_takes_back_is_not_offered_to_the_manager_again()
+    {
+        // The take-back used to be undone four lines later. The release reopened the fixture,
+        // the branch below it saw the manager's own club and started a second identical match
+        // to wait about, and every press of "advance" did it again: eleven abandoned rows for
+        // one evening the manager never had the chance to play. A fixture the world has just
+        // taken back belongs to the world.
+        var hisClub = Guid.NewGuid();
+        var fixture = Fixture.Create(_round.Id, hisClub, Guid.NewGuid());
+        _window.Add(fixture);
+        fixture.MarkInProgress();
+
+        _cleaner.Setup(cleaner => cleaner.ReleaseTheUntouchedMatchAsync(
+                fixture.Id, It.IsAny<CancellationToken>()))
+            .Callback(() => fixture.Reopen())
+            .ReturnsAsync(true);
+
+        var run = await CreateService().PlayRoundAsync(_round.Id, hisClub);
+
+        Assert.Equal(0, run.LeftForTheManager);
+        Assert.Equal(5, run.Played);
+
+        _player.Verify(
+            player => player.StartAndLeaveAsync(
+                It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _player.Verify(
+            player => player.PlayAsync(fixture.Id, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task A_release_is_asked_of_a_scope_of_its_own()
+    {
+        // The walk plays its fixtures in parallel, and the context underneath it takes one
+        // stream at a time: eight fixtures releasing through the same DbContext threw "a second
+        // operation was started on this context instance", the window failed, and the world
+        // could never get past the round of thirty-two. The cleaner is therefore resolved
+        // inside a scope, exactly as the player is per match.
+        var untouched = _window[0];
+        untouched.MarkInProgress();
+
+        var scopes = 0;
+        var factory = new TestScopeFactory.Counting(
+            new TestScopeFactory(_cleaner.Object),
+            () => scopes++);
+
+        await CreateService(factory).PlayRoundAsync(_round.Id);
+
+        Assert.Equal(1, scopes);
+        _cleaner.Verify(
+            cleaner => cleaner.ReleaseTheUntouchedMatchAsync(
+                untouched.Id, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 

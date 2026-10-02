@@ -99,6 +99,27 @@ public class PlayerProfile
     public bool IsInLastSeason { get; set; }
     public decimal AskingPrice { get; set; }
 
+    /// <summary>
+    /// How many rounds of the season the world still has to play, read once for the card and
+    /// handed to the settlement below.
+    /// </summary>
+    public int RoundsLeftInSeason { get; set; }
+
+    /// <summary>
+    /// What it would cost the club that holds him to let him go today.
+    ///
+    /// <para>
+    /// The card used to state a flat "+20%" beside his contract. No rule in the game charges
+    /// that: a release is settled at half of what the club still owes — the wages of the
+    /// rounds left in this season plus the wages of every season the contract promised after
+    /// it — and a percentage printed next to a player is a number a manager budgets against
+    /// that the engine will never charge. It is worked out here by
+    /// <see cref="NinjaEleven.Domain.Transfers.ReleaseRules"/>, the same rule the release
+    /// command settles with.
+    /// </para>
+    /// </summary>
+    public decimal ReleaseCost { get; set; }
+
     /// <summary>The season's line, and the career's, so a table can show both.</summary>
     public PlayerCareerLine Season { get; set; } = new();
 

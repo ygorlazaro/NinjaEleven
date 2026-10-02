@@ -202,6 +202,7 @@ public class TeamServiceContractRenewalTests
         _players.Object,
         _seasons.Object,
         Mock.Of<IMatchRepository>(),
+        Mock.Of<IClubEventRepository>(),
         _unitOfWork.Object);
 
     private TeamMembership GivenAContractRunningFor(int seasons, decimal wage = 0m)

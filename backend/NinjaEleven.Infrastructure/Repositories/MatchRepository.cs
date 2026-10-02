@@ -177,6 +177,21 @@ public class MatchRepository : IMatchRepository
         CancellationToken cancellationToken = default) =>
         await _dbContext.MatchPlayerStatistics.AddRangeAsync(statistics, cancellationToken);
 
+    /// <inheritdoc />
+    public async Task RemovePlayerStatisticsAsync(
+        Guid matchId,
+        CancellationToken cancellationToken = default)
+    {
+        var lines = await _dbContext.MatchPlayerStatistics
+            .Where(statistics => statistics.MatchId == matchId)
+            .ToListAsync(cancellationToken);
+
+        // Staged and not saved: the abandonment of the match and the taking back of its lines
+        // are one fact, so they are written by the one unit of work that writes the match. A
+        // match closed as abandoned whose lines survived would be a void match still counted.
+        _dbContext.MatchPlayerStatistics.RemoveRange(lines);
+    }
+
     public async Task<IReadOnlyList<MatchPlayerStatistics>> ListPlayerStatisticsAsync(
         Guid playerId,
         Guid? seasonId,
