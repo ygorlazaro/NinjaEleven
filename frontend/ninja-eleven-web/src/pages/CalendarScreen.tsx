@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CompetitionApi, FixtureApi, SeasonApi, TeamApi } from '@/api';
 import type {
@@ -101,6 +101,11 @@ const CalendarScreen: React.FC = () => {
   const [editionId, setEditionId] = useState('');
   const [teamId, setTeamId] = useState('');
   const [day, setDay] = useState('');
+  // Whether the manager has picked a day himself. The filter opens on the day the world is in
+  // because that is the football he came to read, and a filter that reset itself to it on every
+  // render would be a filter that cannot be turned — so the first choice he makes is his to
+  // keep, and only the arrival of a new calendar puts it back.
+  const dayChosenByHand = useRef(false);
   const [calendar, setCalendar] = useState<SeasonCalendarDto | null>(null);
   const [editions, setEditions] = useState<CompetitionEditionDto[]>([]);
   const [fixtures, setFixtures] = useState<FixtureDto[]>([]);
@@ -162,6 +167,16 @@ const CalendarScreen: React.FC = () => {
         if (cancelled) return;
 
         setCalendar(drawn);
+
+        // Opening on the day the world is on, from the backend's own answer. "Todos" stays in
+        // the list: a manager who wants the whole season is looking for a month of football, and
+        // the filter is not allowed to argue with him about it.
+        if (!dayChosenByHand.current) {
+          setDay(
+            drawn.currentMatchDayNumber != null ? String(drawn.currentMatchDayNumber) : ''
+          );
+        }
+
         setEditions(editionList);
         setFixtures(allFixtures);
         setTeams(Object.fromEntries(teamList.map(team => [team.id, team])));
@@ -187,6 +202,10 @@ const CalendarScreen: React.FC = () => {
    * the same club in every season, which is the whole reason it can be remembered.
    */
   const changeSeason = (id: string) => {
+    // A season of its own, so the day filter goes with it: the day that was current in the
+    // season just left is a day of this one that has already been played, or one that has not
+    // arrived, and neither is where a manager opening a calendar wants to land.
+    dayChosenByHand.current = false;
     setSeasonId(id);
     setEditionId('');
   };
@@ -312,7 +331,13 @@ const CalendarScreen: React.FC = () => {
 
           <label className="squad-filters">
             <span className="squad-toolbar-label">Dia</span>
-            <select value={day} onChange={event => setDay(event.target.value)}>
+            <select
+              value={day}
+              onChange={event => {
+                dayChosenByHand.current = true;
+                setDay(event.target.value);
+              }}
+            >
               <option value="">Todos</option>
               {(calendar?.matchDays ?? [])
                 .slice()

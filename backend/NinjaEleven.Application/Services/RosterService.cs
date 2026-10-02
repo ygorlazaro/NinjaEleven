@@ -114,6 +114,11 @@ public class RosterService
             .GroupBy(membership => membership.PlayerId)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(m => m.StartDate).First());
 
+        // Academy players from the previous season: a man who turned twenty-two this year has
+        // aged out of the youth ranks and must find a first-team contract or walk as a free agent.
+        var previousStates = (await _players.ListAllSeasonStatesAsync(previous.Id, cancellationToken))
+            .ToDictionary(state => state.PlayerId);
+
         var states = new List<PlayerSeasonState>();
         var announced = 0;
 
@@ -129,6 +134,24 @@ public class RosterService
             var state = contract is null
                 ? PlayerSeasonState.CreateFreeAgent(player.Id, season.Id, OpeningEnergy)
                 : PlayerSeasonState.Create(player.Id, season.Id, contract.TeamId, OpeningEnergy);
+
+            // Carry the academy status over from the previous season. A youth player who has
+            // aged past 21 is no longer academy-eligible: he becomes a free agent unless the
+            // club signed him to a first-team contract during the window.
+            if (previousStates.TryGetValue(player.Id, out var previousState) && previousState.IsAcademyPlayer)
+            {
+                if (contract is not null)
+                {
+                    // The club signed him — he is now on a first-team contract, not academy.
+                    state.PromoteFromAcademy();
+                }
+                else if (AcademyRules.IsValidAcademyAge(player.Age))
+                {
+                    // Still young enough to remain in the academy.
+                    state = PlayerSeasonState.CreateAcademyPlayer(player.Id, season.Id, previousState.TeamId!.Value, OpeningEnergy);
+                }
+                // else: aged out and unsigned — stays a free agent as created above.
+            }
 
             // The rule announces, and there is nobody to ask: a man in the band has said his
             // last season was this one, his club has been told the same week every club was,
@@ -158,6 +181,11 @@ public class RosterService
             states.ToDictionary(state => state.PlayerId),
             contracts,
             cancellationToken);
+
+        // The retirement announcement is a fact about the season that is opening, so it is sent
+        // from the same states the squad table reads — a club that sees a man marked as retiring
+        // in the inbox and unmarked in the squad has been told two different stories.
+        await AnnounceTheRetirementsAsync(season, states, cancellationToken);
 
         var linked = await LinkTheWaitingDealsAsync(season, cancellationToken);
 
@@ -349,6 +377,64 @@ public class RosterService
             _logger.LogInformation(
                 "Warned clubs about {Count} contracts entering their last season in {Number}.",
                 warned, season.Number);
+        }
+    }
+
+    /// <summary>
+    /// Writes the inbox message for every player announced as retiring this season.
+    /// </summary>
+    /// <remarks>
+    /// The announcement is a rule applied at the season boundary; this method writes the news to
+    /// the club the player is on, once per player per season. A club with no manager is skipped,
+    /// and a free agent with no club receives nothing.
+    /// </remarks>
+    private async Task AnnounceTheRetirementsAsync(
+        Season season,
+        IReadOnlyList<PlayerSeasonState> states,
+        CancellationToken cancellationToken)
+    {
+        var retiring = states.Where(state => state.Retiring).ToList();
+        if (retiring.Count == 0)
+        {
+            return;
+        }
+
+        var clubNames = (await _teams.ListAsync(cancellationToken))
+            .ToDictionary(team => team.Id, team => team.Name);
+
+        var men = (await _players.ListAsync(cancellationToken))
+            .ToDictionary(player => player.Id);
+
+        var announced = 0;
+
+        foreach (var state in retiring)
+        {
+            if (state.TeamId is not { } clubId
+                || !clubNames.TryGetValue(clubId, out var clubName)
+                || !men.TryGetValue(state.PlayerId, out var player))
+            {
+                continue;
+            }
+
+            await _inbox.PostRetirementAnnouncedAsync(
+                new RetirementAnnouncedFacts
+                {
+                    RecipientTeamId = clubId,
+                    ClubName = clubName,
+                    PlayerId = player.Id,
+                    PlayerName = player.Name,
+                    SeasonId = season.Id
+                },
+                cancellationToken);
+
+            announced++;
+        }
+
+        if (announced > 0)
+        {
+            _logger.LogInformation(
+                "Announced {Count} retirements for season {Number}.",
+                announced, season.Number);
         }
     }
 

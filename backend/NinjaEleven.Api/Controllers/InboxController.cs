@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using NinjaEleven.Api.Contracts;
 using NinjaEleven.Application.Services;
 using NinjaEleven.Domain.Common;
+using NinjaEleven.Domain.Inbox;
 
 namespace NinjaEleven.Api.Controllers;
 
@@ -28,15 +29,25 @@ public class InboxController : ControllerBase
 
     public InboxController(InboxService inbox) => _inbox = inbox;
 
-    /// <summary>A page of a club's box, newest first, with the number of unread messages.</summary>
+    /// <summary>
+    /// A page of a club's box, newest first, with the number of unread messages and the tally
+    /// the filter column is labelled with.
+    ///
+    /// The filter is bound as the category it is rather than as a string that is parsed here,
+    /// so a name that is not a category is answered by the same 400 <c>ValidationFailed</c>
+    /// every other malformed request gets. Silently ignoring it would be worse than a refusal:
+    /// the client would light up the filter it pressed and be handed the whole box underneath
+    /// it, and the one thing a filter may never do is lie about having been applied.
+    /// </summary>
     [HttpGet("{teamId:guid}")]
     public async Task<ActionResult<InboxBoxDto>> GetBox(
         Guid teamId,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
+        [FromQuery] InboxCategory? category = null,
         CancellationToken cancellationToken = default)
     {
-        var box = await _inbox.GetBoxAsync(teamId, page, pageSize, cancellationToken);
+        var box = await _inbox.GetBoxAsync(teamId, page, pageSize, category, cancellationToken);
         return Ok(box.ToDto());
     }
 

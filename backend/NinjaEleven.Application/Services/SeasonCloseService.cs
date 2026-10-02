@@ -476,11 +476,10 @@ public class SeasonCloseService : ISeasonCloser
         // and a rumour left alive would go on saying the player is spoken for.
         await _transfers.ExpireUnansweredAsync(previous.Id, cancellationToken);
 
-        // The season opens with its intake: the young free agents a club signs rather than buys.
-        // It is dealt here rather than when the world is written, because a season is opened
-        // exactly once — the guard at the top of this method returns the season that already
-        // exists — so the intake is dealt exactly once too.
-        await _seeder.GenerateYoungPlayersAsync(season.Id, cancellationToken);
+        // The season opens with its intake: the young academy players a club develops rather
+        // than buys. Each club receives up to AcademyRules.MaxAcademyPlayersPerClub youth players,
+        // aged 16 to 21, assigned to the club with the academy flag set.
+        await _seeder.GenerateAcademyPlayersAsync(season.Id, cancellationToken);
 
         _logger.LogInformation(
             "Opened season {Number} ({Name}) from {Previous}.",

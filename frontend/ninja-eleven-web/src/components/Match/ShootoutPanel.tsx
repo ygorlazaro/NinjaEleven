@@ -228,13 +228,25 @@ const ShootoutPanel: React.FC<ShootoutPanelProps> = ({
                 <div className="shootout__candidates">
                   {candidates.map(player => {
                     const place = order.indexOf(player.playerId);
+                    // Not a <button>: the name inside it is one — the door to the player's
+                    // profile — and a browser will not honour a button nested in a button.
+                    // The role, the tab stop and the key handling are what make the card
+                    // pressable, and the name stops the click so reading a player never
+                    // changes the order of the five kicks.
                     return (
-                      <button
-                        type="button"
+                      <span
                         key={player.playerId}
+                        role="button"
+                        tabIndex={busy ? -1 : 0}
+                        aria-disabled={busy}
                         className={`shootout__candidate ${place >= 0 ? 'selected' : ''}`}
-                        disabled={busy}
-                        onClick={() => toggle(player.playerId)}
+                        onClick={() => !busy && toggle(player.playerId)}
+                        onKeyDown={event => {
+                          if (busy) return;
+                          if (event.key !== 'Enter' && event.key !== ' ') return;
+                          event.preventDefault();
+                          toggle(player.playerId);
+                        }}
                       >
                         <span className="shootout__place">{place >= 0 ? place + 1 : ''}</span>
                         <span className="shootout__candidate-name">
@@ -244,7 +256,7 @@ const ShootoutPanel: React.FC<ShootoutPanelProps> = ({
                           {positionLabel(player.position)}
                           {player.penaltyChance != null && ` • ${Math.round(player.penaltyChance * 100)}%`}
                         </span>
-                      </button>
+                      </span>
                     );
                   })}
                   {candidates.length === 0 && (

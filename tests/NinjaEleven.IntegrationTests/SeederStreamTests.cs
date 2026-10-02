@@ -95,7 +95,8 @@ public class SeederStreamTests
         await new DatabaseSeeder(
             db,
             Options.Create(new DatabaseSeedOptions { RandomSeed = Seed }),
-            NullLogger<DatabaseSeeder>.Instance).GenerateYoungPlayersAsync(season.Id);
+            NullLogger<DatabaseSeeder>.Instance).SeedYoungFreeAgentsAsync(
+                YouthIntakeRules.FreeAgentsPerSeason, season.Id);
 
         var states = await db.PlayerSeasonStates
             .Where(state => state.SeasonId == season.Id)

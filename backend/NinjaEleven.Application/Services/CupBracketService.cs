@@ -1,6 +1,9 @@
+using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Competitions;
+using NinjaEleven.Domain.Finance;
+using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Teams;
 
@@ -24,21 +27,35 @@ namespace NinjaEleven.Application.Services;
 /// </summary>
 public class CupBracketService
 {
+    /// <summary>
+    /// How many clubs the ranking answers for.
+    /// </summary>
+    /// <remarks>
+    /// The cup is drawn for sixty-four, so this is the whole field today and a cap on a larger
+    /// one tomorrow. It is a cap rather than a page size because the ranking is one read: a
+    /// screen that asked for eight and then for the next eight would be a screen that decides
+    /// where a manager's own club is by how many times he pressed a button.
+    /// </remarks>
+    private const int RankingClubs = 64;
+
     private readonly ICupTieRepository _cupTieRepository;
     private readonly IMatchRepository _matchRepository;
     private readonly ITeamRepository _teamRepository;
     private readonly ICompetitionRepository _competitionRepository;
+    private readonly ISquadStrengthReader _squadStrength;
 
     public CupBracketService(
         ICupTieRepository cupTieRepository,
         IMatchRepository matchRepository,
         ITeamRepository teamRepository,
-        ICompetitionRepository competitionRepository)
+        ICompetitionRepository competitionRepository,
+        ISquadStrengthReader squadStrength)
     {
         _cupTieRepository = cupTieRepository;
         _matchRepository = matchRepository;
         _teamRepository = teamRepository;
         _competitionRepository = competitionRepository;
+        _squadStrength = squadStrength;
     }
 
     /// <summary>
@@ -111,8 +128,138 @@ public class CupBracketService
             Rounds = rounds,
             ChampionTeamId = final?.WinnerTeamId,
             ChampionTeamName = final?.WinnerTeamId is { } champion ? NameOf(clubs, champion) : null,
-            RunnerUpTeamName = final?.LoserTeamId is { } runnerUp ? NameOf(clubs, runnerUp) : null
+            RunnerUpTeamName = final?.LoserTeamId is { } runnerUp ? NameOf(clubs, runnerUp) : null,
+            Ranking = await BuildRankingAsync(
+                ties, matchByFixture, clubs, edition.SeasonId, final, cancellationToken)
         };
+    }
+
+    /// <summary>
+    /// The cup as a ranking: how far every club got, and what it did to get there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The step a club stands on is the round it reached, so the ranking is a ladder of rounds —
+    /// the runner-up above the two semifinal losers whatever either of them did. Inside a step
+    /// the order is the championship's own chain, taken from <see cref="StandingTable"/>: points,
+    /// goal difference, goals scored, the head-to-head of the clubs still level, then cards and
+    /// finally the squad. Writing a second chain here would be a second answer to "who had the
+    /// better cup", and a manager reading the table under the bracket would be reading a rule the
+    /// rest of the game does not use.
+    /// </para>
+    /// <para>
+    /// The champion stands a step above the final rather than in it. He went out in no round, and
+    /// a ladder whose first step is the final has two clubs on it and needs a tiebreak to say
+    /// which won — which is the tie, and the tie already said.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyList<CupRankingRow>> BuildRankingAsync(
+        IReadOnlyList<CupTie> ties,
+        IReadOnlyDictionary<Guid, Match> matchByFixture,
+        IReadOnlyDictionary<Guid, Team> clubs,
+        Guid seasonId,
+        CupTie? final,
+        CancellationToken cancellationToken)
+    {
+        // The step of every club that has been drawn into a tie: the furthest round it reached,
+        // and the round it went out in when it has gone out at all.
+        var reached = new Dictionary<Guid, int>();
+        var knockedOutIn = new Dictionary<Guid, int>();
+
+        foreach (var tie in ties)
+        {
+            foreach (var clubId in new[] { tie.HomeTeamId, tie.AwayTeamId })
+            {
+                reached[clubId] = Math.Max(reached.GetValueOrDefault(clubId), tie.RoundNumber);
+
+                if (tie.LoserTeamId == clubId)
+                {
+                    knockedOutIn[clubId] = tie.RoundNumber;
+                }
+            }
+        }
+
+        if (reached.Count == 0)
+        {
+            return Array.Empty<CupRankingRow>();
+        }
+
+        if (final?.WinnerTeamId is { } theChampion)
+        {
+            // Above the final, because he was never in a round he could lose.
+            reached[theChampion] = CompetitionRules.CupRounds + 1;
+        }
+
+        var finishedLegs = matchByFixture.Values
+            .Where(match => match.Status == MatchStatus.Finished)
+            .ToList();
+
+        var statistics = finishedLegs.Count == 0
+            ? new Dictionary<Guid, MatchStatistics>()
+            : (await _matchRepository.ListStatisticsByMatchIdsAsync(
+                finishedLegs.Select(match => match.Id), cancellationToken))
+                .Where(pair => pair.Value is not null)
+                .ToDictionary(pair => pair.Key, pair => pair.Value!);
+
+        var strength = await _squadStrength.ForTeamsAsync(reached.Keys.ToList(), seasonId, cancellationToken);
+
+        var results = finishedLegs
+            .Select(match => MatchResultRow.From(match, statistics.GetValueOrDefault(match.Id)))
+            .ToList();
+
+        var table = StandingTable.Build(
+            reached.Keys.Select(teamId => (teamId, strength.GetValueOrDefault(teamId))).ToList(),
+            results);
+
+        var byId = table.ToDictionary(row => row.TeamId);
+        var ordered = reached.Keys
+            .Select(teamId => (ClubId: teamId, Step: reached[teamId], Entry: byId[teamId]))
+            // Furthest first, and inside a step the championship's own order, which is the order
+            // the table came back in. A club with no line is a club the table did not carry.
+            .OrderByDescending(club => club.Step)
+            .ThenBy(club => club.Entry.Position)
+            .Take(RankingClubs)
+            .ToList();
+
+        var rows = new List<CupRankingRow>(ordered.Count);
+
+        for (var position = 0; position < ordered.Count; position++)
+        {
+            var (clubId, step, entry) = ordered[position];
+            clubs.TryGetValue(clubId, out var club);
+            var isChampion = final?.WinnerTeamId == clubId;
+            var isRunnerUp = final?.LoserTeamId == clubId;
+
+            rows.Add(new CupRankingRow
+            {
+                Position = position + 1,
+                TeamId = clubId,
+                Name = club?.Name ?? string.Empty,
+                PrimaryColor = club?.PrimaryColor ?? string.Empty,
+                SecondaryColor = club?.SecondaryColor ?? string.Empty,
+                // A club still in the competition stands on the round it is playing, and a cup
+                // that has not drawn its next round has nothing to call that step by — so it is
+                // the last round the cup has actually drawn.
+                RoundNumber = Math.Min(step, CompetitionRules.CupRounds),
+                RoundName = CompetitionRules.TieRoundName(Math.Min(step, CompetitionRules.CupRounds)),
+                Played = entry.Played,
+                Wins = entry.Wins,
+                Draws = entry.Draws,
+                Losses = entry.Losses,
+                GoalsFor = entry.GoalsFor,
+                GoalsAgainst = entry.GoalsAgainst,
+                Points = entry.Points,
+                Prize = isChampion
+                    ? PrizeRules.CupChampionPrize
+                    : knockedOutIn.TryGetValue(clubId, out var lostIn)
+                        ? PrizeRules.CupConsolation(lostIn)
+                        : null,
+                IsChampion = isChampion,
+                IsRunnerUp = isRunnerUp
+            });
+        }
+
+        return rows;
     }
 
     /// <summary>

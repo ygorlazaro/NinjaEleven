@@ -151,10 +151,13 @@ public static class MatchRating
     /// It was a shortfall against what the role was expected to average, and that was measured
     /// over a hundred real matches and it did not work. A squad's involvement is lumpy: a
     /// striker's median evening is three moments and his worst is none, and asking for the
-    /// average marked the median player down for being ordinary. Worse, the bands put the
-    /// bottom of the red at exactly the baseline, so a tenth of a mark lost is the whole
+    /// average marked the median player down for being ordinary. Worse, the bands then put the
+    /// bottom of the red at exactly the baseline, so a tenth of a mark lost was the whole
     /// difference between an ordinary evening and a bad one, and a rule that fine could not be
-    /// gentle anywhere. A floor is the shape the complaint actually has: a manager is not
+    /// gentle anywhere. The ordinary mark has since moved up a point, so the red line now sits
+    /// below it rather than on it — which is the same point stated as a rule and not
+    /// inherited from whatever the baseline happened to be. A floor is the shape the complaint
+    /// actually has: a manager is not
     /// upset that his striker was involved three times, he is upset that a man was involved
     /// none.
     /// </para>

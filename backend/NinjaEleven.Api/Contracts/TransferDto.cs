@@ -70,6 +70,12 @@ public class TransferListingDto
     public int InjuryMatchesRemaining { get; init; }
     public bool Retiring { get; init; }
 
+    /// <summary>
+    /// Whether the manager has placed this player on the active transfer list.
+    /// Transfer-listed players appear on the market alongside free agents.
+    /// </summary>
+    public bool OnTransferList { get; init; }
+
     public decimal? MarketValue { get; init; }
     public decimal? Salary { get; init; }
     public int ContractSeasons { get; init; }
@@ -265,5 +271,25 @@ public class TransferAnswerRequestDto
     /// setting its own price and signing its own cheque.
     /// </summary>
     public Guid ClubId { get; init; }
+}
+
+public class TransferRankingsDto
+{
+    public Guid CompetitionSeasonId { get; init; }
+    public IReadOnlyList<TransferRankingEntryDto> MostBought { get; init; } = Array.Empty<TransferRankingEntryDto>();
+    public IReadOnlyList<TransferRankingEntryDto> MostSold { get; init; } = Array.Empty<TransferRankingEntryDto>();
+    public IReadOnlyList<TransferRankingEntryDto> MostSpent { get; init; } = Array.Empty<TransferRankingEntryDto>();
+    public IReadOnlyList<TransferRankingEntryDto> MostProfit { get; init; } = Array.Empty<TransferRankingEntryDto>();
+}
+
+public class TransferRankingEntryDto
+{
+    public Guid TeamId { get; init; }
+    public string TeamName { get; init; } = string.Empty;
+    public string TeamShortName { get; init; } = string.Empty;
+    public string PrimaryColor { get; init; } = string.Empty;
+    public string SecondaryColor { get; init; } = string.Empty;
+    public int Transfers { get; init; }
+    public decimal Amount { get; init; }
 }
 

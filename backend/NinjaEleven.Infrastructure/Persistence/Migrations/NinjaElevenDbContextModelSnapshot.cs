@@ -1230,6 +1230,14 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("injury_matches_remaining");
 
+                    b.Property<bool>("IsAcademyPlayer")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_academy_player");
+
+                    b.Property<bool>("OnTransferList")
+                        .HasColumnType("boolean")
+                        .HasColumnName("on_transfer_list");
+
                     b.Property<Guid>("PlayerId")
                         .HasColumnType("uuid")
                         .HasColumnName("player_id");

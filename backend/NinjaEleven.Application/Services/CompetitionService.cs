@@ -55,7 +55,14 @@ public class CompetitionService
                 tieRound,
                 CompetitionRules.TieRoundName(tieRound),
                 PrizeRules.CupConsolation(tieRound),
-                false));
+                false,
+                // The last tie-round is the final, and a club that loses it did not go out in
+                // the final — it is the runner-up, and it is paid as the second half of a result
+                // rather than as the consolation for going home. The round that says so is
+                // PrizeRules' own rather than the loop's, because the ceremony that pays the
+                // champion reads the same constant and a legend that worked it out a second way
+                // is a legend that one day calls the final the semifinal.
+                tieRound == PrizeRules.RunnerUpTieRound));
         }
 
         return prizes;

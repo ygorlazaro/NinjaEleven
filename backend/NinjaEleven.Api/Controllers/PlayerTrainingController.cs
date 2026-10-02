@@ -81,8 +81,7 @@ public class PlayerTrainingController : ControllerBase
         EnergyLeft = result.EnergyLeft,
         AttributeBefore = result.AttributeBefore,
         AttributeAfter = result.AttributeAfter,
-        Fee = result.Fee,
-        SessionsLeft = result.SessionsLeft
+        Fee = result.Fee
     };
 
     private static TrainingOutcomeDto ToDto(TrainingOutcome outcome) => new()

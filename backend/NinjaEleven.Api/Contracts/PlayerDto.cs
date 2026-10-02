@@ -184,6 +184,7 @@ public class PlayerProfileDto
     public bool IsAvailable { get; init; }
     public string Injury { get; init; } = string.Empty;
     public int InjuryMatchesRemaining { get; init; }
+    public bool Retiring { get; init; }
 
     /// <summary>
     /// The number he wears for the club named on this card, null when he is a free agent.
@@ -235,6 +236,42 @@ public class PlayerProfileDto
     public PlayerCareerLineDto Season { get; init; } = new();
     public PlayerCareerLineDto Total { get; init; } = new();
     public List<PlayerMatchLineDto> History { get; init; } = new();
+
+    /// <summary>
+    /// The history told one season at a time, newest first — the question a manager signing a
+    /// player asks, which is not "how has he been lately" but "what did a season of him look
+    /// like". It is worked out by the service from the same lines <see cref="History"/> is
+    /// drawn from, so the two tables on the page cannot disagree about a season's goals.
+    /// </summary>
+    public List<PlayerSeasonLineDto> Seasons { get; init; } = new();
+}
+
+/// <summary>
+/// One season of a career, in the shirt the player was wearing for it.
+///
+/// <para>
+/// The club is part of the row's identity rather than a note on it: a transfer inside a
+/// season makes two lines of one season, and one line would credit the second club with the
+/// first one's goals.
+/// </para>
+/// </summary>
+public class PlayerSeasonLineDto
+{
+    public Guid? SeasonId { get; init; }
+    public string? SeasonName { get; init; }
+    public Guid TeamId { get; init; }
+    public string? TeamName { get; init; }
+
+    public PlayerCareerLineDto Line { get; init; } = new();
+
+    /// <summary>
+    /// How the club he played for did in the matches he has a line for. Three numbers rather
+    /// than one record, because a record is a thing a manager has to read and a table of
+    /// three figures is the thing every other table in the game says it in.
+    /// </summary>
+    public int Wins { get; init; }
+    public int Draws { get; init; }
+    public int Losses { get; init; }
 }
 
 /// <summary>
@@ -310,6 +347,9 @@ public class PlayerMatchLineDto
     /// history and a manager reading his club's last matches are reading the same matches.
     /// </summary>
     public string? TeamName { get; init; }
+
+    /// <summary>So the club he played for is a door, as every club name in the game is.</summary>
+    public Guid? TeamId { get; init; }
     public string? SeasonName { get; init; }
     public string? CompetitionName { get; init; }
     public string? PhaseName { get; init; }

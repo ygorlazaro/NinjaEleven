@@ -43,6 +43,13 @@ const CATEGORIES: Record<string, { label: string; icon: string }> = {
   // tables at once. Filed under "Título" an elimination would sit next to a championship.
   CupRound: { label: 'Copa', icon: '🥇' },
   SeasonSummary: { label: 'Temporada', icon: '📋' },
+  // Rodada is NOT a Title because a matchday decides nothing and awards nothing: a season's
+  // end moves four tables and settles who the champions are; this is the other thing — a
+  // Wednesday in October, thirty-two results, and a table that shuffles underneath it. Filed
+  // under a title, every manager would have to open the same mark to find out which of its
+  // lines is the end of the year and which is last Tuesday. It is also NOT MatchReport because
+  // that is one match and this is thirty-two.
+  RoundSummary: { label: 'Rodada', icon: '📰' },
   Club: { label: 'Clube', icon: '📣' }
 };
 
@@ -122,6 +129,10 @@ const InboxScreen: React.FC = () => {
   const [box, setBox] = useState<InboxBoxDto | null>(null);
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Which kind of message the column is showing, or null for all of them. It is a question
+  // about the box and not about the twenty lines on the screen, so it is asked of the
+  // backend: the filter, the count, the pages and the buttons are all one answer.
+  const [category, setCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -150,7 +161,7 @@ const InboxScreen: React.FC = () => {
       if (asking) return;
       asking = true;
 
-      InboxApi.getBox(selectedTeam.id, page, PAGE_SIZE)
+      InboxApi.getBox(selectedTeam.id, page, PAGE_SIZE, category)
         .then(answer => {
           if (!alive) return;
           // A read that has not been answered yet wins over a poll: the server's answer to
@@ -182,7 +193,7 @@ const InboxScreen: React.FC = () => {
       alive = false;
       window.clearInterval(timer);
     };
-  }, [selectedTeam?.id, page]);
+  }, [selectedTeam?.id, page, category]);
 
   const open = useMemo(
     () => box?.messages.find(message => message.id === openId) ?? null,
@@ -242,7 +253,7 @@ const InboxScreen: React.FC = () => {
   if (!selectedTeam) {
     return (
       <div className="app">
-        <div className="card match-header club-modal">
+        <div className="card match-header">
           <div className="club-modal__content">
             <h2 className="profile-name">Caixa de Entrada</h2>
             <p className="competition">Escolha um clube para ver a correspondência dele.</p>
@@ -252,11 +263,53 @@ const InboxScreen: React.FC = () => {
     );
   }
 
-  const category = (kind: string) => CATEGORIES[kind] ?? { label: 'Notícia', icon: '📰' };
+  /**
+   * The mark a category is read by. It is the same table the row's own mark is drawn from, so
+   * a filter and the line it filters are labelled in the same words — a button called
+   * "Financeiro" above a column whose lines are filed under "Partida" is a column nobody can
+   * navigate.
+   */
+  const markOf = (kind: string) => CATEGORIES[kind] ?? { label: 'Notícia', icon: '📰' };
+
+  /**
+   * The filters, out of the tally the backend sent with the page.
+   *
+   * Only the kinds this club actually has lines of are offered, and they come in the order the
+   * backend sent them rather than by how many of each there are: a column that reorders itself
+   * after every matchday is a column a manager has to find again every time the whistle goes.
+   */
+  const filters = (box?.categories ?? []).map(tally => ({
+    kind: tally.category,
+    count: tally.count,
+    mark: markOf(tally.category)
+  }));
+
+  /**
+   * How much mail there is in all of it, summed out of the backend's own per-kind counts.
+   *
+   * It is the sum of the tally rather than `totalItems`, because `totalItems` is the count of
+   * the page being read — the number *under the filter* — and a filter labelled "Todas" with
+   * the filtered count beside it is a button that lies about what removing it would show.
+   */
+  const everything = filters.reduce((total, tally) => total + tally.count, 0);
+
+  /**
+   * Choosing what to read. It returns to the first page, because page four of a category the
+   * manager has just chosen is not where he is: a filter pressed over a paged box that kept
+   * the page is a filter that can land on an empty page and look like an empty box.
+   */
+  const filter = (kind: string | null) => {
+    setCategory(kind);
+    setPage(1);
+  };
 
   return (
     <div className="app">
-      <div className="card match-header club-modal">
+      {/* The card is the box and it takes the width it is given. It used to borrow the club
+          card's `club-modal`, which caps itself at 1100px for a club's own page — a mail list
+          with a filter beside it and a page beside that is three columns, and three columns
+          that stop at 1100px leave the right-hand side of a wide desktop empty. */}
+      <div className="card match-header">
         <div className="inbox-head">
           <div>
             <h2 className="profile-name">Caixa de Entrada</h2>
@@ -280,6 +333,36 @@ const InboxScreen: React.FC = () => {
         </div>
 
         <div className="inbox">
+          {/* The filters, down the left. Which one is lit is read off the page the backend
+              sent rather than off the button's own state, so a filter that was refused or
+              dropped cannot leave a column that says it is filtered and is not. */}
+          <nav className="inbox-filters" aria-label="Filtrar mensagens por categoria">
+            <button
+              type="button"
+              className={`inbox-filter${!category ? ' inbox-filter--on' : ''}`}
+              onClick={() => filter(null)}
+            >
+              <span className="inbox-filter__label">
+                <span aria-hidden="true">📥</span> Todas
+              </span>
+              <span className="inbox-filter__count">{everything}</span>
+            </button>
+
+            {filters.map(({ kind, count, mark }) => (
+              <button
+                type="button"
+                key={kind}
+                className={`inbox-filter${category === kind ? ' inbox-filter--on' : ''}`}
+                onClick={() => filter(kind)}
+              >
+                <span className="inbox-filter__label">
+                  <span aria-hidden="true">{mark.icon}</span> {mark.label}
+                </span>
+                <span className="inbox-filter__count">{count}</span>
+              </button>
+            ))}
+          </nav>
+
           {/* The column: the subjects, newest first. The row is the message's own fact about
               whether it has been opened, and it is drawn from `isRead` rather than from
               anything the screen remembers. */}
@@ -289,12 +372,21 @@ const InboxScreen: React.FC = () => {
             ) : error ? (
               <p className="league-empty">{error}</p>
             ) : !box || box.messages.length === 0 ? (
-              <p className="league-empty">
-                Nenhuma mensagem por enquanto. Assim que o jogo tiver algo a dizer, ele aparece aqui.
-              </p>
+              /* The two are not the same sentence: a box with nothing in it is a game that has
+                 not written yet, and a filtered box with nothing on this page is a manager who
+                 has reached the end of what he asked for. */
+              category ? (
+                <p className="league-empty">
+                  Nenhuma mensagem de {markOf(category).label.toLowerCase()} nesta página.
+                </p>
+              ) : (
+                <p className="league-empty">
+                  Nenhuma mensagem por enquanto. Assim que o jogo tiver algo a dizer, ele aparece aqui.
+                </p>
+              )
             ) : (
               box.messages.map(message => {
-                const mark = category(message.category);
+                const mark = markOf(message.category);
                 const isOpen = message.id === openId;
 
                 return (

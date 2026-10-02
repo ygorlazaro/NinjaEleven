@@ -261,9 +261,21 @@ public class TransferController : ControllerBase
     }
 
     /// <summary>
+    /// The transfer rankings of a division: most players bought, most players sold, most
+    /// money spent, and most profit made. Profit is net — fees received minus fees paid.
+    /// </summary>
+    [HttpGet("rankings")]
+    public async Task<ActionResult<TransferRankingsDto>> GetRankings(
+        [FromQuery] Guid clubId,
+        CancellationToken cancellationToken)
+    {
+        var rankings = await _transferService.GetDivisionTransferRankingsAsync(clubId, cancellationToken);
+        return Ok(rankings.ToDto());
+    }
+
+    /// <summary>
     /// Deals young free agents onto the market: no club, no contract, aged as the intake rule
     /// says.
-    ///
     /// The backfill exists for a world written before the intake was a rule — one whose market
     /// holds three hundred players who all belong to somebody and nobody a club could sign —
     /// and it deals the same intake a season opening deals. It is drawn from the same pool the

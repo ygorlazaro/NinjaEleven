@@ -96,7 +96,7 @@ public class InboxServiceTests
         Assert.Contains("24.000", message.Subject);
         Assert.Contains("24.000", message.Body);
         Assert.Contains("124.000", message.Body);
-        Assert.Equal("/financeiro", message.LinkRoute);
+        Assert.Equal(InboxLink.Financeiro, message.LinkRoute);
     }
 
     /// <summary>
@@ -332,6 +332,119 @@ public class InboxServiceTests
     }
 
     /// <summary>
+    /// The filter is the server's and not the client's.
+    ///
+    /// A page filtered in the browser would be twenty lines picked out of a page of everything,
+    /// and "how much of my mail is this" would be answered with whatever the screen happened
+    /// to be holding. So the same category narrows the lines, the count and the paging in one
+    /// go, and the answer says which category it applied so the buttons cannot claim a filter
+    /// the server did not make.
+    /// </summary>
+    [Fact]
+    public async Task AFilteredPageIsTheServersOwnPageOfThatCategory()
+    {
+        var title = AStoredMessage("title:1", InboxCategory.Title);
+        var older = AStoredMessage("title:2", InboxCategory.Title);
+        _messages.Setup(repo => repo.CountAsync(_clubId, InboxCategory.Title, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3);
+        _messages.Setup(repo => repo.ListAsync(
+                _clubId, 0, 2, InboxCategory.Title, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<InboxMessage> { title, older });
+
+        var box = await Service().GetBoxAsync(_clubId, page: 1, pageSize: 2, InboxCategory.Title);
+
+        Assert.Equal(InboxCategory.Title, box.Category);
+        Assert.Equal(3, box.TotalItems);
+        Assert.Equal(2, box.TotalPages);
+        Assert.Equal(2, box.Messages.Count);
+        _messages.Verify(repo => repo.ListAsync(
+            _clubId, 0, 2, InboxCategory.Title, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// The filter column is labelled out of the whole box, and it is labelled while a filter is
+    /// on.
+    ///
+    /// A tally that shrank to the slice being read would renumber itself every time the manager
+    /// pressed a button, and a column of numbers that cannot be compared to each other cannot
+    /// answer the question it is there for: which of these is worth pressing.
+    /// </summary>
+    [Fact]
+    public async Task TheFilterColumnIsTalliedOverTheWholeBoxAndNotOverTheSlice()
+    {
+        _messages.Setup(repo => repo.CountAsync(_clubId, InboxCategory.Title, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        _messages.Setup(repo => repo.ListAsync(
+                _clubId, 0, 20, InboxCategory.Title, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<InboxMessage> { AStoredMessage("title:1", InboxCategory.Title) });
+        _messages.Setup(repo => repo.TallyCategoriesAsync(_clubId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<InboxCategoryTally>
+            {
+                new(InboxCategory.Finance, 12),
+                new(InboxCategory.Title, 1)
+            });
+
+        var box = await Service().GetBoxAsync(_clubId, page: 1, pageSize: 20, InboxCategory.Title);
+
+        Assert.Equal(
+            [(InboxCategory.Finance, 12), (InboxCategory.Title, 1)],
+            box.Categories.Select(row => (row.Category, row.Count)).ToArray());
+    }
+
+    /// <summary>
+    /// No filter is the whole box, and the answer says so.
+    ///
+    /// The category travels back on the page precisely so that the screen's buttons are lit by
+    /// what the server did rather than by what it remembers asking for.
+    /// </summary>
+    [Fact]
+    public async Task ABoxWithNoFilterIsTheWholeBoxAndSaysSo()
+    {
+        _messages.Setup(repo => repo.CountAsync(_clubId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        _messages.Setup(repo => repo.ListAsync(_clubId, 0, 20, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<InboxMessage> { AStoredMessage("finance:1", InboxCategory.Finance) });
+
+        var box = await Service().GetBoxAsync(_clubId, page: 1, pageSize: 20);
+
+        Assert.Null(box.Category);
+        Assert.Equal(1, box.TotalItems);
+        Assert.Equal(1, box.TotalPages);
+    }
+
+    /// <summary>
+    /// A page past the end of what the manager asked for answers with the last page of it.
+    ///
+    /// Filtering is what makes this reachable: page four of the whole box is the fourth page of
+    /// plenty, and page four of a category with one page in it is a request for something that
+    /// does not exist. It answers with the page that does, rather than with nothing.
+    /// </summary>
+    [Fact]
+    public async Task APagePastTheEndOfAFilteredBoxIsTheLastPageOfIt()
+    {
+        _messages.Setup(repo => repo.CountAsync(_clubId, InboxCategory.CupRound, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        _messages.Setup(repo => repo.ListAsync(
+                _clubId, 0, 20, InboxCategory.CupRound, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<InboxMessage> { AStoredMessage("cup:1", InboxCategory.CupRound) });
+
+        var box = await Service().GetBoxAsync(_clubId, page: 9, pageSize: 20, InboxCategory.CupRound);
+
+        Assert.Equal(1, box.Page);
+        Assert.Equal(1, box.TotalPages);
+    }
+
+    /// <summary>A message already in the box, for the reads that are about pages of one.</summary>
+    private InboxMessage AStoredMessage(string reference, InboxCategory category) =>
+        InboxMessage.Create(
+            _clubId,
+            category,
+            $"Assunto {reference}",
+            "Ninja Eleven",
+            "Conteúdo.",
+            reference);
+
+    /// <summary>
     /// A shirt deal ends by running out of matches, and a contract that quietly stops being
     /// paid is a shirt with nobody's name on it. The message is the only place the game says
     /// so, so it has to name the sponsor and say what stops.
@@ -355,7 +468,10 @@ public class InboxServiceTests
         Assert.Contains("Loja do Bairro", message.Subject);
         Assert.Contains("10", message.Body);
         Assert.Contains("L$ 45.000", message.Body);
-        Assert.Equal("/estadio", message.LinkRoute);
+        // The door is the sponsors screen and not the ground: the button says "Ver os
+        // patrocinadores" and a contract that ran out is renewed by signing another one, which
+        // is the one thing the stadium screen cannot do.
+        Assert.Equal(InboxLink.Sponsors, message.LinkRoute);
     }
 
     /// <summary>
@@ -469,7 +585,7 @@ public class InboxServiceTests
 
         var message = Assert.Single(_written);
         Assert.Contains("expirou", message.Body, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("/transfer", message.LinkRoute);
+        Assert.Equal(InboxLink.Transfer, message.LinkRoute);
     }
 
     /// <summary>The three names a decision quotes are three doors on the screen.</summary>

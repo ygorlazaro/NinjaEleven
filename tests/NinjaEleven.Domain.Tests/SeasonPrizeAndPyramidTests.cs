@@ -56,9 +56,10 @@ public class SeasonPrizeAndPyramidTests
     [InlineData(2, 200_000)]
     [InlineData(3, 500_000)]
     [InlineData(4, 1_000_000)]
-    [InlineData(5, 3_000_000)]
-    [InlineData(6, 0)]
+    [InlineData(5, 1_500_000)]
+    [InlineData(6, 3_000_000)]
     [InlineData(0, 0)]
+    [InlineData(7, 0)]
     public void TheCupPaysWhatItSaidItPaysAndNothingBeyondTheFinal(int tieRound, decimal expected)
     {
         Assert.Equal(expected, PrizeRules.CupConsolation(tieRound));
@@ -69,6 +70,40 @@ public class SeasonPrizeAndPyramidTests
     {
         Assert.True(PrizeRules.CupFinalLoser > PrizeRules.CupConsolation(4));
         Assert.Equal(5_000_000m, PrizeRules.CupChampionPrize);
+    }
+
+    /// <summary>
+    /// The runner-up is the loser of the last tie-round, and he is paid by the ladder rather
+    /// than by the ceremony that pays the champion: a cup whose runner-up is written by hand
+    /// next to a ladder that stops one round short is a cup that pays the finalist nothing and
+    /// pays the semifinal loser the finalist's money.
+    /// </summary>
+    [Fact]
+    public void EveryTieRoundTheCupPlaysIsPaidAndTheRunnerUpIsTheLastOne()
+    {
+        for (var tieRound = 1; tieRound <= CompetitionRules.CupRounds; tieRound++)
+        {
+            Assert.True(
+                PrizeRules.CupConsolation(tieRound) > 0m,
+                $"A club goes out in tie-round {tieRound} and is paid nothing.");
+        }
+
+        Assert.Equal(CompetitionRules.CupRounds, PrizeRules.RunnerUpTieRound);
+        Assert.Equal(PrizeRules.CupFinalLoser, PrizeRules.CupConsolation(PrizeRules.RunnerUpTieRound));
+    }
+
+    /// <summary>
+    /// The ladder rises with the round, with no ties and no drops: two rounds that pay the same
+    /// are two rounds the cup says are worth the same, and a club cannot tell which half of a
+    /// round's pay it earned.
+    /// </summary>
+    [Fact]
+    public void TheConsolationGrowsWithTheRoundWithoutAStepBackwards()
+    {
+        for (var tieRound = 2; tieRound <= CompetitionRules.CupRounds; tieRound++)
+        {
+            Assert.True(PrizeRules.CupConsolation(tieRound) > PrizeRules.CupConsolation(tieRound - 1));
+        }
     }
 
     [Fact]

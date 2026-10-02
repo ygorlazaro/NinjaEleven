@@ -53,35 +53,6 @@ public class TrainingBatchTests
     }
 
     [Fact]
-    public async Task OneManWithNothingLeftDoesNotCostTheRestTheirMorning()
-    {
-        // The refusal is per man. He is answered for with the rule that refused him, and the
-        // other eleven are worked exactly as they would have been on their own.
-        using var world = await AWorldAsync();
-        var squad = (await world.Training().QuoteAsync(TrainingWorld.TheClub)).Players;
-        await world.GivenAMatchOnAsync(Today);
-
-        // The first man spends the one session a matchday allows him.
-        await TrainAsync(world, squad[0].PlayerId, PlayerAttribute.Speed);
-
-        var selection = squad
-            .Select(player => new TrainingRequest(player.PlayerId, PlayerAttribute.Speed))
-            .ToList();
-
-        var outcomes = await world.Training().TrainManyAsync(selection);
-
-        var refused = outcomes.Single(outcome => outcome.PlayerId == squad[0].PlayerId);
-        Assert.False(refused.Worked);
-        Assert.Equal("TrainingAllowanceSpent", refused.RefusalCode);
-
-        // Every other man of the squad was trained anyway.
-        var trained = outcomes.Where(outcome => outcome.PlayerId != squad[0].PlayerId).ToList();
-
-        Assert.Equal(squad.Count - 1, trained.Count);
-        Assert.All(trained, outcome => Assert.True(outcome.Worked));
-    }
-
-    [Fact]
     public async Task ARefusalSaysWhichRuleRefusedAndNotThatTheManCouldNotTrain()
     {
         // The code travels with the outcome so a screen can tell a spent allowance from a spent
@@ -117,10 +88,16 @@ public class TrainingBatchTests
         // a manager for a morning that did not happen.
         using var world = await AWorldAsync();
         await world.GivenAnOpenedBookAsync();
-        await world.GivenAMatchOnAsync(Today);
 
         var squad = (await world.Training().QuoteAsync(TrainingWorld.TheClub)).Players;
-        await TrainAsync(world, squad[0].PlayerId, PlayerAttribute.Speed);
+
+        // Take the first man off his club so he cannot train: a player with no contract has no
+        // club to pay a fee and is refused before any session is recorded.
+        var state = (await world.Players.ListSeasonStatesAsync(world.SeasonId, TrainingWorld.TheClub))
+            .Single(candidate => candidate.PlayerId == squad[0].PlayerId);
+        state.SetTeam(null);
+        world.Players.UpdateSeasonState(state);
+        await world.UnitOfWork.SaveChangesAsync();
 
         var outcomes = await world.Training().TrainManyAsync(
             squad.Select(player => new TrainingRequest(player.PlayerId, PlayerAttribute.Speed)).ToList());
@@ -128,18 +105,14 @@ public class TrainingBatchTests
         var lines = await world.Finance.ListAsync(TrainingWorld.TheClub, world.SeasonId, 0, 50);
         var training = lines.Where(line => line.Kind == FinanceMovementKind.Training).ToList();
 
-        // One line for the session already spent, and one for each of the other eleven. The
-        // refused man is not among them.
-        Assert.Equal(1 + (squad.Count - 1), training.Count);
+        // One line for each of the eleven trainable men. The refused man is not among them.
+        Assert.Equal(squad.Count - 1, training.Count);
         Assert.All(training, line => Assert.True(line.Amount < 0m));
 
-        // And the refused man's record is still the one session he spent this morning: the
-        // batch added nothing to it. A refusal that still wrote a session would be a session
-        // the club was charged for and the man never had.
+        // And the refused man's record is still empty: the batch added nothing to it.
         var refused = outcomes.Single(outcome => !outcome.Worked);
 
-        Assert.Single(await world.Sessions.ListByPlayerAsync(refused.PlayerId));
-        Assert.Equal(1, (await world.Sessions.ListByPlayerAndDayAsync(refused.PlayerId, Today)).Count);
+        Assert.Empty(await world.Sessions.ListByPlayerAsync(refused.PlayerId));
     }
 
     [Fact]

@@ -9,6 +9,8 @@ namespace NinjaEleven.Api.Contracts;
 /// The unread count travels with the page for the same reason the finance ledger carries its
 /// totals: the two are asked about at the same moment and by the same screen, and a count
 /// fetched separately can be a second out of step with the page it is supposed to describe.
+/// The category tally travels with it for the same reason again, and because it is the same
+/// number for every page of the same box.
 /// </summary>
 public class InboxBoxDto
 {
@@ -18,6 +20,34 @@ public class InboxBoxDto
     public int TotalItems { get; init; }
     public int TotalPages { get; init; }
     public int UnreadCount { get; init; }
+
+    /// <summary>
+    /// The kind the page was filtered by, as a name, and null for the whole box.
+    ///
+    /// It is the filter the server is actually applying rather than the one the client believes
+    /// it asked for, which is why it comes back on the page: a screen whose buttons said one
+    /// thing while the list said another is a screen nobody trusts to have filtered anything.
+    /// </summary>
+    public string? Category { get; init; }
+
+    /// <summary>
+    /// How many of each kind the box holds, for the filter column to label itself with.
+    ///
+    /// Only the kinds this club has lines of are sent: a filter for a kind that has never been
+    /// written is a button that can only ever return an empty page, and an empty page offered
+    /// as a choice is a choice that wastes the click.
+    /// </summary>
+    public IReadOnlyList<InboxCategoryCountDto> Categories { get; init; } =
+        Array.Empty<InboxCategoryCountDto>();
+}
+
+/// <summary>One kind of message and how much of the box is behind it.</summary>
+public class InboxCategoryCountDto
+{
+    /// <summary>The kind, as a name — the same names <see cref="InboxMessageDto.Category"/> uses.</summary>
+    public string Category { get; init; } = string.Empty;
+
+    public int Count { get; init; }
 }
 
 /// <summary>One message, as a reader receives it.</summary>
@@ -73,7 +103,15 @@ public static class InboxDtoMapper
         PageSize = box.PageSize,
         TotalItems = box.TotalItems,
         TotalPages = box.TotalPages,
-        UnreadCount = box.UnreadCount
+        UnreadCount = box.UnreadCount,
+        Category = box.Category?.ToString(),
+        Categories = box.Categories
+            .Select(tally => new InboxCategoryCountDto
+            {
+                Category = tally.Category.ToString(),
+                Count = tally.Count
+            })
+            .ToList()
     };
 
     public static InboxMessageDto ToDto(this InboxMessageLine line) => new()

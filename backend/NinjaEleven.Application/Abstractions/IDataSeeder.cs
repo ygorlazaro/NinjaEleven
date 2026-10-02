@@ -1,3 +1,4 @@
+using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Transfers;
 
 namespace NinjaEleven.Application.Abstractions;
@@ -12,21 +13,18 @@ public interface IDataSeeder
     Task SeedAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Deals the season's intake: the young free agents a season opens with, unattached and
-    /// waiting to be signed. The count is the rule's own
-    /// (<see cref="YouthIntakeRules.FreeAgentsPerSeason"/>) and it does not depend on the
-    /// retirements of the season before, because a season's first day has none to divide by and
-    /// a market fed by that ratio opens empty.
+    /// Deals the season's academy intake: young players assigned to clubs, aged 16 to
+    /// <see cref="AcademyRules.MaxAcademyAge"/>, up to <see cref="AcademyRules.MaxAcademyPlayersPerClub"/>
+    /// per club. Academy players are not on a first-team contract and cannot be bought
+    /// by other clubs until promoted.
     /// </summary>
-    /// <param name="seasonId">The season the young players are being given a state for.</param>
-    Task GenerateYoungPlayersAsync(Guid seasonId, CancellationToken cancellationToken = default);
+    /// <param name="seasonId">The season the academy players are being given a state for.</param>
+    Task GenerateAcademyPlayersAsync(Guid seasonId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Puts a given number of young free agents on the market, aged as
-    /// <see cref="YouthIntakeRules"/> says, with no club and no contract. It is the same intake
-    /// the season opening deals, asked for with a count of its own — the backfill a world that
-    /// was written before the rule existed needs, so its market is not empty of anybody a club
-    /// could sign.
+    /// <see cref="YouthIntakeRules"/> says, with no club and no contract. It is a backfill
+    /// for worlds that were seeded before the academy system existed.
     /// </summary>
     /// <param name="count">How many men to deal onto the market.</param>
     /// <param name="seasonId">

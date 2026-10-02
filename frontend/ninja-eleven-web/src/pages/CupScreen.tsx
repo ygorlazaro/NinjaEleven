@@ -11,6 +11,7 @@ import type {
   TopScorerPrizeListDto
 } from '@/types';
 import CupBracket from '@/components/Cup/CupBracket';
+import CupPodium from '@/components/Cup/CupPodium';
 import CupPrizeLegend from '@/components/Cup/CupPrizeLegend';
 import CupTrophy from '@/components/Cup/CupTrophy';
 import ScorersList from '@/components/League/ScorersList';
@@ -193,6 +194,11 @@ const CupScreen: React.FC = () => {
               />
             </div>
           </div>
+
+          {/* The ranking is above the bracket rather than below it: on a closed season it is the
+              answer a manager came for — where his club finished in the cup — and the bracket
+              below is how the ties got there. */}
+          <CupPodium ranking={bracket.ranking ?? []} userTeamId={selectedTeam?.id} />
 
           <CupBracket bracket={bracket} userTeamId={selectedTeam?.id} />
         </>

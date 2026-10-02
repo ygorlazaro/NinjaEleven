@@ -59,20 +59,37 @@ public class InboxService
     }
 
     /// <summary>
-    /// A page of a club's box, newest first, with the number of unread messages beside it.
+    /// A page of a club's box, newest first, with the number of unread messages beside it and
+    /// the tally the filter column is drawn from.
     ///
     /// A page past the end of the book is answered with the last page rather than with
     /// nothing: a manager who has scrolled to the bottom of a season's messages and then
     /// deleted the filter he was reading under should land on the end of what he asked for.
+    ///
+    /// <para>
+    /// The filter narrows the page, the count and the paging together, all out of one
+    /// category, so a page of "Partida" is a page of the fourth page of "Partida" rather than
+    /// twenty lines picked out of the fourth page of everything. A filter applied in the
+    /// browser afterwards would answer "how much mail is this" with the twenty lines the
+    /// screen happened to be holding, and the manager would be paging through his own box
+    /// looking for the rest of what one button said was there.
+    /// </para>
+    ///
+    /// <para>
+    /// The tally is the whole box and not the filtered slice: it is what the filters themselves
+    /// are labelled with, and a filter whose own number changed with the filter beside it would
+    /// be a column of numbers that cannot be compared.
+    /// </para>
     /// </summary>
     public async Task<InboxBox> GetBoxAsync(
         Guid teamId,
         int page,
         int pageSize,
+        InboxCategory? category = null,
         CancellationToken cancellationToken = default)
     {
         var sizeOfPage = Math.Clamp(pageSize, 1, MaxPageSize);
-        var total = await _messages.CountAsync(teamId, cancellationToken);
+        var total = await _messages.CountAsync(teamId, category, cancellationToken);
         var totalPages = Math.Max(1, (int)Math.Ceiling(total / (double)sizeOfPage));
         var wanted = Math.Clamp(page, 1, totalPages);
 
@@ -80,7 +97,10 @@ public class InboxService
             teamId,
             skip: (wanted - 1) * sizeOfPage,
             take: sizeOfPage,
-            cancellationToken);
+            category: category,
+            cancellationToken: cancellationToken);
+
+        var tally = await _messages.TallyCategoriesAsync(teamId, cancellationToken);
 
         return new InboxBox
         {
@@ -89,7 +109,9 @@ public class InboxService
             PageSize = sizeOfPage,
             TotalItems = total,
             TotalPages = totalPages,
-            UnreadCount = await _messages.UnreadCountAsync(teamId, cancellationToken)
+            UnreadCount = await _messages.UnreadCountAsync(teamId, cancellationToken),
+            Category = category,
+            Categories = tally
         };
     }
 
@@ -136,7 +158,11 @@ public class InboxService
         // whole book: a manager's box is a few hundred lines, a read flag is the only thing
         // being written, and an update statement that bypasses the domain would write a
         // message's "read at" as nothing at all.
-        var unread = await _messages.ListAsync(teamId, skip: 0, take: MaxPageSize, cancellationToken);
+        var unread = await _messages.ListAsync(
+            teamId,
+            skip: 0,
+            take: MaxPageSize,
+            cancellationToken: cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var marked = 0;
 
@@ -198,7 +224,7 @@ public class InboxService
                 // twice — a season closed again, a cup tie settled twice — is one purse.
                 reference: $"prize:{line.Reference ?? line.Id.ToString()}",
                 linkLabel: "Ver o extrato",
-                linkRoute: "/financeiro",
+                linkRoute: InboxLink.Financeiro,
                 mentions: ToMentions(null)),
             cancellationToken);
     }
@@ -327,7 +353,7 @@ public class InboxService
                 body.ToString(),
                 reference: $"match:{facts.MatchId}:result",
                 linkLabel: "Ver o resultado da partida",
-                linkRoute: $"/match/{facts.MatchId}",
+                linkRoute: InboxLink.Match(facts.MatchId),
                 mentions: ToMentions(mentions)),
             cancellationToken);
     }
@@ -722,6 +748,308 @@ public class InboxService
             : $" e cai {places} na tabela";
     }
 
+
+    /// <summary>
+    /// Tells a club that one of its men is suspended, on its own and not inside the match report.
+    /// </summary>
+    ///
+    /// <para>
+    /// The report of the match already carries the red card, and this is that same fact seen from
+    /// the morning after. A manager reads the report the same evening and the suspension the next
+    /// morning with the lineup open, and the two are read for two different questions: one asks
+    /// what the match was, the other asks who plays on Saturday. Told only inside the report, the
+    /// answer arrives a day before it is wanted and inside a paragraph about goals.
+    /// </para>
+    ///
+    /// <para>
+    /// It is not a second account of the match. There is no score here and nothing is narrated
+    /// twice, because the match wrote all of that once and two accounts of the same afternoon
+    /// would be two accounts to keep in step with each other for ever.
+    /// </para>
+    public async Task PostSuspensionAsync(
+        SuspensionFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await DeliverableAsync(facts.RecipientTeamId, cancellationToken))
+        {
+            return;
+        }
+
+        // A suspension is at least one match, so the count is floored rather than printed as
+        // "0 jogos" — a zero here would be a sentence about a punishment nobody received.
+        var matches = Math.Max(1, facts.Matches);
+        var howMany = matches == 1 ? "1 jogo" : $"{matches} jogos";
+
+        // The round and the competition arrive already written, because the piece of the world
+        // that knows them is the one that saw the card. The opponent is the fallback for a caller
+        // that has only that.
+        var when = !string.IsNullOrWhiteSpace(facts.MatchLabel)
+            ? $" em {facts.MatchLabel}"
+            : !string.IsNullOrWhiteSpace(facts.OpponentName)
+                ? $" contra o {facts.OpponentName}"
+                : string.Empty;
+
+        var (whatHappened, theRule) = facts.Cause switch
+        {
+            AbsenceCause.RedCard => (
+                $"{facts.PlayerName} foi expulso{when} e está suspenso por {howMany}.",
+                "O cartão vermelho não se recursa: a expulsão é do jogo, e o jogo já tinha terminado quando ela aconteceu. O desenho já estava feito antes de ele ver o árbitro."),
+
+            AbsenceCause.AccumulatedYellows => (
+                $"{facts.PlayerName} fechou o jogo{when} com o terceiro cartão amarelo e cai por {howMany}.",
+                "A contagem recomeça do zero depois da punição, e o próximo amarelo é o primeiro de novo. É por isso que esta punição se cumpre ao longo da temporada e não numa tarde só."),
+
+            _ => (
+                $"{facts.PlayerName} está fora por {howMany}.",
+                "A punição é do livro e não do banco: o único direito que o clube tem é o de dizer quem o substitui, e não o de dizer quantas partidas ele sai.")
+        };
+
+        var subject = facts.Cause == AbsenceCause.AccumulatedYellows
+            ? $"{facts.PlayerName} cai por amarelos acumulados"
+            : $"{facts.PlayerName} está suspenso por {howMany}";
+
+        var mentions = new List<InboxPersonDto>
+        {
+            Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team),
+            Mention(facts.PlayerId, facts.PlayerName, InboxMentionKind.Player)
+        };
+
+        if (facts.OpponentId is { } oppId && !string.IsNullOrWhiteSpace(facts.OpponentName))
+        {
+            mentions.Add(Mention(oppId, facts.OpponentName!, InboxMentionKind.Team));
+        }
+
+        var body = new StringBuilder()
+            .AppendLine(whatHappened)
+            .AppendLine()
+            .AppendLine(theRule)
+            .AppendLine()
+            .Append($"A punição vale para as {howMany} partidas seguintes, e é o time que o treino da semana precisa remontar: quem entra no lugar de {facts.PlayerName} é uma decisão, e ela não pode esperar a rodada para ser tomada.");
+
+        await DeliverAsync(
+            InboxMessage.Create(
+                facts.RecipientTeamId,
+                InboxCategory.MatchReport,
+                subject,
+                "Comissão de Arbitragem do Ninja Eleven",
+                body.ToString(),
+                reference: $"suspension:{facts.MatchId}:{facts.PlayerId}",
+                linkLabel: "Ver o elenco",
+                linkRoute: InboxLink.Team(facts.RecipientTeamId),
+                mentions: ToMentions(mentions)),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Announces that the market is open or closed this round, in the words a manager reads it in.
+    /// </summary>
+    ///
+    /// <para>
+    /// A window is a date with consequences: the two things a manager cannot read off a screen —
+    /// when it shuts and when a man signed today actually walks through the door — are the two
+    /// lines the message carries. They are the only ones worth the box, because the rest of the
+    /// market lives on the calendar a manager can already see.
+    /// </para>
+    ///
+    /// <para>
+    /// Open and closed are the same method rather than two, because they are the same fact from
+    /// two sides and the difference between them is a sentence. They are nevertheless two
+    /// references: a club told its window is open is a club told a different thing a round later
+    /// when the same window is reported as shut.
+    /// </para>
+    public async Task PostTransferWindowAsync(
+        TransferWindowFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await DeliverableAsync(facts.RecipientTeamId, cancellationToken))
+        {
+            return;
+        }
+
+        var subject = facts.IsOpen
+            ? $"{facts.ClubName}: janela de transferências aberta"
+            : $"{facts.ClubName}: a janela de transferências fechou";
+
+        var mentions = new List<InboxPersonDto>
+        {
+            Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team)
+        };
+
+        var body = new StringBuilder();
+
+        if (facts.IsOpen)
+        {
+            body.AppendLine(
+                $"O mercado está aberto. Qualquer proposta que o {facts.ClubName} fizer ou aceitar agora chega ao elenco na {Ordinal(facts.ArrivalRound)} rodada: o negócio é fechado antes dela, mas o homem só entra em campo depois.")
+                .AppendLine();
+
+            if (facts.NextWindowRound is { } next)
+            {
+                body.AppendLine(
+                    $"Depois desta ainda há uma janela, na {Ordinal(next)} rodada. As duas separam a temporada: o que é fechado agora e o que será fechado na próxima são duas decisões diferentes sobre o mesmo elenco, e não dá para fazer as duas numa.")
+                    .AppendLine();
+            }
+            else
+            {
+                body.AppendLine(
+                    "Esta é a última janela da temporada. O que não estiver acertado agora espera a Supercopa da próxima temporada, que é o primeiro jogo do novo ano e a única chegada que o calendário ainda nomeia.")
+                    .AppendLine();
+            }
+
+            body.Append(
+                "Uma proposta não é uma contratação: ela vai para a mesa do outro clube e a resposta é dele. O que a janela abre é o prazo, não o resultado.");
+        }
+        else
+        {
+            body.AppendLine(
+                $"A janela de transferências fechou na {Ordinal(facts.RoundNumber)} rodada da {facts.SeasonName}. Nenhuma contratação chega ao {facts.ClubName} antes da Supercopa da próxima temporada.")
+                .AppendLine()
+                .AppendLine(
+                    "O que já estava acertado não se perde: uma proposta aceita e um negócio assinado esperam a abertura seguinte e chegam inteiros. O que se perde é a pressa — a partir de agora qualquer proposta que o mercado faça chega quando a janela voltar a abrir, e não antes.")
+                .AppendLine()
+                .Append(
+                    "Até lá o elenco é o que é: nenhuma saída, nenhuma entrada. O calendário continua, e é ele que volta a abrir a porta.");
+        }
+
+        await DeliverAsync(
+            InboxMessage.Create(
+                facts.RecipientTeamId,
+                InboxCategory.TransferOffer,
+                subject,
+                "Comissão de Mercado do Ninja Eleven",
+                body.ToString(),
+                reference: $"window:{facts.SeasonId}:{facts.RoundNumber}:{(facts.IsOpen ? "open" : "closed")}",
+                linkLabel: "Ver o mercado",
+                linkRoute: InboxLink.Transfer,
+                mentions: ToMentions(mentions)),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Announces a signing just done, in the words a manager reads it in.
+    /// </summary>
+    ///
+    /// <para>
+    /// A manager arrives at this message after he has chosen the man, not before, and what he
+    /// needs to read is what he has just spent. The fee is what went out, the wage is what comes
+    /// back every season, and the book value is what the club's own opinion was before the deal
+    /// closed: a signing that reported only one of those three was a single number dressed up as
+    /// a newspaper.
+    /// </para>
+    public async Task PostSigningAsync(
+        SigningFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await DeliverableAsync(facts.RecipientTeamId, cancellationToken))
+        {
+            return;
+        }
+
+        var word = PositionWord(facts.Position);
+
+        var subject = $"{facts.PlayerName} é o novo {word} do {facts.ClubName}";
+
+        var mentions = new List<InboxPersonDto>
+        {
+            Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team),
+            Mention(facts.PlayerId, facts.PlayerName, InboxMentionKind.Player)
+        };
+
+        var from = facts.IsFreeAgent
+            ? $"Chegou sem clube e sem custo para o {facts.ClubName}."
+            : $"{facts.SellingClubName}" +
+              (facts.SellingDivisionTier is { } tier
+                  ? $", na {CompetitionRules.DivisionName(tier)}"
+                  : string.Empty) +
+              $", por {Limo(facts.Fee)}.";
+
+        var body = new StringBuilder()
+            .AppendLine($"{facts.PlayerName} tem {facts.Age} anos e joga de {word}. {from}")
+            .AppendLine()
+            .AppendLine(
+                $"O contrato paga {Limo(facts.Wage)} por temporada, e é por esse valor que ele entra na folha do {facts.ClubName} a cada rodada.")
+            .AppendLine();
+
+        if (facts.MatchValue is { } book)
+        {
+            body.Append(
+                $"No livro ele vale {Limo(book)}, e é esse o número com que ele foi medido até aqui. O resto se descobre em campo.");
+        }
+        else
+        {
+            body.Append(
+                $"Ele não tem valor de mercado registrado: nenhum clube o precificou antes de hoje, e a primeira leitura que o {facts.ClubName} faz dele é a que o campo vai dar.");
+        }
+
+        if (facts.SellingClubId is { } sellingId && !string.IsNullOrWhiteSpace(facts.SellingClubName))
+        {
+            mentions.Add(Mention(sellingId, facts.SellingClubName!, InboxMentionKind.Team));
+        }
+
+        await DeliverAsync(
+            InboxMessage.Create(
+                facts.RecipientTeamId,
+                InboxCategory.TransferOffer,
+                subject,
+                $"Diretoria de Futebol do {facts.ClubName}",
+                body.ToString(),
+                reference: $"arrival:{facts.TransferId}",
+                linkLabel: "Ver o elenco",
+                linkRoute: InboxLink.Team(facts.RecipientTeamId),
+                mentions: ToMentions(mentions)),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Tells a club it cannot move a man because it has nobody left to spare.
+    /// </summary>
+    ///
+    /// <para>
+    /// The block is invisible until it refuses something: a club of twenty-one players looks
+    /// exactly like a club of twenty-three on a table, and the first sign that the difference
+    /// matters is a rejected release and a rejected sale — two answers a manager reads as
+    /// somebody else's decision. The message tells him that the two refusals were the same
+    /// decision, and that the way to unblock it is a signing, not a recalculation.
+    /// </para>
+    public async Task PostSquadFloorAsync(
+        SquadFloorFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await DeliverableAsync(facts.RecipientTeamId, cancellationToken))
+        {
+            return;
+        }
+
+        var mentions = new List<InboxPersonDto>
+        {
+            Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team)
+        };
+
+        var subject = $"{facts.ClubName} está no limite de elenco: {facts.SquadSize} jogadores";
+
+        var body = new StringBuilder()
+            .AppendLine(
+                $"O {facts.ClubName} está com {facts.SquadSize} jogadores, e o mínimo do jogo é {facts.MinSquadSize}. Não há folga: a próxima saída é uma recusa.")
+            .AppendLine()
+            .AppendLine(
+                "O que o limite impede é movimento, não jogo. O clube não pode rescindir com ninguém, não pode vender ninguém e não pode trocar ninguém — e nenhuma proposta por um jogador dele será aceita, por mais dinheiro que apareça. A recusa é sobre o tamanho do elenco, não sobre o homem.")
+            .AppendLine()
+            .Append(
+                "A saída é a entrada: uma contratação traz o número de volta acima do piso, e só aí o clube volta a poder mexer em alguém.");
+
+        await DeliverAsync(
+            InboxMessage.Create(
+                facts.RecipientTeamId,
+                InboxCategory.Club,
+                subject,
+                $"Diretoria de Futebol do {facts.ClubName}",
+                body.ToString(),
+                reference: $"squadfloor:{facts.SeasonId}",
+                linkLabel: "Ver o mercado",
+                linkRoute: InboxLink.Transfer,
+                mentions: ToMentions(mentions)),
+            cancellationToken);
+    }
     /// <summary>
     /// Tells the manager somebody wants one of his players.
     ///
@@ -790,7 +1118,7 @@ public class InboxService
                 body.ToString(),
                 reference: facts.Reference ?? $"offer:{facts.PlayerId}:{facts.BiddingClubId}",
                 linkLabel: "Ver o mercado",
-                linkRoute: "/transfer",
+                linkRoute: InboxLink.Transfer,
                 mentions: ToMentions(mentions)),
             cancellationToken);
     }
@@ -862,7 +1190,7 @@ public class InboxService
                 // window closed twice is one departure told about twice.
                 reference: facts.Reference ?? $"departure:{facts.TransferId}",
                 linkLabel: "Ver o mercado",
-                linkRoute: "/transfer",
+                linkRoute: InboxLink.Transfer,
                 mentions: ToMentions(mentions)),
             cancellationToken);
     }
@@ -937,7 +1265,7 @@ public class InboxService
                 text,
                 reference: facts.Reference,
                 linkLabel: "Ver a Copa",
-                linkRoute: "/copa",
+                linkRoute: InboxLink.Cup,
                 mentions: ToMentions(MentionsOfTheTies(facts.Ties))),
             cancellationToken);
     }
@@ -989,6 +1317,135 @@ public class InboxService
     }
 
     /// <summary>
+
+    /// <summary>
+    /// Announces a cup draw, in the words a manager reads it in.
+    /// </summary>
+    ///
+    /// <para>
+    /// It is sent to every manager for the same reason the round is: a draw is the country's news,
+    /// and a manager whose club was not drawn still has to know which of the names on the
+    /// television went out of the cup. The first line is his own tie when he has one; otherwise
+    /// it is the draw itself, and the rest of the paragraph is the same for everybody.
+    /// </para>
+    public async Task PostCupDrawAsync(
+        CupDrawFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (facts.Ties.Count == 0)
+        {
+            return;
+        }
+
+        var recipients = await TheManagersOfTheWorldAsync(cancellationToken);
+        if (recipients.Count == 0)
+        {
+            return;
+        }
+
+        // The round's name is carried so the caller can say what the draw called itself, and
+        // falls back to the rules' own name when it is blank — the two are the same thing and
+        // the caller gets to say it.
+        var roundName = string.IsNullOrWhiteSpace(facts.RoundName)
+            ? CompetitionRules.TieRoundName(facts.RoundNumber)
+            : facts.RoundName;
+
+        var subject = $"{facts.CompetitionName}: sorteio da {roundName}";
+
+        var body = new StringBuilder()
+            .AppendLine($"O sorteio da {roundName} da {facts.CompetitionName} desenhou {facts.Ties.Count} confronto{(facts.Ties.Count == 1 ? string.Empty : "s")}:")
+            .AppendLine();
+
+        foreach (var tie in facts.Ties)
+        {
+            body.AppendLine($"• {LineOfTheDrawnTie(tie)}");
+        }
+
+        body.AppendLine();
+        body.Append(WhenTheFirstLegIs(facts, roundName));
+
+        var text = body.ToString().TrimEnd();
+        var mentions = MentionsOfTheDrawnTies(facts.Ties);
+
+        await WriteToEveryManagerAsync(
+            recipients,
+            teamId => InboxMessage.Create(
+                teamId,
+                InboxCategory.CupRound,
+                subject,
+                "Comissão Organizadora do Ninja Eleven",
+                DrawForThisClub(facts, roundName, teamId, text),
+                reference: $"cupdraw:{facts.CupEditionId}:{facts.RoundNumber}",
+                linkLabel: "Ver a Copa",
+                linkRoute: InboxLink.Cup,
+                mentions: ToMentions(mentions)),
+            cancellationToken);
+    }
+
+    /// <summary>The first paragraph, before the ties: his own tie when he has one, the draw otherwise.</summary>
+    private static string DrawForThisClub(CupDrawFacts facts, string roundName, Guid teamId, string sharedBody)
+    {
+        var tie = facts.Ties.FirstOrDefault(t => t.HomeTeamId == teamId || t.AwayTeamId == teamId);
+        if (tie is null)
+        {
+            return sharedBody;
+        }
+
+        var own = tie.HomeTeamId == teamId ? tie.HomeName : tie.AwayName;
+        var other = tie.HomeTeamId == teamId ? tie.AwayName : tie.HomeName;
+
+        return new StringBuilder()
+            .AppendLine($"O sorteio da {roundName}eparou o {own} do {other}.")
+            .AppendLine()
+            .Append(sharedBody)
+            .ToString();
+    }
+
+    /// <summary>One tie of a draw, in the words the draw is written in.</summary>
+    private static string LineOfTheDrawnTie(CupDrawTie tie)
+    {
+        var clubs = $"{tie.HomeName} x {tie.AwayName}";
+
+        if (tie.HomeLegScore is not { } home || tie.AwayLegScore is not { } away)
+        {
+            return clubs;
+        }
+
+        var firstLeg = $"ida {home} x {away}";
+        var aggregate = string.IsNullOrWhiteSpace(tie.AggregateAwayHomeLabel)
+            ? string.Empty
+            : $", {tie.AggregateAwayHomeLabel}";
+
+        return $"{clubs} — {firstLeg}{aggregate}";
+    }
+
+    /// <summary>The first leg's date, when the calendar knows one.</summary>
+    private static string WhenTheFirstLegIs(CupDrawFacts facts, string roundName)
+    {
+        return facts.FirstLegMatchDay is { } day
+            ? $"A primeira perna da {roundName} é jogada no dia {day} do calendário, e a volta logo depois. Quem passa é o agregado — não é o jogo de ida."
+            : $"O calendário da {roundName} ainda não fixou o dia da primeira perna.";
+    }
+
+    /// <summary>The clubs the draw mentions, named once each.</summary>
+    private static List<InboxPersonDto> MentionsOfTheDrawnTies(IReadOnlyList<CupDrawTie> ties)
+    {
+        var mentions = new List<InboxPersonDto>();
+        var named = new HashSet<Guid>();
+
+        foreach (var tie in ties)
+        {
+            foreach (var club in new[] { (tie.HomeTeamId, tie.HomeName), (tie.AwayTeamId, tie.AwayName) })
+            {
+                if (named.Add(club.Item1) && !string.IsNullOrWhiteSpace(club.Item2))
+                {
+                    mentions.Add(Mention(club.Item1, club.Item2, InboxMentionKind.Team));
+                }
+            }
+        }
+
+        return mentions;
+    }
     /// Announces a season that is over: the four final tables and who moved between them.
     ///
     /// <para>
@@ -1081,7 +1538,7 @@ public class InboxService
                     text,
                     reference: facts.Reference,
                     linkLabel: "Ver o campeonato",
-                    linkRoute: "/league",
+                    linkRoute: InboxLink.League,
                     mentions: []);
             },
             cancellationToken);
@@ -1137,6 +1594,286 @@ public class InboxService
                 .Select(line => line.ClubName));
 
     /// <summary>
+
+    /// <summary>
+    /// Announces a club that moved up or down the pyramid between two seasons.
+    /// </summary>
+    ///
+    /// <para>
+    /// It is one sentence for both directions, because the pyramid is one thing: the club that
+    /// goes up and the club that comes down are two lines of the same ladder. What differs is
+    /// which way the sentence walks, and what it says about the step.
+    /// </para>
+    ///
+    /// <para>
+    /// For a relegation it says what the division means in plain words, because a 3ª Divisão is
+    /// not a number to a manager who has been playing in the 2ª — it is a different world, and a
+    /// box that left the step unnamed would be a box that had not actually told him he had gone.
+    /// The division name is a fact that already knows the tier, and the tier is what the
+    /// paragraph names.
+    /// </para>
+    public async Task PostDivisionMovementAsync(
+        DivisionMovementFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await DeliverableAsync(facts.RecipientTeamId, cancellationToken))
+        {
+            return;
+        }
+
+        var mentions = new List<InboxPersonDto>
+        {
+            Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team)
+        };
+
+        var subject = facts.Promoted
+            ? $"{facts.ClubName} sobe para a {facts.ToDivisionName}"
+            : $"{facts.ClubName} cai para a {facts.ToDivisionName}";
+
+        var record =
+            $"{facts.Played} jogos, {facts.Wins} {(facts.Wins == 1 ? "vitória" : "vitórias")}, {facts.Draws} {(facts.Draws == 1 ? "empate" : "empates")} e {facts.Losses} {(facts.Losses == 1 ? "derrota" : "derrotas")}, {facts.GoalsFor} gols marcados e {facts.GoalsAgainst} sofridos";
+
+        var body = new StringBuilder()
+            .AppendLine(
+                $"O {facts.ClubName} fechou a {facts.SeasonName} em {Ordinal(facts.Position)} lugar na {facts.FromDivisionName}: {facts.Points} pontos em {record}.")
+            .AppendLine()
+            .AppendLine(facts.Promoted
+                ? $"O lugar no fim da tabela era o que valia, e ele valeu: a {facts.ToDivisionName} é o degrau de cima, e subir um degrau da pirâmide muda quem entra em campo com o {facts.ClubName} da próxima vez."
+                : $"O {facts.ClubName} cai para a {facts.ToDivisionName}, que é um degrau inteiro da pirâmide: o país tem {CompetitionRules.DivisionCount} divisões, e descer uma delas é passar a temporada inteira jogando contra outras {CompetitionRules.ClubsPerDivision - 1} equipes que disputam a mesma.")
+            .AppendLine()
+            .Append(facts.Promoted
+                ? $"A {facts.ToDivisionName} tem {CompetitionRules.ClubsPerDivision} clubes e a vaga do {facts.ClubName} nela é a posição {Ordinal(facts.Position)} que ele fez no campeonato — não há suavidade na subida, o degrau é o degrau."
+                : "Nada disso é uma sentença sobre o elenco: é o preço de terminar a tabela onde ela terminou, e a próxima temporada é jogada como qualquer outra, com o mesmo onze e o mesmo orçamento.");
+
+        await DeliverAsync(
+            InboxMessage.Create(
+                facts.RecipientTeamId,
+                InboxCategory.Title,
+                subject,
+                "Comissão Central da Competição",
+                body.ToString(),
+                reference: $"movement:{facts.SeasonId}:{facts.RecipientTeamId}",
+                linkLabel: "Ver o campeonato",
+                linkRoute: InboxLink.League,
+                mentions: ToMentions(mentions)),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// A matchday of the championship, told to every manager: who won, and who moved.
+    /// </summary>
+    ///
+    /// <para>
+    /// It is the same fact for everybody and different in the first line for each reader. The
+    /// manager's own result, what it did to his place, and enough of the rest to know whether the
+    /// shape of his season is changing — that is the first line. The rest of the paragraph is the
+    /// division's table, compressed to the clubs that moved plus the top two, because sixteen
+    /// lines a week is a wall by October.
+    /// </para>
+    ///
+    /// <para>
+    /// It is not a season summary repeated thirty-four times. A season summary is long on purpose
+    /// because it is the only thing a manager reads in January. A matchday is short on purpose
+    /// because it arrives every Wednesday.
+    /// </para>
+    public async Task PostRoundSummaryAsync(
+        RoundSummaryFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (facts.Divisions.Count == 0 && facts.Fixtures.Count == 0)
+        {
+            return;
+        }
+
+        var recipients = await TheManagersOfTheWorldAsync(cancellationToken);
+        if (recipients.Count == 0)
+        {
+            return;
+        }
+
+        var subject = $"{facts.SeasonName}, rodada {facts.RoundNumber}: os resultados e o que mudou na tabela";
+
+        await WriteToEveryManagerAsync(
+            recipients,
+            teamId => InboxMessage.Create(
+                teamId,
+                InboxCategory.RoundSummary,
+                subject,
+                "Redação do Ninja Eleven",
+                RoundDigest(facts, teamId),
+                reference: $"round:{facts.SeasonId}:{facts.RoundNumber}",
+                linkLabel: "Ver o campeonato",
+                linkRoute: InboxLink.League,
+                mentions: ToMentions(MentionsOfThisReader(facts, teamId))),
+            cancellationToken);
+    }
+
+    /// <summary>The whole message for one reader: own result, his division, the rest of the day.</summary>
+    private static string RoundDigest(RoundSummaryFacts facts, Guid teamId)
+    {
+        var ownDivision = facts.Divisions.FirstOrDefault(d => d.Lines.Any(l => l.TeamId == teamId));
+        var ownLine = ownDivision?.Lines.FirstOrDefault(l => l.TeamId == teamId);
+
+        var ownFixture = facts.Fixtures.FirstOrDefault(f => f.HomeTeamId == teamId || f.AwayTeamId == teamId);
+        var firstParagraph = ownLine is null
+            ? ownFixture is null
+                ? $"O clube não entrou em campo nem apareceu em tabela na {Ordinal(facts.RoundNumber)} rodada da {facts.SeasonName}."
+                : $"{ResultOf(facts.Fixtures, teamId)}."
+            : $"{OwnResultLine(facts, teamId, ownFixture, ownDivision, ownLine)}";
+
+        return new StringBuilder()
+            .AppendLine(firstParagraph)
+            .AppendLine()
+            .AppendLine(DigestedDivision(facts, teamId, ownDivision))
+            .AppendLine()
+            .Append(OtherResultsOfTheDay(facts, teamId))
+            .ToString();
+    }
+
+    /// <summary>The first line: the own result when there is one, then the position and the move.</summary>
+    private static string OwnResultLine(
+        RoundSummaryFacts facts, Guid teamId, RoundSummaryFixture? ownFixture,
+        RoundSummaryDivision? ownDivision, RoundSummaryLine ownLine)
+    {
+        var result = ownFixture is null
+            ? string.Empty
+            : $"{ResultOf(facts.Fixtures, teamId)} e ";
+
+        return $"{result}o {ownLine.ClubName} está em {Ordinal(ownLine.Position)} lugar da {ownDivision!.DivisionName}, com {ownLine.Points} pontos em {ownLine.Played} jogos — {MovementOfTheRound(ownLine)}.";
+    }
+
+    /// <summary>The division's table, compressed to the top two and the clubs that moved.</summary>
+    private static string DigestedDivision(RoundSummaryFacts facts, Guid teamId, RoundSummaryDivision? ownDivision)
+    {
+        if (ownDivision is null)
+        {
+            return "A divisão do clube não apareceu nas tabelas desta rodada.";
+        }
+
+        var moved = ownDivision.Lines.Where(l => l.PreviousPosition != l.Position).ToList();
+        var rows = ownDivision.Lines
+            .Where(ShownInTheDigest)
+            .OrderBy(l => l.Position)
+            .ToList();
+
+        var header = moved.Count == 0
+            ? $"{ownDivision.DivisionName}: ninguém mudou de lugar nesta rodada."
+            : $"{ownDivision.DivisionName}: {List(moved.Select(l => l.ClubName))} {(moved.Count == 1 ? "mudou" : "mudaram")} de lugar.";
+
+        var table = string.Join(" · ", rows.Select(line =>
+            $"{Ordinal(line.Position)}º {line.ClubName}, {line.Points} pts ({line.Played}J, {line.GoalsFor}-{line.GoalsAgainst})"));
+
+        return $"{header} {table}.";
+    }
+
+    /// <summary>The rest of the day's results, capped so a paragraph stays a paragraph.</summary>
+    private static string OtherResultsOfTheDay(RoundSummaryFacts facts, Guid teamId)
+    {
+        const int MaxResultsInARound = 10;
+
+        var others = facts.Fixtures
+            .Where(f => f.HomeTeamId != teamId && f.AwayTeamId != teamId)
+            .Take(MaxResultsInARound)
+            .ToList();
+
+        if (others.Count == 0)
+        {
+            return "Foi a única partida da rodada, e ela está no parágrafo de cima.";
+        }
+
+        var written = string.Join(" · ", others.Select(f => $"{f.HomeName} {f.HomeGoals} x {f.AwayGoals} {f.AwayName}"));
+
+        var rest = facts.Fixtures.Count - others.Count - 1;
+        return rest > 0
+            ? $"O resto da rodada: {written}, e mais {rest} jogos que não cabem numa linha."
+            : $"O resto da rodada: {written}.";
+    }
+
+    /// <summary>How a man read the result of a fixture in the day's line.</summary>
+    private static string ResultOf(IReadOnlyList<RoundSummaryFixture> fixtures, Guid teamId)
+    {
+        var f = fixtures.First(x => x.HomeTeamId == teamId || x.AwayTeamId == teamId);
+        var home = f.HomeTeamId == teamId;
+        var club = home ? f.HomeName : f.AwayName;
+        var other = home ? f.AwayName : f.HomeName;
+        var mine = home ? f.HomeGoals : f.AwayGoals;
+        var theirs = home ? f.AwayGoals : f.HomeGoals;
+        var score = $"{mine} x {theirs}";
+
+        return mine > theirs
+            ? $"{club} venceu o {other} por {score}"
+            : mine < theirs
+                ? $"{club} perdeu para o {other} por {score}"
+                : $"{club} e {other} empataram em {score}";
+    }
+
+    /// <summary>The move this round, in the words the table is read in.</summary>
+    private static string MovementOfTheRound(RoundSummaryLine line)
+    {
+        if (line.PreviousPosition is not { } before)
+        {
+            return "é a primeira rodada dele nesta divisão";
+        }
+
+        if (before == line.Position)
+        {
+            return "não se moveu";
+        }
+
+        return before > line.Position
+            ? $"subiu {Places(before - line.Position)}"
+            : $"caiu {Places(line.Position - before)}";
+    }
+
+    /// <summary>Whether a line is shown in the compressed table.</summary>
+    private static bool ShownInTheDigest(RoundSummaryLine line) => line.Position <= 2 || line.PreviousPosition != line.Position;
+
+    /// <summary>Exactly the names this message uses, no more and no less.</summary>
+    private static List<InboxPersonDto> MentionsOfThisReader(RoundSummaryFacts facts, Guid teamId)
+    {
+        var names = new List<(Guid Id, string Name)>();
+        var seen = new HashSet<Guid>();
+
+        void Add(Guid id, string name)
+        {
+            if (id != Guid.Empty && seen.Add(id) && !string.IsNullOrWhiteSpace(name))
+            {
+                names.Add((id, name));
+            }
+        }
+
+        var ownDivision = facts.Divisions.FirstOrDefault(d => d.Lines.Any(l => l.TeamId == teamId));
+        var ownLine = ownDivision?.Lines.FirstOrDefault(l => l.TeamId == teamId);
+        if (ownLine is not null)
+        {
+            Add(ownLine.TeamId, ownLine.ClubName);
+        }
+
+        var ownFixture = facts.Fixtures.FirstOrDefault(f => f.HomeTeamId == teamId || f.AwayTeamId == teamId);
+        if (ownFixture is not null)
+        {
+            Add(ownFixture.HomeTeamId, ownFixture.HomeName);
+            Add(ownFixture.AwayTeamId, ownFixture.AwayName);
+        }
+
+        if (ownDivision is not null)
+        {
+            foreach (var line in ownDivision.Lines.Where(ShownInTheDigest))
+            {
+                Add(line.TeamId, line.ClubName);
+            }
+        }
+
+        foreach (var fixture in facts.Fixtures
+            .Where(f => f.HomeTeamId != teamId && f.AwayTeamId != teamId)
+            .Take(10))
+        {
+            Add(fixture.HomeTeamId, fixture.HomeName);
+            Add(fixture.AwayTeamId, fixture.AwayName);
+        }
+
+        return names.Select(n => Mention(n.Id, n.Name, InboxMentionKind.Team)).ToList();
+    }
     /// The clubs that have a person behind them: the readers of a message with no addressee.
     ///
     /// <para>
@@ -1260,7 +1997,7 @@ public class InboxService
                 linkLabel: facts.LinkLabel
                     ?? (facts.Kind == InboxTitleKind.Cup ? "Ver a Copa" : "Ver o campeonato"),
                 linkRoute: facts.LinkRoute
-                    ?? (facts.Kind == InboxTitleKind.Cup ? "/copa" : "/league"),
+                    ?? (facts.Kind == InboxTitleKind.Cup ? InboxLink.Cup : InboxLink.League),
                 mentions: ToMentions(mentions)),
             cancellationToken);
     }
@@ -1271,7 +2008,8 @@ public class InboxService
     /// It is worth a message of its own precisely because nothing else would say it: the money
     /// for the last match is already in the ledger and the contract simply stops coming back, so
     /// a club that did not read this would go on playing with a sponsor it is no longer being
-    /// paid by. The screen in Estádio is where a renewal is signed, and the message points at it.
+    /// paid by. The sponsors screen is where a renewal is signed, and the message points at it —
+    /// it is not the ground, which is a different screen about a different building.
     /// </summary>
     public async Task PostSponsorExpiryAsync(
         SponsorExpiryFacts facts,
@@ -1301,7 +2039,7 @@ public class InboxService
                 body.ToString(),
                 reference: $"sponsor:{facts.ContractId}:expired",
                 linkLabel: "Ver os patrocinadores",
-                linkRoute: "/estadio",
+                linkRoute: InboxLink.Sponsors,
                 mentions: ToMentions(
                 [
                     Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team)
@@ -1373,7 +2111,7 @@ public class InboxService
                 body.ToString(),
                 reference: facts.Reference,
                 linkLabel: "Ver o extrato",
-                linkRoute: "/financeiro",
+                linkRoute: InboxLink.Financeiro,
                 mentions: ToMentions(null)),
             cancellationToken);
     }
@@ -1466,7 +2204,7 @@ public class InboxService
                 body.ToString(),
                 reference: $"sponsor:{facts.ContractId}:signed",
                 linkLabel: "Ver os patrocinadores",
-                linkRoute: "/estadio",
+                linkRoute: InboxLink.Sponsors,
                 mentions: ToMentions(
                 [
                     Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team)
@@ -1475,6 +2213,150 @@ public class InboxService
     }
 
     /// <summary>
+
+    /// <summary>
+    /// Announces a shirt-deal shortlist to the club, in the words a manager reads it in.
+    /// </summary>
+    ///
+    /// <para>
+    /// It is a different message from a deal signed because nothing has been signed. The club is
+    /// being told what is on the table, not what is on the shirt, and a manager who read a
+    /// shortlist and was told a contract was already in place would have been told the same thing
+    /// twice by two different messages.
+    /// </para>
+    ///
+    /// <para>
+    /// The list is not drawn. It is every company that would take the club, ordered by what it
+    /// pays, and the best of them is the only number the box quotes: the rest is on the sponsors
+    /// screen, and the manager who signs without opening it has signed at the price the list would
+    /// have shown anyway.
+    /// </para>
+    public async Task PostSponsorBookAsync(
+        SponsorBookFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await DeliverableAsync(facts.RecipientTeamId, cancellationToken) ||
+            facts.Candidates.Count == 0)
+        {
+            return;
+        }
+
+        var best = facts.Candidates.OrderByDescending(c => c.PerMatchFee).First();
+        var howMany = facts.Candidates.Count;
+
+        var subject = facts.IsFirstDraw
+            ? $"{facts.ClubName} está sem patrocinador: {howMany} empresas converge{(howMany == 1 ? string.Empty : "m")}"
+            : $"O patrocinador do {facts.ClubName} está no fim: {howMany} empresas renovam";
+
+        var mentions = new List<InboxPersonDto>
+        {
+            Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team)
+        };
+
+        var openOrRenew = facts.IsFirstDraw
+            ? "O clube está sem patrocinador e a camisa não tem nome."
+            : $"O patrocinador atual do {facts.ClubName} está no fim do contrato.";
+
+        var sizeWord = string.IsNullOrWhiteSpace(best.SizeLabel) ? string.Empty : $"{best.SizeLabel} ";
+        var perMatch = Limo(best.PerMatchFee);
+
+        var body = new StringBuilder()
+            .AppendLine($"{openOrRenew} {howMany} empresa{(howMany == 1 ? " converge" : "s convergem")} para ele.")
+            .AppendLine()
+            .AppendLine(
+                $"A melhor proposta é da {sizeWord}{best.SponsorName}: {perMatch} por jogo, por {best.ContractMatches} jogos.")
+            .AppendLine()
+            .AppendLine(
+                "A lista não é sorteada. São todas as empresas que aceitariam fechar com o clube, ordenadas pelo que pagam, e o que está depois da primeira não é pior — é mais barato.")
+            .AppendLine()
+            .Append("Fechar é uma assinatura, e não um aviso: enquanto o clube não escolher, a camisa fica sem nome e o caixa sem a entrada.");
+
+        await DeliverAsync(
+            InboxMessage.Create(
+                facts.RecipientTeamId,
+                InboxCategory.Club,
+                subject,
+                $"Marketing do {facts.ClubName}",
+                body.ToString(),
+                reference: $"sponsorbook:{facts.SeasonId}:{facts.RoundNumber}",
+                linkLabel: "Ver os patrocinadores",
+                linkRoute: InboxLink.Sponsors,
+                mentions: ToMentions(mentions)),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Announces a contract signed again, in the words a manager reads it in.
+    /// </summary>
+    ///
+    /// <para>
+    /// It is told after the fact and never before it, because there is nothing to announce while
+    /// the renewal is a screen with four buttons on it. What the squad table does not say is what
+    /// the new deal does to the wage bill, and that is what this message exists to say.
+    /// </para>
+    ///
+    /// <para>
+    /// When the wage did not change the sentence says so plainly rather than pretending there was
+    /// a negotiation, because a manager who reads "salário renovado" beside the same number he
+    /// already paid is a manager who has been told the one thing he can see for himself as though
+    /// it were a concession.
+    /// </para>
+    public async Task PostContractRenewedAsync(
+        ContractRenewedFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await DeliverableAsync(facts.RecipientTeamId, cancellationToken))
+        {
+            return;
+        }
+
+        var howMany = facts.Seasons == 1 ? "1 temporada" : $"{facts.Seasons} temporadas";
+        var still = facts.NewSeasonsLeft == 1 ? "1 temporada" : $"{facts.NewSeasonsLeft} temporadas";
+        var wageChanged = facts.PreviousWage != facts.NewWage;
+
+        var subject = $"{facts.PlayerName} renovou por mais {howMany}";
+
+        var mentions = new List<InboxPersonDto>
+        {
+            Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team),
+            Mention(facts.PlayerId, facts.PlayerName, InboxMentionKind.Player)
+        };
+
+        var body = new StringBuilder()
+            .AppendLine($"{facts.PlayerName} renovou com o {facts.ClubName} por mais {howMany}.")
+            .AppendLine();
+
+        if (wageChanged)
+        {
+            body.AppendLine(
+                $"O salário vai de {Limo(facts.PreviousWage)} para {Limo(facts.NewWage)} por temporada.");
+        }
+        else
+        {
+            body.AppendLine(
+                $"O salário não mudou: {Limo(facts.NewWage)} por temporada, os dois valores coincidem. Não houve negociação de valor — a assinatura foi por prazo.");
+        }
+
+        body.AppendLine()
+            .AppendLine(
+                $"O contrato passa a ter {facts.NewTotalSeasons} temporadas no total, e {still} ainda por cumprir. São {Limo(facts.NewWage * facts.NewSeasonsLeft)} de salário garantido pela frente — é isso que a renovação custou à folha, e é o número que o resto do elenco vai ser comparado com.")
+            .AppendLine()
+            .Append(
+                $"O que o {facts.ClubName} comprou com essa assinatura foi tempo: {facts.PlayerName} não vira livre no fim desta temporada.");
+
+        await DeliverAsync(
+            InboxMessage.Create(
+                facts.RecipientTeamId,
+                InboxCategory.Club,
+                subject,
+                $"Departamento de futebol — {facts.ClubName}",
+                body.ToString(),
+                reference: $"contract:{facts.ContractId}:renewed",
+                linkLabel: "Ver o elenco",
+                linkRoute: InboxLink.Team(facts.RecipientTeamId),
+                mentions: ToMentions(mentions)),
+            cancellationToken);
+    }
     /// Warns a club that a man is in the last year of his deal, once, on the season boundary.
     ///
     /// <para>
@@ -1523,7 +2405,7 @@ public class InboxService
                 body.ToString(),
                 reference: $"contract:{facts.ContractId}:expiring",
                 linkLabel: "Ver o elenco",
-                linkRoute: "/elenco",
+                linkRoute: InboxLink.Team(facts.RecipientTeamId),
                 mentions: ToMentions(
                 [
                     Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team),
@@ -1580,7 +2462,7 @@ public class InboxService
                 body.ToString(),
                 reference: $"{facts.Reference}:{SlugOf(facts.Outcome)}",
                 linkLabel: "Ver o mercado",
-                linkRoute: "/transfer",
+                linkRoute: InboxLink.Transfer,
                 mentions: ToMentions(mentions)),
             cancellationToken);
     }
@@ -1807,4 +2689,176 @@ public class InboxService
     /// </summary>
     private static string Limo(decimal value) =>
         $"L$ {value.ToString("N2", Portuguese).TrimEnd('0').TrimEnd(',')}";
+
+    /// <summary>The wire position code ("GK", "DEF", "MID", "ATT") as a Brazilian word a sentence can carry.</summary>
+    private static string PositionWord(string position)
+    {
+        position = position?.Trim().ToUpperInvariant();
+        return position switch
+        {
+            "GK" or "GOLEIRO" => "goleiro",
+            "DEF" or "ZAGUEIRO" or "DEFENSOR" or "LATERAL" => "zagueiro",
+            "MID" or "MEIA" => "meia",
+            "ATT" or "ATACANTE" => "atacante",
+            _ => string.IsNullOrWhiteSpace(position) ? "jogador" : position.ToLowerInvariant()
+        };
+    }
+
+    /// <summary>
+    /// Tells a club that a youth player in its academy has grown stronger this round.
+    /// </summary>
+    public async Task PostAcademyEvolutionAsync(
+        AcademyEvolutionFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await DeliverableAsync(facts.RecipientTeamId, cancellationToken))
+        {
+            return;
+        }
+
+        var body = new StringBuilder()
+            .AppendLine($"{facts.PlayerName}, da base do {facts.ClubName}, evoluiu em {facts.Attribute} — de {facts.Before} para {facts.After}.")
+            .AppendLine()
+            .AppendLine($"O jogador continua à disposição do clube para promoção ao elenco principal.");
+
+        await DeliverAsync(
+            InboxMessage.Create(
+                facts.RecipientTeamId,
+                InboxCategory.Club,
+                $"{facts.PlayerName} evoluiu na base",
+                $"Departamento de base — {facts.ClubName}",
+                body.ToString(),
+                reference: $"academy:{facts.PlayerId}:evolution",
+                linkLabel: "Ver a base",
+                linkRoute: InboxLink.Academy(facts.RecipientTeamId),
+                mentions: ToMentions(
+                [
+                    Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team),
+                    Mention(facts.PlayerId, facts.PlayerName, InboxMentionKind.Player)
+                ])),
+            cancellationToken);
+    }
+
+    /// <summary>
+
+    /// <summary>
+    /// Announces a youth player brought up into the first team, in the words a manager reads it in.
+    /// </summary>
+    ///
+    /// <para>
+    /// It is told because the promotion is a decision with a price attached — a one-season contract
+    /// at the minimum wage — and because the honest half of it is that nobody yet knows whether
+    /// the boy will play. A message that only carried the arrival would be the same message as a
+    /// signing, and it is not one.
+    /// </para>
+    public async Task PostAcademyPromotionAsync(
+        AcademyPromotionFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await DeliverableAsync(facts.RecipientTeamId, cancellationToken))
+        {
+            return;
+        }
+
+        var word = PositionWord(facts.Position);
+
+        var body = new StringBuilder()
+            .AppendLine($"{facts.PlayerName} tem {facts.Age} anos, joga de {word} e foi promovido da base do {facts.ClubName} para o elenco principal.")
+            .AppendLine()
+            .AppendLine(
+                $"O contrato é de uma temporada, a {Limo(facts.Wage)} — o salário mínimo do clube. O teto dele é {facts.Potential}, e é esse número que o clube está apostando.")
+            .AppendLine()
+            .Append(
+                "Ele ainda não é uma peça do elenco principal: entra na lista, entra no treino e só joga quando o técnico colocar. Promoção é um contrato, não uma vaga garantida.");
+
+        await DeliverAsync(
+            InboxMessage.Create(
+                facts.RecipientTeamId,
+                InboxCategory.Club,
+                $"{facts.PlayerName} sobe da base para o elenco principal",
+                $"Departamento de base — {facts.ClubName}",
+                body.ToString(),
+                reference: $"academy:{facts.PlayerId}:promoted",
+                linkLabel: "Ver a base",
+                linkRoute: InboxLink.Academy(facts.RecipientTeamId),
+                mentions: ToMentions(
+                [
+                    Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team),
+                    Mention(facts.PlayerId, facts.PlayerName, InboxMentionKind.Player)
+                ])),
+            cancellationToken);
+    }
+    /// Tells a club that a player on its squad has been placed on the transfer list.
+    /// </summary>
+    public async Task PostTransferListedAsync(
+        TransferListedFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await DeliverableAsync(facts.RecipientTeamId, cancellationToken))
+        {
+            return;
+        }
+
+        var body = new StringBuilder()
+            .AppendLine($"{facts.PlayerName} foi listado para transferência pelo {facts.ClubName}.")
+            .AppendLine()
+            .AppendLine($"Qualquer clube interessado pode fazer uma proposta. A decisão é sua: mantenha-o na lista ou retire-o quando quiser.");
+
+        await DeliverAsync(
+            InboxMessage.Create(
+                facts.RecipientTeamId,
+                InboxCategory.Club,
+                $"{facts.PlayerName} está à venda",
+                $"Departamento de futebol — {facts.ClubName}",
+                body.ToString(),
+                reference: $"transfer-list:{facts.PlayerId}",
+                linkLabel: "Ver o mercado",
+                linkRoute: InboxLink.Transfer,
+                mentions: ToMentions(
+                [
+                     Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team),
+                     Mention(facts.PlayerId, facts.PlayerName, InboxMentionKind.Player)
+                 ])),
+             cancellationToken);
+    }
+
+    /// <summary>
+    /// Tells a club that a player has announced his retirement at the end of the season.
+    /// </summary>
+    /// <remarks>
+    /// The announcement is a rule applied at the season boundary, so the message is written from
+    /// the same fact the squad table reads: a manager who opens his mail and his squad to find
+    /// two different stories about the same player is a manager who does not trust either one.
+    /// </remarks>
+    public async Task PostRetirementAnnouncedAsync(
+        RetirementAnnouncedFacts facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await DeliverableAsync(facts.RecipientTeamId, cancellationToken))
+        {
+            return;
+        }
+
+        var body = new StringBuilder()
+            .AppendLine($"{facts.PlayerName}, do {facts.ClubName}, anunciou que este é o último ano de carreira.")
+            .AppendLine()
+            .AppendLine("Ele continua à sua disposição para os jogos desta temporada, mas seu contrato não será renovado ao final dela.");
+
+        await DeliverAsync(
+            InboxMessage.Create(
+                facts.RecipientTeamId,
+                InboxCategory.Club,
+                $"{facts.PlayerName} anunciou a aposentadoria",
+                $"Departamento de futebol — {facts.ClubName}",
+                body.ToString(),
+                reference: $"retirement:{facts.SeasonId}:{facts.PlayerId}",
+                linkLabel: "Ver o elenco",
+                linkRoute: InboxLink.Team(facts.RecipientTeamId),
+                mentions: ToMentions(
+                [
+                    Mention(facts.RecipientTeamId, facts.ClubName, InboxMentionKind.Team),
+                    Mention(facts.PlayerId, facts.PlayerName, InboxMentionKind.Player)
+                ])),
+            cancellationToken);
+    }
 }

@@ -14,7 +14,10 @@ public enum MatchRatingBand
     /// <summary>He was not on the pitch long enough to have earned one.</summary>
     Unrated = 0,
 
-    /// <summary>Below the baseline: he played below what his own profile promised.</summary>
+    /// <summary>
+    /// Below the ordinary mark and not on it, so red is reserved for men the number is
+    /// actually against rather than for men who did nothing worth writing down.
+    /// </summary>
     Red,
 
     /// <summary>An ordinary evening, which is what most of a squad's cards read.</summary>

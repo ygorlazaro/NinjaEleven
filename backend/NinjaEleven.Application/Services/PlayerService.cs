@@ -83,6 +83,7 @@ public class PlayerService
                 profile.IsAvailable = state.IsAvailable;
                 profile.Injury = state.Injury.ToString();
                 profile.InjuryMatchesRemaining = state.InjuryMatchesRemaining;
+                profile.Retiring = state.Retiring;
 
                 // The price is asked for with the season the caller asked about, because the
                 // season state is where a player's knocks and sendings-off live: a price read
@@ -178,9 +179,10 @@ public class PlayerService
             OpponentTeamSecondaryColor = line.OpponentTeamSecondaryColor,
             HomeGoals = line.HomeGoals,
             AwayGoals = line.AwayGoals,
-            RoundNumber = line.RoundNumber,
-            TeamName = line.TeamName,
-            SeasonName = line.SeasonName,
+RoundNumber = line.RoundNumber,
+TeamName = line.TeamName,
+TeamId = line.TeamId,
+SeasonName = line.SeasonName,
             CompetitionName = line.CompetitionName,
             PhaseName = line.PhaseName,
             StadiumName = line.StadiumName,
@@ -198,6 +200,7 @@ public class PlayerService
 
         profile.Total = Sum(history);
         profile.Season = Sum(ofSeason);
+        profile.Seasons = Seasons(history);
 
         return profile;
     }
@@ -220,6 +223,77 @@ public class PlayerService
 
         return memberships.FirstOrDefault(membership => membership.PlayerId == playerId);
     }
+
+    /// <summary>
+    /// The history read one season at a time, newest season first.
+    ///
+    /// <para>
+    /// It is the same set of lines the match table is drawn from, grouped and summed here
+    /// rather than by the screen: a per-season table worked out in the client is a second
+    /// implementation of "which matches belong to this season", and the two would be free to
+    /// disagree about a player who changed clubs mid-season.
+    /// </para>
+    ///
+    /// <para>
+    /// The grouping key is the season <i>and</i> the club. A goal is scored in a shirt, and a
+    /// striker who moved in January has two lines in one season — one line would hand the
+    /// second club the first one's goals.
+    /// </para>
+    ///
+    /// <para>
+    /// A win is his club's win, read from the score in the line: a player is judged by the
+    /// results of the team he turned out for, and the fixtures carry both ends of the score
+    /// already resolved.
+    /// </para>
+    ///
+    /// <para>
+    /// Newest season first, because that is the order the history arrives in — it is read
+    /// newest first — and a career is read backwards. Grouping keeps the order in which each
+    /// key was first met, so the rows come back in the order of the newest match in them
+    /// rather than in whatever order the grouping produced.
+    /// </para>
+    /// </summary>
+    private static List<PlayerSeasonLine> Seasons(IReadOnlyList<PlayerMatchRecord> lines) =>
+        lines
+            .GroupBy(line => (line.SeasonId, line.TeamId))
+            .Select(group =>
+            {
+                var first = group.First();
+
+                return new PlayerSeasonLine
+                {
+                    SeasonId = first.SeasonId,
+                    SeasonName = first.SeasonName,
+                    TeamId = first.TeamId ?? Guid.Empty,
+                    TeamName = first.TeamName,
+                    Line = Sum(group.ToList()),
+                    Wins = ResultsOf(group, result => result > 0),
+                    Draws = ResultsOf(group, result => result == 0),
+                    Losses = ResultsOf(group, result => result < 0)
+                };
+            })
+            .ToList();
+
+    /// <summary>
+    /// How many of a group's matches ended the way the test says, from his club's side.
+    ///
+    /// <para>
+    /// The comparison is the club's goals against the other side's, and not the raw home and
+    /// away numbers: a history row says which end his club was at, and a row that forgot to
+    /// would count a 2-1 away win as a defeat.
+    /// </para>
+    /// </summary>
+    private static int ResultsOf(
+        IEnumerable<PlayerMatchRecord> lines,
+        Func<int, bool> matches) =>
+        lines.Count(line => matches(GoalDifferenceOf(line)));
+
+    /// <summary>
+    /// The margin his club won or lost by: positive for a win, negative for a defeat, zero for
+    /// a draw.
+    /// </summary>
+    private static int GoalDifferenceOf(PlayerMatchRecord line) =>
+        (line.IsHome ? line.HomeGoals - line.AwayGoals : line.AwayGoals - line.HomeGoals);
 
     private static PlayerCareerLine Sum(IReadOnlyList<PlayerMatchRecord> lines)
     {

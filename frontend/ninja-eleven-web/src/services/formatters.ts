@@ -119,7 +119,7 @@ export function attributeToneClass(attribute: number): string {
  * The colour a match rating is drawn in, on the 0..10 scale a rating lives on.
  *
  * It is a second rule beside `attributeToneClass` and not a call into it, and the two scales
- * have nothing to do with each other: 7.5 is a good evening out of ten and the worst half of
+ * have nothing to do with each other: 8.0 is a good evening out of ten and the worst half of
  * an average squad's players out of a hundred, and a function that served both would have to
  * be told which one it was holding. Sharing the rule would be sharing a number, and a 7 on
  * the wrong side of that would colour every striker in a league green.
@@ -128,6 +128,13 @@ export function attributeToneClass(attribute: number): string {
  * deciding where a good evening starts, it is dressing the answer the backend gave. The
  * fallback is the same table, written out, so a payload from a server that has not been
  * redeployed still reads correctly rather than falling back to a default colour.
+ *
+ * Those three numbers are `MatchRules.RatingRedBelow` (6.0), `MatchRules.RatingGreen` (8.0)
+ * and `MatchRules.RatingDiamond` (10.0), and the red line is deliberately *not* the ordinary
+ * mark: the backend starts a man at `MatchRules.RatingBaseline` (7.0), so raising the
+ * ordinary mark to seven left this table exactly as it was. Were it ever restated here from
+ * the baseline instead of from these three, the same file would be saying two different
+ * things about where red begins.
  */
 export function matchRatingClass(rating: number | null | undefined, band?: string): string {
   if (rating === null || rating === undefined) return 'rating-unrated';

@@ -32,6 +32,85 @@ public class CupBracketView
 
     /// <summary>The losing side of the final, which is a fact in its own right: the runner-up.</summary>
     public string? RunnerUpTeamName { get; init; }
+
+    /// <summary>
+    /// Whether the cup has been decided, and who won it — the one thing a podium is a podium of.
+    /// </summary>
+    public bool IsDecided => ChampionTeamId is not null;
+
+    /// <summary>
+    /// Every club the cup has drawn, in the order it ranks: the furthest a club got first, and
+    /// inside a round by the championship's own tiebreakers.
+    /// </summary>
+    /// <remarks>
+    /// It is sent with the bracket rather than behind a second route because it is a reading of
+    /// the same ties and the same matches. A screen that asked the bracket and then asked for
+    /// the ranking would read the cup twice, and the two answers would be two answers about how
+    /// far each club had got — taken a minute apart, which is a long time in a semi-final.
+    /// </remarks>
+    public IReadOnlyList<CupRankingRow> Ranking { get; init; } = Array.Empty<CupRankingRow>();
+}
+
+/// <summary>
+/// One line of the cup's ranking: how far a club got, and what it did to get there.
+/// </summary>
+/// <remarks>
+/// The round is the primary key and the championship's tiebreakers are the rest, so the ranking
+/// is a ladder of rounds with a table inside each step: two clubs knocked out in the same
+/// quarter-final are ordered by the same chain that orders a league table, head-to-head and
+/// cards included, because "who had the better campaign" is a question this game answers one way.
+/// </remarks>
+public class CupRankingRow
+{
+    /// <summary>Where the club ranks, counted from one.</summary>
+    public int Position { get; init; }
+
+    public Guid TeamId { get; init; }
+
+    public string Name { get; init; } = string.Empty;
+
+    public string PrimaryColor { get; init; } = string.Empty;
+
+    public string SecondaryColor { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The tie-round the club reached, and the last one the cup plays for the club still in it.
+    /// A cup in progress puts the clubs of the round being played on the same step, which is
+    /// what they are: four clubs that have not lost are four clubs that have not been ranked
+    /// against each other yet.
+    /// </summary>
+    public int RoundNumber { get; init; }
+
+    /// <summary>The round in the game's words, because a ranking headed "5" is not a ranking.</summary>
+    public string RoundName { get; init; } = string.Empty;
+
+    public int Played { get; init; }
+
+    public int Wins { get; init; }
+
+    public int Draws { get; init; }
+
+    public int Losses { get; init; }
+
+    public int GoalsFor { get; init; }
+
+    public int GoalsAgainst { get; init; }
+
+    public int GoalDifference => GoalsFor - GoalsAgainst;
+
+    /// <summary>
+    /// The three points for a win and one for a draw, which is the first of the tiebreakers and
+    /// not a cup table: the ranking sends it because the rule that decides the order uses it.
+    /// </summary>
+    public int Points { get; init; }
+
+    /// <summary>What the club's run is paid, and null while it is still running.</summary>
+    public decimal? Prize { get; init; }
+
+    public bool IsChampion { get; init; }
+
+    /// <summary>Lost the final, which is not the same as being knocked out in it.</summary>
+    public bool IsRunnerUp { get; init; }
 }
 
 /// <summary>One round of a bracket: the sixteen, the quarter-finals, the final, whatever it is.</summary>

@@ -37,6 +37,13 @@ public class InboxMessageLine
 /// asked for at the same moment and by the same screen: a manager opening his own mail
 /// already knows how much of it is new, and a second request to find out is a request that
 /// can be answered a second later than the page it belongs to.
+///
+/// <para>
+/// The tally travels with it for the same reason. A screen drawing a filter per category has
+/// to label each one with how much of the box is behind it, and that number is the same for
+/// every page of the same box — a filter column renumbering itself on every page turn is a
+/// column of numbers that cannot be compared to each other.
+/// </para>
 /// </summary>
 public class InboxBox
 {
@@ -46,6 +53,18 @@ public class InboxBox
     public int TotalItems { get; init; }
     public int TotalPages { get; init; }
     public int UnreadCount { get; init; }
+
+    /// <summary>
+    /// The kind this page was filtered by, or null for the whole box.
+    ///
+    /// It is echoed back because the screen's buttons have to know which of them is the one
+    /// that is on, and a client that kept that state to itself would light up a filter the
+    /// server is not applying after any navigation it did not perform itself.
+    /// </summary>
+    public InboxCategory? Category { get; init; }
+
+    /// <summary>How many of each kind the box holds, and it is the whole box.</summary>
+    public IReadOnlyList<InboxCategoryTally> Categories { get; init; } = Array.Empty<InboxCategoryTally>();
 }
 
 /// <summary>
@@ -575,4 +594,590 @@ public class PlayerAbsence
 public class MatchAbsence
 {
     public IReadOnlyList<PlayerAbsence> Players { get; init; } = Array.Empty<PlayerAbsence>();
+}
+
+/// <summary>
+/// A youth academy player who grew in his potential this round, in the words a manager reads it in.
+/// </summary>
+public class AcademyEvolutionFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+    public required Guid PlayerId { get; init; }
+    public required string PlayerName { get; init; }
+    public required string Attribute { get; init; }
+    public required int Gained { get; init; }
+    public required int Before { get; init; }
+    public required int After { get; init; }
+}
+
+/// <summary>
+/// A player the manager has placed on the transfer list, in the words a manager reads it.
+/// </summary>
+public class TransferListedFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+    public required Guid PlayerId { get; init; }
+    public required string PlayerName { get; init; }
+}
+
+/// <summary>
+/// A player who has announced he will retire at the end of the season, in the words a manager
+/// reads it in.
+///
+/// The announcement is a rule applied at the season boundary, not a decision a manager makes — so
+/// the message is written once per player, keyed by the contract and the season, and it arrives
+/// at the same moment as the one warning that his deal is also in its last year.
+/// </summary>
+public class RetirementAnnouncedFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+    public required Guid PlayerId { get; init; }
+    public required string PlayerName { get; init; }
+
+    /// <summary>
+    /// The season this announcement applies to, for the reference so the message is written once
+    /// per player per season.
+    /// </summary>
+    public required Guid SeasonId { get; init; }
+}
+
+/// <summary>
+/// The market opening or closing, in the words a manager reads it in.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A window is a date with consequences, and the two dates a manager cannot look up — when it
+/// shuts, and when a man signed today actually walks through the door — are the two things the
+/// screen does not put in a sentence. The message carries both, because a manager deciding
+/// whether to bid needs to know whether he is deciding this week or whether he is deciding for
+/// the first round of next season.
+/// </para>
+///
+/// <para>
+/// Open and closed are the same method rather than two, because they are the same fact seen
+/// from two sides and the difference between them is a sentence. They are nevertheless two
+/// references: a club told its window is open and a club told its window has shut is two pieces
+/// of news, and one of them at the same round is the other of them one round later.
+/// </para>
+/// </remarks>
+public class TransferWindowFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+
+    /// <summary>The season the market belongs to, as a manager would say it.</summary>
+    public required Guid SeasonId { get; init; }
+
+    public required string SeasonName { get; init; }
+
+    /// <summary>Whether the window is open on the round this message is about.</summary>
+    public required bool IsOpen { get; init; }
+
+    /// <summary>
+    /// The championship round this message is about, counted from one — the round whose closing
+    /// opens or shuts the window.
+    /// </summary>
+    public required int RoundNumber { get; init; }
+
+    /// <summary>
+    /// The round the deals signed in this window walk in on. It is the round's own number and
+    /// not a label, because the whole point of the sentence is that a manager can plan a squad
+    /// around it.
+    /// </summary>
+    public required int ArrivalRound { get; init; }
+
+    /// <summary>
+    /// The round of the next window, or null when this is the last one there is. A null is a
+    /// fact rather than missing data: after the second window the next arrival is the Supercup of
+    /// the following season, and it does not belong to any round of the one being reported.
+    /// </summary>
+    public int? NextWindowRound { get; init; }
+}
+
+/// <summary>
+/// A man who will not be on the pitch, and the discipline that put him there, on its own.
+/// </summary>
+/// <remarks>
+/// <para>
+/// It is a separate message from the report of the match and not a paragraph of it. A report
+/// says what happened over ninety minutes and a manager reads it the same evening; a suspension
+/// is a fact about the next two or three fixtures and he reads it in the morning, with the
+/// lineup screen open. Told once, it lands where it is read.
+/// </para>
+///
+/// <para>
+/// It carries only the two causes that suspend. An injury is measured in days the club does not
+/// control and is a different kind of absence entirely — the one where the only decision left is
+/// who replaces him — so it travels in <see cref="AbsenceCause.Injury"/> and is not the business
+/// of this message.
+/// </para>
+/// </remarks>
+public class SuspensionFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+    public required Guid PlayerId { get; init; }
+    public required string PlayerName { get; init; }
+
+    /// <summary>
+    /// How many matches he misses. It is the number a manager schedules around, so it is carried
+    /// rather than left for him to count on the suspensions screen.
+    /// </summary>
+    public required int Matches { get; init; }
+
+    /// <summary>The discipline, and not a sentence: a red and three yellows are read differently.</summary>
+    public required AbsenceCause Cause { get; init; }
+
+    /// <summary>
+    /// The match the card was shown in, and the whole of what makes the reference: the same
+    /// player shown twice in one match is one suspension and not two.
+    /// </summary>
+    public required Guid MatchId { get; init; }
+
+    public Guid? OpponentId { get; init; }
+    public string? OpponentName { get; init; }
+
+    /// <summary>
+    /// Where it happened, in one phrase — "3ª rodada, contra o Grêmio". It travels already
+    /// written because the caller is the piece of the world that knows the round and the
+    /// competition, and a message that named the round from a number it was handed would have two
+    /// ways of saying the same afternoon.
+    /// </summary>
+    public string? MatchLabel { get; init; }
+}
+
+/// <summary>
+/// A player who has just walked into the club, in the words a manager reads it in.
+/// </summary>
+/// <remarks>
+/// The counterpart of the departure, and told with the same appetite for what the man is: the
+/// fee is what the club paid, the wage is what it will pay every season, and the book value is
+/// what the club's own department thinks he is worth. A signing told without the third of those
+/// is an advertisement, and this box does not carry advertisements.
+/// </remarks>
+public class SigningFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+    public required Guid PlayerId { get; init; }
+    public required string PlayerName { get; init; }
+
+    public required int Age { get; init; }
+
+    /// <summary>
+    /// The wire position: "GK", "DEF", "MID" or "ATT". The word a sentence needs is worked out
+    /// from it by the same rule for every message, because the box does not carry four ways of
+    /// spelling the same position.
+    /// </summary>
+    public required string Position { get; init; }
+
+    public Guid? SellingClubId { get; init; }
+    public string? SellingClubName { get; init; }
+
+    /// <summary>Which division of the pyramid the club he came from is in, counted from one.</summary>
+    public int? SellingDivisionTier { get; init; }
+
+    /// <summary>What the club paid, and zero when he was a free agent.</summary>
+    public required decimal Fee { get; init; }
+
+    /// <summary>
+    /// Whether he came free. It is on the facts rather than worked out from the fee because a
+    /// club's own signing for no money is a different piece of news from a player with no club,
+    /// and only the caller knows which of the two it has.
+    /// </summary>
+    public required bool IsFreeAgent { get; init; }
+
+    /// <summary>The new contract's wage per season, which is the shape of the deal.</summary>
+    public required decimal Wage { get; init; }
+
+    /// <summary>
+    /// What the book says he is worth, when the book says anything. It travels beside the fee so
+    /// a manager can weigh one against the other without leaving the message.
+    /// </summary>
+    public decimal? MatchValue { get; init; }
+
+    /// <summary>
+    /// The deal he arrived on. It is what makes the message once: a window closed twice by a run
+    /// that played it and by a process that was down over the weekend is one arrival.
+    /// </summary>
+    public required Guid TransferId { get; init; }
+}
+
+/// <summary>
+/// A club that has changed division between two seasons, in the words it is told in.
+/// </summary>
+/// <remarks>
+/// It is one message for both directions because the pyramid is one thing: the club that goes up
+/// and the club that comes down are two lines of the same ladder, and the size of the step is the
+/// same number in either reading. What differs is only which way the sentence walks.
+/// </remarks>
+public class DivisionMovementFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+
+    /// <summary>The season whose last table decided it, which is also what makes it once.</summary>
+    public required Guid SeasonId { get; init; }
+
+    public required string SeasonName { get; init; }
+
+    /// <summary>True when the club goes up the pyramid, false when it comes down it.</summary>
+    public required bool Promoted { get; init; }
+
+    /// <summary>"2ª Divisão" — the division it played in, named whole.</summary>
+    public required string FromDivisionName { get; init; }
+
+    /// <summary>"1ª Divisão" — the division it will play in next season, named whole.</summary>
+    public required string ToDivisionName { get; init; }
+
+    /// <summary>Where it finished in the old division, counted from one.</summary>
+    public required int Position { get; init; }
+
+    public required int Points { get; init; }
+    public required int Played { get; init; }
+    public required int Wins { get; init; }
+    public required int Draws { get; init; }
+    public required int Losses { get; init; }
+    public required int GoalsFor { get; init; }
+    public required int GoalsAgainst { get; init; }
+}
+
+/// <summary>
+/// A club that cannot move a man because it has nobody left to spare, in the words it is told in.
+/// </summary>
+/// <remarks>
+/// It is worth a message because the block is invisible until it refuses something. A club of
+/// twenty-one players looks exactly like a club of twenty-three on a table, and the first sign
+/// that the difference matters is a rejected release and a rejected sale — two answers a manager
+/// reads as somebody else's decision.
+/// </remarks>
+public class SquadFloorFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+
+    /// <summary>The season, which is also the whole of the reference.</summary>
+    public required Guid SeasonId { get; init; }
+
+    public required string SeasonName { get; init; }
+
+    public required int SquadSize { get; init; }
+
+    /// <summary>
+    /// The floor itself, carried rather than written into the sentence. The number belongs to
+    /// <c>SquadSizeRules</c>, and a message that spelled out "21" would be a second copy of it
+    /// that a later retune of the rule would leave behind.
+    /// </summary>
+    public required int MinSquadSize { get; init; }
+}
+
+/// <summary>
+/// One tie of a cup draw, before a ball of it has been kicked.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A draw has no winners and no losers, so unlike <see cref="CupRoundTieFacts"/> it carries no
+/// winner: what it carries is what is already known about the tie, which is usually nothing and
+/// occasionally the first leg.
+/// </para>
+///
+/// <para>
+/// The scores are nullable per leg rather than per tie on purpose. A draw drawn at the start of
+/// the campaign has none; a message about a round whose first leg was played by the time it was
+/// written has one. Printing two empty columns of zeros would be a news item about a game that
+/// has not happened.
+/// </para>
+/// </remarks>
+public class CupDrawTie
+{
+    public required Guid HomeTeamId { get; init; }
+    public required string HomeName { get; init; }
+
+    public required Guid AwayTeamId { get; init; }
+    public required string AwayName { get; init; }
+
+    /// <summary>The first leg's goals, when the first leg has been played.</summary>
+    public int? HomeLegScore { get; init; }
+
+    public int? AwayLegScore { get; init; }
+
+    /// <summary>
+    /// The tie settled, said in words: "2-1 no agregado". It is the fact rather than two numbers
+    /// the reader would have to add up himself, and it is null while the tie is undecided.
+    /// </summary>
+    public string? AggregateAwayHomeLabel { get; init; }
+}
+
+/// <summary>
+/// A cup round drawn, told to every manager in the country.
+/// </summary>
+/// <remarks>
+/// <para>
+/// It has no recipient, and that is the whole difference from every other message here. A draw is
+/// the country's news: a manager whose club was not drawn still has to know which of the names on
+/// the television went out of the cup, because half of them are the clubs his own players will be
+/// measured against in ten weeks.
+/// </para>
+/// </remarks>
+public class CupDrawFacts
+{
+    /// <summary>The edition the round belongs to, which is also what the draw is identified by.</summary>
+    public required Guid CupEditionId { get; init; }
+
+    /// <summary>"Copa Ninja Eleven" — the competition the draw is a round of.</summary>
+    public required string CompetitionName { get; init; }
+
+    /// <summary>The round's number in the bracket, counted from the first round.</summary>
+    public required int RoundNumber { get; init; }
+
+    /// <summary>
+    /// "32 avos de final" — the round as a manager would say it. It is carried so the caller can
+    /// say the round the draw calls itself rather than the box deciding it, and the message falls
+    /// back to the rules' own name when it arrives blank.
+    /// </summary>
+    public string RoundName { get; init; } = string.Empty;
+
+    public required IReadOnlyList<CupDrawTie> Ties { get; init; }
+
+    /// <summary>
+    /// The calendar day the first leg is played on, when the round's schedule says one. It is the
+    /// date a manager writes on the sheet, and a message about a draw that omits it leaves the
+    /// only actionable fact of the whole thing unsaid.
+    /// </summary>
+    public int? FirstLegMatchDay { get; init; }
+}
+
+/// <summary>
+/// A youth player brought up into the first team, in the words a manager reads it in.
+/// </summary>
+/// <remarks>
+/// It is told because the promotion is a decision with a price attached — a one-season contract at
+/// the minimum wage — and because the honest half of it is that nobody yet knows whether the boy
+/// will play. A message that only carried the arrival would be the same message as a signing, and
+/// it is not one.
+/// </remarks>
+public class AcademyPromotionFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+    public required Guid PlayerId { get; init; }
+    public required string PlayerName { get; init; }
+
+    /// <summary>The wire position: "GK", "DEF", "MID" or "ATT".</summary>
+    public required string Position { get; init; }
+
+    public required int Age { get; init; }
+
+    /// <summary>The wage the one-season contract pays, which is the floor the club gives.</summary>
+    public required decimal Wage { get; init; }
+
+    /// <summary>
+    /// The ceiling the player can grow to, which is the number a manager is actually being asked
+    /// to bet on.
+    /// </summary>
+    public required int Potential { get; init; }
+}
+
+/// <summary>
+/// A contract signed again, in the words a manager reads it in.
+/// </summary>
+/// <remarks>
+/// It is told after the fact and never before it, because there is nothing to announce while the
+/// renewal is a screen with four buttons on it: what a manager cannot see from the squad table is
+/// what the new deal does to the wage bill, and that is what this says.
+/// </remarks>
+public class ContractRenewedFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+    public required Guid PlayerId { get; init; }
+    public required string PlayerName { get; init; }
+
+    /// <summary>The contract that was renewed, which is the whole of the reference.</summary>
+    public required Guid ContractId { get; init; }
+
+    /// <summary>How many seasons this renewal just signed.</summary>
+    public required int Seasons { get; init; }
+
+    /// <summary>What the club was paying per season before, which is the cost of the alternative.</summary>
+    public required decimal PreviousWage { get; init; }
+
+    /// <summary>What it pays per season now.</summary>
+    public required decimal NewWage { get; init; }
+
+    /// <summary>How many of those seasons are still to be served after this one.</summary>
+    public required int NewSeasonsLeft { get; init; }
+
+    /// <summary>
+    /// The whole length of the contract, seasons already served included. It is what turns a wage
+    /// into a liability: a wage for one season is a cost, and the same wage for five is a plan.
+    /// </summary>
+    public required int NewTotalSeasons { get; init; }
+}
+
+/// <summary>
+/// One company on the shortlist of companies that would put their name on the shirt.
+/// </summary>
+/// <remarks>
+/// It is the row of the sponsors screen and not the sponsor: the shortlist is a decision with
+/// several prices in it, and the box quotes the best of them rather than carrying all of them as
+/// prose that would go stale the moment the next window is drawn.
+/// </remarks>
+public class SponsorCandidateFacts
+{
+    public required Guid SponsorId { get; init; }
+    public required string SponsorName { get; init; }
+
+    /// <summary>
+    /// "Local", "Regional" or "Nacional" — the size of the company as the sponsors screen writes
+    /// it. It travels as words rather than as a weight because the weight is the rule's number
+    /// and the sentence needs the name of the thing.
+    /// </summary>
+    public string SizeLabel { get; init; } = string.Empty;
+
+    public required decimal PerMatchFee { get; init; }
+
+    /// <summary>How many matches the shirt would carry the name for.</summary>
+    public required int ContractMatches { get; init; }
+
+    /// <summary>
+    /// The term of the offer in words — how long it stands, or what happens when it ends. Blank
+    /// when the company imposes no term of its own, and a message says so rather than filling it.
+    /// </summary>
+    public string? ExpiryLabel { get; init; }
+}
+
+/// <summary>
+/// The companies that would take the shirt this round, in the words a manager reads them in.
+/// </summary>
+/// <remarks>
+/// It is the shortlist rather than a signed deal, which is the whole difference from
+/// <see cref="SponsorSignedFacts"/>: nobody has agreed anything here and the manager is the one
+/// who agrees. What he is owed is the best price on the table and the fact that the list is not
+/// a draw — a board of three that redrew itself every visit would make a decision taken on one
+/// visit a decision taken on nothing.
+/// </remarks>
+public class SponsorBookFacts
+{
+    public required Guid RecipientTeamId { get; init; }
+    public required string ClubName { get; init; }
+
+    public required Guid SeasonId { get; init; }
+    public required string SeasonName { get; init; }
+
+    /// <summary>The round this shortlist was drawn on, which is half of the reference.</summary>
+    public required int RoundNumber { get; init; }
+
+    /// <summary>
+    /// True when the club has no deal at all and is being offered one for the first time; false
+    /// when it has one that is running out and is being offered a renewal. The two are different
+    /// news and the message says which one it is.
+    /// </summary>
+    public required bool IsFirstDraw { get; init; }
+
+    /// <summary>
+    /// Every company that would take the club, ordered by what it pays. It is the whole list and
+    /// not a drawn shortlist: the number on the screen is the screen's, and the order is the
+    /// price.
+    /// </summary>
+    public required IReadOnlyList<SponsorCandidateFacts> Candidates { get; init; }
+}
+
+/// <summary>
+/// One line of a division's table after a matchday, as a message reads it.
+/// </summary>
+/// <remarks>
+/// It carries the position it held yesterday as well as the one it holds now, because the two
+/// numbers are the news and either of them alone is a table. Yesterday is null for a club that
+/// was not in this division yesterday, which is a fact about the club and not a missing row.
+/// </remarks>
+public class RoundSummaryLine
+{
+    public required Guid TeamId { get; init; }
+    public required string ClubName { get; init; }
+
+    /// <summary>Where the club stands now, counted from one.</summary>
+    public required int Position { get; init; }
+
+    /// <summary>Where it stood before the round, or null when it was not in this division then.</summary>
+    public int? PreviousPosition { get; init; }
+
+    public required int Points { get; init; }
+    public required int Played { get; init; }
+    public required int Wins { get; init; }
+    public required int Draws { get; init; }
+    public required int Losses { get; init; }
+    public required int GoalsFor { get; init; }
+    public required int GoalsAgainst { get; init; }
+}
+
+/// <summary>
+/// One division's table after a matchday, as a message reads it.
+/// </summary>
+public class RoundSummaryDivision
+{
+    /// <summary>"1ª Divisão" — the division's own name, top first where there are several.</summary>
+    public required string DivisionName { get; init; }
+
+    public required IReadOnlyList<RoundSummaryLine> Lines { get; init; }
+}
+
+/// <summary>
+/// One result of the day, as a message reads it.
+/// </summary>
+public class RoundSummaryFixture
+{
+    public required Guid MatchId { get; init; }
+
+    public required Guid HomeTeamId { get; init; }
+    public required string HomeName { get; init; }
+
+    public required Guid AwayTeamId { get; init; }
+    public required string AwayName { get; init; }
+
+    public required int HomeGoals { get; init; }
+    public required int AwayGoals { get; init; }
+
+    /// <summary>"1ª Divisão", "Copa Ninja Eleven" — which competition the result belongs to.</summary>
+    public required string CompetitionName { get; init; }
+}
+
+/// <summary>
+/// A matchday of the championship, told to every manager in the country.
+/// </summary>
+/// <remarks>
+/// <para>
+/// It is the one message that is the same fact for everybody and different in the first line for
+/// each reader, which is the whole reason it exists. Thirty-two results and four tables are the
+/// country's afternoon; what any single manager needs from it is his own result, what it did to
+/// his own place, and enough of the rest to know whether the shape of his season is changing.
+/// </para>
+///
+/// <para>
+/// It is not a season summary repeated thirty-four times, and the difference is what it leaves
+/// out. A season summary exists once, in January, and can afford sixteen lines a table; a
+/// matchday arrives thirty-four times a season, and a box that printed every line of every table
+/// every Wednesday would be a box a manager learned to swipe past by Wednesday of the second
+/// month.
+/// </para>
+/// </remarks>
+public class RoundSummaryFacts
+{
+    public required Guid SeasonId { get; init; }
+    public required string SeasonName { get; init; }
+
+    /// <summary>The championship round, counted from one.</summary>
+    public required int RoundNumber { get; init; }
+
+    /// <summary>The calendar day the round was played on, when the season's calendar says one.</summary>
+    public int? MatchDayNumber { get; init; }
+
+    /// <summary>The divisions' tables after the round, top first.</summary>
+    public required IReadOnlyList<RoundSummaryDivision> Divisions { get; init; }
+
+    /// <summary>Every result of the day, including the competitions that keep no table.</summary>
+    public required IReadOnlyList<RoundSummaryFixture> Fixtures { get; init; }
 }

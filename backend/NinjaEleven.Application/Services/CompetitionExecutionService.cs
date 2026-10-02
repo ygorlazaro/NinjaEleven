@@ -60,6 +60,7 @@ public class CompetitionExecutionService
     private readonly IManagedClubReader _managedClubs;
     private readonly ISeasonCalendarBuilder _calendar;
     private readonly StatementService _statements;
+    private readonly AcademyService _academy;
     private readonly IOptions<WorldExecutionOptions> _options;
     private readonly ILogger<CompetitionExecutionService> _logger;
 
@@ -81,6 +82,7 @@ public class CompetitionExecutionService
         IManagedClubReader managedClubs,
         ISeasonCalendarBuilder calendar,
         StatementService statements,
+        AcademyService academy,
         IOptions<WorldExecutionOptions> options,
         ILogger<CompetitionExecutionService> logger)    {
         _clock = clock;
@@ -95,6 +97,7 @@ public class CompetitionExecutionService
         _managedClubs = managedClubs;
         _calendar = calendar;
         _statements = statements;
+        _academy = academy;
         _player = player;
         _cleaner = cleaner;
         _scopes = scopes;
@@ -373,6 +376,11 @@ public class CompetitionExecutionService
         // the world again: a statement is about a week that is over, and the week's last gate
         // and last wage bill are on the book now and not a window later.
         await CloseTheBooksOfTheWeekAsync(season, day, cancellationToken);
+
+        // Youth academy evolution: 10% of academy players grow this round. It is tied to
+        // the week closing so it happens alongside the statement, and it is a no-op when
+        // there are no academy players.
+        await _academy.EvolveAcademyAsync(season.Id, cancellationToken);
 
         _logger.LogInformation(
             "Advanced by hand: day {Number} ({Date}), the {Wave} window, {Rounds} window(s) played.",

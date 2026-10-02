@@ -134,6 +134,8 @@ public class TacticsController : ControllerBase
                 Stars = row.Stars,
                 Energy = row.Energy,
                 IsAvailable = row.IsAvailable,
+                SuspensionMatches = row.SuspensionMatches,
+                InjuryMatchesRemaining = row.InjuryMatchesRemaining,
                 Attributes = [.. row.Attributes]
             })
             .ToList(),

@@ -5,6 +5,7 @@ using NinjaEleven.Application.Repositories;
 using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Finance;
+using NinjaEleven.Domain.Inbox;
 using NinjaEleven.Domain.Enums;
 
 namespace NinjaEleven.Application.Services;
@@ -124,7 +125,7 @@ public class ScorerPrizeService
                         // prize itself is priced from the cup's own title. A tier is what
                         // makes an edition a division, so its absence is the same answer
                         // ReadTheChampionPrizeAsync gives.
-                        LinkRoute = prizes.Tier is null ? "/copa" : "/league",
+                        LinkRoute = prizes.Tier is null ? InboxLink.Cup : InboxLink.League,
                         LinkLabel = prizes.Tier is null ? "Ver a Copa" : "Ver o campeonato",
                         Reference = $"artilharia:{competitionSeasonId}:{winner.PlayerId}"
                     },

@@ -23,6 +23,7 @@ import type {
   CupBracketDto,
   CupPrizeDto,
   DivisionPurseDto,
+  PyramidRulesDto,
   TopScorerPrizeListDto,
    SponsorOfferDto,
    SponsorBookDto,
@@ -36,8 +37,13 @@ import type {
    ReleaseResultDto,
   TacticsBoardDto,
   TacticsPlanDto,
-  SaveTacticsPlanRequestDto,
-   AuthResponseDto,
+    SaveTacticsPlanRequestDto,
+    AcademyPlayerDto,
+    PromoteAcademyResponseDto,
+    TransferListResultDto,
+    RenewContractRequestDto,
+    RenewContractResponseDto,
+    AuthResponseDto,
    AuthRegisterRequestDto,
    AuthLoginRequestDto,
     ChangePasswordRequestDto,
@@ -50,6 +56,7 @@ import type {
     ClubBalanceDto,
     DivisionRecentTransfersDto,
     ClubTransferHistoryDto,
+    TransferRankingsDto,
 } from '../types';
 
 /**
@@ -218,6 +225,40 @@ export const TeamApi = {
   updateShirtNumber: (id: string, playerId: string, shirtNumber: number) =>
     api
       .put<UpdateShirtNumberResponseDto>(`/team/${id}/shirt-number`, { playerId, shirtNumber })
+      .then(r => r.data),
+
+  /**
+   * The club's youth academy players for a season: the list the Base screen reads from.
+   */
+  getAcademy: (teamId: string, seasonId: string) =>
+    api
+      .get<AcademyPlayerDto[]>(`/team/${teamId}/academy/${seasonId}`)
+      .then(r => r.data),
+
+  /** Promotes an academy player to the first team squad. */
+  promoteAcademyPlayer: (teamId: string, playerId: string, seasonId: string) =>
+    api
+      .post<PromoteAcademyResponseDto>(
+        `/team/${teamId}/academy/${playerId}/promote?seasonId=${seasonId}`
+      )
+      .then(r => r.data),
+
+  /** Puts a squad player on the active transfer list. */
+  putOnTransferList: (teamId: string, playerId: string, seasonId: string) =>
+    api
+      .post<TransferListResultDto>(`/team/${teamId}/transfer-list/${playerId}?seasonId=${seasonId}`)
+      .then(r => r.data),
+
+  /** Takes a squad player off the active transfer list. */
+  takeOffTransferList: (teamId: string, playerId: string, seasonId: string) =>
+    api
+       .delete<TransferListResultDto>(`/team/${teamId}/transfer-list/${playerId}?seasonId=${seasonId}`)
+       .then(r => r.data),
+
+  /** Renews a player's contract. The wage is calculated by the backend; the client only sends the desired length. */
+  renewContract: (teamId: string, request: RenewContractRequestDto) =>
+    api
+      .post<RenewContractResponseDto>(`/team/${teamId}/contract/renew`, request)
       .then(r => r.data),
 };
 
@@ -392,6 +433,17 @@ export const LeagueApi = {
    * add up.
    */
   getPrizes: () => api.get<DivisionPurseDto[]>('/league/prizes').then(r => r.data),
+
+  /**
+   * The pyramid's rules: the order a table is settled in, and what each division's table ends
+   * the season with.
+   *
+   * It is asked of the backend because both of those are the engine's. The chain is the chain
+   * the sort walks and the bands are the movement the close of the season makes, so a screen
+   * that said "os 4 primeiros sobem" out of a constant of its own would be promising four
+   * accesses to a champion who has no division above him.
+   */
+  getRules: () => api.get<PyramidRulesDto>('/league/rules').then(r => r.data),
 };
 
 export const MatchApi = {
@@ -567,6 +619,13 @@ export const TransferApi = {
     api.get<DivisionRecentTransfersDto>(`/transfer/recent?clubId=${clubId}&windowRounds=${windowRounds}`).then(r => r.data),
 
   /**
+   * The four transfer rankings of the division: most players bought, most sold, most spent,
+   * and most profit. Profit is net — fees received minus fees paid.
+   */
+  getRankings: (clubId: string) =>
+    api.get<TransferRankingsDto>(`/transfer/rankings?clubId=${clubId}`).then(r => r.data),
+
+  /**
    * Every transfer involving one club, across the seasons given, newest first.
    * Pending and accepted sit in the same table as completed ones.
    */
@@ -623,11 +682,21 @@ export const RankingApi = {
  * written by the engine and the manager's part in the box is to read it.
  */
 export const InboxApi = {
-  /** A page of the club's box, newest first, with the number of unread messages beside it. */
-  getBox: (teamId: string, page = 1, pageSize = 20) =>
-    api
-      .get<InboxBoxDto>(`/inbox/${teamId}`, { params: { page, pageSize } })
-      .then(r => r.data),
+  /**
+ * A page of the club's box, newest first, with the number of unread messages beside it.
+ *
+ * The category is sent as the backend's own name and the filter is applied **by the server**,
+ * on the page, on the count and on the paging at once. Filtering the twenty lines on screen
+ * instead would answer "how much of my mail is this" with the twenty lines the screen happened
+ * to be holding, and a manager would page through his own box hunting for the rest of what one
+ * button said was there.
+ */
+getBox: (teamId: string, page = 1, pageSize = 20, category?: string | null) =>
+  api
+    .get<InboxBoxDto>(`/inbox/${teamId}`, {
+      params: { page, pageSize, ...(category ? { category } : {}) }
+    })
+    .then(r => r.data),
 
   /** How many messages the manager has not opened. The number on the column. */
   getUnreadCount: (teamId: string) =>

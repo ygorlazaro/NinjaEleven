@@ -123,6 +123,12 @@ public class TransferListing
     public bool Retiring { get; set; }
 
     /// <summary>
+    /// Whether the manager has placed this player on the active transfer list. Transfer-listed
+    /// players appear on the market alongside free agents, even though they have a club.
+    /// </summary>
+    public bool OnTransferList { get; set; }
+
+    /// <summary>
     /// The season's own totals, so the market shows the same numbers the squad table shows
     /// rather than a second set the manager has to reconcile.
     /// </summary>
@@ -360,4 +366,30 @@ public class ClubTransferHistory
     public string TeamName { get; set; } = string.Empty;
     public IReadOnlyList<int> SeasonNumbers { get; set; } = Array.Empty<int>();
     public IReadOnlyList<TransferHistoryLine> Transfers { get; set; } = Array.Empty<TransferHistoryLine>();
+}
+
+/// <summary>
+/// The four transfer rankings of a division: most players bought, most players sold, most
+/// money spent, and most profit made. Profit is net — fees received as a seller minus fees
+/// paid as a buyer — so a club that sells one for more than two cost appears above a club
+/// that bought five for peanuts and sold none.
+/// </summary>
+public class TransferRankings
+{
+    public Guid CompetitionSeasonId { get; set; }
+    public IReadOnlyList<TransferRankingEntry> MostBought { get; set; } = Array.Empty<TransferRankingEntry>();
+    public IReadOnlyList<TransferRankingEntry> MostSold { get; set; } = Array.Empty<TransferRankingEntry>();
+    public IReadOnlyList<TransferRankingEntry> MostSpent { get; set; } = Array.Empty<TransferRankingEntry>();
+    public IReadOnlyList<TransferRankingEntry> MostProfit { get; set; } = Array.Empty<TransferRankingEntry>();
+}
+
+public class TransferRankingEntry
+{
+    public Guid TeamId { get; set; }
+    public string TeamName { get; set; } = string.Empty;
+    public string TeamShortName { get; set; } = string.Empty;
+    public string PrimaryColor { get; set; } = string.Empty;
+    public string SecondaryColor { get; set; } = string.Empty;
+    public int Transfers { get; set; }
+    public decimal Amount { get; set; }
 }

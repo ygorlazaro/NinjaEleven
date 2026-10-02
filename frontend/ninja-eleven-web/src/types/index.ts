@@ -41,8 +41,6 @@ export interface TrainingResultDto {
   attributeAfter: number;
   /** What the session cost the club, being a share of the man's season wage. */
   fee: number;
-  /** How many sessions the club has left on the day after this one. */
-  sessionsLeft: number;
 }
 
 /**
@@ -83,11 +81,10 @@ export interface TrainingQuoteDto {
   energy: number;
   isAvailable: boolean;
   injury: string;
+  /** Whether this player is an academy youth player. */
+  isAcademyPlayer: boolean;
   /**
-   * What one session on this man costs the club, being a share of his season wage. It is a
-   * number the domain arrived at and is never worked out here — the same session costs the
-   * club far more of a striker's wage than of a reserve goalkeeper's, so it is per man and
-   * not a single figure for the squad.
+   * What one session on this man costs the club, being a share of his season wage.
    */
   sessionFee: number;
   attributes: TrainingAttributeQuoteDto[];
@@ -98,14 +95,10 @@ export interface SquadTrainingQuotesDto {
   teamId: Guid;
   seasonId: Guid;
   squadEnergy: number;
-  /** The calendar day the allowance below is for, sent so the screen can name it. */
+  /** The calendar day the sheet is for, sent so the screen can name it. */
   day: string;
-  /** Whether the club has a fixture that day, which is what makes it one session or two. */
+  /** Whether the club has a fixture that day. */
   playsToday: boolean;
-  /** How many sessions the club has that day. */
-  sessionsAllowed: number;
-  /** How many of them have been spent. */
-  sessionsSpent: number;
   players: TrainingQuoteDto[];
 }
 
@@ -183,6 +176,8 @@ export interface SquadPlayerDto {
    */
   releaseCost: number;
   salary: number;
+  /** What a season of a renewed contract would cost, so the squad screen can show the number the renewal will be priced at. */
+  wageOnRenewal: number;
   /** Seasons of the contract, and how many of them are left. */
   contractSeasons: number;
   seasonsLeft: number;
@@ -202,6 +197,22 @@ export interface SquadPlayerDto {
   /** Null for a free agent: a player with no club is available to anyone. */
   teamId?: Guid | null;
   seasonId: Guid;
+}
+
+export interface RenewContractRequestDto {
+  playerId: Guid;
+  seasons: number;
+  seasonId?: Guid | null;
+}
+
+export interface RenewContractResponseDto {
+  playerId: Guid;
+  teamId: Guid;
+  seasonId: Guid;
+  contractId: Guid;
+  seasons: number;
+  seasonsLeft: number;
+  wage: number;
 }
 
 export interface TeamDto {
@@ -403,6 +414,7 @@ export interface TransferListingDto {
    * is spoken for, so the row says it before the button does.
    */
   hasActiveProposal: boolean;
+  onTransferList: boolean;
   energy: number;
   injury: string;
   injuryMatchesRemaining: number;
@@ -632,6 +644,15 @@ export interface SeasonCalendarDto {
   seasonId: Guid;
   seasonName: string;
   matchDayCount: number;
+  /**
+   * The day the world is on, which is a fact about the football and not about the calendar:
+   * the first day of the season with a fixture nobody has played, or the last day with football
+   * in it once the season is over. Null before the season is drawn, which is not day one.
+   *
+   * The screen opens the day filter on it rather than working it out — a client that picked
+   * "today" from a matchday's date would show day one of a season the world is twenty days in.
+   */
+  currentMatchDayNumber?: number | null;
   matchDays: MatchDayDto[];
   windows: RoundDto[];
 }
@@ -1420,22 +1441,26 @@ export type PlayerProfileDto = {
   teamName: string;
   teamPrimaryColor?: string | null;
   teamSecondaryColor?: string | null;
-  energy: number;
-  isAvailable: boolean;
-  injury: string;
-  injuryMatchesRemaining: number;
+   energy: number;
+   isAvailable: boolean;
+   injury: string;
+   injuryMatchesRemaining: number;
+   /** Whether the player has announced retirement at the end of this season. */
+   retiring: boolean;
 
-  /**
-   * The money, in limos, read from the same contract the squad table reads: what he is
-   * worth, what a rival would have to pay to take him, and what this club owes him for the
-   * season. `seasonsLeft` of `contractSeasons` is the clock on the deal, and it is what makes
-   * the price a price rather than a valuation.
-   */
-  marketValue: number;
+   /**
+    * The money, in limos, read from the same contract the squad table reads: what he is
+    * worth, what a rival would have to pay to take him, and what this club owes him for the
+    * season. `seasonsLeft` of `contractSeasons` is the clock on the deal, and it is what makes
+    * the price a price rather than a valuation.
+    */
+   marketValue: number;
   askingPrice: number;
   /** What releasing him would cost the club that holds him. See `SquadPlayerDto.releaseCost`. */
   releaseCost: number;
   salary: number;
+  /** What a season of a renewed contract would cost, so the profile screen can show the number the renewal will be priced at. */
+  wageOnRenewal: number;
   contractSeasons: number;
   seasonsLeft: number;
   isInLastSeason: boolean;
@@ -1443,6 +1468,13 @@ export type PlayerProfileDto = {
   season: PlayerCareerLineDto;
   total: PlayerCareerLineDto;
   history: PlayerMatchLineDto[];
+  /**
+   * The history told one season at a time, newest first: what a season of this player looked
+   * like, in the shirt he was wearing for it. Worked out by the backend from the same lines
+   * `history` is drawn from, so the two tables on the page cannot disagree about a season's
+   * goals.
+   */
+  seasons: PlayerSeasonLineDto[];
   /**
    * The player's face, as the raw JSON of a faces.js FaceConfig, and null when he has none.
    * It stays a string on this side of the wire on purpose — the shape belongs to the library
@@ -1479,6 +1511,23 @@ export type PlayerCareerLineDto = {
   ratedMatches: number;
 };
 
+/**
+ * One season of a career, in the shirt it was played in. A transfer inside a season makes two
+ * lines of one season — one line would credit the second club with the first one's goals.
+ */
+export type PlayerSeasonLineDto = {
+  seasonId?: Guid | null;
+  seasonName?: string | null;
+  /** So the club is a door, as every club name in the game is. */
+  teamId: Guid;
+  teamName?: string | null;
+  line: PlayerCareerLineDto;
+  /** How the club he played for did in the matches he has a line for. */
+  wins: number;
+  draws: number;
+  losses: number;
+};
+
 export type PlayerMatchLineDto = {
   matchId: Guid;
   seasonId?: Guid | null;
@@ -1513,6 +1562,8 @@ export type PlayerMatchLineDto = {
    * same matches read by a man and by a club.
    */
   teamName?: string | null;
+  /** So the club he played for is a door, as every club name in the game is. */
+  teamId?: Guid | null;
   seasonName?: string | null;
   competitionName?: string | null;
   phaseName?: string | null;
@@ -1848,6 +1899,50 @@ export interface CupBracketDto {
   championTeamName?: string | null;
   /** The losing side of the final: the runner-up, which is a fact in its own right. */
   runnerUpTeamName?: string | null;
+  /** Whether the final has been played and the cup has a winner. */
+  isDecided?: boolean;
+  /**
+   * Every club the cup drew, furthest first. It arrives with the bracket because it is a reading
+   * of the same ties, and it is ordered by the backend: the round a club reached, and inside a
+   * round the same tiebreakers a league table uses.
+   */
+  ranking: CupRankingRowDto[];
+}
+
+/**
+ * One line of the cup's ranking: how far a club got, and what it did to get there.
+ *
+ * The order is the backend's — the round a club reached, and inside a round the championship's
+ * own chain — so nothing here sorts it again. A client that ordered these lines a second way
+ * would be a second opinion about a cup, and it would have to know the rules the first one used.
+ */
+export interface CupRankingRowDto {
+  position: number;
+  teamId: string;
+  name: string;
+  primaryColor: string;
+  secondaryColor: string;
+  /** The tie-round the club reached, named in the column beside it. */
+  roundNumber: number;
+  roundName: string;
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  /** Goals for less goals against, worked out by the rule and not by the client. */
+  goalDifference: number;
+  /**
+   * Three for a win and one for a draw. It is not a cup table and does not claim to be one: it is
+   * the first of the tiebreakers, which is why it sits in the tiebreak block of the line.
+   */
+  points: number;
+  /** What the run is paid, and null while the club is still in the cup. */
+  prize?: number | null;
+  isChampion?: boolean;
+  /** Lost the final, which is not the same as being knocked out in it. */
+  isRunnerUp?: boolean;
 }
 
 /** One round of the bracket, named in the game's words rather than as a number. */
@@ -1928,6 +2023,76 @@ export interface PrizeShareDto {
 }
 
 /**
+ * The pyramid's rules: the order a table is settled in, and what each division's table ends the
+ * season with.
+ *
+ * It is asked of the backend because both of those are the engine's. The chain is the chain
+ * `StandingTable` sorts by and the bands are what `DivisionMovement.From` decides, so a screen
+ * that printed its own version of either — "os 4 primeiros sobem" out of a constant of its own —
+ * would be promising a season the game does not play: the first division has nowhere to promote
+ * to, and the last nowhere to be relegated from.
+ */
+export interface PyramidRulesDto {
+  /** How many divisions the pyramid has, tier 1 at the top. */
+  divisionCount: number;
+  /** Clubs in every division's table. */
+  clubsPerDivision: number;
+  /** The order a table is settled in, first criterion first. */
+  tieBreakers: StandingCriterionDto[];
+  /** Every division, from the top, with the bands its table ends in. */
+  divisions: DivisionRuleDto[];
+}
+
+/** One step of the order a table is settled in. */
+export interface StandingCriterionDto {
+  /** Which place in the chain this is, counted from one. */
+  order: number;
+  /**
+   * Whether the criterion is asked of every club in the division or only of the clubs the
+   * criteria before it left level — which is what the head-to-head is. Drawing the two ends of
+   * the chain as one list would tell a manager a head-to-head decides a table it has nothing to
+   * do with.
+   */
+  wholeTable: boolean;
+  /** The criterion's name, in the game's own words. */
+  label: string;
+  /** What it counts, and why it sits where it sits. */
+  detail: string;
+}
+
+/** One division's rules, as a screen reads them. */
+export interface DivisionRuleDto {
+  /** Which division, counted from one at the top. */
+  tier: number;
+  /** The division's own name: "1ª Divisão". */
+  name: string;
+  /** How many clubs share its table. */
+  clubs: number;
+  /** What the whole table is paid out of; each position's share is on the prize list. */
+  purse: number;
+  /** The bands, in the order a manager reads them down the table. */
+  bands: DivisionBandDto[];
+}
+
+/** One band of a division's table, and what the season's end does to it. */
+export interface DivisionBandDto {
+  /** "Title", "Promotion", "Relegation" or "Safe" — the domain's own name for the band. */
+  kind: string;
+  /** The first position of the band, counted from one. */
+  fromPosition: number;
+  /** The last position of the band. */
+  toPosition: number;
+  /** The division the clubs in the band start the next season in. */
+  toTier: number;
+  /** That division's own name. */
+  toDivisionName: string;
+  /** The band's name, as a manager would say it. */
+  label: string;
+  /** What finishing there is worth. */
+  meaning: string;
+}
+
+/**
  * What the cup pays: the winner's cheque and the consolation for the round a club went out in.
  *
  * A knockout is paid on the way out, so this is the other half of the money — the championship
@@ -1942,6 +2107,12 @@ export interface CupPrizeDto {
   amount: number;
   /** Whether this is the winner's cheque rather than a consolation. */
   isChampion: boolean;
+  /**
+   * Whether this consolation is the one the club that lost the final takes home. It comes from
+   * the backend rather than being worked out here from `tieRound`, because "eliminado na final"
+   * and "vice-campeão" are not the same sentence about the same run.
+   */
+  isRunnerUp?: boolean;
 }
 
 /**
@@ -2096,6 +2267,25 @@ export interface ClubTransferHistoryDto {
   transfers: TransferHistoryLineDto[];
 }
 
+/** The four transfer rankings of a division: most bought, most sold, most spent, most profit. */
+export interface TransferRankingsDto {
+  competitionSeasonId: Guid;
+  mostBought: TransferRankingEntryDto[];
+  mostSold: TransferRankingEntryDto[];
+  mostSpent: TransferRankingEntryDto[];
+  mostProfit: TransferRankingEntryDto[];
+}
+
+export interface TransferRankingEntryDto {
+  teamId: Guid;
+  teamName: string;
+  teamShortName: string;
+  primaryColor: string;
+  secondaryColor: string;
+  transfers: number;
+  amount: number;
+}
+
 /**
  * A message in the manager's box, as the backend wrote it.
  *
@@ -2133,6 +2323,13 @@ export interface InboxPersonDto {
  * The count travels with the page rather than beside it in a second request: the badge in the
  * column and the page on the screen are the same fact about the same moment, and a count
  * fetched a second later is a badge that disagrees with the mail it is counting.
+ *
+ * `categories` travels with it for the same reason and because it is the same number on every
+ * page of the same box: the filter column labels each of its buttons with it, so a column whose
+ * labels renumbered themselves on every page turn would be a column of numbers that cannot be
+ * compared. `category` is the filter the **server** applied, not the one the client believes it
+ * sent — the buttons read it rather than their own state, so a filter that quietly stopped
+ * being applied cannot leave a button lit.
  */
 export interface InboxBoxDto {
   messages: InboxMessageDto[];
@@ -2141,6 +2338,17 @@ export interface InboxBoxDto {
   totalItems: number;
   totalPages: number;
   unreadCount: number;
+  /** The category name the page was filtered by, or null for the whole box. */
+  category?: string | null;
+  /** Only the categories this club actually has lines of, in the backend's own order. */
+  categories: InboxCategoryCountDto[];
+}
+
+/** One kind of message and how much of the box is behind it. */
+export interface InboxCategoryCountDto {
+  /** The same category names `InboxMessageDto.category` uses. */
+  category: string;
+  count: number;
 }
 
 /**
@@ -2222,6 +2430,15 @@ export interface TacticsSquadRowDto {
    */
   isAvailable: boolean;
   /**
+   * How many matches of his club each absence still keeps him out of. `isAvailable` says he
+   * cannot play; these two say whether it is a suspension or a knock, which is the difference
+   * between a plan that will be fine in a fortnight and one that needs somebody else — and a
+   * greyed row with no reason is a manager opening the club's own page to find out what this
+   * board already knew.
+   */
+  suspensionMatches: number;
+  injuryMatchesRemaining: number;
+  /**
    * The eight on the canonical 1..100 scale, in the order every other table in the game reads
    * them: speed, finishing, dribbling, heading, strength, goalkeeper, reflexes, stamina.
    *
@@ -2246,4 +2463,52 @@ export interface SaveTacticsPlanRequestDto {
   tacticCode?: string | null;
   starterIds: Guid[];
   benchIds: Guid[];
+}
+
+export interface AcademyPlayerDto {
+  playerId: Guid;
+  name: string;
+  position: string;
+  age: number;
+  overallRating: number;
+  stars: number;
+  speed: number;
+  accuracy: number;
+  dribbling: number;
+  heading: number;
+  strength: number;
+  goalkeeperPower: number;
+  reflexes: number;
+  stamina: number;
+  potential: number;
+  developmentRoom: number;
+  energy: number;
+  isAvailable: boolean;
+  injury: string;
+  injuryMatchesRemaining: number;
+  /**
+   * Matches of his club the suspension keeps him out of. It travels beside `isAvailable`
+   * because that flag alone cannot say which of the two absences it is, and a screen that read
+   * the flag and guessed the cause printed "Suspenso" beside a player carrying a knock.
+   */
+  suspensionMatches: number;
+  retiring: boolean;
+}
+
+export interface PromoteAcademyResponseDto {
+  playerId: Guid;
+  playerName: string;
+  teamId: Guid;
+  teamName: string;
+  shirtNumber: number | null;
+  salary: number;
+  seasonsLeft: number;
+}
+
+export interface TransferListResultDto {
+  playerId: Guid;
+  playerName: string;
+  teamId: Guid;
+  teamName: string;
+  onTransferList: boolean;
 }

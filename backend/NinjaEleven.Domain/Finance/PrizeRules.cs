@@ -1,3 +1,5 @@
+using NinjaEleven.Domain.Competitions;
+
 namespace NinjaEleven.Domain.Finance;
 
 /// <summary>
@@ -163,14 +165,20 @@ public static class PrizeRules
     /// <summary>What a club knocked out among the last thirty-two is paid.</summary>
     public const decimal CupLastThirtyTwoLoser = 10_000m;
 
-    /// <summary>What a club knocked out among the last sixteen is paid.</summary>
-    public const decimal CupLastSixteenLoser = 200_000m;
+    /// <summary>What a club knocked out among the last sixteen — the round of the last sixteen — is paid.</summary>
+    public const decimal CupRoundOfLastSixteenLoser = 200_000m;
 
-    /// <summary>What a club knocked out among the last eight is paid.</summary>
+    /// <summary>What a club knocked out in the round of the last eight is paid.</summary>
     public const decimal CupQuarterFinalLoser = 500_000m;
 
-    /// <summary>What a club knocked out among the last four is paid.</summary>
+    /// <summary>What a club knocked out in the round of the last four is paid.</summary>
     public const decimal CupSemiFinalLoser = 1_000_000m;
+
+    /// <summary>
+    /// What a club knocked out in the last tie before the final is paid — the semifinal, whose
+    /// loser watched the final from the stand and is not a finalist.
+    /// </summary>
+    public const decimal CupRunnerUpLoser = 1_500_000m;
 
     /// <summary>What the finalist that lost the final is paid.</summary>
     public const decimal CupFinalLoser = 3_000_000m;
@@ -182,26 +190,50 @@ public static class PrizeRules
     /// What a club is paid for going out of the cup in a tie-round.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The consolation grows steeply as the round does, and it is not a share of anything: the
     /// club that goes out among the last thirty-two is paid three hundredth of what the finalist
     /// is paid, and the difference between the two is the prize for having been in the
     /// competition at all. A cup where the first-round loser is paid the same as the finalist
     /// would be telling a club that its run made no difference.
-    ///
+    /// </para>
+    /// <para>
+    /// The ladder has one step per tie-round the cup actually plays, and there are six of them.
+    /// It had five, which put the final — the sixth — on the fall-through branch: the runner-up
+    /// was paid nothing by the ladder, and the semifinal loser was paid the finalist's cheque
+    /// because the two steps had been drawn for a cup with one round fewer than this one. A cup
+    /// pays its last two rounds differently on purpose, and a ladder with a step missing pays
+    /// the wrong club the right amount, which is worse than paying nobody: the money goes out,
+    /// to the wrong team, and the panel under the bracket says what it paid.
+    /// </para>
+    /// <para>
     /// A round the cup does not have pays nothing, rather than the largest consolation as a
     /// default: a method whose fall-through branch is a payment is a method that will pay it
     /// for a round that was never played.
+    /// </para>
     /// </remarks>
-    /// <param name="tieRound">Which of the five tie-rounds the club went out in.</param>
+    /// <param name="tieRound">Which of the six tie-rounds the club went out in.</param>
     public static decimal CupConsolation(int tieRound) => tieRound switch
     {
         1 => CupLastThirtyTwoLoser,
-        2 => CupLastSixteenLoser,
+        2 => CupRoundOfLastSixteenLoser,
         3 => CupQuarterFinalLoser,
         4 => CupSemiFinalLoser,
-        5 => CupFinalLoser,
+        5 => CupRunnerUpLoser,
+        CompetitionRules.CupRounds => CupFinalLoser,
         _ => 0m
     };
+
+    /// <summary>
+    /// The tie-round whose loser is the runner-up: the last one the cup plays.
+    /// </summary>
+    /// <remarks>
+    /// Losing the final and being knocked out in it are the same evening, and they are not the
+    /// same thing. The club that loses the final took the cup to the end and is paid as the
+    /// finalist he was, which is why the ladder's last step is his and why a panel that files
+    /// him under "eliminated" is filing a second cheque in the same column as a defeat.
+    /// </remarks>
+    public const int RunnerUpTieRound = CompetitionRules.CupRounds;
 
     /// <summary>
     /// How many of a competition's top scorers are paid, first place included.

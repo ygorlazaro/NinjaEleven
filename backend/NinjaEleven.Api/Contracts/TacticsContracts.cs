@@ -110,6 +110,16 @@ public class TacticsSquadRowDto
     public bool IsAvailable { get; set; }
 
     /// <summary>
+    /// How many matches of his club the suspension still keeps him out of, and how many the
+    /// injury does. A board row is greyed when a man is out, and a greyed row with no reason
+    /// is a manager opening the club's page to find out what he could already have been told
+    /// here.
+    /// </summary>
+    public int SuspensionMatches { get; set; }
+
+    public int InjuryMatchesRemaining { get; set; }
+
+    /// <summary>
     /// The eight attributes on the canonical 1..100 scale, in the order every other table in
     /// the game reads them: speed, finishing, dribbling, heading, strength, goalkeeper,
     /// reflexes, stamina.

@@ -86,12 +86,6 @@ const TrainingPanel: React.FC<TrainingPanelProps> = ({
         <h4 className="club-form__title">Treino</h4>
         <p className="training__budget">
           Energia do elenco: <strong>{quotes.squadEnergy}</strong>
-        </p>
-        <p className="training__budget">
-          {/* The allowance is a day's allowance and it belongs to the club rather than to
-              the man, so it is said once at the top instead of on each of twenty-three
-              sheets: what is left is a number about the squad, not about a player. */}
-          Sessões hoje: <strong>{quotes.sessionsSpent} de {quotes.sessionsAllowed}</strong>
           {' '}({quotes.playsToday ? 'dia de jogo' : 'sem jogo'})
         </p>
       </div>
@@ -111,7 +105,6 @@ const TrainingPanel: React.FC<TrainingPanelProps> = ({
             player={player}
             busy={busyPlayerId === player.playerId}
             anyBusy={busyPlayerId !== null}
-            allowanceSpent={quotes.sessionsSpent >= quotes.sessionsAllowed}
             onTrain={onTrain}
             team={team}
           />
@@ -133,12 +126,10 @@ const PlayerSheet: React.FC<{
   player: TrainingQuoteDto;
   busy: boolean;
   anyBusy: boolean;
-  /** The club's day is over. A cell is greyed for it as surely as for a broken leg. */
-  allowanceSpent: boolean;
   onTrain: (playerId: string, attribute: PlayerAttribute) => void;
   /** The club the man belongs to, so the shirt sits beside his name. */
   team?: TeamDto | null;
-}> = ({ player, busy, anyBusy, allowanceSpent, onTrain, team }) => (
+}> = ({ player, busy, anyBusy, onTrain, team }) => (
   <li
     className={[
       'training__player',
@@ -175,25 +166,20 @@ const PlayerSheet: React.FC<{
 
         if (!cell) return null;
 
-        // Four refusals, and they are different facts so they are said differently: the club
-        // is out of sessions, the man cannot train at all, this attribute is not his, or he
-        // is already at the top. The spent allowance is a club's, which is why it greys every
-        // sheet at once rather than one man's.
+        // Three refusals, and they are different facts so they are said differently: the man
+        // cannot train at all, this attribute is not his, or he is already at the top.
         const out = !player.isAvailable;
         const notHis = cell.cost === null;
         const tooDear = cell.cost !== null && cell.cost > player.energy;
-        const spent = allowanceSpent;
-        const disabled = spent || notHis || tooDear || out || anyBusy;
+        const disabled = notHis || tooDear || out || anyBusy;
 
-        const reason = spent
-          ? 'O clube já usou as sessões de hoje'
-          : out
-            ? 'Indisponível'
-            : notHis
-              ? (cell.value > 0 ? 'No potencial' : 'Não é um atributo dele')
-              : tooDear
-                ? `Precisa de ${cell.cost} de energia`
-                : `Treinar por ${cell.cost} de energia e ${formatLimo(player.sessionFee)} do clube`;
+        const reason = out
+          ? 'Indisponível'
+          : notHis
+            ? (cell.value > 0 ? 'No potencial' : 'Não é um atributo dele')
+            : tooDear
+              ? `Precisa de ${cell.cost} de energia`
+              : `Treinar por ${cell.cost} de energia e ${formatLimo(player.sessionFee)} do clube`;
 
         return (
           <button

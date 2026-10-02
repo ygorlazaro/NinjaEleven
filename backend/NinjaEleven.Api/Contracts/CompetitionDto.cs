@@ -178,6 +178,13 @@ public class SeasonCalendarDto
     public Guid SeasonId { get; init; }
     public string SeasonName { get; init; } = string.Empty;
     public int MatchDayCount { get; init; }
+
+    /// <summary>
+    /// The day the world is on, so a screen can open on it rather than working it out. Null
+    /// before the season has been drawn, which is different from day one.
+    /// </summary>
+    public int? CurrentMatchDayNumber { get; init; }
+
     public IReadOnlyList<MatchDayDto> MatchDays { get; init; } = Array.Empty<MatchDayDto>();
     public IReadOnlyList<RoundDto> Windows { get; init; } = Array.Empty<RoundDto>();
 }
@@ -555,6 +562,50 @@ public class CupBracketDto
 
     /// <summary>The losing side of the final: the runner-up, which is a fact of its own.</summary>
     public string? RunnerUpTeamName { get; init; }
+
+    /// <summary>Whether the final has been played and the cup has a winner.</summary>
+    public bool IsDecided { get; init; }
+
+    /// <summary>
+    /// Every club the cup drew, furthest first. Sent with the bracket because it is a reading of
+    /// the same ties: two calls about one cup are two answers about how far each club got.
+    /// </summary>
+    public IReadOnlyList<CupRankingRowDto> Ranking { get; init; } = Array.Empty<CupRankingRowDto>();
+}
+
+/// <summary>One line of the cup's ranking.</summary>
+public class CupRankingRowDto
+{
+    public int Position { get; init; }
+    public Guid TeamId { get; init; }
+    public string Name { get; init; } = string.Empty;
+    public string PrimaryColor { get; init; } = string.Empty;
+    public string SecondaryColor { get; init; } = string.Empty;
+
+    /// <summary>The tie-round the club reached, in the game's words on the line beside it.</summary>
+    public int RoundNumber { get; init; }
+
+    public string RoundName { get; init; } = string.Empty;
+    public int Played { get; init; }
+    public int Wins { get; init; }
+    public int Draws { get; init; }
+    public int Losses { get; init; }
+    public int GoalsFor { get; init; }
+    public int GoalsAgainst { get; init; }
+
+    /// <summary>Goals for less goals against, worked out by the rule and not by the client.</summary>
+    public int GoalDifference { get; init; }
+
+    /// <summary>Three for a win and one for a draw: the first of the tiebreakers, not a table.</summary>
+    public int Points { get; init; }
+
+    /// <summary>What the run is paid, and null while the club is still in the cup.</summary>
+    public decimal? Prize { get; init; }
+
+    public bool IsChampion { get; init; }
+
+    /// <summary>Lost the final, which is not the same as being knocked out in it.</summary>
+    public bool IsRunnerUp { get; init; }
 }
 
 /// <summary>One round of the bracket, named in the game's words rather than as a number.</summary>
@@ -648,6 +699,97 @@ public class PrizeShareDto
 }
 
 /// <summary>
+/// The pyramid's rules: the order a table is settled in, and what each division's table ends
+/// the season with.
+///
+/// It is asked of the backend because both of those are the domain's, and a screen that printed
+/// its own version of either would be a screen making a promise the season does not keep: a
+/// "4 primeiros sobem" written on a client is a client that is wrong the day the pyramid is
+/// five deep, and a table of bands painted from it would not be the table the manager's own club
+/// is sitting in. The bands here are the bands <c>DivisionMovement.From</c> produces, and the
+/// chain is the chain <c>StandingTable</c> sorts by.
+/// </summary>
+public class PyramidRulesDto
+{
+    /// <summary>How many divisions the pyramid has, tier 1 at the top.</summary>
+    public int DivisionCount { get; init; }
+
+    /// <summary>Clubs in every division's table.</summary>
+    public int ClubsPerDivision { get; init; }
+
+    /// <summary>The order a table is settled in, first criterion first.</summary>
+    public IReadOnlyList<StandingCriterionDto> TieBreakers { get; init; } = Array.Empty<StandingCriterionDto>();
+
+    /// <summary>Every division, from the top, with the bands its table ends in.</summary>
+    public IReadOnlyList<DivisionRuleDto> Divisions { get; init; } = Array.Empty<DivisionRuleDto>();
+}
+
+/// <summary>One step of the order a table is settled in.</summary>
+public class StandingCriterionDto
+{
+    /// <summary>Which place in the chain this is, counted from one.</summary>
+    public int Order { get; init; }
+
+    /// <summary>
+    /// Whether the criterion is asked of every club in the division or only of the clubs the
+    /// criteria before it left level — which is what the head-to-head is, and drawing the two
+    /// ends of the chain as one list would tell a manager that a head-to-head decides a table
+    /// it has nothing to do with.
+    /// </summary>
+    public bool WholeTable { get; init; }
+
+    /// <summary>The criterion's name, in the game's own words: "Saldo de gols".</summary>
+    public string Label { get; init; } = string.Empty;
+
+    /// <summary>What it counts, and why it sits where it sits.</summary>
+    public string Detail { get; init; } = string.Empty;
+}
+
+/// <summary>One division's rules, as a screen reads them.</summary>
+public class DivisionRuleDto
+{
+    /// <summary>Which division, counted from one at the top.</summary>
+    public int Tier { get; init; }
+
+    /// <summary>The division's own name: "1ª Divisão".</summary>
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>How many clubs share its table.</summary>
+    public int Clubs { get; init; }
+
+    /// <summary>What the whole table is paid out of; the share of each position is on the prize list.</summary>
+    public decimal Purse { get; init; }
+
+    /// <summary>The bands, in the order a manager reads them down the table.</summary>
+    public IReadOnlyList<DivisionBandDto> Bands { get; init; } = Array.Empty<DivisionBandDto>();
+}
+
+/// <summary>One band of a division's table, and what the season's end does to it.</summary>
+public class DivisionBandDto
+{
+    /// <summary>Title, Promotion, Relegation or Safe — the domain's own name for the band.</summary>
+    public string Kind { get; init; } = string.Empty;
+
+    /// <summary>The first position of the band, counted from one.</summary>
+    public int FromPosition { get; init; }
+
+    /// <summary>The last position of the band.</summary>
+    public int ToPosition { get; init; }
+
+    /// <summary>The division the clubs in the band start the next season in.</summary>
+    public int ToTier { get; init; }
+
+    /// <summary>That division's own name.</summary>
+    public string ToDivisionName { get; init; } = string.Empty;
+
+    /// <summary>The band's name, as a manager would say it.</summary>
+    public string Label { get; init; } = string.Empty;
+
+    /// <summary>What finishing there is worth.</summary>
+    public string Meaning { get; init; } = string.Empty;
+}
+
+/// <summary>
 /// What the cup pays: the winner's cheque and the consolation for the round a club went out in.
 ///
 /// It is the whole shape of a knockout's money in one list, and the consolation grows steeply as
@@ -666,6 +808,13 @@ public class CupPrizeDto
 
     /// <summary>Whether this is the winner's cheque rather than a consolation.</summary>
     public bool IsChampion { get; init; }
+
+    /// <summary>
+    /// Whether this consolation is the one the club that lost the final takes home. It is said
+    /// here rather than worked out by the screen from the round number, because "eliminado na
+    /// final" and "vice-campeão" are not the same sentence about the same run.
+    /// </summary>
+    public bool IsRunnerUp { get; init; }
 }
 
 

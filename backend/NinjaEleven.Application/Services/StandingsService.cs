@@ -28,19 +28,22 @@ public class StandingsService : IStandingsReader
     private readonly IMatchRepository _matchRepository;
     private readonly ICompetitionRepository _competitionRepository;
     private readonly ITeamRepository _teamRepository;
+    private readonly ISquadStrengthReader _squadStrength;
 
     public StandingsService(
         IRoundRepository roundRepository,
         IFixtureRepository fixtureRepository,
         IMatchRepository matchRepository,
         ICompetitionRepository competitionRepository,
-        ITeamRepository teamRepository)
+        ITeamRepository teamRepository,
+        ISquadStrengthReader squadStrength)
     {
         _roundRepository = roundRepository;
         _fixtureRepository = fixtureRepository;
         _matchRepository = matchRepository;
         _competitionRepository = competitionRepository;
         _teamRepository = teamRepository;
+        _squadStrength = squadStrength;
     }
 
     /// <summary>
@@ -301,43 +304,14 @@ public class StandingsService : IStandingsReader
     /// reader that asked club by club and player by player was three hundred round trips to say
     /// twelve numbers — which is what made a division's table time out rather than arrive.
     /// </remarks>
-    private async Task<Dictionary<Guid, double>> SquadStrengthAsync(
+    /// <summary>
+    /// The strength of a set of clubs, asked of the one reader that measures a squad.
+    /// </summary>
+    private Task<IReadOnlyDictionary<Guid, double>> SquadStrengthAsync(
         IReadOnlyCollection<Guid> teamIds,
         Guid seasonId,
-        CancellationToken cancellationToken)
-    {
-        var strength = new Dictionary<Guid, double>();
-
-        if (teamIds.Count == 0)
-        {
-            return strength;
-        }
-
-        var squads = await _teamRepository.GetSquadsAsync(teamIds, seasonId, cancellationToken);
-        var playerIds = squads.Values
-            .SelectMany(memberships => memberships)
-            .Select(membership => membership.PlayerId)
-            .Distinct()
-            .ToList();
-        var players = playerIds.Count == 0
-            ? new Dictionary<Guid, Player>()
-            : await _teamRepository.GetPlayersAsync(playerIds, cancellationToken);
-
-        foreach (var teamId in teamIds)
-        {
-            var squad = squads.TryGetValue(teamId, out var memberships)
-                ? memberships
-                    .Select(membership => players.GetValueOrDefault(membership.PlayerId))
-                    .Where(player => player is not null)
-                    .Select(player => player!)
-                    .ToList()
-                : new List<Player>();
-
-            strength[teamId] = PlayerRating.CalculateTeamStars(squad);
-        }
-
-        return strength;
-    }
+        CancellationToken cancellationToken) =>
+        _squadStrength.ForTeamsAsync(teamIds, seasonId, cancellationToken);
 
     private static IReadOnlyList<StandingRow> ToRows(
         IReadOnlyList<StandingEntry> entries,
@@ -364,14 +338,8 @@ public class StandingsService : IStandingsReader
             })
             .ToList();
 
+    // The row a match is as a table sees it is the domain's: the goals are on the match and the
+    // cards are on its statistics, and that pairing is written once, on the row itself.
     private static MatchResultRow ToResultRow(Match match, MatchStatistics? statistics) =>
-        new(
-            match.HomeTeamId,
-            match.AwayTeamId,
-            match.HomeScore,
-            match.AwayScore,
-            statistics?.HomeRedCards ?? 0,
-            statistics?.AwayRedCards ?? 0,
-            statistics?.HomeYellowCards ?? 0,
-            statistics?.AwayYellowCards ?? 0);
+        MatchResultRow.From(match, statistics);
 }

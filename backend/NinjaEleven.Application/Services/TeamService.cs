@@ -407,6 +407,13 @@ public class TeamService
                 "Esse jogador não está no elenco deste clube.");
         }
 
+        if (state.Retiring)
+        {
+            throw new DomainValidationException(
+                "PlayerRetiring",
+                "Esse jogador anunciou a aposentadoria ao final da temporada e não pode ter o contrato renovado.");
+        }
+
         var wage = PlayerValuation.SeasonWage(player, state);
         contract.Renew(seasons, season.Number, wage, season.StartDate);
 

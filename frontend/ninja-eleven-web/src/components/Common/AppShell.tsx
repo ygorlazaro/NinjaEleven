@@ -7,8 +7,7 @@ import { useNextFixture } from '@/hooks/useNextFixture';
 import { usePendingOfferCount, useCurrentSeasonId } from '@/hooks/usePendingOffers';
 import { useLiveMatch } from '@/hooks/useLiveMatch';
 import { useUnreadMessageCount } from '@/hooks/useUnreadMessages';
-import NextMatchBox from '@/components/Common/NextMatchBox';
-import LiveMatchBadge from '@/components/Common/LiveMatchBadge';
+import ClubMatchCard from '@/components/Common/ClubMatchCard';
 import ClubCrest from '@/components/Club/ClubCrest';
 
 /**
@@ -126,10 +125,10 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // none to play the link is not a broken door: it goes to the calendar, which is where a
   // manager goes to find out what there is.
   //
-  // It used to be a line of the column and it is not one any more: the next-match box above
+  // It used to be a line of the column and it is not one any more: the match card above
   // already says the same four facts and goes to the same screen, and a column offering two
   // ways into one match is a column that has to be read twice to be believed. The route is
-  // still resolved here because the box is a card and the calendar is where a manager goes
+  // still resolved here because the card is a card and the calendar is where a manager goes
   // when there is nothing to play.
   const { next } = useNextFixture(selectedTeam?.id, currentSeasonId);
 
@@ -145,8 +144,8 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const unreadMessages = useUnreadMessageCount(selectedTeam?.id, pathname);
 
   // The club is playing right now, or it is not. It is asked again on every route because a
-  // match is started from the lineup screen, and a badge that appeared half a minute after
-  // the whistle would be a badge nobody could rely on to mean "go now".
+  // match is started from the lineup screen, and a card that turned live half a minute after
+  // the whistle would be a card nobody could rely on to mean "go now".
   const liveMatch = useLiveMatch(selectedTeam?.id, pathname);
 
   // Whether the training tab is the one on screen, read off the query rather than off the
@@ -179,8 +178,8 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             where to go. The coach's name comes from the backend — the manager entity the career
             began with — and falls back to nothing when the career has not yet named him.
 
-            The shield is the size of the one in the next-match box rather than the size of a
-            badge, because this card and that box are read together and a column with two
+            The shield is the size of the one in the match card rather than the size of a
+            badge, because this card and that card are read together and a column with two
             different crest sizes in it has no size of its own. */}
         {selectedTeam && (
           <Link to="/club" className="sidebar-club-card">
@@ -200,22 +199,22 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </Link>
         )}
 
-        {/* The club is playing *now*, and the column says so from every screen.
-            It sits above the club's card rather than in the list of places to go, because it
-            is not a place: it is the one thing in the game that is happening while the
-            manager is somewhere else, and a manager who is deciding whether to leave the
-            market to watch it should not have to go looking to find out that it started. */}
-        {liveMatch && <LiveMatchBadge live={liveMatch} />}
+        {/* The match his club has in front of it: the one he is about to play, or the one he is
+            playing right now, in one card.
 
-        {/* The match he is about to play, said before he goes and play it, and above the list
-            of places rather than at the foot of the column.
-
-            It is read together with the two things above it — who he is, and whether his club
-            is playing — so it belongs with them rather than a scroll away at the bottom. A
-            manager choosing his eleven is answering to four things: which club he runs,
-            whether a game is on right now, who it is against, and where the season is. The
-            column says those four first, and every other place after them. */}
-          {selectedTeam && <NextMatchBox team={selectedTeam} next={next} />}
+            It is read together with the club's own card above it — who he is, and which match
+            is his — so it belongs with them rather than a scroll away at the bottom. A
+            manager choosing his eleven is answering to three things: which club he runs, who
+            it is against, and whether that game has already started. The column says those
+            first, and every other place after them. */}
+          {selectedTeam && (
+            <ClubMatchCard
+              team={selectedTeam}
+              next={next}
+              live={liveMatch}
+              seasonId={currentSeasonId}
+            />
+          )}
 
         <nav className="sidebar-nav">
           {/* His own mail. It is the first of the places to go because it is the only one the
@@ -330,6 +329,16 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             >
               <span className="sidebar-link__icon">🏋️</span>
               <span className="sidebar-link__label">Treino</span>
+            </NavLink>
+          )}
+
+          {selectedTeam && (
+            <NavLink
+              to={`/team/${selectedTeam.id}/base`}
+              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+            >
+              <span className="sidebar-link__icon">🎓</span>
+              <span className="sidebar-link__label">Base</span>
             </NavLink>
           )}
 

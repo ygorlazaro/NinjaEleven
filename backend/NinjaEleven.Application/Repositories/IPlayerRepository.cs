@@ -156,6 +156,15 @@ public interface IPlayerRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The youth academy players of a club for this season: players whose season state has
+    /// the club's TeamId and IsAcademyPlayer set to true.
+    /// </summary>
+    Task<IReadOnlyList<PlayerSeasonState>> ListAcademyPlayersAsync(
+        Guid seasonId,
+        Guid teamId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Adds a season state for a player. Used when a transfer moves a player to a new club
     /// for the arrival season — the player keeps his identity, and a new state is given to
     /// him for the season he is moving into.

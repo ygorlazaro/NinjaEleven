@@ -281,6 +281,7 @@ public class DatabaseSeeder : IDataSeeder
             await GiveWagesToTheWorldAlreadySeededAsync(cancellationToken);
             await GiveManagersToTheWorldAlreadySeededAsync(random, cancellationToken);
             await OpenTheBooksOfTheWorldAlreadySeededAsync(cancellationToken);
+            await GenerateAcademyIntakeForInProgressSeasonAsync(cancellationToken);
             return;
         }
 
@@ -401,19 +402,17 @@ public class DatabaseSeeder : IDataSeeder
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         // The first season is a season like any other, and it opens with its intake: the young
-        // free agents a club signs rather than buys.
-        var intake = await AddYoungFreeAgentsAsync(
-            season.Id, YouthIntakeRules.FreeAgentsPerSeason, random, cancellationToken);
+        // academy players assigned to clubs.
+        await GenerateAcademyPlayersAsync(season.Id, cancellationToken);
 
         _logger.LogInformation(
-            "Seeded {SeasonName}: {DivisionCount} divisions of {ClubsPerDivision} clubs, a cup of {CupSize} and a Supercup, with {TeamCount} teams, {PlayerCount} players and an intake of {Intake} young free agents.",
+            "Seeded {SeasonName}: {DivisionCount} divisions of {ClubsPerDivision} clubs, a cup of {CupSize} and a Supercup, with {TeamCount} teams, {PlayerCount} players and an academy intake.",
             season.Name,
             CompetitionRules.DivisionCount,
             CompetitionRules.ClubsPerDivision,
             CompetitionRules.CupSize,
             teams.Count,
-            players.Count,
-            intake);
+            players.Count);
     }
 
     private async Task SeedNamePoolsAsync(CancellationToken cancellationToken)
@@ -1205,26 +1204,128 @@ public class DatabaseSeeder : IDataSeeder
     /// Deals the season's intake: the young free agents a season opens with, unattached and
     /// waiting to be signed.
     /// </summary>
-    public async Task GenerateYoungPlayersAsync(Guid seasonId, CancellationToken cancellationToken = default)
+    public async Task GenerateAcademyPlayersAsync(Guid seasonId, CancellationToken cancellationToken = default)
     {
         var season = await _dbContext.Seasons
             .FirstOrDefaultAsync(s => s.Id == seasonId, cancellationToken);
 
         if (season is null)
         {
-            _logger.LogWarning("No season found for {SeasonId}; young players were not generated.", seasonId);
+            _logger.LogWarning("No season found for {SeasonId}; academy players were not generated.", seasonId);
+            return;
+        }
+
+        var teams = await _dbContext.Teams
+            .ToListAsync(cancellationToken);
+
+        if (teams.Count == 0)
+        {
+            _logger.LogWarning("No teams found for academy generation.");
             return;
         }
 
         var random = _options.RandomSeed.HasValue
-            ? new Random(_options.RandomSeed.Value + season.Number)
+            ? new Random(_options.RandomSeed.Value + season.Number + 999)
             : Random.Shared;
 
-        var created = await AddYoungFreeAgentsAsync(season.Id, YouthIntakeRules.FreeAgentsPerSeason, random, cancellationToken);
+        var created = 0;
+
+         foreach (var team in teams)
+        {
+            var existingAcademy = await _dbContext.PlayerSeasonStates
+                .Where(s => s.SeasonId == season.Id && s.IsAcademyPlayer && s.TeamId == team.Id)
+                .CountAsync(cancellationToken);
+
+            var spots = AcademyRules.MaxAcademyPlayersPerClub - existingAcademy;
+            if (spots <= 0)
+            {
+                continue;
+            }
+
+            var count = Math.Min(spots, AcademyRules.MaxAcademyPlayersPerClub);
+            var faces = DealFaces(count, random);
+            var players = new List<Player>();
+            var states = new List<PlayerSeasonState>();
+
+            // Position distribution: 0–1 GK, 0–4 DEF, 0–6 MID, 0–5 ATT (max 11 total).
+            // Each club gets a deterministic draw from its seed. ATT is chosen first
+            // so its upper bound is respected; DEF and MID split the remainder.
+            var goalkeeperCount = random.NextDouble() < AcademyRules.GoalkeeperShare
+                ? 1
+                : 0;
+            count = Math.Min(count, AcademyRules.MaxAcademyPlayersPerClub);
+
+            var remaining = count - goalkeeperCount;
+
+            // Pick ATT from its range, but leave room for DEF and MID minimums
+            var attMax = Math.Min(AcademyRules.AttackerRange.Max, remaining - AcademyRules.DefenderRange.Min - AcademyRules.MidfielderRange.Min);
+            var attMin = Math.Max(AcademyRules.AttackerRange.Min,
+                remaining - AcademyRules.DefenderRange.Max - AcademyRules.MidfielderRange.Max);
+            var attackerCount = random.Next(Math.Max(attMin, 0), Math.Max(attMax, attMin) + 1);
+            remaining -= attackerCount;
+
+            // Pick DEF from its range, leaving ATT's remaining
+            var defMax = Math.Min(AcademyRules.DefenderRange.Max, remaining);
+            var defenderCount = remaining > 0
+                ? random.Next(Math.Max(AcademyRules.DefenderRange.Min, 0), Math.Max(defMax, Math.Max(AcademyRules.DefenderRange.Min, 0)) + 1)
+                : 0;
+            remaining -= defenderCount;
+
+            var midfielderCount = remaining;
+
+            var positions = new List<Position>();
+            positions.AddRange(Enumerable.Repeat(Position.GK, goalkeeperCount));
+            positions.AddRange(Enumerable.Repeat(Position.DEF, defenderCount));
+            positions.AddRange(Enumerable.Repeat(Position.MID, midfielderCount));
+            positions.AddRange(Enumerable.Repeat(Position.ATT, attackerCount));
+
+            foreach (var position in positions)
+            {
+                var age = random.Next(AcademyRules.MinAcademyAge, AcademyRules.MaxAcademyAge + 1);
+                var player = CreatePlayer(position, random, faces.Dequeue(), age);
+
+                players.Add(player);
+                states.Add(PlayerSeasonState.CreateAcademyPlayer(
+                    player.Id,
+                    season.Id,
+                    team.Id,
+                    random.Next(_options.MinimumEnergy, _options.MaximumEnergy + 1)));
+            }
+
+            _dbContext.Players.AddRange(players);
+            _dbContext.PlayerSeasonStates.AddRange(states);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            created += players.Count;
+
+            _logger.LogInformation(
+                "Added {Count} academy players to {ClubName} (GK {GK}, DEF {DEF}, MID {MID}, ATT {ATT}).",
+                players.Count, team.Name, goalkeeperCount, defenderCount, midfielderCount, attackerCount);
+        }
 
         _logger.LogInformation(
-            "Dealt the season {SeasonNumber} intake: {Count} young free agents.",
-            season.Number, created);
+            "Dealt the season {SeasonNumber} academy intake: {Count} players across {ClubCount} clubs.",
+            season.Number, created, teams.Count);
+    }
+
+    /// <summary>
+    /// Ensures the in-progress season has an academy intake for each club. Called on every
+    /// startup so that a world that started before the academy feature was added gets its
+    /// intake without a fresh seed.
+    /// </summary>
+    private async Task GenerateAcademyIntakeForInProgressSeasonAsync(CancellationToken cancellationToken)
+    {
+        var season = await _dbContext.Seasons
+            .Where(s => s.Status == Domain.Enums.SeasonStatus.InProgress)
+            .OrderByDescending(s => s.Number)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (season is null)
+        {
+            return;
+        }
+
+        await GenerateAcademyPlayersAsync(season.Id, cancellationToken);
     }
 
     /// <summary>

@@ -20,7 +20,6 @@ namespace NinjaEleven.Application.Services;
 /// <param name="AttributeBefore">The attribute as it was.</param>
 /// <param name="AttributeAfter">The attribute as it is.</param>
 /// <param name="Fee">What the session cost the club.</param>
-/// <param name="SessionsLeft">How many sessions this man has left on the day.</param>
 public record TrainingResult(
     Guid PlayerId,
     Guid SeasonId,
@@ -29,8 +28,7 @@ public record TrainingResult(
     int EnergyLeft,
     int AttributeBefore,
     int AttributeAfter,
-    decimal Fee,
-    int SessionsLeft);
+    decimal Fee);
 
 /// <summary>One man on a manager's sheet: this one, this attribute, today.</summary>
 /// <param name="PlayerId">Who to work.</param>
@@ -101,11 +99,12 @@ public record TrainingOutcome(
 /// </para>
 ///
 /// <para>
-/// A session now costs the club as well as the man, and it is limited: an allowance of one
-/// session on a matchday and two on a rest day, counted from the sessions themselves, and a
-/// fee of a share of the man's wage. All four writes — the session, the energy, the point and
-/// the fee — go in together or none of them do, because a club charged for a session it never
-/// had is the one failure in this feature that nobody could undo.
+/// A session now costs the club as well as the man, and the energy cost scales with how
+/// close the attribute is to its potential: pushing a youngster is cheap, and the last few
+/// points of a veteran are the most expensive. The fee is a share of the man's season wage.
+/// All four writes — the session, the energy, the point and the fee — go in together or none
+/// of them do, because a club charged for a session it never had is the one failure in this
+/// feature that nobody could undo.
 /// </para>
 /// </summary>
 public class TrainingService
@@ -182,20 +181,28 @@ public class TrainingService
 
         // The wage is on the contract, so the price of a session is read from the same place
         // the wage on the squad screen is read from. Reading it from the player's attributes
-        // here would price a session off a number the club is not paying this season.
+        // here would price a session off a number the club is not paying this season. Academy
+        // players have no contract, so the fee is worked from the value of the player he is
+        // now — the same wage he would sign for on promotion.
         var contracts = await _teams.GetLiveContractsAsync(teamId, cancellationToken);
-        var wageByPlayer = contracts.ToDictionary(membership => membership.PlayerId, membership => membership.Wage);
+        var contractWages = contracts.ToDictionary(m => m.PlayerId, m => m.Wage);
+
+        var wageByPlayer = new Dictionary<Guid, decimal>();
+        foreach (var player in squad)
+        {
+            wageByPlayer[player.Id] = contractWages.GetValueOrDefault(player.Id);
+            if (wageByPlayer[player.Id] == 0m && stateByPlayer[player.Id].IsAcademyPlayer)
+            {
+                wageByPlayer[player.Id] = PlayerValuation.SeasonWage(player, stateByPlayer[player.Id]);
+            }
+        }
 
         var today = DateOnly.FromDateTime(_clock.UtcNow.UtcDateTime);
 
-        // The day's value is the same for every man, so it is worked out once and the spent
-        // count is taken per man: the day is what a body can take, not what a club can spend.
-        var day = await TheAllowanceForAsync(teamId, Guid.Empty, season.Id, today, cancellationToken);
+        // The day's value is read once for the whole squad: it names the calendar matchday
+        // a fee is written against, and whether the club is playing today.
+        var day = await TheDayForAsync(teamId, season.Id, today, cancellationToken);
         var spentByPlayer = await _sessions.ListByTeamAndDayAsync(teamId, today, cancellationToken);
-
-        var spent = spentByPlayer
-            .GroupBy(session => session.PlayerId)
-            .ToDictionary(group => group.Key, group => group.Count());
 
         var quotes = new SquadTrainingQuotes
         {
@@ -204,16 +211,13 @@ public class TrainingService
             SquadEnergy = states.Sum(state => state.Energy),
             Day = today,
             PlaysToday = day.Plays,
-            SessionsAllowed = day.Allowed,
-            SessionsSpent = spent.Count,
             Players = squad
                 .OrderBy(player => player.Position)
                 .ThenByDescending(player => player.Potential)
                 .Select(player => QuoteFor(
                     player,
                     stateByPlayer[player.Id],
-                    wageByPlayer.GetValueOrDefault(player.Id),
-                    day.Allowed - spent.GetValueOrDefault(player.Id)))
+                    wageByPlayer.GetValueOrDefault(player.Id)))
                 .ToList()
         };
 
@@ -223,8 +227,7 @@ public class TrainingService
     private static TrainingQuote QuoteFor(
         Player player,
         PlayerSeasonState state,
-        decimal seasonWage,
-        int sessionsLeft)
+        decimal seasonWage)
     {
         var quote = new TrainingQuote
         {
@@ -237,8 +240,8 @@ public class TrainingService
             Energy = state.Energy,
             IsAvailable = state.IsAvailable,
             Injury = state.Injury.ToString(),
-            SessionFee = TrainingRules.SessionFee(seasonWage),
-            SessionsLeft = Math.Max(0, sessionsLeft)
+            IsAcademyPlayer = state.IsAcademyPlayer,
+            SessionFee = TrainingRules.SessionFee(seasonWage)
         };
 
         foreach (var attribute in DevelopmentRules.All)
@@ -258,39 +261,15 @@ public class TrainingService
     }
 
     /// <summary>
-    /// One man's training allowance for one day: whether his club is playing, how many
-    /// sessions he has, how many are gone, and the matchday the day is, if the calendar has one.
+    /// Whether the club plays on a given day, and the calendar matchday it names if there is one.
+    /// Training has no daily session cap now — a player may train as many times as his energy
+    /// allows — so the only question the day answers is whether a fee should be written against
+    /// a calendar day.
     /// </summary>
-    /// <param name="Plays">Whether the club has a fixture on the day.</param>
-    /// <param name="Allowed">The sessions the day is worth.</param>
-    /// <param name="Spent">The sessions he has already run.</param>
-    /// <param name="MatchDay">The calendar's day, when there is one.</param>
-    private sealed record Allowance(bool Plays, int Allowed, int Spent, MatchDay? MatchDay)
-    {
-        /// <summary>What is left to spend, never below zero so a screen can print it as it is.</summary>
-        public int Left => Math.Max(0, Allowed - Spent);
-    }
+    private sealed record TrainingDay(bool Plays, MatchDay? MatchDay);
 
-    /// <summary>
-    /// One man's day, counted from his own sessions rather than from a tally.
-    ///
-    /// <para>
-    /// Three set reads and a count between them: the club's fixtures on the day, the man's
-    /// sessions on the day, and the calendar's own day — which is only opened to name the day a
-    /// fee is written against, and is null on a day the calendar has no day for rather than
-    /// invented so that a statement always has a day in it.
-    /// </para>
-    ///
-    /// <para>
-    /// The count is over one man and not over the club. It was over the club, which made a day
-    /// worth one session to twenty-three men, and a manager who wanted his squad worked had to
-    /// choose which nineteen to leave alone. A day is what a body can take, so the day is
-    /// counted per body.
-    /// </para>
-    /// </summary>
-    private async Task<Allowance> TheAllowanceForAsync(
+    private async Task<TrainingDay> TheDayForAsync(
         Guid teamId,
-        Guid playerId,
         Guid seasonId,
         DateOnly day,
         CancellationToken cancellationToken)
@@ -299,11 +278,22 @@ public class TrainingService
             .FirstOrDefault(candidate => candidate.Date == day);
 
         var fixtures = await _fixtures.ListByTeamAndDateAsync(teamId, day, cancellationToken);
-        var plays = fixtures.Count > 0;
 
-        var spent = (await _sessions.ListByPlayerAndDayAsync(playerId, day, cancellationToken)).Count;
+        return new TrainingDay(fixtures.Count > 0, matchDay);
+    }
 
-        return new Allowance(plays, TrainingRules.DailyBudget(plays), spent, matchDay);
+    /// <summary>
+    /// The next ordinal for a training session on a given day: the count of sessions already
+    /// recorded for the club that day, which is the ordinal the new one takes.
+    /// </summary>
+    private async Task<int> NextOrdinalForAsync(
+        Guid teamId,
+        Guid seasonId,
+        DateOnly day,
+        CancellationToken cancellationToken)
+    {
+        var sessions = await _sessions.ListByTeamAndDayAsync(teamId, day, cancellationToken);
+        return sessions.Count;
     }
 
     /// <summary>
@@ -348,15 +338,21 @@ public class TrainingService
         var state = await _players.GetSeasonStateForUpdateAsync(playerId, season.Id, cancellationToken)
             ?? throw new EntityNotFoundException("PlayerSeasonState", playerId);
 
-        // An injured man cannot be put through a session, and neither can one suspended — the
-        // same availability the lineup screen refuses to select him on. Training around an
-        // injury would be the feature quietly deciding that a broken leg is a scheduling
-        // inconvenience.
-        if (!state.IsAvailable)
+        // An injured man training risks aggravating the injury, but the manager may choose to
+        // train through it anyway — the feature no longer refuses on the basis of an existing
+        // knock, it refuses only on the basis of a suspension and then applies the injury risk.
+        if (state.Injury != Injury.None && state.InjuryMatchesRemaining > 0)
+        {
+            throw new DomainValidationException(
+                "PlayerInjured",
+                $"{player.Name} está machucado e não pode treinar.");
+        }
+
+        if (state.SuspensionMatches > 0)
         {
             throw new DomainValidationException(
                 "PlayerNotAvailable",
-                $"{player.Name} não está disponível para treinar.");
+                $"{player.Name} está suspenso e não pode treinar.");
         }
 
         // The allowance is the club's, and a man without a club in this season has no club to
@@ -370,20 +366,7 @@ public class TrainingService
         }
 
         var today = DateOnly.FromDateTime(_clock.UtcNow.UtcDateTime);
-        var allowance = await TheAllowanceForAsync(teamId, player.Id, season.Id, today, cancellationToken);
-
-        // The refusal comes before the price is quoted, because a man who has spent the day's
-        // allowance is not being offered anything and should not be shown what it would have
-        // cost first. The count is the sessions themselves, so this cannot disagree with the
-        // history it is counting.
-        if (allowance.Left <= 0)
-        {
-            throw new DomainValidationException(
-                "TrainingAllowanceSpent",
-                allowance.Plays
-                    ? $"{player.Name} já usou a {TrainingRules.SessionsOnAMatchDay} sessão de hoje e joga hoje."
-                    : $"{player.Name} já usou as {TrainingRules.SessionsOnARestDay} sessões de hoje.");
-        }
+        var matchDay = await TheDayForAsync(teamId, season.Id, today, cancellationToken);
 
         var cost = TrainingRules.Cost(player, attribute);
 
@@ -398,16 +381,35 @@ public class TrainingService
         // The fee is a share of the wage the club has agreed, not of a wage worked out from the
         // man as he is right now: a striker who scored twice this week costs the same to train
         // as he did on Monday, and a club that has signed a man to a number is not re-opening
-        // that number every time he has a good afternoon.
+        // that number every time he has a good afternoon. Academy players have no contract, so
+        // the fee is worked from the value of the player he is right now — the same wage he would
+        // sign for on promotion.
         var contract = (await _teams.GetLiveContractsAsync(teamId, cancellationToken))
             .FirstOrDefault(membership => membership.PlayerId == player.Id);
 
-        var fee = TrainingRules.SessionFee(contract?.Wage ?? 0m);
+        decimal wage = contract?.Wage ?? 0m;
+        if (wage == 0m && state.IsAcademyPlayer)
+        {
+            wage = PlayerValuation.SeasonWage(player, state);
+        }
+
+        var fee = TrainingRules.SessionFee(wage);
         var before = player.Get(attribute);
         var now = _clock.UtcNow;
 
         player.Set(attribute, before + 1);
         state.DrainEnergy(cost);
+
+        // Every session carries an injury risk. A young player with good stamina is more
+        // resilient than an older one with less in the tank, which is what the ratio says.
+        var injury = TrainingRules.RollInjury(player, state);
+        if (injury is not null)
+        {
+            var matches = TrainingRules.InjuryDuration(player.Age, injury.Value);
+            state.AddInjury(injury.Value, matches);
+        }
+
+        var ordinal = await NextOrdinalForAsync(teamId, season.Id, today, cancellationToken);
 
         var session = TrainingSession.Create(
             player.Id,
@@ -415,11 +417,11 @@ public class TrainingService
             season.Id,
             today,
             now,
-            allowance.MatchDay?.Id,
+             matchDay.MatchDay?.Id,
             attribute,
             cost,
             fee,
-            allowance.Spent);
+            ordinal);
 
         await _sessions.AddAsync(session, cancellationToken);
 
@@ -430,7 +432,7 @@ public class TrainingService
         var line = await _financeService.StageMovementAsync(
             teamId,
             season.Id,
-            allowance.MatchDay?.Number,
+            matchDay.MatchDay?.Number,
             FinanceMovementKind.Training,
             $"Treino de {player.Name} — {Describe(attribute)} {before} → {before + 1}",
             -fee,
@@ -458,8 +460,7 @@ public class TrainingService
             state.Energy,
             before,
             player.Get(attribute),
-            fee,
-            allowance.Left - 1);
+            fee);
     }
 
     /// <summary>

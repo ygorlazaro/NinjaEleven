@@ -1,3 +1,4 @@
+using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Enums;
 
 namespace NinjaEleven.Domain.Players;
@@ -184,4 +185,51 @@ public static class TrainingRules
         return player.Position == Position.GK
             || attribute is not (PlayerAttribute.GoalkeeperPower or PlayerAttribute.Reflexes);
     }
+
+    /// <summary>
+    /// The chance a training session causes an injury, as a fraction on 0..1.
+    ///
+    /// <para>
+    /// A session that pushes a player hard enough to add a point also risks a knock. The
+    /// chance rises with age — a body that has played longer is more fragile — and falls
+    /// with stamina — a man with a full tank absorbs the work. Young players are resilient,
+    /// veterans are not, and the difference is the one thing a manager budgets against
+    /// when he decides how hard to push a man.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// The roll is made from the match's random source so a replayed match is the same match;
+    /// training uses its own draw so a session retried is free to differ.
+    /// </remarks>
+    public static Injury? RollInjury(Player player, PlayerSeasonState state, Random? random = null)
+    {
+        random ??= Random.Shared;
+
+        var ageFactor = Math.Max(0.0, (player.Age - 25) / 40.0);
+        var staminaFactor = Math.Max(0.0, (100 - player.Stamina) / 100.0);
+        var energyFactor = Math.Max(0.0, (100 - state.Energy) / 200.0);
+        var injuryFactor = state.Injuries * 0.02;
+
+        var chance = Math.Clamp(0.02 + ageFactor * 0.04 + staminaFactor * 0.03 + energyFactor + injuryFactor, 0.0, 0.25);
+
+        if (random.NextDouble() > chance)
+        {
+            return null;
+        }
+
+        // A grave injury is rare; a light one is the common knock.
+        return random.NextDouble() < 0.2 ? Injury.Grave : Injury.Light;
+    }
+
+    /// <summary>
+    /// How many matches an injury sustained in training keeps a player out, drawn from the
+    /// severity: a light knock is a couple of games, a grave one is the rest of the season.
+    /// </summary>
+    public static int InjuryDuration(int age, Injury injury) =>
+        injury switch
+        {
+            Injury.Light => new Random().Next(2, 5),
+            Injury.Grave => new Random().Next(6, Math.Max(7, 20 - age)),
+            _ => 0
+        };
 }

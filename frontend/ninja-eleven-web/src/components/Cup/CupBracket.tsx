@@ -5,26 +5,41 @@ import { ClubName } from '@/components/Common/Names';
 import ClubCrest from '@/components/Club/ClubCrest';
 import CupTrophy from '@/components/Cup/CupTrophy';
 
-/** A leg's score from one club's side, or a dash while the leg is still to be played. */
+/** A leg's score from the first-named club's side, or a dash while the leg is still to be played. */
 const legScore = (goals?: number | null, conceded?: number | null) =>
   goals == null || conceded == null ? '–' : `${goals} x ${conceded}`;
 
 /**
- * One cup, as a bracket: a column per round, oldest on the left.
+ * One cup, as a bracket read downwards, most recent round first.
  *
- * A cup is the one thing in the game that is not a table, and it is read the way a manager
- * reads it — the round of 16 on the left and the final on the right, each tie with the two
- * clubs that were in it, the two legs they played, and the aggregate they finished on.
+ * **The latest round is on top.** A manager opens the cup to find out where his club is, and the
+ * round that answers that is the last one played — the one whose tie, if any, is still being
+ * watched. The bracket arrives oldest first, because that is the order the cup was played in, and
+ * it is reversed here rather than in the service: the order a thing was read is a fact, the order
+ * a manager wants to read it in is a screen's decision, and reversing it in the service would
+ * make the API answer a different question from the one the answer is for.
  *
- * **Every number is a club's own.** A club's line says the goals it scored and the goals it let
- * in, in each leg, because the two legs of a tie swap ends: printing the legs as they were
- * played would put a club's second leg on the other side of the tie, and the tie it went
- * through on. A leg that has not been played is a dash rather than a 0 x 0, because a cup tie
- * decided by nobody is not a goalless draw.
+ * **It goes down the page and not across it.** The bracket was a row of columns, which is the
+ * shape the sport is drawn in and the worst possible shape for a screen: six rounds of sixteen,
+ * eight, four, two and one ties laid side by side is a wall of a thousand pixels wide, and a
+ * manager reads it by dragging a horizontal scrollbar to reach the final. Stacked, the same
+ * bracket is a column the page already scrolls, and a tie card is as wide as the window instead
+ * of being squeezed into 186 pixels to fit six of them on a laptop. The cards are thicker for it
+ * and the club name may wrap — which is a better trade than a name cut off with an ellipsis.
+ *
+ * **Four ties to a line.** Two was a column of empty space the width of a card and a half, and
+ * five leaves a card narrower than the club name it has to carry. Four is what two cards and a
+ * gap need on the narrowest window this game is read on, and it reflows to one on a phone.
+ *
+ * **Each game is printed once.** The two legs swap ends, so the two clubs' own numbers are the
+ * same two matches read from opposite sides: a card carrying both printed `3 x 1` and `1 x 3`
+ * twice, and a manager could not tell a second goal from a second game. The games are read off
+ * the first-named club and labelled as the first and the second, so every match on the card is a
+ * match nobody has read yet. The aggregate below them is the one number both clubs share, and it
+ * is printed once.
  *
  * Only the rounds the cup has drawn are here. The round after a tie is decided does not exist
- * yet, so the bracket ends where the football has got to — which is the honest shape of a
- * knockout, and the reason the columns get wider as they go.
+ * yet, so the bracket ends where the football has got to.
  */
 const CupBracket: React.FC<{ bracket: CupBracketDto; userTeamId?: string | null }> = ({
   bracket,
@@ -32,7 +47,10 @@ const CupBracket: React.FC<{ bracket: CupBracketDto; userTeamId?: string | null 
 }) => {
   const navigate = useNavigate();
 
-  if (bracket.rounds.length === 0) {
+  // The most recent round first: the round a manager opens the cup to see is the last one played.
+  const rounds = [...bracket.rounds].sort((left, right) => right.roundNumber - left.roundNumber);
+
+  if (rounds.length === 0) {
     return (
       <div className="cup-bracket-empty">
         <div className="league-empty">O chaveamento da copa ainda não foi sorteado.</div>
@@ -42,8 +60,8 @@ const CupBracket: React.FC<{ bracket: CupBracketDto; userTeamId?: string | null 
 
   return (
     <div className="cup-bracket-scroll">
-      <div className="cup-bracket" style={{ gridTemplateColumns: `repeat(${bracket.rounds.length}, minmax(186px, 1fr))` }}>
-        {bracket.rounds.map(round => (
+      <div className="cup-bracket">
+        {rounds.map(round => (
           <section key={round.roundNumber} className="cup-bracket__round">
             <h3 className="cup-bracket__title">{round.name}</h3>
             <div className="cup-bracket__ties">
@@ -68,7 +86,12 @@ const CupBracket: React.FC<{ bracket: CupBracketDto; userTeamId?: string | null 
   );
 };
 
-/** One tie: the two clubs, the two legs, and the aggregate. */
+/**
+ * One tie: the two clubs, the two games, and the aggregate.
+ *
+ * The winner is marked by the club line, not by a trophy in the card: a bracket with two winners
+ * in it is a bracket nobody can read.
+ */
 const TieCard: React.FC<{
   tie: CupBracketTieDto;
   userTeamId?: string | null;
@@ -80,87 +103,73 @@ const TieCard: React.FC<{
     if (matchId) onNavigate(`/match/${matchId}`);
   };
 
+  // The games are read off one club so that each of them is printed once. Which club is that is
+  // the tie's own first-named side, so a card always reads top to bottom in the same order the
+  // two club lines above it do.
+  const firstLeg = {
+    goals: home?.firstLegGoals,
+    conceded: home?.firstLegConceded
+  };
+  const secondLeg = {
+    goals: home?.secondLegGoals,
+    conceded: home?.secondLegConceded
+  };
+
   return (
     <div className={`cup-tie ${tie.clubs.some(club => club.isWinner) ? 'cup-tie--decided' : ''}`}>
-      <ClubLine
-        club={home}
-        firstLegMatchId={tie.firstLegMatchId}
-        secondLegMatchId={tie.secondLegMatchId}
-        firstLegLive={tie.firstLegLive}
-        secondLegLive={tie.secondLegLive}
-        userTeamId={userTeamId}
-        onGoToMatch={goToMatch}
-      />
-      <ClubLine
-        club={away}
-        firstLegMatchId={tie.firstLegMatchId}
-        secondLegMatchId={tie.secondLegMatchId}
-        firstLegLive={tie.firstLegLive}
-        secondLegLive={tie.secondLegLive}
-        userTeamId={userTeamId}
-        onGoToMatch={goToMatch}
-      />
-        <div className="cup-tie__aggregate">
-          {home?.aggregateGoals != null ? (
-            <>
-              <span>Agregado {home.aggregateGoals} x {home.aggregateConceded}</span>
-              {home.penaltyGoals != null && (
-                <span className="cup-tie__penalties">
-                  Pênaltis {home.penaltyGoals} x {away?.penaltyGoals}
-                </span>
-              )}
-            </>
-          ) : tie.firstLegLive || tie.secondLegLive ? (
-            <span className="cup-tie__live">Ao vivo</span>
-          ) : (
-            <span className="cup-tie__pending">Em andamento</span>
-          )}
-          <div className="cup-tie__watch">
-            {(tie.firstLegMatchId || tie.firstLegLive) && (
-              <button
-                type="button"
-                className={`cup-tie__watch-btn${tie.firstLegLive ? ' cup-tie__watch-btn--live' : ''}`}
-                onClick={() => goToMatch(tie.firstLegMatchId)}
-                title="Assistir ao 1º jogo"
-              >
-                1º jogo
-              </button>
+      <ClubLine club={home} userTeamId={userTeamId} />
+      <ClubLine club={away} userTeamId={userTeamId} />
+
+      {/* The two games, each printed once and each a door to its own match. A game that was
+          never played has no match to go to, so it prints a dash and offers nothing — a button
+          that goes nowhere is worse than a number that does not. */}
+      <div className="cup-tie__games">
+        <GameScore
+          label="1º jogo"
+          score={legScore(firstLeg.goals, firstLeg.conceded)}
+          matchId={tie.firstLegMatchId}
+          isLive={tie.firstLegLive}
+          onGoToMatch={goToMatch}
+        />
+        <GameScore
+          label="2º jogo"
+          score={legScore(secondLeg.goals, secondLeg.conceded)}
+          matchId={tie.secondLegMatchId}
+          isLive={tie.secondLegLive}
+          onGoToMatch={goToMatch}
+        />
+      </div>
+
+      <div className="cup-tie__aggregate">
+        {home?.aggregateGoals != null ? (
+          <>
+            <span>Agregado {home.aggregateGoals} x {home.aggregateConceded}</span>
+            {home.penaltyGoals != null && (
+              <span className="cup-tie__penalties">
+                Pênaltis {home.penaltyGoals} x {away?.penaltyGoals}
+              </span>
             )}
-            {(tie.secondLegMatchId || tie.secondLegLive) && (
-              <button
-                type="button"
-                className={`cup-tie__watch-btn${tie.secondLegLive ? ' cup-tie__watch-btn--live' : ''}`}
-                onClick={() => goToMatch(tie.secondLegMatchId)}
-                title="Assistir ao 2º jogo"
-              >
-                2º jogo
-              </button>
-            )}
-          </div>
+          </>
+        ) : tie.firstLegLive || tie.secondLegLive ? (
+          <span className="cup-tie__live">Ao vivo</span>
+        ) : (
+          <span className="cup-tie__pending">Em andamento</span>
+        )}
       </div>
     </div>
   );
 };
 
 /**
- * One club's line of a tie. The winner is marked by the line, not by a trophy in it: a bracket
- * with two winners in it is a bracket nobody can read, and the club that goes through is the one
- * whose line carries the day.
+ * One club's line of a tie: its shield, its name, and nothing else.
  *
- * A leg's score is the door to that leg's match, for both clubs. The two legs swap ends, so the
- * away club's first leg is the same match the home club's first leg is — which is exactly why
- * the score is linked and not merely printed: it is the number a manager wants to click, and
- * the id it is wired to is the one the backend read it out of.
+ * The numbers that used to sit here — the club's own two legs — are in the tie's games line now,
+ * because printed on both lines they said the same two matches twice.
  */
 const ClubLine: React.FC<{
   club?: CupBracketClubDto;
-  firstLegMatchId?: string | null;
-  secondLegMatchId?: string | null;
-  firstLegLive?: boolean;
-  secondLegLive?: boolean;
   userTeamId?: string | null;
-  onGoToMatch: (matchId?: string | null) => void;
-}> = ({ club, firstLegMatchId, secondLegMatchId, firstLegLive, secondLegLive, userTeamId, onGoToMatch }) => {
+}> = ({ club, userTeamId }) => {
   if (!club) return null;
 
   const isMine = !!userTeamId && club.teamId === userTeamId;
@@ -188,53 +197,37 @@ const ClubLine: React.FC<{
         <ClubName teamId={club.teamId}>{club.name}</ClubName>
         {isMine && <span className="cup-club__you" title="O seu clube">Você</span>}
       </span>
-      <span className="cup-club__legs">
-        <LegScore
-          score={legScore(club.firstLegGoals, club.firstLegConceded)}
-          title="Primeiro jogo"
-          matchId={firstLegMatchId}
-          isLive={firstLegLive}
-          onGoToMatch={onGoToMatch}
-        />
-        <LegScore
-          score={legScore(club.secondLegGoals, club.secondLegConceded)}
-          title="Segundo jogo"
-          matchId={secondLegMatchId}
-          isLive={secondLegLive}
-          onGoToMatch={onGoToMatch}
-        />
-      </span>
     </div>
   );
 };
 
 /**
- * One leg's score, which is a link when the leg has been played or is live, and plain text
- * when it has not.
- *
- * A leg that was never played has no match to go to, so it prints a dash and offers nothing —
- * a button that goes nowhere is worse than a number that does not, because a manager presses it
- * expecting the whistle. A leg that is in progress shows the live score and a badge.
+ * One game of a tie, which is a link when it has been played or is live, and plain text when it
+ * has not.
  */
-const LegScore: React.FC<{
+const GameScore: React.FC<{
+  label: string;
   score: string;
-  title: string;
   matchId?: string | null;
   isLive?: boolean;
   onGoToMatch: (matchId?: string | null) => void;
-}> = ({ score, title, matchId, isLive, onGoToMatch }) => {
+}> = ({ label, score, matchId, isLive, onGoToMatch }) => {
   if (!matchId) {
-    return <span title={title}>{score}</span>;
+    return (
+      <span className="cup-tie__game cup-tie__game--pending" title={label}>
+        {label} {score}
+      </span>
+    );
   }
 
   return (
     <button
       type="button"
-      className={`cup-club__leg${isLive ? ' cup-club__leg--live' : ''}`}
-      title={`${title}${isLive ? ' — ao vivo' : ' — ver a partida'}`}
+      className={`cup-tie__game${isLive ? ' cup-tie__game--live' : ''}`}
+      title={`${label}${isLive ? ' — ao vivo' : ' — ver a partida'}`}
       onClick={() => onGoToMatch(matchId)}
     >
-      {score}
+      {label} {score}
       {isLive && <span className="cup-club__live-badge" title="Ao vivo" />}
     </button>
   );

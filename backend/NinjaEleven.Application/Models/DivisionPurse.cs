@@ -34,4 +34,16 @@ public record PrizeShare(int Position, decimal Amount);
 /// <param name="Name">The round's name, in the game's own words.</param>
 /// <param name="Amount">What it pays.</param>
 /// <param name="IsChampion">Whether this is the winner's cheque rather than a consolation.</param>
-public record CupPrize(int TieRound, string Name, decimal Amount, bool IsChampion);
+/// <param name="IsRunnerUp">
+/// Whether this consolation is the one the club that lost the final takes home.
+///
+/// <para>
+/// It is a separate fact and not something a screen works out from the round number, because
+/// "eliminado na final" is what a club that lost the final is and is also what the legend used
+/// to say about it — and the losing side of a final is a different thing from a club knocked
+/// out anywhere else, in the same way the champion is: it is on the shelf, it is the other half
+/// of the result, and a legend that will not name it is telling a manager that being second is
+/// the same as being fourteenth.
+/// </para>
+/// </param>
+public record CupPrize(int TieRound, string Name, decimal Amount, bool IsChampion, bool IsRunnerUp = false);

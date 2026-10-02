@@ -22,6 +22,20 @@ public class SeasonCalendar
     /// <summary>Every window of football scheduled anywhere in the season.</summary>
     public IReadOnlyList<Round> Windows { get; init; } = Array.Empty<Round>();
 
+    /// <summary>
+    /// The day the world is on: the first day of the season that still has a fixture nobody
+    /// has played. Null when the season has not been drawn yet.
+    ///
+    /// <para>
+    /// It is a fact about the football and not about the wall clock. A season is thirty-four
+    /// days on the calendar and however long it takes on the machine, so the date a matchday
+    /// carries can be weeks away from the day it is actually played — which is why a calendar
+    /// that worked out "today" from the date would open on day one of a season the world is
+    /// twenty days into.
+    /// </para>
+    /// </summary>
+    public int? CurrentMatchDayNumber { get; init; }
+
     public int MatchDayCount => MatchDays.Count;
 
     public MatchDay? MatchDayOf(int number) =>

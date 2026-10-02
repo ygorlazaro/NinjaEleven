@@ -131,7 +131,18 @@ public class PlayerRepository : IPlayerRepository
         Guid seasonId,
         CancellationToken cancellationToken = default) =>
         await _dbContext.PlayerSeasonStates
-            .FirstOrDefaultAsync(state => state.PlayerId == playerId && state.SeasonId == seasonId, cancellationToken);
+             .FirstOrDefaultAsync(state => state.PlayerId == playerId && state.SeasonId == seasonId, cancellationToken);
+
+    public async Task<IReadOnlyList<PlayerSeasonState>> ListAcademyPlayersAsync(
+        Guid seasonId,
+        Guid teamId,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.PlayerSeasonStates
+            .AsNoTracking()
+            .Where(state => state.SeasonId == seasonId
+                && state.TeamId == teamId
+                && state.IsAcademyPlayer)
+            .ToListAsync(cancellationToken);
 
     /// <summary>
     /// Writes a season state through the instance the context already holds. Same seam and

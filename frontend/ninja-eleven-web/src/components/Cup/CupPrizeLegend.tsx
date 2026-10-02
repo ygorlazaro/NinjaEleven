@@ -21,6 +21,14 @@ import TopScorerPrizeRows, { formatRate, shareLabel } from '@/components/League/
  * The amounts are the domain's, down to the round that pays nothing, so a client cannot pay a
  * consolation the rules do not have.
  *
+ * **The runner-up is not a consolation, and the legend does not call him one.** A club that
+ * lost the final went out in the final, and a line saying so puts it beside the club that went
+ * out in the semifinal as the same kind of thing — one place apart on a ladder, when in fact
+ * one of them is the other half of a result and the other is a defeat. The flag is the
+ * backend's, decided by the final being the last tie-round, because "which consolation is the
+ * runner-up's" is a question about the competition and not about a round number a screen can
+ * count to itself.
+ *
  * **The list is a ladder of money and the biggest rung is the champion's.** The lines are ordered
  * by what they pay, from the title down to the club that went out among the last thirty-two, so
  * the top of the panel is the most a cup is worth and the amounts only fall from there. The
@@ -55,19 +63,31 @@ const CupPrizeLegend: React.FC<{
       <h3 className="prize-legend__title"><CupTrophy size={18} /> Premiação da copa</h3>
       <p className="prize-legend__hint">
         A copa paga na saída: quem é eliminado leva a cota da fase em que caiu, e quem ganha leva
-        o prêmio do título.
+        o prêmio do título. O vice-campeão é a única dessas cotas que não é uma eliminação: ele
+        perdeu a final, mas a final é o resultado inteiro da copa e ele fica com a segunda metade
+        dele — por isso a linha acima diz o nome dele e não a fase em que caiu.
       </p>
       {prizes.length > 0 && (
         <div className="cup-prize-legend__rows">
           {byAmount(prizes).map(prize => (
             <div
               key={`${prize.tieRound}-${prize.isChampion}`}
-              className={`prize-legend__row ${prize.isChampion ? 'prize-legend__row--champion' : ''}`}
+              className={[
+                'prize-legend__row',
+                prize.isChampion ? 'prize-legend__row--champion' : '',
+                prize.isRunnerUp ? 'prize-legend__row--runner-up' : ''
+              ]
+                .filter(Boolean)
+                .join(' ')}
             >
               <span className="prize-legend__position">
                 {prize.isChampion ? (
                   <>
                     <CupTrophy size={15} /> Campeão
+                  </>
+                ) : prize.isRunnerUp ? (
+                  <>
+                    <CupTrophy size={15} /> Vice-campeão
                   </>
                 ) : (
                   `Eliminado em ${roundNameOf(prize)}`

@@ -191,10 +191,44 @@ public class TransferRepository : ITransferRepository
     }
 
     /// <summary>
+    /// Every completed transfer for clubs in a division, read once for the rankings. The rankings
+    /// aggregate over a season's business, so this returns every completed transfer where either
+    /// the buying or selling club belongs to the division in the current season. Read as one set
+    /// rather than once per club, so a page of sixteen rankings does not make sixteen calls.
+    /// </summary>
+    public async Task<IReadOnlyList<Transfer>> ListCompletedByDivisionAsync(
+        Guid competitionSeasonId,
+        CancellationToken cancellationToken = default)
+    {
+        var clubsInDivision = await _context.CompetitionParticipants
+            .AsNoTracking()
+            .Where(p => p.CompetitionSeasonId == competitionSeasonId)
+            .Select(p => p.TeamId)
+            .ToHashSetAsync(cancellationToken);
+
+        if (clubsInDivision.Count == 0)
+        {
+            return Array.Empty<Transfer>();
+        }
+
+        return await _context.Transfers
+            .AsNoTracking()
+            .Where(t => t.Status == TransferStatus.Completed
+                        && (clubsInDivision.Contains(t.BuyingClubId)
+                            || (t.SellingClubId.HasValue && clubsInDivision.Contains(t.SellingClubId.Value))))
+            .Include(t => t.Player)
+            .Include(t => t.BuyingClub)
+            .Include(t => t.SellingClub)
+            .OrderByDescending(t => t.CompletedAt)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// Every live transfer involving one club, across the seasons given, newest first, with
     /// the season each one was made in. A club's transfer history is the list of men who came
     /// and men who went, and the season is what separates this season's business from last
     /// season's when the two sit in one table.
+
     ///
     /// A bid that was refused or ran out of time is not on it. Rejected and expired are the
     /// two ways a proposal ends without a player ever moving, and a club page that listed

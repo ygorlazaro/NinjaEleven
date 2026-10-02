@@ -3,6 +3,7 @@ import type { SquadPlayerDto, TeamDto } from '@/types';
 import { positionLabel, starsToString, attributeToneClass, energyTextClass } from '@/services/formatters';
 import { formatLimo } from '@/services/limo';
 import { PlayerName } from '@/components/Common/Names';
+import PlayerStatusMarks from '@/components/Common/PlayerStatusMarks';
 import KitChip from '@/components/Club/KitChip';
 import ShirtNumberCell from '@/components/Club/ShirtNumberCell';
 
@@ -122,6 +123,19 @@ interface ClubSquadTableProps {
   onRelease?: (player: SquadPlayerDto) => void;
 
   /**
+   * Renews a contract, for as many seasons as the manager says and at whatever the wage is
+   * today. Left out, the renewal control is not shown: a squad screen belongs to somebody
+   * else's club as often as to the manager's own, and the renewal only matters for the
+   * manager's own players.
+   *
+   * It is offered to every contracted man and not only to one in his last season, because
+   * that is what the club may do: a renewal restates the deal from this season on, so a
+   * manager who wants three more seasons of a man he has four seasons of does not have to
+   * wait for the fourth to run out to say so.
+   */
+  onRenewContract?: (player: SquadPlayerDto) => void;
+
+  /**
    * Declares the man will retire at the end of the season, or takes the declaration back. The
    * news belongs to the club that owns him, so the same rule applies as for a release.
    */
@@ -161,6 +175,7 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
   describeAbsence,
   onRelease,
   onEditShirtNumber,
+  onRenewContract,
   shirtRefusals,
   caption
 }) => {
@@ -242,8 +257,10 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
               </th>
             ))}
             {/* The club's own decisions are not a column a manager sorts by, so the header
-                says what they are and nothing more. */}
-            {onRelease && <th className="actions-col">Ações</th>}
+                says what they are and nothing more. The column is drawn when either decision
+                exists: the renewal is the manager's as much as the release, and nesting it
+                inside the release's guard made it disappear with it. */}
+            {(onRelease || onRenewContract) && <th className="actions-col">Ações</th>}
           </tr>
         </thead>
 <tbody>
@@ -285,14 +302,14 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
                   {!selectedIds?.has(player.id) && elsewhereIds?.has(player.id) && (
                     <span className="pick-mark" title="Está no outro grupo">⇤</span>
                   )}
-                   <KitChip team={team} />
-                   <PlayerName playerId={player.id}>{player.name}</PlayerName>
-                   {player.retiring && (
-                     <span className="retiring-mark" title="Aposentadoria declarada">🏁</span>
-                   )}
-                   {player.injury !== 'None' && (
-                    <span className="injury-mark" title={`Lesionado: ${player.injury}`}>🩹</span>
-                  )}
+                  <KitChip team={team} />
+                  <PlayerName playerId={player.id}>{player.name}</PlayerName>
+                  <PlayerStatusMarks
+                    retiring={player.retiring}
+                    injury={player.injury}
+                    injuryMatchesRemaining={player.injuryMatchesRemaining}
+                    suspensionMatches={player.suspensionMatches}
+                  />
                 </td>
                 <td className="num">{player.age}</td>
                 <td className={`num ${energyTextClass(player.energy)}`}>{player.energy}</td>
@@ -341,7 +358,7 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
                 <td className="num accent">{player.saves}</td>
                 <td className="num">{player.yellowCards}</td>
                 <td className="num">{player.redCards}</td>
-                {onRelease && (
+                {(onRelease || onRenewContract) && (
                   <td className="actions-col" onClick={event => event.stopPropagation()}>
                     {onRelease && (
                       <button
@@ -350,6 +367,22 @@ const ClubSquadTable: React.FC<ClubSquadTableProps> = ({
                         onClick={() => onRelease(player)}
                       >
                         Rescindir
+                      </button>
+                    )}
+                    {/* A renewal is offered to any man the club holds on a contract and refused
+                        to a man who announced his retirement — the same refusal the server
+                        makes, so the row that has no button is the row the rule has no answer
+                        for. */}
+                    {onRenewContract && player.contractSeasons > 0 && !player.retiring && (
+                      <button
+                        className="ctrl btn-sm renew"
+                        title={
+                          'Renovar o contrato a partir desta temporada. ' +
+                          `Nova wage: ${formatLimo(player.wageOnRenewal ?? 0)}`
+                        }
+                        onClick={() => onRenewContract(player)}
+                      >
+                        Renovar
                       </button>
                     )}
                   </td>

@@ -9,6 +9,7 @@ import type {
 } from '@/types';
 import { positionLabel, attributeToneClass, energyTextClass } from '@/services/formatters';
 import { PlayerName, ClubName } from '@/components/Common/Names';
+import PlayerStatusMarks from '@/components/Common/PlayerStatusMarks';
 
 /** The eleven on the pitch and the seven beside it. The two numbers the Laws settle on. */
 const STARTERS = 11;
@@ -50,6 +51,38 @@ const ATTRIBUTE_LABELS = ['Vel', 'Fin', 'Dri', 'Cab', 'For', 'Gol', 'Ref', 'Est'
  * </p>
  */
 const attributeTextClass = attributeToneClass;
+
+/**
+ * Why a man is off the board, in words, or nothing when he is fit.
+ *
+ * <p>
+ * The board refuses a man who cannot play and greys his row, which stops a plan from quietly
+ * losing two players. It used to say only "Fora", and a manager reading that has to leave the
+ * screen to learn whether it is two matches of a suspension or a knock — the difference
+ * between a plan that will be fine in a fortnight and one that needs somebody else now.
+ * </p>
+ *
+ * <p>
+ * It is asked of the two counters the backend sends rather than of anything worked out here.
+ * A ban and a bandage are different facts with different lengths, and a screen that guessed
+ * between them would be guessing about a man's availability.
+ * </p>
+ */
+const absenceReason = (row: TacticsSquadRowDto): string => {
+  if (row.isAvailable) return '';
+
+  const matches = `${row.suspensionMatches} partida${row.suspensionMatches === 1 ? '' : 's'}`;
+
+  if (row.injuryMatchesRemaining > 0) {
+    return `Lesionado • ${row.injuryMatchesRemaining} jogo${row.injuryMatchesRemaining === 1 ? '' : 's'} de retorno`;
+  }
+
+  if (row.suspensionMatches > 0) {
+    return `Suspenso • ${matches}`;
+  }
+
+  return 'Indisponível';
+};
 
 type Group = (typeof POSITION_ORDER)[number];
 
@@ -449,6 +482,15 @@ const TacticsScreen: React.FC = () => {
   const completeEleven = starters.length === STARTERS;
   const oneGoalkeeper = keeperCount === 1;
 
+  // The men the manager has named who cannot walk onto the pitch. The row says why beside his
+  // name, but a mark beside a name is read in passing and this is the sentence that says it
+  // outright — eleven names are on this panel and the manager is choosing a keeper in the middle
+  // of them, not reading an absence list.
+  const startersOutOfAction = starters
+    .map(playerId => board?.squad.find(player => player.playerId === playerId))
+    .filter((row): row is TacticsSquadRowDto => !!row && !row.isAvailable)
+    .map(row => `${row.name} (${absenceReason(row)})`);
+
   const canSave =
     completeEleven && oneGoalkeeper && !saving && (touched || starters.length > 0);
 
@@ -618,6 +660,16 @@ const TacticsScreen: React.FC = () => {
               Faltam {STARTERS - starters.length} para fechar o time.
             </p>
           )}
+          {startersOutOfAction.length > 0 && (
+            /* Not a refusal and not a red panel: naming him is refused by the backend, and a
+               control that saves an eleven the server will reject is a control the server has
+               already said no to. This says who and why, so the choice of the replacement is the
+               manager's before he presses anything. */
+            <p className="tactics-hint tactics-hint--warning" role="status">
+              Não jogam: {startersOutOfAction.join(', ')}. O salvamento é recusado pelo servidor
+              enquanto eles estiverem escalados.
+            </p>
+          )}
           {completeEleven && !oneGoalkeeper && (
             <p className="tactics-hint">
               {keeperCount === 0
@@ -681,24 +733,44 @@ const TacticsScreen: React.FC = () => {
                     }}
                     onDragEnd={endDragging}
                     className={`tactics-row ${chosen.includes(row.playerId) ? 'tactics-row--chosen' : ''} ${row.isAvailable ? '' : 'tactics-row--out'} ${dragging === row.playerId ? 'tactics-row--dragging' : ''}`}
+                    title={absenceReason(row) || undefined}
                   >
                     <span className="tactics-row__pos">
                       {positionLabel(row.position)}
                     </span>
                     <div className="tactics-row__line">
-                      <button
-                        type="button"
+                      {/*
+                        The row is the pick, and the name inside it is a door to the profile —
+                        which is why this is not a <button> wrapping a <button>: the name is
+                        one, and nesting a button in a button is not a thing a browser will
+                        honour. The role, the tab stop and the key handling are what make the
+                        row pressable, and the name stops the click so that reading a player
+                        never changes the eleven.
+                      */}
+                      <span
+                        role="button"
+                        tabIndex={row.isAvailable ? 0 : -1}
+                        aria-disabled={!row.isAvailable}
                         className="tactics-row__name"
                         onClick={() => row.isAvailable && toggle(row.playerId)}
-                        disabled={!row.isAvailable}
+                        onKeyDown={event => {
+                          if (!row.isAvailable) return;
+                          if (event.key !== 'Enter' && event.key !== ' ') return;
+                          event.preventDefault();
+                          toggle(row.playerId);
+                        }}
                         title={
                           row.isAvailable
                             ? 'Entrar ou sair do time'
-                            : 'Indisponível para esta partida'
+                            : absenceReason(row)
                         }
                       >
                         <PlayerName playerId={row.playerId}>{row.name}</PlayerName>
-                      </button>
+                        <PlayerStatusMarks
+                          suspensionMatches={row.suspensionMatches}
+                          injuryMatchesRemaining={row.injuryMatchesRemaining}
+                        />
+                      </span>
                       <span className="tactics-row__meta">
                         <span className={energyTextClass(row.energy)}>{row.energy}</span>
                         <span>{row.age}</span>
@@ -724,7 +796,7 @@ const TacticsScreen: React.FC = () => {
                         </button>
                       </span>
                     ) : (
-                      <span className="tactics-row__out">Fora</span>
+                      <span className="tactics-row__out">{absenceReason(row)}</span>
                     )}
                     <AttributeStrip values={row.attributes} position={row.position} />
                   </li>
@@ -848,8 +920,12 @@ const TacticsRow: React.FC<{
       <>
         <span className="tactics-row__pos">{positionLabel(row.position)}</span>
         <div className="tactics-row__line">
-          <span className="tactics-row__name">
+          <span className="tactics-row__name" title={absenceReason(row) || undefined}>
             <PlayerName playerId={playerId}>{row.name}</PlayerName>
+            <PlayerStatusMarks
+              suspensionMatches={row.suspensionMatches}
+              injuryMatchesRemaining={row.injuryMatchesRemaining}
+            />
           </span>
           <span className="tactics-row__meta">
             <span className={energyTextClass(row.energy)}>{row.energy}</span>

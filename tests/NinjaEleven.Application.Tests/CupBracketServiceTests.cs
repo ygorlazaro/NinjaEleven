@@ -1,4 +1,5 @@
 using Moq;
+using NinjaEleven.Application.Abstractions;
 using NinjaEleven.Application.Repositories;
 using NinjaEleven.Application.Services;
 using NinjaEleven.Domain.Common;
@@ -27,6 +28,7 @@ public class CupBracketServiceTests
     private readonly Mock<IMatchRepository> _matches = new();
     private readonly Mock<ITeamRepository> _teams = new();
     private readonly Mock<ICompetitionRepository> _competitions = new();
+    private readonly Mock<ISquadStrengthReader> _squadStrength = new();
 
     private readonly Guid _seasonId = Guid.NewGuid();
     private readonly Guid _competitionId = Guid.NewGuid();
@@ -38,6 +40,18 @@ public class CupBracketServiceTests
     public CupBracketServiceTests()
     {
         _edition = CompetitionSeason.Create(_competitionId, _seasonId);
+
+        // A played leg has a statistics row, and a cup's ranking reads the cards off it. The
+        // mock has to say so: a loose mock answers nothing for a dictionary, and a bracket that
+        // reads sixty-four clubs' cards would throw rather than count them at zero.
+        _matches
+            .Setup(repo => repo.ListStatisticsByMatchIdsAsync(
+                It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, MatchStatistics>());
+        _squadStrength
+            .Setup(reader => reader.ForTeamsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, double>());
 
         _competitions
             .Setup(repo => repo.GetSeasonByIdAsync(_edition.Id, It.IsAny<CancellationToken>()))
@@ -150,7 +164,7 @@ public class CupBracketServiceTests
     }
 
     private CupBracketService Service() => new(
-        _cupTies.Object, _matches.Object, _teams.Object, _competitions.Object);
+        _cupTies.Object, _matches.Object, _teams.Object, _competitions.Object, _squadStrength.Object);
 
     /// <summary>
     /// A settled tie of one round: both legs played, the aggregate given to the cup, and the

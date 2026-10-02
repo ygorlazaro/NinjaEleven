@@ -185,7 +185,8 @@ public class SeasonCloseLetterTests
             _fixtures.Object,
             _matches.Object,
             _competitions.Object,
-            _teams.Object);
+            _teams.Object,
+            new SquadStrengthReader(_teams.Object));
 
         var finance = new FinanceService(
             _finance.Object,

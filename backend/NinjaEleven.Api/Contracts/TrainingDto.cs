@@ -65,9 +65,6 @@ public class TrainingResultDto
 
     /// <summary>What the session cost the club, being half the man's season wage.</summary>
     public decimal Fee { get; init; }
-
-    /// <summary>How many sessions this man has left on the day after this one.</summary>
-    public int SessionsLeft { get; init; }
 }
 
 /// <summary>

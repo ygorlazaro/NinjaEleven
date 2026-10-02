@@ -218,6 +218,30 @@ sixteen. Three things follow from that, and they are the three things that were 
   returns both, plus `hasLiveMatches`. Projected rows are what the table would say if the
   matches in progress went the way the strength says they go; official rows only move when a
   match is finished.
+- **The chain that orders a table is declared, not written out twice.** `StandingTable.Chain` is
+  a list of `StandingCriterion`s — the number compared, the direction, whether it is asked of
+  the whole table or only of the clubs the criteria above left level, and the sentence a manager
+  is told — and `Sort` walks that list rather than chaining its own `ThenBy`s. A "regras" screen
+  prints the same list and a tiebreaker added to the game is therefore on the page the next time
+  the page is drawn. `StandingCriterionScope` is what keeps the head-to-head the last resort it
+  is supposed to be: it is asked only of the clubs the coarse criteria could not part, so a
+  mini-table never decides a division.
+- **A head-to-head is a mini-table over the tied clubs' games against each other.** Both sides
+  have to be in the group. It used to admit every match whose *home* team was in it, which pulled
+  each tied club's home games against clubs that were not tied into its private table — so a club
+  could be handed a head-to-head decided by a match against the sixteenth, and two clubs level on
+  everything could come out of the one criterion meant to part them still level, because the
+  games that separated them were being counted for both.
+- **A division's bands are its own, and they are the movement.** `PyramidRules.Describe` runs
+  `DivisionMovement.From` over a table of the right size rather than writing "the top four go up,
+  the bottom four go down", which would promise the first division four accesses and the last
+  four falls that have nowhere to go. The first division's title also brings the Supercup and the
+  other three's brings promotion, so the title is said on every division's own line.
+- **`GET /league/rules` is asked for and not written on a screen.** Promotion slots, relegation
+  slots, the number of divisions and the tiebreaker chain are compile-time constants with no
+  other read path, so a client that restated them would be a client promising a season the game
+  does not play. The pyramid's money and its rules do not follow the season or division dropdown:
+  they are read once when the screen opens.
 
 **The calendar is the season, and it is drawn once.** `GET /season/{id}/calendar?build=true`
 draws 34 matchdays of a 64-club world and puts the football of the whole country on them:
@@ -257,6 +281,28 @@ the engine's own choice from the eleven that played, measured by `MatchEngine.Pe
 against the keeper in the other goal. `CupTie` records the winner *and* the loser, because the
 losing side of a final is a fact in its own right: it is the runner-up and it goes on the shelf.
 Trophies are written, not recomputed, so a club that is relegated after winning still won.
+
+**A cup is read as a bracket and as a ranking, from one call.** `CupBracketService` answers with
+the ties and with `CupBracketView.Ranking` — every club the cup drew, the furthest first, capped at sixty-four
+— because both are a reading of the same ties and the same legs, and two calls about one cup are
+two answers about how far each club got, taken a minute apart. The screen paginates the ranking
+eight at a time; the page size is the screen's and the cap is the service's, because a reader
+that asked for eight and then for the next eight would decide where a manager's own club is by
+how many times he pressed a button.
+
+**A club's step is the round it reached, and inside a step the league's own rules decide.** The
+champion stands a step above the final rather than in it — he was never in a round he could lose,
+and a ladder whose first step is the final has two clubs on it and needs a tiebreak to say which
+won, which is the tie, and the tie already said. Everything below that step is ordered by
+`StandingTable`, the same chain the table and the promotion use, so "which of these two had the
+better cup" is answered the way the rest of the game answers it.
+
+**The consolation ladder has one step per tie-round the cup plays.** There are six, and it had
+five: the runner-up fell on the fall-through branch and was paid nothing while the semifinal
+loser was paid the finalist's cheque. `PrizeRules.RunnerUpTieRound` is the round whose loser is
+the runner-up, and both the ladder and the ceremony that pays the champion read it — losing the
+final is not being knocked out in it, and a legend that files the runner-up under "eliminated" is
+filing a second cheque in the same column as a defeat.
 
 ## Moving the World
 
@@ -929,15 +975,36 @@ Two rules the sound depends on:
    Somebody else's club is a modal; the manager's own club is the screen the game starts on.
 
 7. **A club carries its shield where its name is read** — `ClubCrest` in the sidebar, the
-   scoreboard, the matchday, the next-match box and the live badge. A name identifies a club
-   to someone reading it; a shield identifies it to someone glancing at a column of sixteen
-   clubs, which is what a scoreboard and a matchday both are.
+   scoreboard, the matchday and the club's match card. A name identifies a club to someone
+   reading it; a shield identifies it to someone glancing at a column of sixteen clubs, which
+   is what a scoreboard and a matchday both are.
 
 8. **A screen offers a decision only where the manager is entitled to one.** A match of two
    other clubs is a document everywhere in it: the eleven and the bench are read, the
    substitution panel and the interval button are not drawn, and the half-time dialog follows
    the server's `userTeamId` rather than the clock. The backend refuses a command for either
    club, so a control that appears anyway is a control the server has already said no to.
+
+9. **The column has one card for the match, because the match is one.** `ClubMatchCard` is the
+   match the club has in front of it and the match it is playing, and the two are the same
+   fixture: it is still to be played until the final whistle. Two cards meant a manager reading
+   the column twice to find out which of the two was true of the game he was in, and a live
+   match could be hidden behind a fixture list that had not caught up — so the live match is
+   read off `useLiveMatch` and drawn whatever the calendar says. A championship fixture also
+   carries the opponent's place and points, from `GET /team/{id}/standing`, and only that kind
+   of fixture: a cup tie has no table behind it, so a position printed over it answers a
+   question nobody asked.
+
+10. **A filter is the server's, and it is applied to the page, the count and the paging at
+    once.** `GET /inbox/{teamId}?category=` narrows one box in one read: the lines, the
+    `totalItems`, the `totalPages` and the tally the filter column is labelled with. Filtering
+    the twenty lines on screen would answer "how much of my mail is this" with the twenty lines
+    the screen happened to be holding, and the manager would page through his own box hunting
+    for the rest of what one button said was there. The applied category travels back on the
+    page so the buttons are lit by what the server did rather than by what the client
+    remembers asking for, and a name that is not a category is a 400 rather than a filter
+    quietly dropped — a filter that claims to be applied and is not is the one lie a list may
+    not tell.
 
 ## A Number a Manager Budgets Against
 

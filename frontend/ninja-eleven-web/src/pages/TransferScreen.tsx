@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SeasonApi, TransferApi, TeamApi } from '@/api';
+import { ApiProblemError } from '@/api/client';
 import { useGameState } from '@/state';
 import { useOffer } from '@/state/OfferProvider';
 import { formatLimo } from '@/services/limo';
@@ -18,7 +19,9 @@ import type {
   Position,
   TransferStatus,
   ClubBalanceDto,
-  DivisionRecentTransfersDto,
+   DivisionRecentTransfersDto,
+   TransferRankingsDto,
+   TransferRankingEntryDto,
 } from '@/types';
 
 const POSITIONS: Position[] = ['GK', 'DEF', 'MID', 'ATT'];
@@ -77,6 +80,9 @@ const PlayerRow: React.FC<{
         )}
         {player.hasActiveProposal && (
           <span className="proposal-mark" title="Já há uma proposta na mesa por este jogador">📝</span>
+        )}
+        {player.onTransferList && (
+          <span className="transfer-list-mark" title="Jogador listado para transferência">📋</span>
         )}
       </td>
       <td className="num">{player.age}</td>
@@ -188,8 +194,11 @@ const PlayerDetail: React.FC<{
   history: TransferHistoryLineDto[];
   onClose: () => void;
   onOffer: (player: TransferListingDto) => void;
-}> = ({ player, history, onClose, onOffer }) => {
+  onTransferListChange: (player: TransferListingDto, onList: boolean) => void;
+}> = ({ player, history, onClose, onOffer, onTransferListChange }) => {
   const isKeeper = player.position === 'GK';
+  const selectedTeam = useGameState((s) => s.selectedTeam);
+  const isOwnPlayer = !!player.teamId && player.teamId === selectedTeam?.id;
 
   return (
     <article className="transfer-detail">
@@ -226,6 +235,15 @@ const PlayerDetail: React.FC<{
             📝 Já há uma proposta na mesa por este jogador — ela espera resposta em Propostas na
             mesa, no alto da tela.
           </p>
+        )}
+        {isOwnPlayer && (
+          <button
+            className={`ctrl transfer-list-button ${player.onTransferList ? 'listed' : 'unlisted'}`}
+            onClick={() => onTransferListChange(player, !player.onTransferList)}
+            title={player.onTransferList ? 'Tirar da lista de transferência' : 'Listar para transferência'}
+          >
+            {player.onTransferList ? '📋 Fora da venda' : '📋 Para venda'}
+          </button>
         )}
       </div>
 
@@ -400,6 +418,50 @@ const PlayerDetail: React.FC<{
   );
 };
 
+interface TransferRankingTableProps {
+  title: string;
+  entries: TransferRankingEntryDto[];
+  metricLabel: string;
+  formatMetric: (value: number) => string;
+}
+
+const TransferRankingTable: React.FC<TransferRankingTableProps> = ({
+  title,
+  entries,
+  metricLabel,
+  formatMetric,
+}) => (
+  <div className="transfer-ranking-table">
+    <h4>{title}</h4>
+    {entries.length === 0 ? (
+      <p className="transfer-empty">Nenhuma movimentação registrada.</p>
+    ) : (
+      <table className="transfer-table">
+        <thead>
+          <tr>
+            <th className="num">#</th>
+            <th>Clube</th>
+            <th className="num">Quant</th>
+            <th className="num">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((entry, i) => (
+            <tr key={entry.teamId}>
+              <td className="num">{i + 1}</td>
+              <td className="squad-name">
+                <ClubName teamId={entry.teamId}>{entry.teamName}</ClubName>
+              </td>
+              <td className="num">{entry.transfers}</td>
+              <td className="num money">{formatMetric(entry.amount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
+  </div>
+);
+
 const TransferScreen: React.FC = () => {
   const selectedTeam = useGameState((s) => s.selectedTeam);
   const selectedSeason = useGameState((s) => s.selectedSeason);
@@ -417,6 +479,7 @@ const TransferScreen: React.FC = () => {
 
   const [balance, setBalance] = useState<ClubBalanceDto | null>(null);
   const [recentTransfers, setRecentTransfers] = useState<DivisionRecentTransfersDto | null>(null);
+  const [rankings, setRankings] = useState<TransferRankingsDto | null>(null);
 
   /**
    * Every filter the manager can set, and none of them set by default. An unset filter narrows
@@ -536,6 +599,7 @@ const TransferScreen: React.FC = () => {
     if (!selectedTeam?.id || !seasonId) {
       setBalance(null);
       setRecentTransfers(null);
+      setRankings(null);
       return;
     }
 
@@ -543,18 +607,21 @@ const TransferScreen: React.FC = () => {
 
     Promise.all([
       TeamApi.getBalance(selectedTeam.id),
-      TransferApi.getRecent(selectedTeam.id, 3)
+      TransferApi.getRecent(selectedTeam.id, 3),
+      TransferApi.getRankings(selectedTeam.id),
     ])
-      .then(([balanceData, recentData]) => {
+      .then(([balanceData, recentData, rankingsData]) => {
         if (alive) {
           setBalance(balanceData);
           setRecentTransfers(recentData);
+          setRankings(rankingsData);
         }
       })
       .catch(() => {
         if (alive) {
           setBalance(null);
           setRecentTransfers(null);
+          setRankings(null);
         }
       });
 
@@ -634,6 +701,40 @@ const TransferScreen: React.FC = () => {
     );
   }
 
+  const handleTransferListChange = async (player: TransferListingDto, onList: boolean) => {
+    if (!selectedTeam) return;
+    try {
+      const result = onList
+      ? await TeamApi.putOnTransferList(selectedTeam.id, player.playerId, seasonId)
+      : await TeamApi.takeOffTransferList(selectedTeam.id, player.playerId, seasonId);
+      setSearchResult(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          players: prev.players.map(p =>
+            p.playerId === result.playerId ? { ...p, onTransferList: result.onTransferList } : p
+          )
+        };
+      });
+      setListing(prev =>
+        prev && prev.playerId === player.playerId
+          ? { ...prev, onTransferList: result.onTransferList }
+          : prev
+      );
+      setSelectedPlayer(prev =>
+        prev && prev.playerId === player.playerId
+          ? { ...prev, onTransferList: result.onTransferList }
+          : prev
+      );
+    } catch (err) {
+      if (err instanceof ApiProblemError) {
+        setError(err.message);
+      } else {
+        setError('Não foi possível atualizar a lista de transferência.');
+      }
+    }
+  };
+
   return (
     <div className="transfer-screen">
       <header className="transfer-header">
@@ -658,6 +759,184 @@ const TransferScreen: React.FC = () => {
           </p>
         )}
       </header>
+
+      {/*
+        The search that finds new men is the first thing under the header, above the
+        balance and recent business. A manager opening "Mercado" is asking what he can buy,
+        and the table of names belongs above the summary of money spent.
+      */}
+      <section className="transfer-search-section">
+        <h3>Filtrar mercado {filterCount > 0 && `(${filterCount})`}</h3>
+        <div className="transfer-filters">
+          <div className="transfer-filter-row">
+            <label>Posição:</label>
+            <select
+              value={filters.position ?? ''}
+              onChange={e => setFilter('position', e.target.value || undefined)}
+              className="ctrl"
+            >
+              <option value="">Todas</option>
+              {POSITIONS.map(pos => (
+                <option key={pos} value={pos}>{positionLabel(pos)}</option>
+              ))}
+            </select>
+
+            <label>Idade:</label>
+            <input
+              type="number"
+              className="ctrl transfer-filter-number"
+              min={16}
+              max={50}
+              placeholder="mín"
+              value={filters.minAge ?? ''}
+              onChange={e => setFilter('minAge', numberFilter(e.target.value))}
+            />
+            <span>–</span>
+            <input
+              type="number"
+              className="ctrl transfer-filter-number"
+              min={16}
+              max={50}
+              placeholder="máx"
+              value={filters.maxAge ?? ''}
+              onChange={e => setFilter('maxAge', numberFilter(e.target.value))}
+            />
+
+            <label>Estrelas ≥</label>
+            <input
+              type="number"
+              step={0.5}
+              min={0}
+              className="ctrl transfer-filter-number"
+              placeholder="★"
+              value={filters.minStars ?? ''}
+              onChange={e => setFilter('minStars', numberFilter(e.target.value))}
+            />
+
+            <label>
+              <input
+                type="checkbox"
+                checked={filters.freeAgentsOnly ?? false}
+                onChange={e => setFilter('freeAgentsOnly', e.target.checked || undefined)}
+              />
+              {' '}Só livres
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={filters.withClubOnly ?? false}
+                onChange={e => setFilter('withClubOnly', e.target.checked || undefined)}
+              />
+              {' '}Com clube
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={filters.retiring ?? false}
+                onChange={e => setFilter('retiring', e.target.checked ? true : undefined)}
+              />
+              {' '}Aposentando
+            </label>
+
+            <button className="ctrl" onClick={resetFilters} disabled={filterCount === 0}>
+              Limpar
+            </button>
+          </div>
+
+          <details className="transfer-filter-row transfer-filter-attributes">
+            <summary>Atributos mínimos</summary>
+            <div className="transfer-filter-row">
+              {([
+                ['minSpeed', 'Vel'],
+                ['minAccuracy', 'Fin'],
+                ['minDribbling', 'Dri'],
+                ['minHeading', 'Cab'],
+                ['minStrength', 'For'],
+                ['minGoalkeeperPower', 'Gol'],
+                ['minReflexes', 'Ref']
+              ] as const).map(([key, label]) => (
+                <span key={key} className="transfer-filter-attribute">
+                  <label>{label} ≥</label>
+                  <input
+                    type="number"
+                    className="ctrl transfer-filter-number"
+                    min={0}
+                    max={20}
+                    value={filters[key] ?? ''}
+                    onChange={e => setFilter(key, numberFilter(e.target.value))}
+                  />
+                </span>
+              ))}
+            </div>
+          </details>
+        </div>
+
+        {error && <p className="transfer-error">{error}</p>}
+
+        {loading ? (
+          <p>Carregando...</p>
+        ) : !searchResult?.players?.length ? (
+          <p className="transfer-empty">Nenhum jogador encontrado.</p>
+        ) : (
+          <>
+            <table className="transfer-table club-squad-table">
+              <thead>
+                <tr>
+                  <th>Pos</th>
+                  <th className="squad-name">Jogador</th>
+                  <th className="num">Idade</th>
+                  <th className="num">Energia</th>
+                  <th className="num">★</th>
+                  <th className="num">Vel</th>
+                  <th className="num">Fin</th>
+                  <th className="num">Dri</th>
+                  <th className="num">Cab</th>
+                  <th className="num">For</th>
+                  <th className="num">Gol</th>
+                  <th className="num">Ref</th>
+                  <th className="num accent">Gols</th>
+                  <th className="num">Defs</th>
+                  <th className="num">Ama</th>
+                  <th className="num">Verm</th>
+                  <th>Clube</th>
+                  <th className="num">Valor</th>
+                  <th className="num">Preço</th>
+                  <th className="num">Salário</th>
+                </tr>
+              </thead>
+              <tbody>
+                {searchResult.players.map(player => (
+                  <PlayerRow
+                    key={player.playerId}
+                    player={player}
+                    onSelect={setSelectedPlayer}
+                  />
+                ))}
+              </tbody>
+            </table>
+
+            <p className="transfer-count">
+              {searchResult.total} jogadores — página {searchResult.page} de {searchResult.totalPages}
+            </p>
+
+            {searchResult.totalPages > 1 && (
+              <div className="pagination">
+                {Array.from({ length: searchResult.totalPages }, (_, i) => i + 1)
+                  .filter(p => Math.abs(p - page) < 3 || p === 1 || p === searchResult.totalPages)
+                  .map(p => (
+                    <button
+                      key={p}
+                      className={`pagination-btn ${p === page ? 'active' : ''}`}
+                      onClick={() => setPage(p)}
+                    >
+                      {p}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </>
+        )}
+      </section>
 
       {/*
         The club's balance, shown prominently at the top of the market so a manager
@@ -854,178 +1133,41 @@ const TransferScreen: React.FC = () => {
         </section>
       )}
 
-      <section className="transfer-search-section">
-        <h3>Filtrar mercado {filterCount > 0 && `(${filterCount})`}</h3>
-        <div className="transfer-filters">
-          <div className="transfer-filter-row">
-            <label>Posição:</label>
-            <select
-              value={filters.position ?? ''}
-              onChange={e => setFilter('position', e.target.value || undefined)}
-              className="ctrl"
-            >
-              <option value="">Todas</option>
-              {POSITIONS.map(pos => (
-                <option key={pos} value={pos}>{positionLabel(pos)}</option>
-              ))}
-            </select>
-
-            <label>Idade:</label>
-            <input
-              type="number"
-              className="ctrl transfer-filter-number"
-              min={16}
-              max={50}
-              placeholder="mín"
-              value={filters.minAge ?? ''}
-              onChange={e => setFilter('minAge', numberFilter(e.target.value))}
+      {/*
+        The four transfer rankings of the division: most players bought, most sold, most
+        money spent, and most profit. Profit is net — fees received minus fees paid — so
+        a sell-on that covers two losses appears above a club that bought five for peanuts.
+      */}
+      {rankings && (
+        <section className="transfer-rankings-section">
+          <div className="transfer-rankings-grid">
+            <TransferRankingTable
+              title="Mais contratações"
+              entries={rankings.mostBought}
+              metricLabel="contratações"
+              formatMetric={n => String(n)}
             />
-            <span>–</span>
-            <input
-              type="number"
-              className="ctrl transfer-filter-number"
-              min={16}
-              max={50}
-              placeholder="máx"
-              value={filters.maxAge ?? ''}
-              onChange={e => setFilter('maxAge', numberFilter(e.target.value))}
+            <TransferRankingTable
+              title="Mais vendidas"
+              entries={rankings.mostSold}
+              metricLabel="vendas"
+              formatMetric={n => String(n)}
             />
-
-            <label>Estrelas ≥</label>
-            <input
-              type="number"
-              step={0.5}
-              min={0}
-              className="ctrl transfer-filter-number"
-              placeholder="★"
-              value={filters.minStars ?? ''}
-              onChange={e => setFilter('minStars', numberFilter(e.target.value))}
+            <TransferRankingTable
+              title="Mais gastos"
+              entries={rankings.mostSpent}
+              metricLabel="gasto"
+              formatMetric={n => formatLimo(n)}
             />
-
-            <label>
-              <input
-                type="checkbox"
-                checked={filters.freeAgentsOnly ?? false}
-                onChange={e => setFilter('freeAgentsOnly', e.target.checked || undefined)}
-              />
-              {' '}Só livres
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={filters.withClubOnly ?? false}
-                onChange={e => setFilter('withClubOnly', e.target.checked || undefined)}
-              />
-              {' '}Com clube
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={filters.retiring ?? false}
-                onChange={e => setFilter('retiring', e.target.checked ? true : undefined)}
-              />
-              {' '}Aposentando
-            </label>
-
-            <button className="ctrl" onClick={resetFilters} disabled={filterCount === 0}>
-              Limpar
-            </button>
+            <TransferRankingTable
+              title="Mais lucro"
+              entries={rankings.mostProfit}
+              metricLabel="lucro"
+              formatMetric={n => formatLimo(n)}
+            />
           </div>
-
-          <details className="transfer-filter-row transfer-filter-attributes">
-            <summary>Atributos mínimos</summary>
-            <div className="transfer-filter-row">
-              {([
-                ['minSpeed', 'Vel'],
-                ['minAccuracy', 'Fin'],
-                ['minDribbling', 'Dri'],
-                ['minHeading', 'Cab'],
-                ['minStrength', 'For'],
-                ['minGoalkeeperPower', 'Gol'],
-                ['minReflexes', 'Ref']
-              ] as const).map(([key, label]) => (
-                <span key={key} className="transfer-filter-attribute">
-                  <label>{label} ≥</label>
-                  <input
-                    type="number"
-                    className="ctrl transfer-filter-number"
-                    min={0}
-                    max={20}
-                    value={filters[key] ?? ''}
-                    onChange={e => setFilter(key, numberFilter(e.target.value))}
-                  />
-                </span>
-              ))}
-            </div>
-          </details>
-        </div>
-
-        {error && <p className="transfer-error">{error}</p>}
-
-        {loading ? (
-          <p>Carregando...</p>
-        ) : !searchResult?.players?.length ? (
-          <p className="transfer-empty">Nenhum jogador encontrado.</p>
-        ) : (
-          <>
-            <table className="transfer-table club-squad-table">
-              <thead>
-                <tr>
-                  <th>Pos</th>
-                  <th className="squad-name">Jogador</th>
-                  <th className="num">Idade</th>
-                  <th className="num">Energia</th>
-                  <th className="num">★</th>
-                  <th className="num">Vel</th>
-                  <th className="num">Fin</th>
-                  <th className="num">Dri</th>
-                  <th className="num">Cab</th>
-                  <th className="num">For</th>
-                  <th className="num">Gol</th>
-                  <th className="num">Ref</th>
-                  <th className="num accent">Gols</th>
-                  <th className="num">Defs</th>
-                  <th className="num">Ama</th>
-                  <th className="num">Verm</th>
-                  <th>Clube</th>
-                  <th className="num">Valor</th>
-                  <th className="num">Preço</th>
-                  <th className="num">Salário</th>
-                </tr>
-              </thead>
-              <tbody>
-                {searchResult.players.map(player => (
-                  <PlayerRow
-                    key={player.playerId}
-                    player={player}
-                    onSelect={setSelectedPlayer}
-                  />
-                ))}
-              </tbody>
-            </table>
-
-            <p className="transfer-count">
-              {searchResult.total} jogadores — página {searchResult.page} de {searchResult.totalPages}
-            </p>
-
-            {searchResult.totalPages > 1 && (
-              <div className="pagination">
-                {Array.from({ length: searchResult.totalPages }, (_, i) => i + 1)
-                  .filter(p => Math.abs(p - page) < 3 || p === 1 || p === searchResult.totalPages)
-                  .map(p => (
-                    <button
-                      key={p}
-                      className={`pagination-btn ${p === page ? 'active' : ''}`}
-                      onClick={() => setPage(p)}
-                    >
-                      {p}
-                    </button>
-                  ))}
-              </div>
-            )}
-          </>
-        )}
-      </section>
+        </section>
+      )}
 
 
       {selectedPlayer && (
@@ -1043,6 +1185,7 @@ const TransferScreen: React.FC = () => {
             }
           }}
           onOffer={player => openOffer({ playerId: player.playerId, listing: player, window, seasonId })}
+          onTransferListChange={handleTransferListChange}
         />
       )}
     </div>

@@ -1,3 +1,4 @@
+using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Players;
 using NinjaEleven.Domain.Transfers;
 using Xunit;
@@ -20,40 +21,102 @@ public class TransferMarketRulesTests
 
     [Theory]
     [InlineData(1, false)]
-    [InlineData(10, false)]
-    [InlineData(11, true)]
-    [InlineData(17, true)]
-    [InlineData(22, true)]
-    [InlineData(23, false)]
-    public void The_mid_season_window_opens_with_the_eleventh_round_and_closes_with_the_last(
+    [InlineData(9, false)]
+    [InlineData(10, true)]
+    [InlineData(17, false)]
+    [InlineData(20, true)]
+    [InlineData(21, false)]
+    public void A_window_is_one_of_the_two_rounds_the_rules_name(
         int round,
         bool expected)
     {
         Assert.Equal(expected, TransferWindowRules.IsOpen(round));
     }
 
-    [Fact]
-    public void A_proposal_made_before_the_eleventh_round_arrives_in_the_same_season()
+    /// <summary>
+    /// Two mid-season windows, and both of them before the Supercup: a proposal made at any
+    /// point up to the twentieth round arrives in the season it was made in.
+    /// </summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    [InlineData(10)]
+    [InlineData(11)]
+    [InlineData(20)]
+    public void A_proposal_made_up_to_the_last_window_arrives_in_the_same_season(int round)
     {
-        // The window is still ahead of him, so he walks in when it opens.
-        Assert.Equal(3, TransferWindowRules.ArrivalSeasonNumberFor(4, 3));
-        Assert.Equal(TransferWindowRules.FirstArrivalRound, TransferWindowRules.ArrivalRoundFor(4));
+        Assert.Equal(3, TransferWindowRules.ArrivalSeasonNumberFor(round, 3));
+    }
+
+    /// <summary>
+    /// A season has three arrivals and no more: the opening, before anything has been played —
+    /// the Supercup's own round — and two mid-season windows. Anything else a proposal is told
+    /// to wait for is a fourth window nobody asked for, so this asserts the whole set rather
+    /// than three constants that could each move on their own.
+    /// </summary>
+    [Fact]
+    public void A_season_has_exactly_three_arrivals()
+    {
+        var arrivals = Enumerable.Range(1, CompetitionRules.LeagueMatchDays)
+            .Select(round => TransferWindowRules.ArrivalRoundFor(round))
+            .Distinct()
+            .OrderBy(round => round)
+            .ToList();
+
+        Assert.Equal(
+            new[]
+            {
+                1,
+                TransferWindowRules.FirstArrivalRound,
+                TransferWindowRules.SecondArrivalRound
+            },
+            arrivals);
+    }
+
+    /// <summary>
+    /// The opening is an arrival like any other: a proposal made after the last mid-season
+    /// window waits for the first round of the next season, which is the round the Supercup
+    /// opens and the only arrival before any of this season's football has been played.
+    /// </summary>
+    [Fact]
+    public void The_first_arrival_of_a_season_is_its_opening_round()
+    {
+        const int thisSeason = 3;
+
+        var arrivalSeason = TransferWindowRules.ArrivalSeasonNumberFor(21, thisSeason);
+        var arrivalRound = TransferWindowRules.ArrivalRoundFor(21);
+
+        Assert.Equal(thisSeason + 1, arrivalSeason);
+        Assert.Equal(1, arrivalRound);
     }
 
     [Fact]
-    public void A_proposal_made_on_the_eleventh_round_still_arrives_in_the_same_season()
+    public void A_proposal_made_before_the_first_window_arrives_in_it()
     {
-        Assert.Equal(3, TransferWindowRules.ArrivalSeasonNumberFor(11, 3));
-        Assert.Equal(TransferWindowRules.FirstArrivalRound, TransferWindowRules.ArrivalRoundFor(11));
+        // The window is still ahead of him, so he walks in when it closes.
+        Assert.Equal(
+            TransferWindowRules.FirstArrivalRound,
+            TransferWindowRules.ArrivalRoundFor(4));
     }
 
     [Fact]
-    public void A_proposal_made_after_the_eleventh_round_arrives_in_the_next_season()
+    public void A_proposal_made_between_the_two_windows_arrives_in_the_second()
     {
-        // The window has already come and gone. The next thing that happens is the Supercup,
+        // The first window has gone and the second has not: waiting for the later one is
+        // waiting for the last arrival of the year rather than for next season's Supercup.
+        Assert.Equal(
+            TransferWindowRules.SecondArrivalRound,
+            TransferWindowRules.ArrivalRoundFor(14));
+        Assert.Equal(3, TransferWindowRules.ArrivalSeasonNumberFor(14, 3));
+    }
+
+    [Fact]
+    public void A_proposal_made_after_the_last_window_arrives_in_the_next_season()
+    {
+        // The windows have already come and gone. The next thing that happens is the Supercup,
         // which is the first match of the next season and the arrival the rules name first.
-        Assert.Equal(4, TransferWindowRules.ArrivalSeasonNumberFor(12, 3));
-        Assert.Equal(1, TransferWindowRules.ArrivalRoundFor(12));
+        Assert.Equal(4, TransferWindowRules.ArrivalSeasonNumberFor(21, 3));
+        Assert.Equal(1, TransferWindowRules.ArrivalRoundFor(21));
     }
 
     [Fact]
@@ -68,12 +131,13 @@ public class TransferMarketRulesTests
         var arrivalRound = TransferWindowRules.ArrivalRoundFor(roundAtProposal);
 
         Assert.Equal(2, arrivalSeason);
-        Assert.Equal(11, arrivalRound);
+        Assert.Equal(TransferWindowRules.FirstArrivalRound, arrivalRound);
 
-        // Read again three rounds later, out of curiosity rather than intent.
+        // Read again two rounds later, out of curiosity rather than intent: the second window
+        // is now the one ahead of the proposal, and it is a different arrival.
         Assert.NotEqual(
             arrivalRound,
-            TransferWindowRules.ArrivalRoundFor(roundAtProposal + 3));
+            TransferWindowRules.ArrivalRoundFor(roundAtProposal + 2));
     }
 
     // ---------------------------------------------------------------- the book

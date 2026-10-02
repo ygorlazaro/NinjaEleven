@@ -50,6 +50,10 @@ public class CompetitionExecutionServiceTests
     private readonly Mock<ISeasonCalendarBuilder> _calendarBuilder = new(MockBehavior.Loose);
     private readonly Mock<ITeamRepository> _teams = new(MockBehavior.Loose);
     private readonly Mock<IFinanceRepository> _finance = new(MockBehavior.Loose);
+    private readonly Mock<IPlayerRepository> _players = new(MockBehavior.Loose);
+    private readonly Mock<ISeasonRepository> _seasonRepository = new(MockBehavior.Loose);
+    private readonly Mock<IInboxMessageRepository> _inboxMessages = new(MockBehavior.Loose);
+    private readonly AcademyService _academy;
 
     private readonly Guid _seasonId = Guid.NewGuid();
     private readonly Guid _matchDayId = Guid.NewGuid();
@@ -91,6 +95,39 @@ public class CompetitionExecutionServiceTests
         // every fixture. A test that needs a manager says so through ListManagedClubsAsync.
         _managedClubs.Setup(reader => reader.ListManagedClubsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<Guid>());
+
+        _players.Setup(repository => repository.ListAllSeasonStatesAsync(
+            It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        _academy = new AcademyService(
+            _players.Object,
+            _teams.Object,
+            _seasonRepository.Object,
+            _unitOfWork.Object,
+            new FinanceService(
+                _finance.Object,
+                _teams.Object,
+                _players.Object,
+                _fixtures.Object,
+                _rounds.Object,
+                _matchDays.Object,
+                _seasonRepository.Object,
+                new InboxService(
+                    _inboxMessages.Object,
+                    _teams.Object,
+                    new ManagedClubs(),
+                    _unitOfWork.Object,
+                    NullLogger<InboxService>.Instance),
+                _unitOfWork.Object,
+                NullLogger<FinanceService>.Instance),
+            new InboxService(
+                _inboxMessages.Object,
+                _teams.Object,
+                new ManagedClubs(),
+                _unitOfWork.Object,
+                NullLogger<InboxService>.Instance),
+            NullLogger<AcademyService>.Instance);
     }
 
     private CompetitionExecutionService CreateService(
@@ -146,6 +183,7 @@ public class CompetitionExecutionServiceTests
             _managedClubs.Object,
             _calendarBuilder.Object,
             BuildTheStatementService(),
+            _academy,
             options,
             NullLogger<CompetitionExecutionService>.Instance);
     }

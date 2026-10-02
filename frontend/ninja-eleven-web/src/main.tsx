@@ -25,6 +25,7 @@ import PlayerProfileScreen from '@/pages/PlayerProfileScreen';
 import TransferScreen from '@/pages/TransferScreen';
 import TacticsScreen from '@/pages/TacticsScreen';
 import RankingScreen from '@/pages/RankingScreen';
+import BaseScreen from '@/pages/BaseScreen';
 import '@/styles.css';
 
 /**
@@ -112,6 +113,10 @@ function App() {
         <Route
           path="/team/:teamId"
           element={<RequireAuth><TeamViewScreen /></RequireAuth>}
+        />
+        <Route
+          path="/team/:teamId/base"
+          element={<RequireAuth><BaseScreen /></RequireAuth>}
         />
         <Route
           path="/player/:playerId"

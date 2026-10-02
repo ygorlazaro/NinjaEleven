@@ -5,20 +5,45 @@ namespace NinjaEleven.Application.Repositories;
 public interface IInboxMessageRepository
 {
     /// <summary>
-    /// A page of a club's box, newest first.
+    /// A page of a club's box, newest first, out of everything in it or of one kind of it.
     ///
     /// The order is the order the messages arrived and nothing else is applied to it. A box
     /// sorted by category would put today's result above a transfer that was agreed an hour
     /// ago, and a manager reads the top of his own mail the way he reads the top of a paper:
-    /// by when it got there.
+    /// by when it got there. The filter narrows which lines are in the page and never reorders
+    /// them — a manager who filters by "Partida" is still reading by when it happened.
     /// </summary>
     Task<IReadOnlyList<InboxMessage>> ListAsync(
         Guid recipientTeamId,
         int skip,
         int take,
+        InboxCategory? category = null,
         CancellationToken cancellationToken = default);
 
-    Task<int> CountAsync(Guid recipientTeamId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// How many lines the box holds, out of everything in it or of one kind of it.
+    ///
+    /// The count is the box's own and not the count of the page on screen: a filter that said
+    /// "3 lines" beside a page of three while four hundred more of the same kind sit on the
+    /// pages after it would be a filter that reports the page it is reading rather than the
+    /// box it filters.
+    /// </summary>
+    Task<int> CountAsync(
+        Guid recipientTeamId,
+        InboxCategory? category = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// How many of each kind the box holds, in one read of the whole box.
+    ///
+    /// It is a grouping rather than a question per category, and it is asked of the database
+    /// rather than counted over the twenty lines on the screen: the filter's own numbers are
+    /// the numbers that decide which of the filters is worth pressing, and a count taken from
+    /// one page is a count of that page.
+    /// </summary>
+    Task<IReadOnlyList<InboxCategoryTally>> TallyCategoriesAsync(
+        Guid recipientTeamId,
+        CancellationToken cancellationToken = default);
 
     /// <summary>How many messages the manager has not opened. The number on the column.</summary>
     Task<int> UnreadCountAsync(Guid recipientTeamId, CancellationToken cancellationToken = default);

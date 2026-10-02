@@ -100,6 +100,21 @@ public class LeagueController : ControllerBase
         Ok(_leagueService.GetChampionshipPurses().ToDtos());
 
     /// <summary>
+    /// The pyramid's rules: the order a table is settled in, and what each division's table ends
+    /// the season with.
+    ///
+    /// The backend owns both of those because it owns the two rules themselves. The chain is
+    /// <c>StandingTable</c>'s — the list the sort walks — and the bands are what
+    /// <c>DivisionMovement.From</c> decides for a table of the right size, which is the call the
+    /// close of the season makes. A screen that said "os 4 primeiros sobem" out of a constant of
+    /// its own would be a screen promising a season the game does not play, and the first
+    /// division has no division above it to be promised four accesses to.
+    /// </summary>
+    [HttpGet("rules")]
+    public ActionResult<PyramidRulesDto> GetRules() =>
+        Ok(_leagueService.GetPyramidRules().ToDto());
+
+    /// <summary>
     /// A season's scoring chart, of one kind of competition and of one division of it.
     ///
     /// The division is a filter and not a detail, because the championship is four editions of

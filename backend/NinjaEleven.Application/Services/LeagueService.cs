@@ -239,6 +239,52 @@ public class LeagueService
             .ToList();
 
     /// <summary>
+    /// The pyramid's own rules: the order a table is settled in, and what each division's table
+    /// ends the season with.
+    ///
+    /// It is asked for rather than written on a screen because both of those are the domain's.
+    /// The chain is <c>StandingTable</c>'s — the same list the sort walks — and the bands come
+    /// out of <c>DivisionMovement.From</c>, which is the call the close of the season makes for
+    /// real. A "regras" page that said "os 4 primeiros sobem" out of a constant of its own would
+    /// be a page making a promise the season does not keep, and a table of colours painted from
+    /// it would not be the table of colours the manager's own club is sitting in.
+    /// </summary>
+    public PyramidRuleSet GetPyramidRules()
+    {
+        var tieBreakers = PyramidRules.TieBreakers
+            .Select((criterion, index) => new StandingCriterionRule(
+                index + 1,
+                criterion.Scope == StandingCriterionScope.Table,
+                criterion.Label,
+                criterion.Detail))
+            .ToList();
+
+        var divisions = PyramidRules.Divisions()
+            .Select(division => new DivisionRuleLine(
+                division.Tier,
+                division.Name,
+                division.Clubs,
+                division.Purse,
+                division.Bands
+                    .Select(band => new DivisionBandRule(
+                        band.Kind.ToString(),
+                        band.FromPosition,
+                        band.ToPosition,
+                        band.ToTier,
+                        band.ToDivisionName,
+                        band.Label,
+                        band.Meaning))
+                    .ToList()))
+            .ToList();
+
+        return new PyramidRuleSet(
+            PyramidRules.DivisionCount,
+            PyramidRules.ClubsPerDivision,
+            tieBreakers,
+            divisions);
+    }
+
+    /// <summary>
     /// The top scorers of a season, of one kind of competition inside it, and of one division of
     /// that kind, in the order the domain's chain gives.
     /// </summary>

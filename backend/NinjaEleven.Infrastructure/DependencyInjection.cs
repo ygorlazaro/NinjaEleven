@@ -141,9 +141,13 @@ public static class DependencyInjection
         // leave the change tracker holding every event of the day for as long as the day lasted.
         services.AddScoped<IHeadlessMatchPlayer, HeadlessMatchPlayer>();
         services.AddScoped<LeagueService>();
+        // One measurement of a squad, asked of by the table and by the cup's ranking alike.
+        services.AddScoped<ISquadStrengthReader, SquadStrengthReader>();
         services.AddScoped<StandingsService>();
+        services.AddScoped<IStandingsReader>(sp => sp.GetRequiredService<StandingsService>());
         services.AddScoped<CupBracketService>();
         services.AddScoped<ScorerPrizeService>();
+        services.AddScoped<SponsorClubFactsService>();
         services.AddScoped<SponsorOfferService>();
         services.AddScoped<ManagerService>();
         services.AddScoped<AuthService>();
@@ -153,6 +157,7 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<TransferService>();
         services.AddScoped<RosterService>();
+        services.AddScoped<AcademyService>();
         // Training spends energy off a season state and puts a point on the man, so it is
         // registered next to the two services that own the other halves of that: the roster
         // that ages him and the match that tires him.

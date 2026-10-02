@@ -282,6 +282,9 @@ public class MatchRepository : IMatchRepository
                     AwayGoals = match.AwayScore,
                     RoundNumber = round.Number,
                     TeamName = statistics.TeamId == fixture.HomeTeamId ? home.Name : away.Name,
+                    // The club's own id, so a line is a door to that club and a season's line is
+                    // grouped by the shirt the goals were scored in rather than by a name.
+                    TeamId = statistics.TeamId,
                     SeasonName = season.Name,
                     CompetitionName = competition.Name,
                     PhaseName = compSeason.IsDivision ? $"Rodada {round.Number}" : (round.Window == 1 ? "Campeonato" : "Copa"),

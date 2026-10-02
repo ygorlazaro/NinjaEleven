@@ -70,12 +70,18 @@ public class MatchRatingCalibrationTests
     [Fact]
     public void TheScaleIsActuallyUsed()
     {
-        // The one that matters most. A rating that answers six to every man who ever played
-        // is a rule that never fires, and it would pass every test about an individual match
-        // while telling a manager nothing at all about a hundred of them.
+        // The one that matters most. A rating that answers the same number to every man who
+        // ever played is a rule that never fires, and it would pass every test about an
+        // individual match while telling a manager nothing at all about a hundred of them.
         var ratings = RatedFrom(Matches);
 
-        Assert.InRange(ratings.Average(), 5.9, 6.6);
+        // The window moved with the calibration and not with the rule: these two thousand men
+        // averaged 6.25 before the twelve action weights were moved by 1.5 and the ordinary
+        // mark from 6.0 to 7.0, and they average 7.39 after. It is the same width it was
+        // (+/- 0.35) because what is being asserted is that the scale separates men from each
+        // other and sits in the middle of its own range, not which number that middle is. The
+        // spread below is the half of this test that is a design claim, and it did not move.
+        Assert.InRange(ratings.Average(), 7.05, 7.75);
         Assert.True(Percentile(ratings, 0.90) - Percentile(ratings, 0.10) >= 1.2,
             "The middle eighty of a hundred matches has to be told apart from each other.");
     }

@@ -125,71 +125,145 @@ button { cursor: pointer; }
   overflow: hidden; text-overflow: ellipsis; width: 100%;
 }
 
-/* The next match, in the foot of the column. A card is the right shape here rather than
-   another row in the list above: it is not a place the manager goes, it is the thing he is
-   going to have to deal with, and it is the only box in the column that is a link to a
-   decision rather than to a screen. */
-.next-match {
+/* The match the club has in front of it, under the club's own card. A card is the right shape
+   here rather than another row in the list below: it is not a place the manager goes, it is
+   the thing he is going to have to deal with, and it is the only box in the column that is a
+   link to a decision rather than to a screen.
+
+   It is one card for both states — the match he is about to play and the match he is playing
+   — because they are one match: a fixture is still to be played until the final whistle, so
+   the next fixture *is* the game in progress and two cards were two readings of it.
+
+   The left edge is the card's only emphasis, and it is not the accent: a match that has not
+   started is not an alert, and a column whose yellow is on for the whole matchday is a
+   column whose yellow has stopped meaning anything. */
+.match-card {
   display: grid; gap: 5px; padding: 10px;
-  border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border: 1px solid var(--line); border-left: 3px solid var(--line);
   border-radius: 10px; background: linear-gradient(180deg, #0f1e2b, #0a1520);
   color: inherit; text-decoration: none;
+  transition: border-color .15s ease;
 }
-.next-match:hover { border-color: #46657d; border-left-color: var(--accent); }
+.match-card:hover { border-color: #46657d; border-left-color: #46657d; }
 
-.next-match__label {
+.match-card__head {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 11px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase;
   color: var(--muted);
 }
-.next-match__round {
+.match-card__round {
   padding: 1px 5px; border-radius: 999px; background: #0d1a26;
   font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: 0;
 }
-.next-match__fixture { display: flex; align-items: center; gap: 7px; min-width: 0; }
+
+/* The card while the match is being played. It is drawn like an alert rather than like a
+   link, and it is the same card: the yellow edge, the ground of the block and the word are
+   all that change, so a manager glancing at the column finds out that the whistle has gone
+   without a second box appearing above the first one and pushing everything down. The yellow
+   is here and only here, which is what is left for it to mean. */
+.match-card--live {
+  border-color: rgba(255, 207, 73, .45); border-left-color: var(--accent);
+  background: linear-gradient(180deg, #1a1608, #120f06);
+}
+.match-card--live:hover { border-color: var(--accent); border-left-color: var(--accent); }
+.match-card__live {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--accent); font-weight: 900;
+}
+.match-card__pulse {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: 0 0 auto;
+  box-shadow: 0 0 0 0 rgba(255, 207, 73, .6);
+  animation: live-pulse 1.6s ease-out infinite;
+}
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 207, 73, .55); }
+  70%  { box-shadow: 0 0 0 7px rgba(255, 207, 73, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 207, 73, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .match-card__pulse { animation: none; }
+}
+
+/* "Ao vivo" says the match is being played and the minute says where it is; at the interval
+   the clock is not late, it is stopped on a manager's decision, so it says "intervalo"
+   rather than a minute that would suggest a game dragging on. */
+.match-card__minute {
+  color: var(--muted); font-weight: 800;
+}
+.match-card__fixture { display: flex; align-items: center; gap: 7px; min-width: 0; }
 
 /* C or F, and a colour that says which. A manager reads a side before he reads an opponent,
    because "fora" changes the whole shape of the lineup he is about to pick. */
-.next-match__side {
+.match-card__side {
   flex: 0 0 auto; width: 19px; height: 19px; border-radius: 5px;
   display: grid; place-items: center;
   font-size: 12px; font-weight: 800;
   background: #12283a; color: var(--muted); border: 1px solid var(--line);
 }
-.next-match__side--home { background: rgba(56, 211, 159, .18); color: var(--green); border-color: rgba(56, 211, 159, .45); }
+.match-card__side--home { background: rgba(56, 211, 159, .18); color: var(--green); border-color: rgba(56, 211, 159, .45); }
 
 /* The opponent and the ground wrap, for the same reason the club's own name does. They are
    the two facts a manager chooses an eleven by, and "who am I playing" answered as
    "Esporte Clube N…" is not an answer: the same eleven is not the same eleven against a
    team whose name he could not finish reading. */
-.next-match__opponent {
+.match-card__opponent {
   color: var(--text); font-size: 14px; font-weight: 700; line-height: 1.25;
   min-width: 0; overflow-wrap: anywhere; word-break: break-word; hyphens: auto;
 }
-.next-match__where { display: grid; gap: 1px; }
-.next-match__stadium {
+
+/* The score, and the manager's own side named under it. The score is printed home first, as
+   every other scoreline in the game does, and the letter beside it says which of the two
+   numbers is his — so the two together are the sentence "2 × 1, at home". */
+.match-card__scoreline {
+  display: grid; justify-items: end; margin-left: auto; text-align: right;
+}
+.match-card__scoreline b {
+  color: var(--accent); font-size: 15px; font-weight: 900;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.match-card__mine {
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  max-width: 11ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.match-card__where { display: grid; gap: 1px; }
+.match-card__stadium {
   font-size: 12.5px; color: var(--muted);
   overflow-wrap: anywhere; word-break: break-word; hyphens: auto;
 }
-.next-match__competition { font-size: 12px; color: var(--accent); opacity: .85; }
+
+/* The competition is a fact about the day rather than about the match in progress, so it is
+   written in the muted colour — and in the accent only while the match is being played,
+   with the edge and the word. One yellow on this card, and it is the whistle. */
+.match-card__competition { font-size: 12px; color: var(--muted); }
+.match-card--live .match-card__competition { color: var(--accent); opacity: .85; }
+
+/* Where the opponent stands in his own division, beside the run of his last five. It is the
+   same kind of fact in both: the shape of the club over five letters, and one line saying
+   where it is in the season. A manager choosing an eleven reads the two together. */
+.match-card__place {
+  display: flex; align-items: baseline; gap: 5px;
+  font-size: 12px; font-weight: 800; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.match-card__points { color: var(--muted); font-weight: 600; }
 
 /* The match is next and is not kick-off time yet. It is said in the muted colour and small,
    because it is a fact about the day rather than about the match, and a card whose loudest
    line were a caveat would be a card a manager learns to skim. */
-.next-match__waiting { font-size: 11.5px; color: var(--muted); font-style: italic; }
+.match-card__waiting { font-size: 11.5px; color: var(--muted); font-style: italic; }
 
 /* The run sits under the club it belongs to, so the form is never mistaken for the
    opponent's. The shield is `.mini-crest` — the project's own table-size crest — rather than
    a size of its own: `.club-crest` is declared further down the sheet, so a rule here would
    lose to it and the badge would keep its 76x88 whatever width this column asked for. */
-.next-match__form { display: flex; align-items: center; }
-.next-match__form .form-run { gap: 3px; }
-.next-match__form .form-run__letter {
+.match-card__form { display: flex; align-items: center; }
+.match-card__form .form-run { gap: 3px; }
+.match-card__form .form-run__letter {
   width: 15px; height: 15px; font-size: 9px; border-radius: 4px;
 }
 
-.next-match--empty { border-left-color: var(--line); }
-.next-match__none { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+.match-card__none { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
 .sidebar-back {
   padding: 8px; border: 1px solid var(--line); border-radius: 9px;
   background: none; color: var(--muted); font-size: 13px; cursor: pointer;
@@ -201,11 +275,11 @@ button { cursor: pointer; }
   .sidebar { position: static; height: auto; flex-direction: row; align-items: center; }
   .sidebar-club { margin-top: 0; margin-left: auto; }
   .sidebar-nav { grid-auto-flow: column; }
-  /* The column lies down on a narrow screen, so the club's block and the next match stop
+  /* The column lies down on a narrow screen, so the club's block and the match card stop
      being a foot and become two more cells in a row — which only works if each keeps a width
      of its own instead of stretching to whatever is left of the line. */
   .sidebar-club { flex: 0 0 auto; width: 96px; }
-  .next-match { flex: 1 1 200px; min-width: 0; }
+  .match-card { flex: 1 1 200px; min-width: 0; }
 }
 
 /* A phone cannot show a dozen doors side by side, and it cannot stack them either: a
@@ -240,7 +314,7 @@ button { cursor: pointer; }
   text-decoration: none; color: inherit; border: 1px solid transparent;
 }
 .sidebar-club-card:hover { background: #10202e; border-color: #46657d; }
-/* The shield is the size of the one in the next-match box, and not a size of its own: the
+/* The shield is the size of the one in the match card, and not a size of its own: the
    two cards sit one above the other in the same column and are read as a pair, so a column
    with a 34x38 crest at the top and a 20x20 one underneath it has no crest size at all. */
 /* Two classes, and not one, because `.club-crest` is declared further down this sheet and the
@@ -433,8 +507,6 @@ button { cursor: pointer; }
 .standings .pos-change.down { color: var(--danger); }
 .standings .points-delta { font-weight: normal; }
 .standings .match-indicator { font-size: 12px; margin-left: 4px; }
-.live-badge { animation: pulse 1s infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 .standings-legend { border-top: 1px solid var(--line); padding-top: 8px; }
 .standings-legend .zone-promotion { color: var(--green); font-weight: 700; margin-left: 8px; }
 .standings-legend .zone-relegation { color: var(--red); font-weight: 700; margin-left: 8px; }
@@ -526,8 +598,74 @@ button { cursor: pointer; }
 .scorer-tabs { margin-bottom: 8px; }
 .league-actions { display: flex; gap: 8px; }
 
+/* The screen's three pages, drawn in the club's own tab control: a screen with two kinds of tab
+   on it is a screen where the manager has to learn where the controls are twice. The bar sits
+   between the heading and the page rather than above both, because the division the table below
+   belongs to is what decides which of the three pages is worth opening. */
+.league-tabs { margin: 0 0 14px; }
+/* The table's label is the longest of the three by a long way, and a segmented control of equal
+   widths gives the shorter labels a padding they do not need while squeezing the one that has
+   something to say. The first tab takes the room it needs; the other two share what is left. */
+.league-tabs .tab:first-child { flex: 1.6; }
+
+/* --- Regras ---------------------------------------------------------------------
+   What a place in the table is worth, what it moves, and the order two clubs level on
+   everything else are settled in. Every number on it is the backend's, so this is a layout and
+   nothing else. */
+.league-rules { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.league-rules > .league-panel:first-child { grid-row: span 2; }
+.league-rules__hint { margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+/* One division's card. The four sit in two columns on a wide screen because a band's sentence is
+   two lines long and a column of them is a list a manager reads straight down; a single column
+   would make the page four times taller than the table it is describing. */
+.league-rules__divisions { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.division-rule { border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px; background: var(--panel2); }
+/* The division on the table above, and only that one: the rules are the pyramid's, so the other
+   three are on the page rather than replaced by it. */
+.division-rule--active { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.division-rule__head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+.division-rule__head svg { flex: 0 0 auto; }
+.division-rule__name { font-size: 14px; }
+.division-rule__purse { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.division-rule__bands { display: flex; flex-direction: column; gap: 6px; }
+.division-rule__band { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; align-items: start; font-size: 12px; }
+.division-rule__positions { color: var(--muted); font-variant-numeric: tabular-nums; }
+/* The band is the same word the table paints the row with, so a manager who has read the legend
+   under his table reads the same colour here — and a band that had no colour on the row (the
+   champion of a division that is not the first is a promotion there) still has one here. */
+.division-rule__band--title .division-rule__positions { color: var(--green); font-weight: 700; }
+.division-rule__band--promotion .division-rule__positions { color: var(--blue); font-weight: 700; }
+.division-rule__band--relegation .division-rule__positions { color: var(--red); font-weight: 700; }
+.division-rule__what { display: flex; flex-direction: column; gap: 2px; }
+.division-rule__meaning { color: var(--muted); line-height: 1.4; }
+
+/* The chain, as two lists: the criteria that decide the table, and the ones that only break a
+   tie the first could not. They are two different questions and a single list with a flag on
+   each row would read as one long rule nobody could hold in their head. */
+.league-rules__chain-title { margin: 12px 0 7px; font-size: 13px; color: var(--text); }
+.chain { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.chain__item { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; font-size: 12px; }
+.chain__order {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 11px;
+}
+.chain__what { display: flex; flex-direction: column; gap: 2px; }
+.chain__detail { color: var(--muted); line-height: 1.4; }
+
 @media(max-width: 850px) {
   .league-grid { grid-template-columns: 1fr; }
+  .league-rules { grid-template-columns: 1fr; }
+  .league-rules > .league-panel:first-child { grid-row: auto; }
   .fixture { grid-template-columns: 15px minmax(90px, 1fr) 65px minmax(90px, 1fr); }
 }
 
@@ -1048,63 +1186,6 @@ button { cursor: pointer; }
 
 .lineup { font-size: 14px; }
 
-/* The club is playing *now*. The badge is the one item in the column that is not a place to
-   go but a thing that is happening, so it is drawn like an alert rather than like a link: a
-   pulsing dot, the accent, and the score in the middle with the opponent's shield on the
-   outside. A manager glancing at the column learns who he is against and at what score
-   without clicking anything, which is the whole reason it is in the column. */
-.live-badge {
-  display: grid; gap: 5px; margin: 0 0 12px; padding: 9px 10px;
-  border: 1px solid rgba(255, 207, 73, .45); border-left: 3px solid var(--accent);
-  border-radius: 10px;
-  background: linear-gradient(180deg, #1a1608, #120f06);
-  color: inherit; text-decoration: none;
-  transition: border-color .15s ease;
-}
-.live-badge:hover { border-color: var(--accent); }
-
-.live-badge__head { display: flex; align-items: center; gap: 6px; }
-.live-badge__pulse {
-  width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: 0 0 auto;
-  box-shadow: 0 0 0 0 rgba(255, 207, 73, .6);
-  animation: live-pulse 1.6s ease-out infinite;
-}
-@keyframes live-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(255, 207, 73, .55); }
-  70%  { box-shadow: 0 0 0 7px rgba(255, 207, 73, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(255, 207, 73, 0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .live-badge__pulse { animation: none; }
-}
-
-/* The word and the minute are the same thing said twice in different weights: "ao vivo" says
-   the match is being played, the minute says where it is. Both are small, and the score in
-   the middle is the loudest thing in the box, because it is what a manager is deciding on. */
-.live-badge__label {
-  color: var(--accent); font-size: 11px; font-weight: 900;
-  letter-spacing: .12em; text-transform: uppercase;
-}
-
-.live-badge__match {
-  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px;
-  font-size: 12.5px;
-}
-.live-badge__side { display: flex; align-items: center; gap: 5px; min-width: 0; }
-.live-badge__side.right { justify-content: flex-end; }
-.live-badge__name {
-  color: var(--text); font-weight: 700;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.live-badge__score {
-  color: var(--accent); font-size: 15px; font-weight: 900;
-  font-variant-numeric: tabular-nums;
-}
-.live-badge__minute {
-  color: var(--muted); font-size: 11px; font-weight: 800;
-  letter-spacing: .1em; text-transform: uppercase;
-}
-
 /* Casa and Fora: one club's sheet at a time, because the two elevens are on the pitch
    together and a manager reads the man in front of his striker, not a list with the other
    club's men under his own. Each tab carries the shield of the club it shows, so the tab
@@ -1201,6 +1282,7 @@ button { cursor: pointer; }
    the letters instead of being laid out: a name with a space before the mark reads as two
    words, and a team sheet is read down a column of names. */
 .injury-mark.hurt { margin-left: 4px; font-size: 15.6px; }
+.suspension-mark { margin-left: 4px; color: var(--red); font-size: 14px; }
 
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 7px; }
 .formation { padding: 10px; border: 1px solid var(--line); background: #0a1520; color: var(--text); border-radius: 7px; text-align: center; font-size: 14px; cursor: pointer; }
@@ -1459,6 +1541,12 @@ button { cursor: pointer; }
 .career-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
 
 .profile-history { max-height: 320px; overflow-y: auto; overflow-x: auto; border: 1px solid var(--line); border-radius: 9px; }
+
+/* A player's page carries two tables — what a season of him was, and the matches themselves —
+   and the gap between them is held here rather than on the scroll box, which is the squad
+   table's own border as well and is not this page's to space. */
+.profile-page .profile-history { margin-bottom: 18px; }
+.profile-page > .squad-section-title { margin-top: 18px; }
 .profile-history:has(.club-squad-table) { overflow-x: hidden; }
 .history-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .history-table th {
@@ -1531,42 +1619,59 @@ button { cursor: pointer; }
   padding: 4px 6px; background: #0a1520; color: var(--text);
   border: 1px solid var(--line); border-radius: 6px; font-size: 14px;
 }
-.cup-bracket-scroll { overflow-x: auto; padding-bottom: 6px; }
-.cup-bracket { display: grid; gap: 10px; align-items: start; min-width: min-content; }
+/* The bracket goes down the page, latest round first. It was a row of six columns, which is the
+   shape the sport is drawn in and the worst shape for a screen: sixteen ties, eight, four, two
+   and one laid side by side is a wall of columns the reader reaches by dragging a scrollbar
+   sideways, and the final — the one everybody opens the cup for — is the furthest column to the
+   right. Stacked, the rounds come in the order a manager reads them, the tie cards are as wide as
+   the window, and the page scrolls the way it already scrolls everywhere else in the game. */
+.cup-bracket-scroll { padding-bottom: 6px; }
+.cup-bracket { display: flex; flex-direction: column; gap: 18px; }
 .cup-bracket__title {
-  margin: 0 0 7px; text-align: center; font-size: 12px; color: var(--accent);
+  margin: 0 0 8px; font-size: 12px; color: var(--accent);
   text-transform: uppercase; letter-spacing: .05em;
 }
-.cup-bracket__ties { display: flex; flex-direction: column; gap: 6px; }
+/* Four to a line, which is the number that leaves a card wide enough for the club name it has to
+   carry, and one per line on a window too narrow for two. */
+.cup-bracket__ties {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (max-width: 1200px) { .cup-bracket__ties { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .cup-bracket__ties { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .cup-bracket__ties { grid-template-columns: minmax(0, 1fr); } }
 .cup-bracket-empty { padding: 14px 0; }
 
-/* A tie is a card of two club lines and the aggregate that decided it. The lines are the two
-   clubs' own numbers, so the card is read without decoding which end either leg was on. */
+/* A tie is a card: the two clubs, the two games they played, and the aggregate. It is thicker
+   than it was because the width came back — a card squeezed into 186 pixels to fit six across a
+   laptop is a card that has to cut a club's name off with an ellipsis, and a manager who cannot
+   read which club he is looking at is a manager scrolling. */
 .cup-tie {
   background: #0d1924; border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
 }
 .cup-tie--decided { border-color: #24415c; }
 .cup-club {
-  display: flex; align-items: center; gap: 5px;
-  padding: 3px 6px; border-bottom: 1px solid rgba(255, 255, 255, .04);
-  font-size: 12px; line-height: 1.3;
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 10px; border-bottom: 1px solid rgba(255, 255, 255, .04);
+  font-size: 13px; line-height: 1.35;
 }
-/* The shield in a bracket is the size of the name beside it rather than the size of a club
-   badge: a tie card is two lines of text, and a shield taller than its own line is a shield
-   the lines have to be spaced around. */
-.cup-club .mini-crest { width: 15px; height: 15px; font-size: 6px; border-radius: 3px 3px 6px 6px; }
-.cup-club__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cup-club__legs { display: flex; gap: 5px; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 11px; }
+/* The shield is the size of the name beside it rather than the size of a club badge: a tie card
+   is two lines of text, and a shield taller than its own line is a shield the lines have to be
+   spaced around. */
+.cup-club .mini-crest { width: 18px; height: 18px; font-size: 7px; border-radius: 3px 3px 6px 6px; }
+/* The name wraps rather than truncating. It is the one thing on the card that must not be
+   ambiguous, and an ellipsis on a club name is an ellipsis on the question the manager opened
+   the screen to answer. */
+.cup-club__name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .cup-club--winner { background: color-mix(in srgb, var(--green) 12%, transparent); }
 .cup-club--winner .cup-club__name { color: var(--green); font-weight: 700; }
 .cup-club--loser { color: var(--muted); }
 
 /* The manager's own club in the bracket, which is the one line in each tie he is looking for.
-   A bracket is read by following a club across the columns, and a manager cannot follow a club
-   he cannot find: the winner's green and the loser's grey say what happened, and neither says
-   which of the two is his. The line is marked rather than the card, because the card holds
-   both clubs and only one of them is his — and it is marked on the name and in the club's own
-   colour, which is what a manager scanning for his crest will actually catch. */
+   The winner's green and the loser's grey say what happened, and neither says which of the two
+   is his. The line is marked rather than the card, because the card holds both clubs and only
+   one of them is his — and it is marked on the name and in the club's own colour, which is what
+   a manager scanning for his crest will actually catch. */
 .cup-club--mine { background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 3px 0 var(--accent); }
 .cup-club--mine .cup-club__name .club-link { font-weight: 800; }
 .cup-club--mine.cup-club--winner .cup-club__name .club-link { color: var(--green); }
@@ -1577,58 +1682,98 @@ button { cursor: pointer; }
   opacity: .9; vertical-align: 1px;
 }
 
-/* A leg's score is the door to that leg's match, and it has to look like one without shouting:
-   the number is what the bracket is for, and a score in a link colour would turn a column of
-   them into a column of things to click. It gains the affordance on hover and on focus, and
-   keeps the bracket's own typography throughout. */
-.cup-club__leg {
-  background: none; border: 1px solid transparent; border-radius: 3px; padding: 0 3px;
-  color: inherit; font: inherit; font-variant-numeric: tabular-nums; cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+/* The two games of the tie, each printed once. Printed on both club lines they said the same two
+   matches from opposite sides — 3 x 1 and 1 x 3, twice — and a manager reading that could not
+   tell a second goal from a second game. Labelled 1º and 2º because the two legs are two
+   matches and the card says which is which. */
+.cup-tie__games {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 6px 10px; border-bottom: 1px solid rgba(255, 255, 255, .04);
+  font-variant-numeric: tabular-nums; font-size: 12px;
 }
-.cup-club__leg--live {
+/* A game's score is the door to that game's match, and it has to look like one without
+   shouting: the number is what the bracket is for, and a score in a link colour would turn the
+   card into a row of things to click. It gains the affordance on hover and on focus. */
+.cup-tie__game {
+  background: none; border: 1px solid transparent; border-radius: 3px; padding: 1px 5px;
+  color: var(--text); font: inherit; font-variant-numeric: tabular-nums; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.cup-tie__game--pending { color: var(--muted); cursor: default; }
+.cup-tie__game--live {
   color: var(--danger); font-weight: 700;
   animation: pulse 1.5s ease-in-out infinite;
 }
-.cup-club__leg:hover, .cup-club__leg:focus-visible {
+.cup-tie__game:hover, .cup-tie__game:focus-visible {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   border-color: var(--accent); color: var(--text); outline: none;
 }
 .cup-club__live-badge {
-  display: inline-block; width: 6px; height: 6px; margin-left: 3px;
+  display: inline-block; width: 6px; height: 6px; margin-left: 4px;
   background: var(--danger); border-radius: 50%; vertical-align: middle;
 }
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
+/* The aggregate is the one number both clubs share, so it is printed once — and it is separated
+   from the games above it, because "4 x 2" is a tie's two games added together and not a third
+   game anybody played. */
 .cup-tie__aggregate {
   display: flex; justify-content: space-between; gap: 6px; flex-wrap: wrap;
-  padding: 2px 6px; font-size: 11px; color: var(--muted); background: rgba(0, 0, 0, .18);
+  padding: 5px 10px; font-size: 12px; color: var(--muted); background: rgba(0, 0, 0, .18);
 }
 .cup-tie__penalties { color: var(--accent); }
 .cup-tie__pending { color: var(--muted); font-style: italic; }
 .cup-tie__live { color: var(--danger); font-weight: 700; font-style: italic; }
-.cup-tie__watch {
-  display: flex; gap: 4px; margin-top: 2px; flex-wrap: wrap;
-}
-.cup-tie__watch-btn {
-  background: var(--accent); color: var(--bg); border: none; border-radius: 3px;
-  padding: 1px 6px; font-size: 10px; cursor: pointer; font-weight: 600;
-  transition: background 0.15s, transform 0.05s;
-}
-.cup-tie__watch-btn:hover { background: color-mix(in srgb, var(--accent) 80%, white); }
-.cup-tie__watch-btn:active { transform: scale(0.97); }
-.cup-tie__watch-btn--live {
-  background: var(--danger); color: var(--bg);
-  animation: pulse 1.5s ease-in-out infinite;
-}
 .cup-champion {
   display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 8px 12px;
   border: 1px solid var(--accent); border-radius: 8px; color: var(--accent); font-size: 14px;
 }
 .cup-champion__trophy { flex: 0 0 auto; }
 .cup-champion__runner { color: var(--muted); font-size: 12px; }
+
+/* The podium: the cup as a table, sixty-four clubs deep. It is the one place in the game where a
+   list is the point — on a closed season the manager's question is "where did my club finish",
+   and there is no answer to that in a bracket of ties he was not in. */
+.cup-podium { margin: 14px 0; }
+.cup-podium__title {
+  margin: 0 0 8px; font-size: 12px; color: var(--accent);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.cup-podium__table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cup-podium__table th {
+  text-align: left; padding: 6px 8px; color: var(--muted); font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--line);
+}
+.cup-podium__row td { padding: 6px 8px; border-bottom: 1px solid rgba(255, 255, 255, .04); }
+/* The tiebreak columns are tabular so that the numbers line up down the page: this is a table
+   whose whole purpose is to be compared vertically, and a proportional digit is a column that
+   cannot be scanned. */
+.cup-podium__row td:not(.cup-podium__club):not(.cup-podium__round) {
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.cup-podium__pos { width: 34px; color: var(--muted); }
+.cup-podium__club { display: flex; align-items: center; gap: 6px; }
+.cup-podium__crest { display: inline-flex; }
+.cup-podium__round { color: var(--muted); white-space: nowrap; }
+.cup-podium__money { color: var(--green); white-space: nowrap; }
+/* The champion's and the runner-up's lines are the two ends of the same result, so they are
+   marked as a pair — green and green a shade down — and not as a winner and a consolation. */
+.cup-podium__row--champion { background: color-mix(in srgb, var(--green) 12%, transparent); }
+.cup-podium__row--champion .cup-podium__pos,
+.cup-podium__row--champion .cup-podium__money { color: var(--green); font-weight: 700; }
+.cup-podium__row--runner-up { background: color-mix(in srgb, var(--green) 5%, transparent); }
+.cup-podium__row--runner-up .cup-podium__pos { font-weight: 700; }
+.cup-podium__row--mine { box-shadow: inset 3px 0 var(--accent); }
+/* On a phone the tiebreak block goes and the phase stays: which round a club reached is the
+   answer, and points and goals are how two clubs in the same round are read against each other
+   — which is worth two rows of digits rather than the club's name. */
+@media (max-width: 700px) {
+  .cup-podium__row td:nth-child(4), .cup-podium__row td:nth-child(5),
+  .cup-podium__row td:nth-child(6), .cup-podium__row td:nth-child(7),
+  .cup-podium__row td:nth-child(8) { display: none; }
+}
 
 /* What the division on screen is worth. It sits under the calendar rather than inside the table
    on purpose: the money is the same for every club in the division, so it is said once for the
@@ -1646,6 +1791,11 @@ button { cursor: pointer; }
 }
 .prize-legend__row--champion { background: color-mix(in srgb, var(--green) 14%, transparent); }
 .prize-legend__row--champion .prize-legend__position { color: var(--green); font-weight: 700; }
+/* The runner-up is the second half of a result and not a defeat, so his line is the champion's
+   one shade down rather than the plain grey of a consolation: it is the second cheque of the
+   cup, not the consolation for going home. */
+.prize-legend__row--runner-up { background: color-mix(in srgb, var(--green) 6%, transparent); }
+.prize-legend__row--runner-up .prize-legend__position { color: var(--text); font-weight: 700; }
 /* A row that carries a drawn mark lays it out rather than letting it sit on the text's baseline:
    the champion's line of a cup and the champion's line of a division both hold a trophy, and a
    trophy squeezed against the letters is neither a trophy nor a word. A position without a mark
@@ -1873,38 +2023,6 @@ button { cursor: pointer; }
 .form-attendance { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 12px; }
 
 .profile-footer { display: flex; justify-content: flex-end; margin-top: 16px; }
-
-/* The match a lineup is for, said before the lineup. The two clubs face each other across
-   the middle because that is how the fixture is written down, and each one carries its own
-   run of results: the two questions are only interesting answered next to each other. */
-.next-match {
-  margin: 14px 0 18px; padding: 12px 14px; border-radius: 12px;
-  background: rgba(9, 19, 29, .55); border: 1px solid var(--line);
-}
-.next-match__head {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 10px;
-}
-.next-match__kicker {
-  color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .09em;
-}
-.next-match__competition { color: var(--club-ink, var(--text)); font-size: 15px; font-weight: 800; }
-.next-match__round { color: var(--muted); font-size: 13px; }
-
-.next-match__clubs {
-  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 14px;
-}
-.next-match__club { display: grid; gap: 5px; }
-.next-match__club:last-child { text-align: right; justify-items: end; }
-.next-match__side {
-  color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
-}
-.next-match__name { font-size: 17px; font-weight: 800; }
-.next-match__versus { color: var(--muted); font-size: 15px; }
-.next-match__standing { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
-
-/* The run sits under the club it belongs to, so the form is never mistaken for the
-   opponent's. */
-.next-match__club .form-run { display: flex; flex-wrap: wrap; gap: 4px; }
 
 /* Round Context Panel - shows all matches in the round, form, and H2H */
 .round-context {
@@ -3029,7 +3147,9 @@ button { cursor: pointer; }
 
 .shootout__candidates { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin: 8px 0; }
 .shootout__candidate { display: grid; grid-template-columns: 22px 1fr; grid-template-rows: auto auto; gap: 0 7px; align-items: center; padding: 7px 9px; text-align: left; background: #0a1520; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
-.shootout__candidate:disabled { opacity: .55; cursor: default; }
+/* The refusal is `aria-disabled` rather than `:disabled` because the card is a span with a
+   role — the name inside it is a button — so `:disabled` never applies to it. */
+.shootout__candidate[aria-disabled='true'] { opacity: .55; cursor: default; }
 .shootout__candidate.selected { border-color: var(--accent); }
 .shootout__place { grid-row: span 2; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 999px; background: #09141e; border: 1px solid var(--line); font-size: 13px; font-weight: 800; }
 .shootout__candidate.selected .shootout__place { border-color: var(--accent); color: var(--accent); }
@@ -3043,7 +3163,9 @@ button { cursor: pointer; }
 
 /* Match ratings, on their own 0..10 scale and deliberately not the attribute bands above:
    below 6 red, 6 to 8 yellow, above 8 green, and 10 the one blue diamond on a pitch. The
-   rule is in matchRatingClass; these are only what the four answers look like. */
+   ordinary mark is 7, not 6: red is a point below it. The rule is in matchRatingClass and
+   the three numbers are MatchRules' RatingRedBelow, RatingGreen and RatingDiamond; these
+   are only what the four answers look like. */
 .rating-unrated { color: var(--muted); }
 .rating-red { color: var(--red); font-weight: 700; }
 .rating-yellow { color: var(--orange); font-weight: 700; }
@@ -3101,6 +3223,7 @@ button { cursor: pointer; }
 .transfer-empty { color: var(--muted); padding: 24px; text-align: center; }
 
 .retiring-mark { margin-left: 6px; color: var(--orange); font-size: 14px; }
+.retiring-badge { margin-left: 8px; font-size: 20px; vertical-align: middle; }
 
 /* A player somebody is already negotiating for. The market refuses a second offer on him, so
    the row says it: a manager who has to press the button to be told is a manager who pressed
@@ -3141,6 +3264,16 @@ button { cursor: pointer; }
 .actions-col th.actions-col { cursor: default; }
 .actions-col .btn-sm { margin-right: 6px; }
 .league-notice { color: var(--green); font-size: 14px; margin: 8px 0; }
+
+/* Profile contract action buttons */
+.profile-contract-actions { display: flex; gap: 12px; margin: 16px 0; }
+.ctrl.renew { background: rgba(53, 194, 255, .15); border: 1px solid var(--accent); color: var(--accent); }
+.ctrl.renew:hover { background: rgba(53, 194, 255, .25); }
+.ctrl.release { background: rgba(244, 67, 54, .15); border: 1px solid var(--red); color: var(--red); }
+.ctrl.release:hover { background: rgba(244, 67, 54, .25); }
+
+/* Retirement warning on the player profile page */
+.profile-retirement-warning { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: rgba(255, 152, 0, .1); border: 1px solid var(--orange); border-radius: 6px; margin: 12px 0; font-size: 14px; }
 
 /* Transfer detail view */
 .transfer-detail { padding: 16px; }
@@ -3228,10 +3361,14 @@ button { cursor: pointer; }
 /* ============================================================================
    The manager's box.
 
-   It is laid out as a mailbox rather than as a table, because that is what it is: a column
-   of subjects on the left and the message being read on the right. A table of forty rows of
-   subjects would make a manager open a second screen to read the thing the first screen was
-   only pointing at.
+   It is laid out as a mailbox rather than as a table, because that is what it is: what he is
+   reading down the left, the subjects beside it, and the message being read on the right. A
+   table of forty rows of subjects would make a manager open a second screen to read the thing
+   the first screen was only pointing at.
+
+   The filters are a column rather than a row of tabs above because a box of a season is eight
+   categories deep and a row of eight tabs is a row that wraps on a phone and pushes the mail
+   off the bottom of it. Beside the list they cost no height at all.
    ============================================================================ */
 
 .inbox-head {
@@ -3246,13 +3383,69 @@ button { cursor: pointer; }
   color: var(--green); font-size: 11px; font-weight: 700;
 }
 
+/* Three columns: what to read, the lines of it, and the one being read.
+
+   The filters are the narrowest column because they are the fewest words in the screen — a
+   label and a number — and the reader takes everything that is left, because a body of text set
+   in a narrow measure is the one place a manager is asked to read more slowly than he wants
+   to. The screen is not capped: the card takes the width of the frame, and a three-column box
+   that stops at a thousand and one hundred pixels leaves the right-hand side of a wide desktop
+   empty for no reason a reader would thank anybody for. */
 .inbox {
-  display: grid; grid-template-columns: minmax(240px, 340px) 1fr;
+  display: grid; grid-template-columns: 168px minmax(260px, 360px) minmax(0, 1fr);
   gap: 14px; align-items: start;
 }
 
+/* Below this the three columns stack: the reader is the one that must not be squeezed, so it
+   is the last to give its width, and at the narrowest the whole box is one column again. */
+@media (max-width: 1100px) {
+  .inbox { grid-template-columns: 148px minmax(240px, 320px) minmax(0, 1fr); }
+}
+
+/* A filter is a line of the column: the mark and the words on the left, how much of the box
+   is behind it on the right. The count is the point of the button — a manager presses "Título"
+   because he wants to know how many titles there are — so it is aligned in a column of its own
+   rather than trailing a label of varying length.
+
+   It is the same block of the column as the subjects, and it scrolls the same way, so the two
+   columns end at the same line on a long box instead of one of them stopping halfway down. */
+.inbox-filters {
+  display: flex; flex-direction: column; gap: 2px;
+  max-height: 70vh; overflow-y: auto; padding-right: 2px;
+}
+
+.inbox-filter {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 9px; border-radius: 8px;
+  background: none; border: 1px solid transparent; border-left: 3px solid transparent;
+  color: var(--muted); font: inherit; font-size: 13px; text-align: left;
+  transition: background .15s ease, border-color .15s ease;
+}
+.inbox-filter:hover { background: #10202e; border-color: #46657d; }
+.inbox-filter__label { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.inbox-filter__count {
+  flex: 0 0 auto; font-size: 11.5px; font-variant-numeric: tabular-nums; opacity: .8;
+}
+
+/* The filter that is on, and only that one: the accent left edge is the same mark the unread
+   rows use and the same one the card in the column uses for a live match, so "this is where
+   I am" looks the same everywhere in the game. */
+.inbox-filter--on {
+  background: #10202e; border-color: var(--accent); color: var(--text); font-weight: 700;
+}
+
+/* On one column the filters lie down into a strip that scrolls sideways rather than becoming a
+   column of eight buttons pushing the mail off the bottom of a phone. It is written after the
+   rules above because a media query carries no weight of its own: the same specificity, and the
+   later rule is the one that decides. */
 @media (max-width: 900px) {
   .inbox { grid-template-columns: 1fr; }
+  .inbox-filters {
+    flex-direction: row; gap: 6px; max-height: none; overflow: auto hidden;
+    padding: 0 0 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .inbox-filters::-webkit-scrollbar { display: none; }
+  .inbox-filter { flex: 0 0 auto; }
 }
 
 /* The column of subjects. A row is one line of the column, and the three lines of it are
@@ -3310,6 +3503,9 @@ button { cursor: pointer; }
   background: linear-gradient(180deg, #0f1e2b, #0a1520); border: 1px solid var(--line);
 }
 
+/* The body is the one thing on this screen that does not take the width it is given: the
+   measure is what makes a paragraph readable, and a reader stretched across a wide monitor is
+   a reader whose eye loses the line at the end of every sentence. */
 .inbox-message { display: grid; gap: 12px; justify-items: start; }
 
 .inbox-message__head { display: grid; gap: 4px; width: 100%; }
@@ -3532,7 +3728,6 @@ button { cursor: pointer; }
 
 .tactics-row__pos { grid-area: pos; }
 .tactics-row__buttons { grid-area: buttons; }
-.tactics-row__out { grid-area: buttons; justify-self: end; }
 .tactics-attrs { grid-area: strip; }
 
 /* The position, down the left of every row.
@@ -3567,10 +3762,22 @@ button { cursor: pointer; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .tactics-row__line .tactics-row__meta { flex: none; }
-.tactics-row__name:disabled { cursor: not-allowed; }
+/* The row's name is a span with a role rather than a button, because the name inside it is
+   itself a button — the door to the player's profile — and a button inside a button is not
+   something a browser will honour. So the refusal is carried by `aria-disabled` rather than
+   by `:disabled`, and it has to be read here or an unavailable man still shows a pointer. */
+.tactics-row__name[aria-disabled='true'] { cursor: not-allowed; }
 
 .tactics-row__meta { display: flex; gap: 8px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.tactics-row__out { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+
+/* Why a man is out, said in words rather than as the single word "Fora". It is a sentence and
+   not a badge, so it is not shouted in capitals and not squeezed: a manager reading "Suspenso
+   • 2 partidas" is being told what to plan around, and an ellipsis would take the length away
+   — which is the one half of the answer that matters. */
+.tactics-row__out {
+  grid-area: buttons; justify-self: end; text-align: right;
+  font-size: 11px; color: var(--muted); white-space: nowrap;
+}
 .tactics-row__buttons { display: flex; gap: 3px; }
 
 .tactics-row__move {
@@ -3582,6 +3789,10 @@ button { cursor: pointer; }
 .tactics-row__move:disabled { opacity: .3; cursor: not-allowed; }
 
 .tactics-hint { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+/* The one hint that says the order cannot be saved. It is spoken rather than a disabled button,
+   because the refusal is the server's and the manager still has to see who is out to choose
+   the man who replaces him — a greyed save button would only tell him the order is wrong. */
+.tactics-hint--warning { color: var(--orange); }
 
 .tactics-footer {
   display: flex; align-items: center; gap: 12px;
@@ -4089,3 +4300,152 @@ button.shirt-number:hover .shirt-number__icon { color: var(--accent); opacity: 1
 }
 
 .filter-clear:hover { border-color: var(--red); color: var(--red); }
+
+/* Base (youth academy) screen */
+.team-header__crest {
+  width: 64px;
+  height: 64px;
+  font-size: 18px;
+  border: 3px solid var(----team-primary, #f2d34f);
+  border-radius: 8px 8px 26px 26px;
+}
+.team-header__info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.team-header__name {
+  margin: 0;
+  font-size: 28px;
+  color: var(--text);
+}
+.team-header__section-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.team-header__crest-wrapper {
+  flex-shrink: 0;
+}
+
+.squad-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.squad-controls__sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.squad-controls__sort label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.squad-controls__sort select {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-alt, #1e2a3a);
+  color: var(--text);
+  font-size: 13px;
+}
+.sort-dir-button {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+.sort-dir-button:hover { color: var(--text); }
+
+.academy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.academy-table th {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.academy-table th.name-col { text-align: left; }
+.academy-table th.num { text-align: center; }
+.academy-table th.stars-col { text-align: center; }
+.academy-table th.action-col { text-align: right; }
+.academy-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.academy-table td.num { text-align: center; }
+.academy-table td.stars-col { text-align: center; }
+.academy-table td.name-col .squad-name {
+  min-width: 160px;
+}
+.academy-table td.action-col {
+  text-align: right;
+  white-space: nowrap;
+}
+.academy-table tbody tr:hover { background: var(--panel-alt, rgba(255,255,255,0.03)); }
+.academy-table .empty-cell {
+  text-align: center;
+  padding: 24px;
+  color: var(--muted);
+}
+
+.promote-button {
+  padding: 4px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent);
+  color: #1a1f24;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.promote-button:hover {
+  background: #e6b800;
+}
+.promote-button:disabled {
+  background: var(--muted);
+  border-color: var(--muted);
+  color: var(--panel);
+  cursor: default;
+}
+
+/* Transfer list mark in player rows */
+.transfer-list-mark {
+  margin-left: 4px;
+  color: var(--amber, #ffd275);
+  font-weight: 700;
+}
+.transfer-list-button {
+  margin-top: 8px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-alt, #1e2a3a);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.transfer-list-button.listed {
+  border-color: var(--amber, #ffd275);
+  color: var(--amber, #ffd275);
+}
+.transfer-list-button:hover {
+  background: var(--panel);
+}

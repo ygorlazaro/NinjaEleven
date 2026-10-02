@@ -42,6 +42,9 @@ public class PlayerSeasonStateConfiguration : IEntityTypeConfiguration<PlayerSea
             .IsRequired();
         builder.Property(s => s.InjuryMatchesRemaining).IsRequired();
         builder.Property(s => s.Injuries).IsRequired();
+        builder.Property(s => s.Retiring).IsRequired();
+        builder.Property(s => s.IsAcademyPlayer).IsRequired();
+        builder.Property(s => s.OnTransferList).IsRequired();
 
         builder.HasIndex(s => new { s.PlayerId, s.SeasonId }).IsUnique();
         builder.HasIndex(s => new { s.SeasonId, s.TeamId });

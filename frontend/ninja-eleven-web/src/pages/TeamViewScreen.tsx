@@ -379,6 +379,56 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
     }
   };
 
+/**
+   * Renews a man's deal for as many seasons as the manager says.
+   *
+   * <para>
+   * The season the renewal is signed in is the season being played, and not whatever the
+   * address bar happens to carry: the screen is reached as <c>/team/{id}</c> as often as it is
+   * reached as <c>/team/{id}?season=…</c>, and a control that quietly did nothing on the
+   * first of those was a renewal button that only worked on some of the doors.
+   * </para>
+   */
+  const handleRenewContract = async (player: SquadPlayerDto) => {
+    if (!urlTeamId) return;
+
+    // The wage is quoted by the rule that charges it, and the settlement is what the same
+    // release would cost — both arrive on the row rather than being worked out here.
+    const seasons = window.prompt(
+      `Renovar ${player.name} por quantas temporadas?\n\n` +
+      `Nova wage por temporada: ${formatLimo(player.wageOnRenewal ?? 0)}\n` +
+      `O novo contrato conta a partir desta temporada.\n` +
+      `Entre 1 e 5 temporadas.`,
+      '3'
+    );
+
+    if (!seasons) return;
+
+    const n = parseInt(seasons, 10);
+    if (isNaN(n) || n < 1 || n > 5) {
+      setError('Número inválido de temporadas. Escolha entre 1 e 5.');
+      return;
+    }
+
+    setBusyPlayerId(player.id);
+    setNotice(null);
+    setError(null);
+    try {
+      const season = seasonId || (await SeasonApi.current()).id;
+      await TeamApi.renewContract(urlTeamId, {
+        playerId: player.id,
+        seasons: n,
+        seasonId: season,
+      });
+      await reloadSquad();
+      setNotice(`${player.name} renovou por ${n} temporada(s).`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível renovar o contrato.');
+    } finally {
+      setBusyPlayerId(null);
+    }
+  };
+
   const clubWindow = useClubWindow(team);
 
   /**
@@ -425,10 +475,6 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
         return {
           ...current,
           squadEnergy: current.squadEnergy - result.energySpent,
-          // Read off the server's own remainder rather than incremented here: the allowance
-          // is counted from the club's sessions, and a counter on this screen would be a
-          // second answer to a question only the backend can answer.
-          sessionsSpent: current.sessionsAllowed - result.sessionsLeft,
           players
         };
       });
@@ -623,6 +669,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
               squad={filteredPlayers}
               team={team}
               onRelease={isOwnTeam ? handleRelease : undefined}
+              onRenewContract={isOwnTeam ? handleRenewContract : undefined}
               onEditShirtNumber={isOwnTeam ? handleShirtNumber : undefined}
               shirtRefusals={shirtRefusals}
             />

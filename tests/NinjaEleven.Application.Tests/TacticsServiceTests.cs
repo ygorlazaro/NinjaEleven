@@ -290,6 +290,57 @@ public class TacticsServiceTests
         Assert.Equal(squad.Select(player => player.Id).Order(), board.Squad.Select(row => row.PlayerId).Order());
     }
 
+    [Fact]
+    public async Task A_suspended_man_is_on_the_board_saying_so_and_for_how_long()
+    {
+        var service = CreateService();
+        var squad = AFullSquad();
+        var suspended = squad[3];
+        SquadIs(squad, (player, state) =>
+        {
+            if (player.Id == suspended.Id) state.AddSuspension(2);
+        });
+
+        var board = await service.GetBoardAsync(_teamId, _seasonId);
+
+        var row = board.Squad.Single(candidate => candidate.PlayerId == suspended.Id);
+
+        // The board refuses him and greys him, which it always did — and now it says why and
+        // for how long. A greyed row with no reason is a manager leaving this screen to find
+        // out on the club's own page what the board already had.
+        Assert.False(row.IsAvailable);
+        Assert.Equal(2, row.SuspensionMatches);
+        Assert.Equal(0, row.InjuryMatchesRemaining);
+
+        // Only the man who was sent off. The other twenty-two are the same rows they were.
+        Assert.All(
+            board.Squad.Where(candidate => candidate.PlayerId != suspended.Id),
+            candidate =>
+            {
+                Assert.True(candidate.IsAvailable);
+                Assert.Equal(0, candidate.SuspensionMatches);
+            });
+    }
+
+    [Fact]
+    public async Task A_knocked_player_is_on_the_board_saying_so_and_for_how_long()
+    {
+        var service = CreateService();
+        var squad = AFullSquad();
+        var hurt = squad[5];
+        SquadIs(squad, (player, state) =>
+        {
+            if (player.Id == hurt.Id) state.AddInjury(Injury.Grave, 3);
+        });
+
+        var board = await service.GetBoardAsync(_teamId, _seasonId);
+
+        var row = board.Squad.Single(candidate => candidate.PlayerId == hurt.Id);
+
+        Assert.False(row.IsAvailable);
+        Assert.Equal(3, row.InjuryMatchesRemaining);
+    }
+
     private TacticsService CreateService() => new(
         _plans.Object,
         _teams.Object,
@@ -357,7 +408,7 @@ public class TacticsServiceTests
             NullLogger<MatchdayService>.Instance);
     }
 
-    private void SquadIs(IReadOnlyList<Player> squad)
+    private void SquadIs(IReadOnlyList<Player> squad, Action<Player, PlayerSeasonState>? touch = null)
     {
         _teams
             .Setup(repo => repo.GetAsync(_teamId, It.IsAny<CancellationToken>()))
@@ -398,7 +449,12 @@ public class TacticsServiceTests
             .Returns((Guid _, IEnumerable<Guid> playerIds, CancellationToken __) =>
                 Task.FromResult<IReadOnlyList<PlayerSeasonState>>(squad
                     .Where(player => playerIds.Contains(player.Id))
-                    .Select(player => PlayerSeasonState.Create(player.Id, _seasonId, _teamId, 90))
+                    .Select(player =>
+                    {
+                        var state = PlayerSeasonState.Create(player.Id, _seasonId, _teamId, 90);
+                        touch?.Invoke(player, state);
+                        return state;
+                    })
                     .ToList()));
     }
 

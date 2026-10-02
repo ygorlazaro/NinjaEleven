@@ -59,6 +59,20 @@ public class PlayerSeasonState
     /// </summary>
     public bool Retiring { get; private set; }
 
+    /// <summary>
+    /// Whether this player is a youth academy player — attached to a club but not yet on a
+    /// first-team contract. Academy players cannot be bought by other clubs, can be promoted
+    /// to the first team at any time, and are not counted toward the squad size limits.
+    /// </summary>
+    public bool IsAcademyPlayer { get; private set; }
+
+    /// <summary>
+    /// Whether the manager has placed this player on the transfer list. Transfer-listed
+    /// players appear on the market alongside free agents, and can be proposed for by
+    /// any club — unlike academy players, who are never on the open market.
+    /// </summary>
+    public bool OnTransferList { get; private set; }
+
     private PlayerSeasonState() { }
 
     public static PlayerSeasonState Create(
@@ -110,6 +124,36 @@ public class PlayerSeasonState
             Injury = Injury.None,
             InjuryMatchesRemaining = 0,
             Injuries = 0,
+        };
+    }
+
+    /// <summary>
+    /// A season state for a youth academy player: attached to a club for the season but not
+    /// under a first-team contract. The player is trained by the club, evolves in its academy,
+    /// and can be promoted to the first team at any time.
+    /// </summary>
+    public static PlayerSeasonState CreateAcademyPlayer(
+        Guid playerId,
+        Guid seasonId,
+        Guid teamId,
+        int energy)
+    {
+        return new PlayerSeasonState
+        {
+            Id = Guid.NewGuid(),
+            PlayerId = playerId,
+            SeasonId = seasonId,
+            TeamId = teamId,
+            Energy = ClampEnergy(energy),
+            Goals = 0,
+            Saves = 0,
+            YellowCards = 0,
+            RedCards = 0,
+            SuspensionMatches = 0,
+            Injury = Injury.None,
+            InjuryMatchesRemaining = 0,
+            Injuries = 0,
+            IsAcademyPlayer = true,
         };
     }
 
@@ -223,4 +267,21 @@ public class PlayerSeasonState
     public void SetEnergy(int energy) => Energy = Math.Clamp(energy, 1, 100);
     public void RecoverEnergy(int amount) => Energy = Math.Min(100, Energy + amount);
     public void DrainEnergy(int amount) => Energy = Math.Max(1, Energy - amount);
+
+    /// <summary>
+    /// Promotes this academy player to the first team: he is no longer an academy player
+    /// and is now under a first-team contract (which is created separately by the caller).
+    /// Promotion can happen at any time, even if the player is injured.
+    /// </summary>
+    public void PromoteFromAcademy() => IsAcademyPlayer = false;
+
+    /// <summary>
+    /// Places this player on the transfer list, making him visible to buying clubs.
+    /// </summary>
+    public void PutOnTransferList() => OnTransferList = true;
+
+    /// <summary>
+    /// Removes this player from the transfer list.
+    /// </summary>
+    public void TakeOffTransferList() => OnTransferList = false;
 }

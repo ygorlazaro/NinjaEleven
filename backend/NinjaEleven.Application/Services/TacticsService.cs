@@ -351,7 +351,9 @@ public sealed record TacticsSquadRow(
     double Stars,
     int Energy,
     bool IsAvailable,
-    IReadOnlyList<int> Attributes)
+    IReadOnlyList<int> Attributes,
+    int SuspensionMatches,
+    int InjuryMatchesRemaining)
 {
     /// <summary>
     /// The row the board shows, read off the squad the club screen already reads.
@@ -374,6 +376,14 @@ public sealed record TacticsSquadRow(
     /// They are in the catalogue's own order rather than sorted, so the tag strip reads left
     /// to right as the same thing it reads on the squad table and on the training sheet.
     /// </para>
+    ///
+    /// <para>
+    /// The two absence counters travel with the row because a board that greyed a man out
+    /// without saying why would make the manager open the club's own page to find out — the one
+    /// place the answer already is. <c>IsAvailable</c> says he cannot play; these say whether
+    /// it is two matches of a suspension or a knock, which is the difference between a plan
+    /// that will be fine in a fortnight and one that needs somebody else.
+    /// </para>
     /// </summary>
     public static TacticsSquadRow From(SquadPlayer squad) => new(
         squad.Player.Id,
@@ -383,7 +393,9 @@ public sealed record TacticsSquadRow(
         PlayerRating.CalculateStars(squad.Player),
         squad.SeasonState.Energy,
         squad.SeasonState.IsAvailable,
-        AttributesInOrder.Select(squad.Player.Get).ToList());
+        AttributesInOrder.Select(squad.Player.Get).ToList(),
+        squad.SeasonState.SuspensionMatches,
+        squad.SeasonState.InjuryMatchesRemaining);
 
     /// <summary>
     /// The eight, in the order every other table in the game reads them.

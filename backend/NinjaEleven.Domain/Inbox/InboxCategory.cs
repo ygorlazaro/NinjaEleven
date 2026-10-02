@@ -36,6 +36,29 @@ public enum InboxCategory
     /// </summary>
     SeasonSummary,
 
+    /// <summary>
+    /// A matchday of the championship, told to every manager: who won, and who moved.
+    ///
+    /// <para>
+    /// It is a mark of its own rather than a corner of <see cref="SeasonSummary"/>, because a
+    /// matchday decides nothing and awards nothing. A season's end moves four tables and settles
+    /// who the champions are; this is the other thing — a Wednesday in October, thirty-two
+    /// results, and a table that shuffles underneath it. Filed under a season summary, a manager
+    /// would have to open the same mark to find out which of its lines is the end of the year and
+    /// which is last Tuesday.
+    /// </para>
+    /// </summary>
+    RoundSummary,
+
     /// <summary>Anything the game itself has to say that is none of the above.</summary>
     Club
 }
+
+/// <summary>
+/// One kind of message and how many of them the box holds.
+///
+/// It is a domain fact rather than a row of a filter: "how much of my mail is this" is a
+/// question about the box, and a screen that answered it by counting the twenty lines it
+/// happened to be holding would be answering it about the page instead.
+/// </summary>
+public readonly record struct InboxCategoryTally(InboxCategory Category, int Count);

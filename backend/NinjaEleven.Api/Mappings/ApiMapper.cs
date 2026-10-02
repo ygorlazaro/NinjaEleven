@@ -378,6 +378,7 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
         SeasonId = calendar.SeasonId,
         SeasonName = calendar.SeasonName,
         MatchDayCount = calendar.MatchDayCount,
+        CurrentMatchDayNumber = calendar.CurrentMatchDayNumber,
         MatchDays = calendar.MatchDays.Select(matchDay => matchDay.ToDto()).ToList(),
         Windows = calendar.Windows.ToDtos()
     };
@@ -516,7 +517,31 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
         Rounds = bracket.Rounds.Select(round => round.ToDto()).ToList(),
         ChampionTeamId = bracket.ChampionTeamId,
         ChampionTeamName = bracket.ChampionTeamName,
-        RunnerUpTeamName = bracket.RunnerUpTeamName
+        RunnerUpTeamName = bracket.RunnerUpTeamName,
+        IsDecided = bracket.IsDecided,
+        Ranking = bracket.Ranking.Select(row => row.ToDto()).ToList()
+    };
+
+    public static CupRankingRowDto ToDto(this Application.Models.CupRankingRow row) => new()
+    {
+        Position = row.Position,
+        TeamId = row.TeamId,
+        Name = row.Name,
+        PrimaryColor = row.PrimaryColor,
+        SecondaryColor = row.SecondaryColor,
+        RoundNumber = row.RoundNumber,
+        RoundName = row.RoundName,
+        Played = row.Played,
+        Wins = row.Wins,
+        Draws = row.Draws,
+        Losses = row.Losses,
+        GoalsFor = row.GoalsFor,
+        GoalsAgainst = row.GoalsAgainst,
+        GoalDifference = row.GoalDifference,
+        Points = row.Points,
+        Prize = row.Prize,
+        IsChampion = row.IsChampion,
+        IsRunnerUp = row.IsRunnerUp
     };
 
     public static CupBracketRoundDto ToDto(this Application.Models.CupBracketRound round) => new()
@@ -937,6 +962,27 @@ public static class PlayerProfileMapping
         RatedMatches = line.RatedMatches
     };
 
+/// <summary>
+    /// One season of a career, in the shirt it was played in.
+    ///
+    /// <para>
+    /// The results are carried across whole rather than worked out from the rows above: the
+    /// win is a fact about a match that was played, and asking the client to compare two
+    /// score columns would be asking it to know which end his club was at.
+    /// </para>
+    /// </summary>
+    public static PlayerSeasonLineDto ToDto(this Application.Models.PlayerSeasonLine line) => new()
+    {
+        SeasonId = line.SeasonId,
+        SeasonName = line.SeasonName,
+        TeamId = line.TeamId,
+        TeamName = line.TeamName,
+        Line = line.Line.ToDto(),
+        Wins = line.Wins,
+        Draws = line.Draws,
+        Losses = line.Losses
+    };
+
 public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profile) => new()
 {
     PlayerId = profile.PlayerId,
@@ -972,6 +1018,7 @@ public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profi
     IsAvailable = profile.IsAvailable,
     Injury = profile.Injury,
     InjuryMatchesRemaining = profile.InjuryMatchesRemaining,
+    Retiring = profile.Retiring,
     ShirtNumber = profile.ShirtNumber,
     MarketValue = profile.MarketValue,
     Salary = profile.Salary,
@@ -983,6 +1030,7 @@ public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profi
     ReleaseCost = profile.ReleaseCost,
     Season = profile.Season.ToDto(),
     Total = profile.Total.ToDto(),
+    Seasons = profile.Seasons.Select(line => line.ToDto()).ToList(),
     History = profile.History.Select(line => new PlayerMatchLineDto
     {
         MatchId = line.MatchId,
@@ -1009,8 +1057,9 @@ public static PlayerProfileDto ToDto(this Application.Models.PlayerProfile profi
         OpponentTeamSecondaryColor = line.OpponentTeamSecondaryColor,
         HomeGoals = line.HomeGoals,
         AwayGoals = line.AwayGoals,
-        RoundNumber = line.RoundNumber,
-        TeamName = line.TeamName,
+RoundNumber = line.RoundNumber,
+TeamName = line.TeamName,
+        TeamId = line.TeamId,
         SeasonName = line.SeasonName,
         CompetitionName = line.CompetitionName,
         PhaseName = line.PhaseName,
@@ -1086,6 +1135,43 @@ public static class TeamMatchRecordMapping
                 .ToList()
         }).ToList();
 
+    public static PyramidRulesDto ToDto(this Application.Models.PyramidRuleSet rules) =>
+        new()
+        {
+            DivisionCount = rules.DivisionCount,
+            ClubsPerDivision = rules.ClubsPerDivision,
+            TieBreakers = rules.TieBreakers
+                .Select(criterion => new StandingCriterionDto
+                {
+                    Order = criterion.Order,
+                    WholeTable = criterion.WholeTable,
+                    Label = criterion.Label,
+                    Detail = criterion.Detail
+                })
+                .ToList(),
+            Divisions = rules.Divisions
+                .Select(division => new DivisionRuleDto
+                {
+                    Tier = division.Tier,
+                    Name = division.Name,
+                    Clubs = division.Clubs,
+                    Purse = division.Purse,
+                    Bands = division.Bands
+                        .Select(band => new DivisionBandDto
+                        {
+                            Kind = band.Kind,
+                            FromPosition = band.FromPosition,
+                            ToPosition = band.ToPosition,
+                            ToTier = band.ToTier,
+                            ToDivisionName = band.ToDivisionName,
+                            Label = band.Label,
+                            Meaning = band.Meaning
+                        })
+                        .ToList()
+                })
+                .ToList()
+        };
+
     public static IReadOnlyList<CupPrizeDto> ToDtos(this IEnumerable<Application.Models.CupPrize> prizes) =>
         prizes
             .Select(prize => new CupPrizeDto
@@ -1093,7 +1179,8 @@ public static class TeamMatchRecordMapping
                 TieRound = prize.TieRound,
                 Name = prize.Name,
                 Amount = prize.Amount,
-                IsChampion = prize.IsChampion
+                IsChampion = prize.IsChampion,
+                IsRunnerUp = prize.IsRunnerUp
             })
             .ToList();
 
@@ -1138,6 +1225,7 @@ public static class TeamMatchRecordMapping
         Injury = listing.Injury,
         InjuryMatchesRemaining = listing.InjuryMatchesRemaining,
         Retiring = listing.Retiring,
+        OnTransferList = listing.OnTransferList,
         MarketValue = listing.MarketValue,
         Salary = listing.Salary,
         ContractSeasons = listing.ContractSeasons,
@@ -1289,6 +1377,26 @@ public static class TeamMatchRecordMapping
 
     public static IReadOnlyList<ClubRankingDto> ToDtos(this IEnumerable<Application.Services.ClubRankingEntry> entries) =>
         entries.Select(entry => entry.ToDto()).ToList();
+
+    public static TransferRankingEntryDto ToDto(this Application.Models.TransferRankingEntry entry) => new()
+    {
+        TeamId = entry.TeamId,
+        TeamName = entry.TeamName,
+        TeamShortName = entry.TeamShortName,
+        PrimaryColor = entry.PrimaryColor,
+        SecondaryColor = entry.SecondaryColor,
+        Transfers = entry.Transfers,
+        Amount = entry.Amount
+    };
+
+    public static TransferRankingsDto ToDto(this Application.Models.TransferRankings rankings) => new()
+    {
+        CompetitionSeasonId = rankings.CompetitionSeasonId,
+        MostBought = rankings.MostBought.Select(e => e.ToDto()).ToArray(),
+        MostSold = rankings.MostSold.Select(e => e.ToDto()).ToArray(),
+        MostSpent = rankings.MostSpent.Select(e => e.ToDto()).ToArray(),
+        MostProfit = rankings.MostProfit.Select(e => e.ToDto()).ToArray()
+    };
 }
 
 /// <summary>
@@ -1308,9 +1416,9 @@ public static class TrainingQuoteMapper
         Energy = quote.Energy,
         IsAvailable = quote.IsAvailable,
         Injury = quote.Injury,
-        SessionFee = quote.SessionFee,
-        SessionsLeft = quote.SessionsLeft,
-        Attributes = quote.Attributes
+         IsAcademyPlayer = quote.IsAcademyPlayer,
+         SessionFee = quote.SessionFee,
+         Attributes = quote.Attributes
             .Select(attribute => new TrainingAttributeQuoteDto
             {
                 Attribute = Enum.Parse<Domain.Enums.PlayerAttribute>(attribute.Attribute),
@@ -1327,8 +1435,6 @@ public static class TrainingQuoteMapper
         SquadEnergy = quotes.SquadEnergy,
         Day = quotes.Day,
         PlaysToday = quotes.PlaysToday,
-        SessionsAllowed = quotes.SessionsAllowed,
-        SessionsSpent = quotes.SessionsSpent,
         Players = quotes.Players.Select(player => player.ToDto()).ToList()
     };
 }

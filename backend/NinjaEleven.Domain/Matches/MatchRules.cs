@@ -530,16 +530,32 @@ public static class MatchRules
     /// footballer who played a full match and was not the worst man on a pitch full of
     /// footballers did not play badly, and a scale that says he did is measuring the wrong
     /// thing. Everything else is a move away from here.
+    ///
+    /// <para>
+    /// It sits a full point above the red line rather than on it, so the ordinary mark is
+    /// visibly the middle of the scale and not the edge of the bad half of it. A scale whose
+    /// ordinary evening is the same number as the line red begins at has no middle, and every
+    /// card in a season then reads as a verdict on the man rather than as a reading of his
+    /// evening.
+    /// </para>
     /// </summary>
-    public const double RatingBaseline = 6.0;
+    public const double RatingBaseline = 7.0;
 
     public const double RatingFloor = 0.0;
     public const double RatingCeiling = 10.0;
 
     /// <summary>
-    /// Below this a man is told so, in red. The line is the baseline and not a number below
-    /// it, so "did not earn a good mark" and "was below what his own profile promised" are
-    /// the same statement rather than two nearby ones.
+    /// Below this a man is told so, in red, and it is a point under the ordinary mark rather
+    /// than on it.
+    ///
+    /// <para>
+    /// The gap is deliberate and is the reason the two lines are two lines. A man on the
+    /// ordinary mark has not done badly — he has done nothing the card can hold against
+    /// him — so red is reserved for men the number is actually against. Were the line the
+    /// baseline, the only way into red would be to be worse than doing nothing at all, which
+    /// is not the complaint a manager is making about the man in front of him, and the scale
+    /// would have no ordinary evening in it to read.
+    /// </para>
     /// </summary>
     public const double RatingRedBelow = 6.0;
 
@@ -574,32 +590,61 @@ public static class MatchRules
     /// What each thing that happened is worth, in points of rating.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// They are the volume, and they are deliberately blunt: a goal is a goal whether the man
     /// who scored it was expected to or not, and the question of expectation is a separate
     /// axis rather than a discount on this one. Charging a striker less for a goal because he
     /// is good at them would mean the best striker in the world could not have a good match.
+    /// </para>
+    /// <para>
+    /// All twelve were moved by a single factor of 1.5 from a calibration measured over a
+    /// hundred played matches, because what they produced was a card that separated nobody:
+    /// two thousand men averaged 6.25, a third of them (32.95%) came out in red, only 1.37%
+    /// reached a good evening and not one of the two thousand reached the top of the scale. The
+    /// same hundred at this factor averages 7.39, puts 1.69% in red, gives 20.90% a good
+    /// evening and has 1.37% at the ceiling. One factor rather than twelve numbers picked one
+    /// at a time, so the ratio between a goal and a card is exactly what it was before the
+    /// calibration was read again — what changed is how far a match moves a man, not what
+    /// things are worth relative to each other.
+    /// </para>
+    /// <para>
+    /// The three surprise weights below were deliberately not moved with them. Surprise is a
+    /// different axis: it is measured against the chance the engine had already given him
+    /// rather than against the size of the thing that happened, and it is capped on its own.
+    /// Moving both axes together would have widened the spread well past what was asked for
+    /// and would have made the two axes indistinguishable — a big number and a surprising
+    /// one would have become the same claim, said twice.
+    /// </para>
     /// </remarks>
     /// <summary>
-    /// The flat weight of a goal, and it is small because it is not the whole of a goal.
-    /// A goal also arrives as a shot on target and as the largest single surprise in a match,
-    /// and the three are counted separately, so a weight of its own large enough to carry the
-    /// occasion would count the same evening three times. Read on its own, it puts a single
-    /// goal in the middle of the ordinary band and leaves a hat-trick to reach the ceiling
-    /// through everything that came with it — which is where a hat-trick should be reached
-    /// from, rather than by a number big enough on its own.
+    /// The flat weight of a goal, and it is smaller than the occasion because it is not the
+    /// whole of a goal. A goal also arrives as a shot on target and as the largest single
+    /// surprise in a match, and the three are counted separately, so a weight of its own large
+    /// enough to carry the evening would count the same ninety minutes three times.
+    ///
+    /// <para>
+    /// On these numbers a goal read on its own is 8.2, which is already a good evening, and
+    /// the same goal as it really arrives — with the shot on target that made it — is
+    /// 8.6. A brace with the two shots that made it is 10.2 before the scale clamps it, so a
+    /// brace is the ceiling and a hat-trick is worth no more than a brace. The old weights put
+    /// the same three evenings at 6.8, 7.1 and 8.9, so the room between a good evening and the
+    /// top of the scale has gone from about three points to about one. That is the price of the
+    /// 1.5: the factor bought a scale that tells an ordinary man from a good one, and the
+    /// headroom between a good evening and the best evening went with it.
+    /// </para>
     /// </summary>
-    public const double RatingGoal = 0.95;
-    public const double RatingAssist = 0.70;
-    public const double RatingSave = 0.22;
-    public const double RatingShotOnTarget = 0.30;
-    public const double RatingShotOffTarget = -0.04;
-    public const double RatingDuelWon = 0.07;
-    public const double RatingDuelLost = -0.05;
-    public const double RatingFoul = -0.07;
-    public const double RatingCorner = 0.04;
-    public const double RatingYellowCard = -0.30;
-    public const double RatingRedCard = -1.4;
-    public const double RatingOwnGoal = -1.0;
+    public const double RatingGoal = 1.425;
+    public const double RatingAssist = 1.05;
+    public const double RatingSave = 0.33;
+    public const double RatingShotOnTarget = 0.45;
+    public const double RatingShotOffTarget = -0.06;
+    public const double RatingDuelWon = 0.105;
+    public const double RatingDuelLost = -0.075;
+    public const double RatingFoul = -0.105;
+    public const double RatingCorner = 0.06;
+    public const double RatingYellowCard = -0.45;
+    public const double RatingRedCard = -2.1;
+    public const double RatingOwnGoal = -1.5;
 
     /// <summary>
     /// What one moment is worth when it was better or worse than the engine had already said

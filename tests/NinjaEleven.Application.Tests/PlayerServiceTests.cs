@@ -62,26 +62,26 @@ public class PlayerServiceTests
         _matches.Setup(repo => repo.GetPlayerHistoryAsync(_player.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(lines);
 
-    private static PlayerMatchRecord Line(
+private static PlayerMatchRecord Line(
         Guid matchId,
         Guid? seasonId,
         bool started = true,
         bool cameOn = false,
         int goals = 0,
         int saves = 0) => new()
-        {
-            MatchId = matchId,
-            SeasonId = seasonId,
-            Started = started,
-            CameOn = cameOn,
-            Goals = goals,
-            Saves = saves,
-            HomeGoals = 2,
-            AwayGoals = 1,
-            IsHome = true,
-            OpponentName = "Estrela do Norte",
-            RoundNumber = 3
-        };
+    {
+        MatchId = matchId,
+        SeasonId = seasonId,
+        Started = started,
+        CameOn = cameOn,
+        Goals = goals,
+        Saves = saves,
+        HomeGoals = 2,
+        AwayGoals = 1,
+        IsHome = true,
+        OpponentName = "Estrela do Norte",
+        RoundNumber = 3
+    };
 
     [Fact]
     public async Task The_season_and_the_career_are_the_same_lines_filtered_two_ways()
@@ -152,6 +152,131 @@ public class PlayerServiceTests
         var profile = await CreateService().GetProfileAsync(_player.Id, _seasonId);
 
         Assert.Equal(10, profile.Season.Saves);
+    }
+
+    /// <summary>
+    /// A line with the club and the season it names, which is what a per-season row is grouped
+    /// by. It is built on the shorter overload above so the two cannot drift apart on the
+    /// fields they share.
+    /// </summary>
+    private static PlayerMatchRecord LineIn(
+        Guid seasonId,
+        Guid teamId,
+        string teamName,
+        int goals = 0,
+        bool isHome = true,
+        int homeGoals = 2,
+        int awayGoals = 1,
+        int yellowCards = 0,
+        bool injured = false)
+    {
+        var line = Line(Guid.NewGuid(), seasonId, goals: goals);
+
+        line.TeamId = teamId;
+        line.TeamName = teamName;
+        line.SeasonName = "Temporada";
+        line.IsHome = isHome;
+        line.HomeGoals = homeGoals;
+        line.AwayGoals = awayGoals;
+        line.YellowCards = yellowCards;
+        line.WasInjured = injured;
+
+        return line;
+    }
+
+    /// <summary>
+    /// A career told season by season: one row per season, in the shirt it was played in.
+    ///
+    /// <para>
+    /// The rows are what a manager reads before signing a man — not how he has been lately,
+    /// but what a season of him looked like — so the numbers on them are the same sums the
+    /// match table above is drawn from. Nothing here is worked out on the client.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_career_is_told_one_season_at_a_time()
+    {
+        History(
+            LineIn(_seasonId, _team.Id, "Clube Aurora", goals: 3),
+            LineIn(_seasonId, _team.Id, "Clube Aurora", goals: 1, yellowCards: 2, injured: true),
+            LineIn(_lastSeasonId, _team.Id, "Clube Aurora", goals: 5));
+
+        var profile = await CreateService().GetProfileAsync(_player.Id, _seasonId);
+
+        Assert.Equal(2, profile.Seasons.Count);
+
+        var thisSeason = profile.Seasons.Single(line => line.SeasonId == _seasonId);
+        Assert.Equal(2, thisSeason.Line.Appearances);
+        Assert.Equal(4, thisSeason.Line.Goals);
+        Assert.Equal(2, thisSeason.Line.YellowCards);
+        Assert.Equal(1, thisSeason.Line.Injuries);
+        Assert.Equal(_team.Id, thisSeason.TeamId);
+        Assert.Equal("Clube Aurora", thisSeason.TeamName);
+
+        var lastSeason = profile.Seasons.Single(line => line.SeasonId == _lastSeasonId);
+        Assert.Equal(5, lastSeason.Line.Goals);
+
+        // The rows are the history, so their goals add up to the career's. Two tables on one
+        // page that did not add up to each other would leave the manager choosing between them.
+        Assert.Equal(profile.Total.Goals, profile.Seasons.Sum(line => line.Line.Goals));
+    }
+
+    /// <summary>
+    /// A striker who moved in January has two lines in one season, and one line would credit
+    /// the second club with the first one's goals.
+    /// </summary>
+    [Fact]
+    public async Task A_season_spent_at_two_clubs_is_two_lines()
+    {
+        var rival = Guid.NewGuid();
+
+        History(
+            LineIn(_seasonId, _team.Id, "Clube Aurora", goals: 4),
+            LineIn(_seasonId, rival, "Estrela do Norte", goals: 6));
+
+        var profile = await CreateService().GetProfileAsync(_player.Id, _seasonId);
+
+        Assert.Equal(2, profile.Seasons.Count);
+        Assert.Equal(4, profile.Seasons.Single(line => line.TeamId == _team.Id).Line.Goals);
+        Assert.Equal(6, profile.Seasons.Single(line => line.TeamId == rival).Line.Goals);
+    }
+
+    /// <summary>
+    /// A win is his club's win: an away victory read off the raw home and away numbers would be
+    /// counted as a defeat, which is the mistake this holds.
+    /// </summary>
+    [Fact]
+    public async Task A_seasons_results_are_his_club_results()
+    {
+        History(
+            LineIn(_seasonId, _team.Id, "Clube Aurora", homeGoals: 2, awayGoals: 1),
+            LineIn(_seasonId, _team.Id, "Clube Aurora", homeGoals: 0, awayGoals: 0),
+            LineIn(_seasonId, _team.Id, "Clube Aurora", homeGoals: 0, awayGoals: 1),
+            // Away: his club scored two and conceded one. Read the wrong way round this is a
+            // defeat, and a striker's season would carry a win that never happened.
+            LineIn(_seasonId, _team.Id, "Clube Aurora", isHome: false, homeGoals: 1, awayGoals: 2));
+
+        var profile = await CreateService().GetProfileAsync(_player.Id, _seasonId);
+
+        var season = profile.Seasons.Single();
+
+        Assert.Equal(2, season.Wins);
+        Assert.Equal(1, season.Draws);
+        Assert.Equal(1, season.Losses);
+    }
+
+    /// <summary>
+    /// A player who has never played has no season to tell, and an empty table is the honest
+    /// answer rather than a row of zeros.
+    /// </summary>
+    [Fact]
+    public async Task A_player_with_no_history_has_no_seasons()
+    {
+        History();
+
+        var profile = await CreateService().GetProfileAsync(_player.Id, _seasonId);
+
+        Assert.Empty(profile.Seasons);
     }
 
     private PlayerService CreateService() =>

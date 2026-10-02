@@ -129,6 +129,16 @@ public interface ITransferRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Every completed transfer for clubs in a division, read once for the rankings. The
+    /// rankings are a reading of the same set as the recent-transfers panel, and asking it
+    /// once for the whole division keeps a page of four tables from asking sixteen clubs'
+    /// history one at a time.
+    /// </summary>
+    Task<IReadOnlyList<Transfer>> ListCompletedByDivisionAsync(
+        Guid competitionSeasonId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The offers a club has on the table for a player it is selling, tracked so they can be
     /// withdrawn. Tracked rather than untracked because a withdrawal is a change: a club that
     /// lets a man go has nothing left to sell, and every offer naming him as a player it holds

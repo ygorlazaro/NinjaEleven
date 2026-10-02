@@ -252,7 +252,8 @@ public class MatchServiceTests
             _fixtures.Object,
             _matches.Object,
             _competitions.Object,
-            _teams.Object));
+            _teams.Object,
+            new SquadStrengthReader(_teams.Object)));
 
     private MatchService CreateService()
     {
@@ -347,7 +348,8 @@ public class MatchServiceTests
         _fixtures.Object,
         _matches.Object,
         _competitions.Object,
-        _teams.Object);
+        _teams.Object,
+        new SquadStrengthReader(_teams.Object));
 
     private MatchdayService CreateMatchdayService() => new(
         _matchDays.Object,

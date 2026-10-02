@@ -87,13 +87,84 @@ public class SeasonCalendarService : ISeasonCalendarBuilder
                 .ThenBy(round => round.Window)
                 .ToList();
 
+        var ordered = matchDays.OrderBy(matchDay => matchDay.Number).ToList();
+
         return new SeasonCalendar
         {
             SeasonId = season.Id,
             SeasonName = season.Name,
-            MatchDays = matchDays.OrderBy(matchDay => matchDay.Number).ToList(),
-            Windows = windows
+            MatchDays = ordered,
+            Windows = windows,
+            CurrentMatchDayNumber = await CurrentMatchDayNumberAsync(windows, ordered, cancellationToken)
         };
+    }
+
+    /// <summary>
+    /// The day the world is on: the first day of the season that still has a fixture nobody has
+    /// played, and the last day with football in it once every fixture has been.
+    ///
+    /// <para>
+    /// It is asked of the football rather than of the clock, because those are two different
+    /// days. A season is thirty-four days on the calendar and however long the world takes to
+    /// walk them, so the date a matchday carries says when it was <em>drawn</em> to be played,
+    /// not when it was — and a manager who opens a calendar on the world being twenty days into
+    /// a season would be shown day one, with every fixture in it a lie about where his club is.
+    /// </para>
+    ///
+    /// <para>
+    /// A day with nothing in it is not the current day either: the thirty-fourth is the rest
+    /// day, so a rule that said "the earliest day at or after today" would park a manager on an
+    /// empty day at the end of a season. The question is asked of the fixtures, and a day with
+    /// no fixtures in it never answers it.
+    /// </para>
+    ///
+    /// <para>
+    /// Two set reads answer it — every fixture of the season's windows and every match played
+    /// in them — rather than one per day, which is the same rule as everywhere else: a read is
+    /// a read.
+    /// </para>
+    /// </summary>
+    private async Task<int?> CurrentMatchDayNumberAsync(
+        IReadOnlyList<Round> windows,
+        IReadOnlyList<MatchDay> matchDays,
+        CancellationToken cancellationToken)
+    {
+        if (windows.Count == 0)
+        {
+            return null;
+        }
+
+        var dayOfRound = windows
+            .Where(round => round.MatchDayId is not null)
+            .ToDictionary(round => round.Id, round => matchDays
+                .FirstOrDefault(matchDay => matchDay.Id == round.MatchDayId)?.Number ?? 0);
+
+        var fixtures = await _fixtureRepository.ListByRoundIdsAsync(
+            windows.Select(round => round.Id), cancellationToken);
+
+        if (fixtures.Count == 0)
+        {
+            return null;
+        }
+
+        var played = new HashSet<Guid>(
+            (await _matchRepository.ListByFixtureIdsAsync(
+                fixtures.Select(fixture => fixture.Id), cancellationToken))
+            .Select(match => match.FixtureId));
+
+        var days = fixtures
+            .Where(fixture => dayOfRound.ContainsKey(fixture.RoundId))
+            .Select(fixture => (Day: dayOfRound[fixture.RoundId], Played: played.Contains(fixture.Id)))
+            .Where(line => line.Day > 0)
+            .ToList();
+
+        var unplayed = days.Where(line => !line.Played).Select(line => line.Day).ToList();
+
+        // A season with nothing left to play still has a last day, and a manager reading the
+        // calendar of a finished season wants that one rather than an empty answer.
+        return unplayed.Count > 0
+            ? unplayed.Min()
+            : days.Select(line => line.Day).Max();
     }
 
     /// <summary>

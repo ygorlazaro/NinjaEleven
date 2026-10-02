@@ -7,6 +7,7 @@ import type {
   DivisionPurseDto,
   FixtureDto,
   MatchdayReportDto,
+  PyramidRulesDto,
   RoundDto,
   SeasonDto,
   TeamDto,
@@ -17,13 +18,36 @@ import StandingsTable from '@/components/League/StandingsTable';
 import Calendar from '@/components/League/Calendar';
 import ScorersList from '@/components/League/ScorersList';
 import MatchdayReportPanel from '@/components/League/MatchdayReportPanel';
-import PrizeLegend from '@/components/League/PrizeLegend';
 import DivisionTrophy from '@/components/League/DivisionTrophy';
-import TopScorerPrizePanel from '@/components/League/TopScorerPrizePanel';
+import LeagueRulesPanel from '@/components/League/LeagueRulesPanel';
 
 const isScheduled = (f: FixtureDto) => f.status === 'Scheduled';
 const involves = (f: FixtureDto, teamId?: string) =>
   !!teamId && (f.homeTeamId === teamId || f.awayTeamId === teamId);
+
+/**
+ * The three things the screen is about, and the one a manager opens it for.
+ *
+ * A table, a calendar, a scoring chart and two prize legends were all on one page, and a
+ * manager coming for his table had to scroll past a chart and two panels of money to reach it.
+ * The chart is a page of its own because it is read a different way — one name at a time, down
+ * a column of goals — and the rules are a page of their own because they are read once a season
+ * and then not again, and neither belongs between a table and the fixture he has to play.
+ *
+ * The tab travels in the query string rather than living in the component, for the same reason
+ * the squad and training tabs do: a piece of state that exists only inside one screen cannot be
+ * pointed at from outside it, so a manager who sends "the artilharia" sends a link that opens on
+ * the artilharia.
+ */
+type LeagueTab = 'table' | 'scorers' | 'rules';
+
+const TAB_PARAM: Record<Exclude<LeagueTab, 'table'>, string> = {
+  scorers: 'scorers',
+  rules: 'rules'
+};
+
+const isLeagueTab = (value: string | null): value is Exclude<LeagueTab, 'table'> =>
+  value === 'scorers' || value === 'rules';
 
 const LeagueScreen: React.FC = () => {
   const selectedTeam = useGameState((s) => s.selectedTeam);
@@ -35,10 +59,9 @@ const LeagueScreen: React.FC = () => {
   const setLeagueTeams = useGameState((s) => s.setLeagueTeams);
   const selectedCompetition = useGameState((s) => s.selectedCompetition);
   const setCompetitionInfo = useGameState((s) => s.setCompetitionInfo);
-  const forgetClub = useGameState((s) => s.forgetClub);
 
   const navigate = useNavigate();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [rounds, setRounds] = useState<RoundDto[]>([]);
   const [allFixtures, setAllFixtures] = useState<FixtureDto[]>([]);
   const [roundFixtures, setRoundFixtures] = useState<FixtureDto[]>([]);
@@ -59,6 +82,12 @@ const LeagueScreen: React.FC = () => {
   // division's three top scorers are paid a share of that division's own title, so the panel
   // follows the dropdown rather than being read once for the pyramid.
   const [scorerPrize, setScorerPrize] = useState<TopScorerPrizeListDto | null>(null);
+  // The pyramid's own rules, read once: how many divisions there are, what each one's table ends
+  // the season with and the chain a table is settled in. They are the same for every division
+  // and every season, so they do not follow the dropdown — and they are asked for rather than
+  // written here because the first division has no division above it to promise four accesses
+  // to, which a page saying "os 4 primeiros sobem" out of a constant of its own gets wrong.
+  const [rules, setRules] = useState<PyramidRulesDto | null>(null);
 
   // The round the manager is in is the first one that still has a fixture nobody
   // played. Rounds are not gated by the calendar: they simply follow the results.
@@ -102,13 +131,9 @@ const LeagueScreen: React.FC = () => {
     [setStandings, setScorers]
   );
 
-  // Which division the screen is showing, and which season it belongs to.
-  //
-  // The division is the manager's choice, and it is the screen's whole subject: a pyramid of
-  // three divisions has three tables, and one of them is chosen. It travels in the query
-  // string, which is what makes a table somebody is looking at a link they can send on.
-  // The pyramid's money does not belong to a season or a division, so it is read once when the
-  // screen opens rather than on every filter change.
+  // The pyramid's money and the pyramid's rules are both facts about the game rather than about
+  // this season or this division, so they are read once when the screen opens rather than on
+  // every filter change.
   useEffect(() => {
     let alive = true;
 
@@ -116,10 +141,46 @@ const LeagueScreen: React.FC = () => {
       .then(list => alive && setPurses(list))
       .catch(() => alive && setPurses([]));
 
+    LeagueApi.getRules()
+      .then(loaded => alive && setRules(loaded))
+      .catch(() => alive && setRules(null));
+
     return () => {
       alive = false;
     };
   }, []);
+
+  /** Which of the screen's three pages is open. The table is the one a manager lands on. */
+  const requestedTab = params.get('tab');
+  const activeTab: LeagueTab = isLeagueTab(requestedTab) ? requestedTab : 'table';
+
+  const setActiveTab = (tab: LeagueTab) => {
+    setParams(
+      current => {
+        const next = new URLSearchParams(current);
+        if (tab === 'table') next.delete('tab');
+        else next.set('tab', TAB_PARAM[tab]);
+        return next;
+      },
+      { replace: true }
+    );
+  };
+
+  /** The open tab as a query fragment, for the two filters that rebuild the URL by hand. */
+  const tabQuery = activeTab === 'table' ? '' : `&tab=${TAB_PARAM[activeTab]}`;
+
+  // Which division the screen is showing, and which season it belongs to.
+  //
+  // The division is the manager's choice, and it is the screen's whole subject: a pyramid of
+  // four divisions has four tables, and one of them is chosen. It travels in the query string,
+  // which is what makes a table somebody is looking at a link they can send on.
+  //
+  // They are read as two values rather than as the whole parameter object because the object is
+  // a new one on every navigation: a screen that reloads a season's fixtures, a table and a
+  // scoring chart because the manager pressed a tab is a screen that asks the backend to
+  // recompute the season four times while he looks for his own striker.
+  const seasonParam = params.get('season') || '';
+  const editionParam = params.get('edition') || '';
 
   useEffect(() => {
     let cancelled = false;
@@ -128,13 +189,13 @@ const LeagueScreen: React.FC = () => {
       setError(null);
 
       try {
-        const seasonId = params.get('season') || (await SeasonApi.current()).id;
+        const seasonId = seasonParam || (await SeasonApi.current()).id;
         const editionList = await CompetitionApi.listEditionsBySeason(seasonId);
 
         if (cancelled) return;
 
         const divisions = editionList.filter(edition => edition.isDivision);
-        const wanted = params.get('edition') || '';
+        const wanted = editionParam;
 
         // The division a manager opens on is his club's own. A pyramid of four divisions has
         // four tables and the manager has one of them: sending him to the first division to
@@ -196,7 +257,7 @@ const LeagueScreen: React.FC = () => {
     initialize();
 
     return () => { cancelled = true; };
-  }, [params, pickCurrentRound, refresh, setCompetitionInfo, setLeagueTeams, selectedTeam?.id]);
+  }, [editionParam, seasonParam, pickCurrentRound, refresh, setCompetitionInfo, setLeagueTeams, selectedTeam?.id]);
 
   // The season list is independent of the chosen division, so it is read once. The dropdown
   // reads it; the default the screen falls back to is the season that is in progress, exactly
@@ -275,20 +336,17 @@ const LeagueScreen: React.FC = () => {
     }
   };
 
-  const changeClub = () => {
-    forgetClub();
-    navigate('/');
-  };
-
   // Switching division keeps the season and drops the division, so the season the manager is
-  // in is not something they have to choose again every time they look at another table.
+  // in is not something they have to choose again every time they look at another table. It
+  // keeps the tab too: a manager reading the artilharia of his own division who drops into the
+  // one above wants to keep reading artilharias, and a page that put him back on the table
+  // every time he changed division would make the dropdown a way of losing his place.
   const changeDivision = (editionId: string) => {
-    const season = params.get('season') || '';
     setCompSeasonId('');
     setCurrentRoundId('');
     setRounds([]);
     setAllFixtures([]);
-    navigate(`/league?season=${season}&edition=${editionId}`);
+    navigate(`/league?season=${seasonParam}&edition=${editionId}${tabQuery}`);
   };
 
   // Editions are owned by a season, so changing the season drops the division and lets the
@@ -301,12 +359,12 @@ const LeagueScreen: React.FC = () => {
     setCurrentRoundId('');
     setRounds([]);
     setAllFixtures([]);
-    navigate(`/league?season=${seasonId}`);
+    navigate(`/league?season=${seasonId}${tabQuery}`);
   };
 
   const currentSeason = seasons.find(season => season.status === 'InProgress');
   // The dropdown defaults to the current season when the manager has not chosen one.
-  const seasonValue = params.get('season') || currentSeason?.id || '';
+  const seasonValue = seasonParam || currentSeason?.id || '';
 
   const activeDivision = editions.find(edition => edition.id === compSeasonId);
 
@@ -381,13 +439,10 @@ const LeagueScreen: React.FC = () => {
               <button
                 className="ctrl"
                 onClick={() => navigate(
-                  `/team/${selectedTeam.id}?season=${params.get('season') || ''}&edition=${compSeasonId}`
+                  `/team/${selectedTeam.id}?season=${seasonParam}&edition=${compSeasonId}`
                 )}
               >
                 Meu elenco
-              </button>
-              <button className="ctrl" onClick={changeClub}>
-                Trocar de clube
               </button>
             </>
           )}
@@ -401,12 +456,45 @@ const LeagueScreen: React.FC = () => {
         <p className="competition" style={{ color: 'var(--danger)', margin: '0 0 10px' }}>{error}</p>
       )}
 
-      {/* The table is the screen and the calendar is beside it. A division's table is the thing
-          a manager opens the page for, so it takes the wide column and the artilharia sits under
-          it where the eye already is; the calendar is the other way round the world — a season
-          read a matchday at a time, and it is the one panel that is looked at on its own. */}
-      <div className="league-grid">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      {/* The three pages of the screen. The first is the one a manager lands on, because a
+          division's table and its calendar are the two halves of the same question — where his
+          club is and who it plays next — and they sit side by side because a table is thirteen
+          columns read downwards while a matchday is two names and a score.
+          The tab bar is the club's own: the same control the squad is divided by, because a
+          screen with two kinds of tab on it is a screen where the manager has to learn where
+          the controls are twice. */}
+      <div className="tabs league-tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'table'}
+          className={`tab ${activeTab === 'table' ? 'active' : ''}`}
+          onClick={() => setActiveTab('table')}
+        >
+          Classificação e Calendário
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'scorers'}
+          className={`tab ${activeTab === 'scorers' ? 'active' : ''}`}
+          onClick={() => setActiveTab('scorers')}
+        >
+          Artilharia
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'rules'}
+          className={`tab ${activeTab === 'rules' ? 'active' : ''}`}
+          onClick={() => setActiveTab('rules')}
+        >
+          Regras
+        </button>
+      </div>
+
+      {activeTab === 'table' && (
+        <div className="league-grid">
           <div className="league-panel">
             <h3>📊 Classificação</h3>
             <div id="standingsWrap">
@@ -426,31 +514,6 @@ const LeagueScreen: React.FC = () => {
           </div>
 
           <div className="league-panel">
-            {/* The division is named in the title because the chart below it is that
-                division's and not the country's: a manager reading the 3ª Divisão's table with
-                a heading that says only "Artilheiros" cannot tell a list of his own division
-                from a list of everybody's, and a chart that could be either is a chart he has
-                to check against something else before he trusts a name on it. */}
-            <h3>
-              🥅 Artilheiros
-              {activeDivision?.name ? ` — ${activeDivision.name}` : ''}
-            </h3>
-            <div id="scorersWrap">
-              {/* Ten names: the artilharia of a championship is a top ten a manager reads whole,
-                  and a table of fifteen is the season's list rather than its chart. */}
-              <ScorersList
-                scorers={scorers}
-                userTeamId={selectedTeam?.id}
-                userTeamName={selectedTeam?.name}
-                allLabel={activeDivision?.name ?? 'Campeonato'}
-                limit={10}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div className="league-panel">
             <h3>📅 Calendário completo</h3>
             <Calendar
               fixtures={allFixtures}
@@ -460,16 +523,45 @@ const LeagueScreen: React.FC = () => {
               onSelect={openFixture}
             />
           </div>
+        </div>
+      )}
 
-          <div className="league-panel">
-            <TopScorerPrizePanel prize={scorerPrize} />
-          </div>
-
-          <div className="league-panel">
-            <PrizeLegend purses={purses} tier={activeDivision?.tier} />
+      {activeTab === 'scorers' && (
+        /* The chart is a page of its own because it is read a different way — one name at a
+           time, down a column of goals — and because it is the only panel that lists the whole
+           division rather than one club or one matchday. It takes the screen's whole width for
+           the same reason: a column of names squeezed into half a page is a column nobody
+           scans down, and the chart is nothing but a column to scan.
+           The division is named in the title because the chart below it is that division's and
+           not the country's: a manager reading the 3ª Divisão's page with a heading that says
+           only "Artilheiros" cannot tell a list of his own division from a list of everybody's. */
+        <div className="league-panel">
+          <h3>
+            🥅 Artilheiros
+            {activeDivision?.name ? ` — ${activeDivision.name}` : ''}
+          </h3>
+          <div id="scorersWrap">
+            {/* Ten names: the artilharia of a championship is a top ten a manager reads whole,
+                and a table of fifteen is the season's list rather than its chart. */}
+            <ScorersList
+              scorers={scorers}
+              userTeamId={selectedTeam?.id}
+              userTeamName={selectedTeam?.name}
+              allLabel={activeDivision?.name ?? 'Campeonato'}
+              limit={10}
+            />
           </div>
         </div>
-      </div>
+      )}
+
+      {activeTab === 'rules' && (
+        <LeagueRulesPanel
+          rules={rules}
+          purses={purses}
+          scorerPrize={scorerPrize}
+          activeTier={activeDivision?.tier}
+        />
+      )}
     </div>
   );
 };

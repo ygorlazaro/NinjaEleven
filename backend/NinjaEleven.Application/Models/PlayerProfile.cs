@@ -50,6 +50,12 @@ public class PlayerProfile
     public int InjuryMatchesRemaining { get; set; }
 
     /// <summary>
+    /// Whether the player has announced retirement at the end of this season.
+    /// Read from the season state so the profile and the squad table agree.
+    /// </summary>
+    public bool Retiring { get; set; }
+
+    /// <summary>
     /// The number he wears for the club on this card, or null when he is on nobody's books.
     ///
     /// It travels with the contract rather than with the player, so the same man shown on
@@ -131,6 +137,52 @@ public class PlayerProfile
     /// second source of truth about which matches count.
     /// </summary>
     public List<PlayerMatchLine> History { get; set; } = new();
+
+    /// <summary>
+    /// The same history, told one season at a time, newest first.
+    ///
+    /// <para>
+    /// A page of matches answers "how has he been", which is a question about a run of
+    /// evenings. A manager signing a striker wants to know what a season of him looks like,
+    /// and that is a different question: goals, cards, knocks and results counted over a
+    /// season, in the shirt he was wearing then. The rows are grouped by season <i>and</i> by
+    /// club, because a transfer inside a season makes two lines of one season and one line
+    /// would credit the second club with the first one's goals.
+    /// </para>
+    ///
+    /// <para>
+    /// The lines are the history's own, summed — not a second reading of the statistics
+    /// table. A season's goals counted here and a season's goals counted from the rows above
+    /// are the same sum of the same matches, which is the only way the two tables can be on
+    /// one page without one of them being a lie.
+    /// </para>
+    /// </summary>
+    public List<PlayerSeasonLine> Seasons { get; set; } = new();
+}
+
+/// <summary>
+/// One season of a player's career, in the shirt he was wearing for it.
+///
+/// <para>
+/// The club is part of the row's identity rather than a note on it: a career crosses clubs
+/// inside a season more often than anybody expects, and a line that named only the season
+/// would be a number that belongs to two men.
+/// </para>
+/// </summary>
+public class PlayerSeasonLine
+{
+    public Guid? SeasonId { get; set; }
+    public string? SeasonName { get; set; }
+    public Guid TeamId { get; set; }
+    public string? TeamName { get; set; }
+
+    /// <summary>What he did over those matches: games, goals, assists, saves, cards, knocks.</summary>
+    public PlayerCareerLine Line { get; set; } = new();
+
+    /// <summary>How the club he was playing for did in the matches he has a line for.</summary>
+    public int Wins { get; set; }
+    public int Draws { get; set; }
+    public int Losses { get; set; }
 }
 
 /// <summary>
@@ -253,6 +305,12 @@ public class PlayerMatchLine
     public string? TeamName { get; set; }
 
     /// <summary>
+    /// The club he played for, so a history row and a season row are doors to that club
+    /// rather than names on a page.
+    /// </summary>
+    public Guid? TeamId { get; set; }
+
+    /// <summary>
     /// The match read the way the club page reads one: which season and competition it belonged
     /// to, the round or the phase of it, the ground and the crowd. A player's history is the
     /// same table of fixtures read by a man rather than by a club, and it is the same query
@@ -310,6 +368,13 @@ public class PlayerMatchLine
         public int AwayGoals { get; set; }
         public int RoundNumber { get; set; }
         public string? TeamName { get; set; }
+
+        /// <summary>
+        /// The club he played for, so a history line is a door to that club rather than a name
+        /// on a page. It is the id the statistics row already carries, read out rather than
+        /// looked up again.
+        /// </summary>
+        public Guid? TeamId { get; set; }
         public string? SeasonName { get; set; }
         public string? CompetitionName { get; set; }
         public string? PhaseName { get; set; }
@@ -367,39 +432,27 @@ public class TrainingQuote
     public string Injury { get; set; } = "None";
 
     /// <summary>
-    /// What one session on this man costs the club, being a share of his season wage.
+    /// Whether this player is an academy youth player rather than a first-team squad member.
+    /// The training screen uses it to label and gate the row.
     /// </summary>
-    /// <remarks>
-    /// It is on every man's sheet rather than once on the squad's because it is a per-man
-    /// number: the same session costs the club a great deal more of a striker's wage than of a
-    /// reserve goalkeeper's, and a single figure on the header would price a decision that is
-    /// not one decision but twenty-three. It is a wage and not a share of one, so the manager
-    /// can check it against the salary he already reads on the same screen.
-    /// </remarks>
-    public decimal SessionFee { get; set; }
+    public bool IsAcademyPlayer { get; set; }
 
     /// <summary>
-    /// How many sessions this man still has on <see cref="SquadTrainingQuotes.Day"/>.
-    ///
-    /// <para>
-    /// It is on each man's sheet rather than on the squad's because the day is counted per
-    /// body. A sheet with one number for the club is a sheet that can only say "somebody has
-    /// had theirs", and a manager working his whole squad needs to know which men still have a
-    /// session in them and which have had it.
-    /// </para>
+    /// What one session on this man costs the club, being a share of his season wage.
     /// </summary>
-    public int SessionsLeft { get; set; }
+    public decimal SessionFee { get; set; }
 
     public List<TrainingAttributeQuote> Attributes { get; set; } = new();
 }
 
 /// <summary>
-/// The club's whole training sheet, with what the squad has left between them.
+/// The club's whole training sheet, with what the squad has between them.
 ///
 /// <para>
-/// The total is here rather than added up on the screen because it is the number a manager
-/// plans a week with, and a total the client assembled from twenty-three rows it had already
-/// rounded would be a total nobody could reproduce.
+/// A manager opening the training screen is asking a question about twenty-three men, and
+/// asking it a man at a time would be twenty-three round trips to answer a question the
+/// backend can answer in one — and the last answer would arrive after the first had already
+/// been clicked, so the prices on screen would be from two different moments.
 /// </para>
 /// </summary>
 public class SquadTrainingQuotes
@@ -409,35 +462,15 @@ public class SquadTrainingQuotes
     public int SquadEnergy { get; set; }
 
     /// <summary>
-    /// The calendar day the allowance on this sheet is for. It is named rather than implied by
-    /// the client, because the allowance is a day's allowance and a screen that showed a
-    /// number without saying which day it belonged to would be showing yesterday's budget at
-    /// tomorrow's prices after midnight.
+    /// The calendar day the sheet is for. It is named rather than implied by the client.
     /// </summary>
     public DateOnly Day { get; set; }
 
     /// <summary>
-    /// Whether the club has a fixture on <see cref="Day"/>, which is the whole difference
-    /// between one session and two.
+    /// Whether the club has a fixture on <see cref="Day"/>, which is relevant context for a
+    /// training decision.
     /// </summary>
     public bool PlaysToday { get; set; }
-
-    /// <summary>
-    /// How many sessions <em>each man</em> has on <see cref="Day"/>.
-    /// </summary>
-    public int SessionsAllowed { get; set; }
-
-    /// <summary>
-    /// How many of the squad's men have used theirs, which is what a screen shows next to a
-    /// "work the whole squad" button.
-    ///
-    /// <para>
-    /// It counts men and not sessions because the day is worth the same number to every body
-    /// in the squad: a total of sessions would be a number that only means anything next to
-    /// the number of men, and the two are the same number here by construction.
-    /// </para>
-    /// </summary>
-    public int SessionsSpent { get; set; }
 
     public List<TrainingQuote> Players { get; set; } = new();
 }

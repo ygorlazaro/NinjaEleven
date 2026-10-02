@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { PlayerApi, SeasonApi } from '@/api';
+import { PlayerApi, SeasonApi, TeamApi, TransferApi } from '@/api';
 import { useGameState } from '@/state';
 import { useOffer } from '@/state/OfferProvider';
 import type { PlayerProfileDto } from '@/types';
@@ -181,6 +181,9 @@ const PlayerProfileScreen: React.FC = () => {
                 </span>
               )}
               {profile.injury !== 'None' && <span className="injury-badge" title={profile.injury === 'Grave' ? 'Lesão grave' : 'Lesão leve'}>🩹</span>}
+              {profile.retiring && (
+                <span className="retiring-badge" title="Aposentadoria declarada ao final da temporada">🏁</span>
+              )}
               <StarRating
                 stars={profile.stars}
                 label="Classificação geral"
@@ -304,6 +307,75 @@ const PlayerProfileScreen: React.FC = () => {
               </span>
             </div>
           </section>
+         )}
+
+        {profile.retiring && (
+          <section className="profile-retirement-warning">
+            <span className="retiring-badge">🏁</span>
+            <strong>{profile.name}</strong> anunciou que este é o último ano de carreira.
+            O contrato não será renovado ao final da temporada.
+          </section>
+        )}
+
+        {profile.isInLastSeason && profile.contractSeasons > 0 && profile.teamId && (
+          <section className="profile-contract-actions">
+            {!profile.retiring && (
+              <button
+                className="ctrl renew"
+                onClick={async () => {
+                  const seasons = window.prompt(
+                    `Renovar ${profile.name} por quantas temporadas?\n\n` +
+                    `Nova wage por temporada: ${formatLimo(profile.wageOnRenewal ?? 0)}\n` +
+                    `Entre 1 e 5 temporadas.`,
+                    '3'
+                  );
+                  if (!seasons) return;
+                  const n = parseInt(seasons, 10);
+                  if (isNaN(n) || n < 1 || n > 5) {
+                    window.alert('Escolha entre 1 e 5 temporadas.');
+                    return;
+                  }
+                  try {
+                    await TeamApi.renewContract(profile.teamId!, {
+                      playerId: profile.playerId,
+                      seasons: n,
+                    });
+                    window.location.reload();
+                  } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : 'Não foi possível renovar o contrato.';
+                    window.alert(msg);
+                  }
+                }}
+                title="Renovar o contrato do jogador"
+              >
+                Renovar contrato ({formatLimo(profile.wageOnRenewal ?? 0)}/temp.)
+              </button>
+            )}
+            {selectedTeamId && profile.teamId === selectedTeamId && (
+              <button
+                className="ctrl release"
+                onClick={async () => {
+                  if (!window.confirm(`Rescindir o contrato de ${profile.name}?`)) return;
+                  try {
+                    const result = await TransferApi.release(profile.playerId, profile.teamId!);
+                    window.alert(
+                      `${result.playerName} foi dispensado por ${formatLimo(result.releaseCost)}.` +
+                      (result.withdrawnOffers > 0
+                        ? `, e ${result.withdrawnOffers} proposta(s) pela venda dele caíram.`
+                        : '.')
+                    );
+                    window.location.reload();
+                  } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : 'Não foi possível rescindir o contrato.';
+                    window.alert(msg);
+                  }
+                }}
+                title="Rescindir o contrato e pagar a multa"
+              >
+                Rescindir
+              </button>
+            )}
+          </section>
         )}
 
         <section className="profile-totals">
@@ -384,6 +456,67 @@ const PlayerProfileScreen: React.FC = () => {
           )}
         </section>
 
+        {/*
+          One row per season, in the shirt he wore for it — the question a manager signing a
+          player asks, which is not "how has he been lately" but "what did a season of him
+          look like". The rows come from the backend, summed from the same lines the match
+          table below is drawn from, so the two tables cannot disagree about a season's goals.
+          It is shown for any player's profile, not only the manager's own: the club he is
+          reading is usually somebody else's.
+
+          The heading sits outside the scroll box rather than inside it: a title that scrolls
+          away with the rows is a title a manager has to scroll back to find.
+        */}
+        <h3 className="squad-section-title">Histórico por temporada</h3>
+        <section className="profile-history">
+          {profile.seasons.length === 0 ? (
+            <p className="league-empty">Nenhuma temporada registrada.</p>
+          ) : (
+            <table className="history-table">
+              <thead>
+                <tr>
+                  <th>Temporada</th>
+                  <th>Time</th>
+                  <th className="num">J</th>
+                  <th className="num">G</th>
+                  <th className="num" title="Passes que resultaram em gol">A</th>
+                  <th className="num" title="Defesas, para goleiros">Def</th>
+                  <th className="num">Ama</th>
+                  <th className="num">Verm</th>
+                  <th className="num">Les</th>
+                  <th className="num">V</th>
+                  <th className="num">E</th>
+                  <th className="num">D</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profile.seasons.map(season => (
+                  <tr key={`${season.seasonId ?? 'sem-temporada'}-${season.teamId}`} className="history-row">
+                    <td className="form-season">{season.seasonName || '—'}</td>
+                    <td className="form-opponent">
+                      <ClubName teamId={season.teamId}>{season.teamName || '—'}</ClubName>
+                    </td>
+                    <td className="num">{appearances(season.line)}</td>
+                    <td className="num">{season.line.goals}</td>
+                    <td className="num">{season.line.assists}</td>
+                    {/* A keeper's saves and nobody else's. The column is there for the whole
+                        table rather than only on a keeper's row, so the grid the outfielders
+                        are read on does not change shape halfway down. */}
+                    <td className="num">{isKeeper ? season.line.saves : '—'}</td>
+                    <td className="num">{season.line.yellowCards}</td>
+                    <td className="num">{season.line.redCards}</td>
+                    <td className="num">{season.line.injuries}</td>
+                    <td className="num">{season.wins}</td>
+                    <td className="num">{season.draws}</td>
+                    <td className="num">{season.losses}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+
+        <h3 className="squad-section-title">Partidas</h3>
         <section className="profile-history">
           <div className="profile-history__filters">
             <input

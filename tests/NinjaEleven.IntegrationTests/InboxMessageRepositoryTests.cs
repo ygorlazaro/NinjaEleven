@@ -35,10 +35,13 @@ public class InboxMessageRepositoryTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    private InboxMessage AMessage(string reference, DateTimeOffset createdAt) =>
+    private InboxMessage AMessage(
+        string reference,
+        DateTimeOffset createdAt,
+        InboxCategory category = InboxCategory.Finance) =>
         InboxMessage.Create(
             _club.Id,
-            InboxCategory.Finance,
+            category,
             $"Assunto {reference}",
             "Tesouraria",
             "Conteúdo.",
@@ -73,6 +76,78 @@ public class InboxMessageRepositoryTests : IDisposable
         var second = await _repository.ListAsync(_club.Id, 1, 1);
 
         Assert.Equal("finance:2", Assert.Single(second).Reference);
+    }
+
+    /// <summary>
+    /// A filter narrows which lines are in the page and never reorders them.
+    ///
+    /// Both halves are the point: a manager who asks for his titles is still reading his mail
+    /// by when it arrived, and a filter that grouped them by subject would have put a title
+    /// from March above the one from yesterday.
+    /// </summary>
+    [Fact]
+    public async Task ListAsync_ReadsOneCategoryAndKeepsTheOrderOfTheBox()
+    {
+        var start = new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero);
+        _db.InboxMessages.AddRange(
+            AMessage("title:1", start, InboxCategory.Title),
+            AMessage("finance:1", start.AddHours(1)),
+            AMessage("title:2", start.AddHours(2), InboxCategory.Title));
+        await _db.SaveChangesAsync();
+
+        var page = await _repository.ListAsync(_club.Id, 0, 10, InboxCategory.Title);
+
+        Assert.Equal(["title:2", "title:1"], page.Select(m => m.Reference).ToArray());
+    }
+
+    /// <summary>
+    /// The count is the count of the filter and not the count of the box.
+    ///
+    /// These are asked with the same narrowing for the same reason: a page of titles beside a
+    /// count of everything is a box whose own numbers disagree with its contents, and the
+    /// manager is the one reading both.
+    /// </summary>
+    [Fact]
+    public async Task CountAsync_CountsTheCategoryAndNotTheBox()
+    {
+        var start = new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero);
+        _db.InboxMessages.AddRange(
+            AMessage("finance:1", start),
+            AMessage("finance:2", start.AddHours(1)),
+            AMessage("title:1", start.AddHours(2), InboxCategory.Title));
+        await _db.SaveChangesAsync();
+
+        Assert.Equal(3, await _repository.CountAsync(_club.Id));
+        Assert.Equal(1, await _repository.CountAsync(_club.Id, InboxCategory.Title));
+    }
+
+    /// <summary>
+    /// The column of filters is labelled out of this and nothing else.
+    ///
+    /// It is the whole box and not the page, in the category enum's own order rather than by
+    /// how many of each there are — a filter column that reorders itself after every matchday
+    /// is one a manager has to find again every time the whistle goes.
+    /// </summary>
+    [Fact]
+    public async Task TallyCategoriesAsync_CountsTheWholeBoxByKind()
+    {
+        var start = new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero);
+        _db.InboxMessages.AddRange(
+            AMessage("title:1", start, InboxCategory.Title),
+            AMessage("finance:1", start.AddHours(1)),
+            AMessage("finance:2", start.AddHours(2)),
+            AMessage("report:1", start.AddHours(3), InboxCategory.MatchReport));
+        await _db.SaveChangesAsync();
+
+        var tally = await _repository.TallyCategoriesAsync(_club.Id);
+
+        Assert.Equal(
+            [
+                (InboxCategory.Finance, 2),
+                (InboxCategory.MatchReport, 1),
+                (InboxCategory.Title, 1)
+            ],
+            tally.Select(row => (row.Category, row.Count)).ToArray());
     }
 
     /// <summary>

@@ -51,7 +51,8 @@ public class YouthIntakeTests : IDisposable
         await _dbContext.Seasons.AddAsync(season);
         await _dbContext.SaveChangesAsync();
 
-        await _seeder.GenerateYoungPlayersAsync(season.Id);
+        await _seeder.SeedYoungFreeAgentsAsync(
+            YouthIntakeRules.FreeAgentsPerSeason, season.Id);
 
         var states = await _dbContext.PlayerSeasonStates
             .Where(state => state.SeasonId == season.Id)

@@ -1819,6 +1819,13 @@ window.ArrivalRoundNumber);
                 continue;
             }
 
+            // Academy players cannot be bought — they belong to a club's youth system
+            // until they are promoted to the first team.
+            if (state?.IsAcademyPlayer == true)
+            {
+                continue;
+            }
+
             var listing = BuildListing(
                 player,
                 state,
@@ -2021,6 +2028,132 @@ return new TransferInbox
         };
     }
 
+    /// <summary>
+    /// The four transfer rankings of a division: most players bought, most players sold, most
+    /// money spent, and most profit made. Profit is net — fees received as a seller minus fees
+    /// paid as a buyer — so a club that pays for two and sells one for more than both cost
+    /// appears above a club that bought five for peanuts and sold none.
+    /// </summary>
+    /// <param name="clubId">The manager's own club, to find which division the rankings are for.</param>
+    public async Task<TransferRankings> GetDivisionTransferRankingsAsync(
+        Guid clubId,
+        CancellationToken cancellationToken = default)
+    {
+        var season = await GetCurrentSeasonAsync(cancellationToken);
+        var currentSeasonId = season.Id;
+
+        var division = await _competitions.GetDivisionSeasonForTeamAsync(
+            clubId, currentSeasonId, cancellationToken);
+
+        if (division is null)
+        {
+            return new TransferRankings { CompetitionSeasonId = Guid.Empty };
+        }
+
+        var transfers = await _transfers.ListCompletedByDivisionAsync(division.Id, cancellationToken);
+        if (transfers.Count == 0)
+        {
+            return new TransferRankings { CompetitionSeasonId = division.Id };
+        }
+
+        var teams = (await _teams.ListAsync(cancellationToken)).ToDictionary(t => t.Id, t => t);
+
+        var boughtCount = new Dictionary<Guid, int>();
+        var soldCount = new Dictionary<Guid, int>();
+        var spentTotal = new Dictionary<Guid, decimal>();
+        var receivedTotal = new Dictionary<Guid, decimal>();
+
+        foreach (var transfer in transfers)
+        {
+            var buyer = transfer.BuyingClubId;
+            boughtCount[buyer] = boughtCount.GetValueOrDefault(buyer) + 1;
+            spentTotal[buyer] = spentTotal.GetValueOrDefault(buyer) + transfer.Fee;
+
+            if (transfer.SellingClubId.HasValue)
+            {
+                var seller = transfer.SellingClubId.Value;
+                soldCount[seller] = soldCount.GetValueOrDefault(seller) + 1;
+                receivedTotal[seller] = receivedTotal.GetValueOrDefault(seller) + transfer.Fee;
+            }
+        }
+
+        var allClubIds = new HashSet<Guid>();
+        foreach (var t in transfers)
+        {
+            allClubIds.Add(t.BuyingClubId);
+            if (t.SellingClubId.HasValue)
+                allClubIds.Add(t.SellingClubId.Value);
+        }
+
+        var entries = allClubIds
+            .Select(id => new TransferRankingEntry
+            {
+                TeamId = id,
+                TeamName = teams.GetValueOrDefault(id)?.Name ?? string.Empty,
+                TeamShortName = teams.GetValueOrDefault(id)?.ShortName ?? string.Empty,
+                PrimaryColor = teams.GetValueOrDefault(id)?.PrimaryColor ?? string.Empty,
+                SecondaryColor = teams.GetValueOrDefault(id)?.SecondaryColor ?? string.Empty,
+                Transfers = boughtCount.GetValueOrDefault(id),
+                Amount = spentTotal.GetValueOrDefault(id)
+            })
+            .ToList();
+
+        return new TransferRankings
+        {
+            CompetitionSeasonId = division.Id,
+            MostBought = BuildMostBought(entries, boughtCount),
+            MostSold = BuildMostSold(entries, soldCount),
+            MostSpent = BuildMostSpent(entries, spentTotal),
+            MostProfit = BuildMostProfit(entries, receivedTotal, spentTotal)
+        };
+    }
+
+    private static List<TransferRankingEntry> BuildMostBought(
+        List<TransferRankingEntry> entries,
+        Dictionary<Guid, int> boughtCount) =>
+        entries
+            .Where(e => boughtCount.GetValueOrDefault(e.TeamId) > 0)
+            .OrderByDescending(e => boughtCount[e.TeamId])
+            .ThenByDescending(e => e.Amount)
+            .ToList();
+
+    private static List<TransferRankingEntry> BuildMostSold(
+        List<TransferRankingEntry> entries,
+        Dictionary<Guid, int> soldCount) =>
+        entries
+            .Where(e => soldCount.GetValueOrDefault(e.TeamId) > 0)
+            .OrderByDescending(e => soldCount[e.TeamId])
+            .ThenByDescending(e => e.Amount)
+            .ToList();
+
+    private static List<TransferRankingEntry> BuildMostSpent(
+        List<TransferRankingEntry> entries,
+        Dictionary<Guid, decimal> spentTotal) =>
+        entries
+            .Where(e => spentTotal.GetValueOrDefault(e.TeamId) > 0)
+            .OrderByDescending(e => spentTotal[e.TeamId])
+            .ThenByDescending(e => e.Transfers)
+            .ToList();
+
+    private static List<TransferRankingEntry> BuildMostProfit(
+        List<TransferRankingEntry> entries,
+        Dictionary<Guid, decimal> receivedTotal,
+        Dictionary<Guid, decimal> spentTotal) =>
+        entries
+            .Select(e => new TransferRankingEntry
+            {
+                TeamId = e.TeamId,
+                TeamName = e.TeamName,
+                TeamShortName = e.TeamShortName,
+                PrimaryColor = e.PrimaryColor,
+                SecondaryColor = e.SecondaryColor,
+                Transfers = e.Transfers,
+                Amount = receivedTotal.GetValueOrDefault(e.TeamId) - spentTotal.GetValueOrDefault(e.TeamId)
+            })
+            .OrderByDescending(e => e.Amount)
+            .ThenByDescending(e => e.Transfers)
+            .ToList();
+
     private static TransferHistoryLine BuildHistoryLine(
         Transfer transfer,
         Dictionary<Guid, Team> teams,
@@ -2166,6 +2299,13 @@ return new TransferInbox
     /// would move this season, and the round he would move on. The screen shows the sentence and
     /// does not work the arithmetic out, for the same reason every other number on a screen is
     /// read rather than computed.
+    ///
+    /// <para>
+    /// The sentence names the round the deal is actually waiting for, which is not always the
+    /// first window: a man bought in the middle of the season is waiting for the second one, and
+    /// a label that called that the Supercup would send a manager looking at a match in January
+    /// for a window that closes in April.
+    /// </para>
     /// </summary>
     private static TransferWindowState DescribeTheWindow(int seasonNumber, WindowState window) =>
         new TransferWindowState
@@ -2175,9 +2315,14 @@ return new TransferInbox
             IsOpen = window.IsOpen,
             ArrivalSeasonNumber = window.ArrivalSeasonNumber,
             ArrivalRoundNumber = window.ArrivalRoundNumber,
-            ArrivalLabel = window.ArrivalRoundNumber == TransferWindowRules.FirstArrivalRound
-                ? $"após a {TransferWindowRules.FirstArrivalRound}ª rodada desta temporada"
-                : "após a Supercopa, na próxima temporada"
+            ArrivalLabel = window.ArrivalRoundNumber switch
+            {
+                TransferWindowRules.FirstArrivalRound =>
+                    $"após a {TransferWindowRules.FirstArrivalRound}ª rodada desta temporada",
+                TransferWindowRules.SecondArrivalRound =>
+                    $"após a {TransferWindowRules.SecondArrivalRound}ª rodada desta temporada",
+                _ => "após a Supercopa, na próxima temporada"
+            }
         };
 
     private static TransferProposal BuildProposal(
@@ -2279,7 +2424,8 @@ return new TransferInbox
             HasActiveProposal = hasActiveProposal,
             HasAcceptedProposal = hasAcceptedProposal,
             AskingPrice = askingPrice,
-            Retiring = state?.Retiring ?? false,
+             Retiring = state?.Retiring ?? false,
+             OnTransferList = state?.OnTransferList ?? false,
             Season = new PlayerCareerLine
             {
                 Appearances = state is null ? 0 : 1,
