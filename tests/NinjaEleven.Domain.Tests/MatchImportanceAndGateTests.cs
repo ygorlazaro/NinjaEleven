@@ -1,6 +1,7 @@
 using NinjaEleven.Domain.Competitions;
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Competitions;
+using NinjaEleven.Domain.Matches;
 using NinjaEleven.Domain.Teams;
 using Xunit;
 
@@ -115,6 +116,7 @@ public class AttendanceCalculatorTests
                 Tier: 1,
                 HomePosition: 1,
                 ClubsInDivision: 12,
+                HomeSupporters: 60_000,
                 HomeSquadStars: 5,
                 AwaySquadStars: 5,
                 DivisionAverageStars: 1,
@@ -127,31 +129,78 @@ public class AttendanceCalculatorTests
     }
 
     [Fact]
-    public void An_ordinary_top_flight_match_draws_about_half_the_ground()
+    public void An_ordinary_top_flight_club_sells_out_a_ground_a_ninth_of_its_following()
     {
-        var ground = Ground(50_000);
+        var ground = Ground(5_000);
         ground.SetTicketPrice(Stadium.DefaultTicketPrice);
 
         // A mid-table top-flight club, an average opponent, halfway through the season, on an
-        // ordinary matchday. This is the crowd a ground is actually sized for, and it is worth
-        // knowing that the rules put it in a believable place rather than at a full house.
-        var crowd = AttendanceCalculator.Calculate(
-            ground,
-            new AttendanceContext(
-                Tier: 1,
-                HomePosition: 6,
-                ClubsInDivision: 12,
-                HomeSquadStars: 3,
-                AwaySquadStars: 3,
-                DivisionAverageStars: 3,
-                Matchday: 11,
-                TotalMatchdays: 22,
-                Importance: MatchImportance.Normal),
-            randomFactor: 1.0);
+        // ordinary matchday. Nothing special about the evening — and the ground is still full,
+        // because the club has forty-five thousand people and five thousand seats.
+        var context = new AttendanceContext(
+            Tier: 1,
+            HomePosition: 6,
+            ClubsInDivision: 12,
+            HomeSupporters: 45_000,
+            HomeSquadStars: 3,
+            AwaySquadStars: 3,
+            DivisionAverageStars: 3,
+            Matchday: 11,
+            TotalMatchdays: 22,
+            Importance: MatchImportance.Normal);
 
-        var share = (double)crowd / ground.Capacity;
+        var crowd = AttendanceCalculator.Calculate(ground, context, randomFactor: 1.0);
+        var demand = AttendanceCalculator.Demand(context, ground.TicketPrice, 1.0);
 
-        Assert.InRange(share, 0.30, 0.70);
+        Assert.Equal(ground.Capacity, crowd);
+        Assert.True(demand > crowd, "The whole point: more wanted to come than could be let in.");
+    }
+
+    /// <summary>
+    /// The demand is what a club's finances turn on when its ground is big enough, and hiding
+    /// it inside the attendance hid the only number that argues for a new stand.
+    /// </summary>
+    [Fact]
+    public void How_many_people_wanted_to_come_is_not_the_same_question_as_how_many_came()
+    {
+        var ground = Ground(5_000);
+
+        var context = new AttendanceContext(
+            Tier: 1, HomePosition: 6, ClubsInDivision: 12, HomeSupporters: 45_000,
+            HomeSquadStars: 3, AwaySquadStars: 3, DivisionAverageStars: 3,
+            Matchday: 11, TotalMatchdays: 22, Importance: MatchImportance.Normal);
+
+        Assert.Equal(
+            AttendanceCalculator.Calculate(ground, context, 1.0),
+            Math.Min(AttendanceCalculator.Demand(context, ground.TicketPrice, 1.0), ground.Capacity));
+
+        // And a ground with room for all of them sells all of them, so the two numbers converge
+        // exactly where the club has outgrown the argument for building.
+        var roomy = Ground(80_000);
+
+        Assert.Equal(
+            AttendanceCalculator.Demand(context, roomy.TicketPrice, 1.0),
+            AttendanceCalculator.Calculate(roomy, context, 1.0));
+    }
+
+    /// <summary>
+    /// A bigger following fills a bigger ground, which is what the old model could not say.
+    /// </summary>
+    [Fact]
+    public void AClubWithMoreSupportDrawsMorePeople_whatever_theGroundHolds()
+    {
+        var roomy = Ground(80_000);
+
+        var modest = roomyCapacityIsNotTheAnswer
+            (new AttendanceContext(1, 6, 12, 5_000, 3, 3, 3, 11, 22, MatchImportance.Normal));
+
+        var huge = roomyCapacityIsNotTheAnswer
+            (new AttendanceContext(1, 6, 12, 60_000, 3, 3, 3, 11, 22, MatchImportance.Normal));
+
+        Assert.True(huge > modest * 5, $"{huge} is not the same crowd as {modest}.");
+
+        static int roomyCapacityIsNotTheAnswer(AttendanceContext context) =>
+            AttendanceCalculator.Demand(context, Stadium.DefaultTicketPrice, 1.0);
     }
 
     [Fact]
@@ -168,6 +217,7 @@ public class AttendanceCalculatorTests
                 Tier: 3,
                 HomePosition: 12,
                 ClubsInDivision: 12,
+                HomeSupporters: 1_500,
                 HomeSquadStars: 1,
                 AwaySquadStars: 1,
                 DivisionAverageStars: 1,
@@ -185,21 +235,48 @@ public class AttendanceCalculatorTests
     {
         var crowd = AttendanceCalculator.Calculate(
             Ground(0),
-            new AttendanceContext(1, 1, 12, 3, 3, 3, 1, 22, MatchImportance.Normal),
+            new AttendanceContext(1, 1, 12, 30_000, 3, 3, 3, 1, 22, MatchImportance.Normal),
             randomFactor: 1);
 
         Assert.Equal(0, crowd);
     }
 
+    /// <summary>
+    /// The division is no longer a factor in a crowd.
+    ///
+    /// <para>
+    /// This is the inversion, stated as the test that holds it. There used to be a table here
+    /// saying the first division draws more than the second, multiplied into every crowd — and
+    /// multiplied into a number that already carried the division, because the crowd comes from
+    /// the club's own ladder. Counting it twice made a small ground look busy in the small
+    /// divisions, which is the one direction in which that table was doing harm.
+    /// </para>
+    /// </summary>
     [Fact]
-    public void The_top_division_draws_more_than_the_one_below_it()
+    public void The_division_moved_out_of_the_crowd_and_into_the_clubs_own_following()
     {
-        var top = AttendanceCalculator.DivisionFactor(1);
-        var second = AttendanceCalculator.DivisionFactor(2);
-        var third = AttendanceCalculator.DivisionFactor(3);
+        var sameMatchApartFromTheClub = new[]
+        {
+            new AttendanceContext(1, 6, 12, 45_000, 3, 3, 3, 11, 22, MatchImportance.Normal),
+            new AttendanceContext(2, 6, 12, 45_000, 3, 3, 3, 11, 22, MatchImportance.Normal),
+            new AttendanceContext(3, 6, 12, 45_000, 3, 3, 3, 11, 22, MatchImportance.Normal),
+            new AttendanceContext(4, 6, 12, 45_000, 3, 3, 3, 11, 22, MatchImportance.Normal)
+        };
 
-        Assert.True(top > second, "A 1ª Divisão should draw more than a 2ª.");
-        Assert.True(second > third, "A 2ª Divisão should draw more than a 3ª.");
+        var crowds = sameMatchApartFromTheClub
+            .Select(context => AttendanceCalculator.Demand(context, Stadium.DefaultTicketPrice, 1.0))
+            .ToList();
+
+        Assert.True(crowds.Distinct().Count() == 1, "The tier still moves a crowd.");
+
+        // And the division is told apart by the following, which is a ladder and not a table
+        // that has to be kept in step with it.
+        var ladder = new[] { 1, 2, 3, 4 }
+            .Select(FanBaseRules.LadderFor)
+            .Select(levels => levels.Middle)
+            .ToList();
+
+        Assert.Equal(ladder.OrderByDescending(middle => middle).ToList(), ladder);
     }
 
     [Fact]
@@ -228,6 +305,7 @@ public class AttendanceCalculatorTests
                 Tier: 3,
                 HomePosition: 12,
                 ClubsInDivision: 12,
+                HomeSupporters: 5_000,
                 HomeSquadStars: 1,
                 AwaySquadStars: 5,
                 DivisionAverageStars: 1.5,
@@ -245,12 +323,12 @@ public class AttendanceCalculatorTests
     {
         var below = AttendanceCalculator.Calculate(
             Ground(10_000),
-            new AttendanceContext(1, 1, 12, 3, 3, 3, 1, 22, MatchImportance.Normal),
+            new AttendanceContext(1, 1, 12, 30_000, 3, 3, 3, 1, 22, MatchImportance.Normal),
             randomFactor: 0.01);
 
         var atFloor = AttendanceCalculator.Calculate(
             Ground(10_000),
-            new AttendanceContext(1, 1, 12, 3, 3, 3, 1, 22, MatchImportance.Normal),
+            new AttendanceContext(1, 1, 12, 30_000, 3, 3, 3, 1, 22, MatchImportance.Normal),
             randomFactor: AttendanceCalculator.RandomFloor);
 
         Assert.Equal(atFloor, below);
@@ -317,5 +395,109 @@ public class GateReceiptTests
     public void A_negative_crowd_is_refused_rather_than_earning_money()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => GateReceipt.For(-1, 10m, Championship));
+    }
+}
+
+/// <summary>
+/// The two numbers a ground is judged by, and the one rule about how they came to be.
+/// </summary>
+public class GatePressureTests
+{
+    private static Stadium Ground(int capacity)
+    {
+        var ground = Stadium.Create(Guid.NewGuid(), "Clube Teste");
+        ground.SetCapacity(capacity);
+        return ground;
+    }
+
+    private static AttendanceContext AFullHouse(int supporters) => new(
+        Tier: 1,
+        HomePosition: 1,
+        ClubsInDivision: 16,
+        HomeSupporters: supporters,
+        HomeSquadStars: 5,
+        AwaySquadStars: 5,
+        DivisionAverageStars: 3,
+        Matchday: 30,
+        TotalMatchdays: 30,
+        Importance: MatchImportance.Normal);
+
+    /// <summary>
+    /// A match keeps what the crowd wanted as well as what the ground would take.
+    ///
+    /// <para>
+    /// This is the whole of the expansion system. Attendance is capped by the capacity, so a
+    /// sold-out ground of five thousand reads exactly like a comfortably large one, and a club
+    /// being turned away every week is indistinguishable from a club whose ground is the right
+    /// size — unless the number the ceiling was applied to is kept beside it.
+    /// </para>
+    ///
+    /// <para>
+    /// So the match records both, and the rule is that they are about <em>one evening</em>: the
+    /// same seed, the same draw, the same night. A demand recomputed later from the club's
+    /// following has to invent the table position and the matchday the match was played in, and
+    /// an invented number printed as the engine's is the one thing a manager must never be shown.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData(200, 60_000)]
+    [InlineData(5_000, 45_000)]
+    [InlineData(5_000, 12_000)]
+    [InlineData(80_000, 5_000)]
+    public void A_match_records_what_the_crowd_wanted_and_what_the_ground_took(
+        int capacity,
+        int supporters)
+    {
+        var ground = Ground(capacity);
+        var match = Match.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), CompetitionType.League);
+
+        match.KickOff(seed: 20_260_103, ground, AFullHouse(supporters));
+
+        Assert.NotNull(match.Demand);
+        Assert.True(match.Attendance <= capacity, $"{match.Attendance} into a ground of {capacity}.");
+
+        // Attendance is the demand with the wall in front of it, and never above it.
+        Assert.True(
+            match.Attendance <= match.Demand,
+            $"{match.Attendance} came through and {match.Demand} wanted in.");
+
+        // And when the ground was not the constraint, the two are the same number — a club
+        // nobody is being turned away from has no pressure to relieve.
+        if (match.Demand <= capacity)
+        {
+            Assert.Equal(match.Demand, match.Attendance);
+        }
+    }
+
+    /// <summary>
+    /// A ground that turns people away is a ground with something to say about it.
+    /// </summary>
+    [Fact]
+    public void AGroundThatTurnsPeopleAwaySaysSo()
+    {
+        var ground = Ground(2_000);
+        var match = Match.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), CompetitionType.League);
+
+        match.KickOff(seed: 20_260_103, ground, AFullHouse(60_000));
+
+        Assert.Equal(2_000, match.Attendance);
+        Assert.True(match.Demand > 2_000, $"Only {match.Demand} wanted in.");
+    }
+
+    /// <summary>
+    /// The same evening twice is the same two numbers twice.
+    /// </summary>
+    [Fact]
+    public void AReplayedMatchFillsTheSameSeatsAndWantsTheSamePeople()
+    {
+        var ground = Ground(5_000);
+        var first = Match.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), CompetitionType.League);
+        var second = Match.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), CompetitionType.League);
+
+        first.KickOff(seed: 7, ground, AFullHouse(45_000));
+        second.KickOff(seed: 7, ground, AFullHouse(45_000));
+
+        Assert.Equal(first.Attendance, second.Attendance);
+        Assert.Equal(first.Demand, second.Demand);
     }
 }

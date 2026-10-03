@@ -289,6 +289,8 @@ public class DatabaseSeeder : IDataSeeder
             await GiveIdentitiesToTheWorldAlreadySeededAsync(cancellationToken);
             await GiveShirtNumbersToTheWorldAlreadySeededAsync(cancellationToken);
             await GiveWagesToTheWorldAlreadySeededAsync(cancellationToken);
+            await GiveFanBasesToTheWorldAlreadySeededAsync(cancellationToken);
+            await SizeTheGroundsOfTheWorldAlreadySeededAsync(cancellationToken);
             await GiveManagersToTheWorldAlreadySeededAsync(random, cancellationToken);
             await OpenTheBooksOfTheWorldAlreadySeededAsync(cancellationToken);
             await GenerateAcademyIntakeForInProgressSeasonAsync(cancellationToken);
@@ -306,6 +308,8 @@ public class DatabaseSeeder : IDataSeeder
         await GiveIdentitiesToTheWorldAlreadySeededAsync(cancellationToken);
         await GiveShirtNumbersToTheWorldAlreadySeededAsync(cancellationToken);
         await GiveWagesToTheWorldAlreadySeededAsync(cancellationToken);
+        await GiveFanBasesToTheWorldAlreadySeededAsync(cancellationToken);
+        await SizeTheGroundsOfTheWorldAlreadySeededAsync(cancellationToken);
         await GiveManagersToTheWorldAlreadySeededAsync(random, cancellationToken);
         await OpenTheBooksOfTheWorldAlreadySeededAsync(cancellationToken);
     }
@@ -395,9 +399,20 @@ public class DatabaseSeeder : IDataSeeder
             var edition = leagueEditions[tier - 1];
             
             participants.Add(CompetitionParticipant.Create(edition.Id, team.Id));
-            
-            _logger.LogInformation("Club {ClubName} assigned to {Division} (strength: {Strength:F2})", 
-                team.Name, CompetitionRules.DivisionName(tier), strength);
+
+            // The ground is sized to the division the club has just been put in, rather than
+            // being handed the same five thousand seats as everybody else. A first division
+            // club's ground is the one whose best following will not fit in it; a fourth
+            // division club's is one it can nearly fill, and the whole point of the ladder is
+            // that the pressure to build is the same everywhere in it.
+            team.Stadium!.SetCapacity(StadiumRules.CapacityFor(tier));
+
+            _logger.LogInformation(
+                "Club {ClubName} assigned to {Division} (strength: {Strength:F2}, {Seats} seats)",
+                team.Name,
+                CompetitionRules.DivisionName(tier),
+                strength,
+                StadiumRules.CapacityFor(tier));
         }
 
         _dbContext.Seasons.Add(season);
@@ -1163,6 +1178,265 @@ public class DatabaseSeeder : IDataSeeder
     /// <summary>
     /// The books of a world that was seeded before clubs had one.
     /// </summary>
+    /// <summary>
+    /// Gives a club a crowd if it has never been given one.
+    ///
+    /// <para>
+    /// A club's crowd is seeded rather than derived, so a world that was drawn before crowds
+    /// existed has sixty-four clubs with a ground and no one to fill it — and a match played in
+    /// that world would ask a question about a number nobody has answered. This is the same
+    /// answer <see cref="GiveIdentitiesToTheWorldAlreadySeededAsync"/> gives about crests: the
+    /// world has to have been drawn under every rule the game now holds, whether it was drawn
+    /// under this one or not.
+    /// </para>
+    ///
+    /// <para>
+    /// It writes one row per club for the newest season and only for the clubs that have none,
+    /// so running it a second time — or running it on a world that was drawn with this rule from
+    /// the start — writes nothing. That is the whole reason it exists as a gap-fill and not as a
+    /// re-seed: a crowd that moved because the process started again would be a crowd grown by a
+    /// deployment.
+    /// </para>
+    ///
+    /// <para>
+    /// Where a club sits on its division's ladder is read off its own squad, and the squad is
+    /// what the world already knows: the strongest club in the first division is seeded near the
+    /// top of the first division's ladder and the weakest near the bottom of it, so a division's
+    /// crowds differ the way its clubs differ. A club in no division of all — a world whose
+    /// pyramid has not been drawn yet — is seeded as the middle of the second division, which is
+    /// the honest middle of a four-division world rather than the bottom of it.
+    /// </para>
+    /// </summary>
+    private async Task GiveFanBasesToTheWorldAlreadySeededAsync(CancellationToken cancellationToken)
+    {
+        var season = await _dbContext.Seasons
+            .OrderByDescending(candidate => candidate.Number)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (season is null)
+        {
+            return;
+        }
+
+        var withACrowd = await _dbContext.TeamFanBases
+            .Where(fanBase => fanBase.SeasonId == season.Id)
+            .Select(fanBase => fanBase.TeamId)
+            .ToListAsync(cancellationToken);
+
+        var withoutACrowd = await _dbContext.Teams
+            .Where(team => !withACrowd.Contains(team.Id))
+            .Select(team => team.Id)
+            .ToListAsync(cancellationToken);
+
+        if (withoutACrowd.Count == 0)
+        {
+            return;
+        }
+
+        var tierByTeam = await (
+            from participant in _dbContext.CompetitionParticipants.AsNoTracking()
+            join edition in _dbContext.CompetitionSeasons.AsNoTracking() on participant.CompetitionSeasonId equals edition.Id
+            join division in _dbContext.Divisions.AsNoTracking() on edition.DivisionId equals division.Id
+            where edition.SeasonId == season.Id
+            select new { participant.TeamId, division.Tier })
+            .ToListAsync(cancellationToken);
+
+        var strengths = await StrengthOfTheLiveSquadsAsync(withoutACrowd, cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+        var tier = 2;
+        var crowd = 0;
+        var ranked = strengths
+            .Where(entry => tierByTeam.Any(candidate => candidate.TeamId == entry.TeamId))
+            .GroupBy(entry => tierByTeam.First(candidate => candidate.TeamId == entry.TeamId).Tier)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(entry => entry.Strength).ToList());
+
+        _dbContext.TeamFanBases.AddRange(withoutACrowd.Select(teamId =>
+        {
+            var knownTier = tierByTeam.FirstOrDefault(candidate => candidate.TeamId == teamId).Tier;
+            var division = knownTier > 0 ? knownTier : tier;
+
+            // A division nobody has drawn gives every club the same percentile, and a percentile
+            // of zero is the bottom of the ladder — so an undrawn pyramid would seed a whole
+            // world of four-thivision minnows. Half is the middle, which is what a club whose
+            // place in the pyramid is not yet known deserves.
+            var percentile = PercentileOf(ranked, division, teamId);
+
+            var supporters = FanBaseRules.SeedFor(division, percentile);
+            crowd++;
+
+            return TeamFanBase.Create(teamId, season.Id, supporters, now);
+        }));
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Gave a crowd to {Count} clubs that had none.", crowd);
+    }
+
+    /// <summary>
+    /// A world that was seeded before grounds were sized to their division has sixty-four grounds
+    /// of five thousand seats, which is the one size that is wrong for three of the four
+    /// divisions: a fourth-division club's best following fills a twelfth of it and its gate is a
+    /// tenth of what a first-division club's is.
+    ///
+    /// <para>
+    /// This runs beside the crowd backfill and on the same terms — it fills a gap and it never
+    /// overwrites. A club whose ground already matches its division is left alone, so a manager
+    /// who has expanded to ten thousand seats keeps them: capacity here is only ever the size a
+    /// ground is <em>born</em> with, and an expanded ground is a different building.
+    /// </para>
+    ///
+    /// <para>
+    /// Nothing already played changes. A past attendance was recorded against the ground of the
+    /// day, and the season it was recorded in is not reopened by a rule about the next one.
+    /// </para>
+    /// </summary>
+    private async Task SizeTheGroundsOfTheWorldAlreadySeededAsync(CancellationToken cancellationToken)
+    {
+        var season = await _dbContext.Seasons
+            .OrderByDescending(candidate => candidate.Number)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (season is null)
+        {
+            return;
+        }
+
+        var tierByTeam = await (
+            from participant in _dbContext.CompetitionParticipants.AsNoTracking()
+            join edition in _dbContext.CompetitionSeasons.AsNoTracking() on participant.CompetitionSeasonId equals edition.Id
+            join division in _dbContext.Divisions.AsNoTracking() on edition.DivisionId equals division.Id
+            where edition.SeasonId == season.Id
+            select new { participant.TeamId, division.Tier })
+            .ToListAsync(cancellationToken);
+
+        if (tierByTeam.Count == 0)
+        {
+            return;
+        }
+
+        var teamIds = tierByTeam.Select(entry => entry.TeamId).ToList();
+
+        // A club that has already had a ground worked on is left alone. The expansion was costed
+        // against what the ground was when it was bought, and a rule about how grounds are sized
+        // has no business moving the building a manager has already paid for.
+        var workedOn = await _dbContext.StadiumConstructions
+            .AsNoTracking()
+            .Where(construction => teamIds.Contains(construction.ClubId))
+            .Select(construction => construction.ClubId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var grounds = await _dbContext.Stadiums
+            .Where(stadium => teamIds.Contains(stadium.ClubId))
+            .ToListAsync(cancellationToken);
+
+        var resized = 0;
+        var leftAlone = 0;
+
+        foreach (var ground in grounds)
+        {
+            var tier = tierByTeam.First(entry => entry.TeamId == ground.ClubId).Tier;
+            var capacity = StadiumRules.CapacityFor(tier);
+
+            if (ground.Capacity == capacity)
+            {
+                continue;
+            }
+
+            if (workedOn.Contains(ground.ClubId))
+            {
+                leftAlone++;
+                continue;
+            }
+
+            ground.SetCapacity(capacity);
+            resized++;
+        }
+
+        if (resized > 0)
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        _logger.LogInformation(
+            "Sized {Resized} grounds to the division their club is in, leaving {LeftAlone} a manager has already worked on.",
+            resized,
+            leftAlone);
+    }
+
+    /// <summary>
+    /// Where a club's squad sits among the squads of its own division: zero for the weakest and
+    /// one for the strongest. A club whose division has no other squad to be ranked against is
+    /// the middle, because nothing has been said about it either way.
+    ///
+    /// <para>
+    /// The list it reads arrives best-first, so the strongest club is at index zero — and a
+    /// percentile of zero is the bottom of the ladder. The two ends are therefore inverted on
+    /// the way out, and getting that backwards is invisible from here: every club is handed a
+    /// number, every number is inside the division's own band, and the only thing that is wrong
+    /// is that the country is exactly upside down.
+    /// </para>
+    /// </summary>
+    private static double PercentileOf(
+        Dictionary<int, List<(Guid TeamId, double Strength)>> ranked,
+        int tier,
+        Guid teamId)
+    {
+        if (!ranked.TryGetValue(tier, out var division) || division.Count <= 1)
+        {
+            return 0.5;
+        }
+
+        var index = division.FindIndex(entry => entry.TeamId == teamId);
+
+        if (index < 0)
+        {
+            return 0.5;
+        }
+
+        return 1.0 - ((double)index / (division.Count - 1));
+    }
+
+    /// <summary>
+    /// The strength of every club's live squad, read as one set.
+    ///
+    /// The whole world is read in two queries rather than one per club, because a question asked
+    /// sixty-four times is a question this codebase has already learned not to ask.
+    /// </summary>
+    private async Task<List<(Guid TeamId, double Strength)>> StrengthOfTheLiveSquadsAsync(
+        IReadOnlyCollection<Guid> teamIds,
+        CancellationToken cancellationToken)
+    {
+        var memberships = await _dbContext.TeamMemberships
+            .AsNoTracking()
+            .Where(membership => membership.EndDate == null && teamIds.Contains(membership.TeamId))
+            .ToListAsync(cancellationToken);
+
+        if (memberships.Count == 0)
+        {
+            return new List<(Guid, double)>();
+        }
+
+        var playerIds = memberships.Select(membership => membership.PlayerId).Distinct().ToList();
+
+        var players = await _dbContext.Players
+            .AsNoTracking()
+            .Where(player => playerIds.Contains(player.Id))
+            .ToDictionaryAsync(player => player.Id, cancellationToken);
+
+        return memberships
+            .Where(membership => players.ContainsKey(membership.PlayerId))
+            .GroupBy(membership => membership.TeamId)
+            .Select(group => (
+                group.Key,
+                PlayerRating.CalculateTeamStars(
+                    group.Select(membership => players[membership.PlayerId]).ToList())))
+            .ToList();
+    }
+
     private async Task OpenTheBooksOfTheWorldAlreadySeededAsync(CancellationToken cancellationToken)
     {
         var season = await _dbContext.Seasons

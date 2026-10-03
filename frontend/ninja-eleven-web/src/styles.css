@@ -90,6 +90,29 @@ button { cursor: pointer; }
 .sidebar-brand__eleven { color: var(--accent); }
 
 .sidebar-nav { display: grid; gap: 4px; }
+
+/* Who is signed in, and the way out. It sits under the column rather than among the links,
+   because it is the only thing down here that is not a place: the links open a screen inside
+   a career and this ends the one. `margin-top: auto` pins it to the bottom of the column, so
+   it is in the same place on every screen rather than riding up and down with the length of
+   the list above it. */
+.sidebar-account {
+  margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line);
+  display: grid; gap: 8px; justify-items: stretch;
+}
+.sidebar-account__email {
+  color: var(--muted); font-size: 11px; line-height: 1.2;
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.sidebar-account__signout {
+  padding: 8px 10px; border-radius: 9px; cursor: pointer;
+  background: transparent; border: 1px solid var(--line);
+  color: var(--muted); font-size: 13px; font-family: inherit;
+}
+.sidebar-account__signout:hover {
+  color: var(--red); border-color: var(--red); background: #10202e;
+}
+.sidebar-account__signout:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .sidebar-link {
   display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px;
   padding: 9px 10px; border-radius: 9px; text-decoration: none;
@@ -4822,3 +4845,128 @@ button.shirt-number:hover .shirt-number__icon { color: var(--accent); opacity: 1
 .sponsor-card__head { display: flex; align-items: center; gap: 8px; }
 .sponsor-card__head svg { flex: 0 0 auto; }
 .sponsor-master__logo { flex: 0 0 auto; }
+
+/* What came through the turnstiles against what wanted to. The two are drawn apart because one
+   of them on its own is a lie: the gate is capped by the capacity, so a full ground and a
+   comfortably big one print the same number, and the club being turned away every week would
+   read as a club whose ground is the right size. */
+.crowd-pressure { margin-top: 1rem; }
+
+/* The bar's width is the occupancy the backend worked out. A bar only has a width, so reading
+   one off the number it was sent is not a second opinion about the number. */
+.crowd-pressure__bar {
+  height: 8px;
+  border-radius: 999px;
+  background: #16283a;
+  overflow: hidden;
+  margin-bottom: .7rem;
+}
+.crowd-pressure__bar > div { height: 100%; background: var(--team-primary); }
+
+/* A ground that turns people away is drawn in the hot colour, and one nobody wants to see the
+   inside of is not. The class is the only thing the client decides about any of these numbers. */
+.crowd-pressure__figure--hot .crowd-pressure__value { color: var(--orange); }
+
+.crowd-pressure__figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: .6rem;
+}
+.crowd-pressure__figure {
+  display: flex;
+  flex-direction: column;
+  gap: .1rem;
+  padding: .6rem .5rem;
+  background: rgba(255, 255, 255, .05);
+  border-radius: 10px;
+}
+.crowd-pressure__value {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.crowd-pressure__label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+/* The building site and the three projects. A manager is choosing one of three, so the screen
+   offers three — a shelf of every possible stand would be a screen asking a question the
+   catalogue cannot answer. */
+.stadium-works { margin-top: 1.1rem; }
+
+.stadium-catalogue {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: .6rem;
+}
+.stadium-project {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  padding: .7rem .6rem;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.stadium-project__seats { font-weight: 700; }
+.stadium-project__cost { color: var(--accent); font-variant-numeric: tabular-nums; }
+.stadium-project__rounds { color: var(--muted); font-size: 12px; }
+
+.stadium-work {
+  padding: .75rem .7rem;
+  background: rgba(255, 180, 91, .10);
+  border: 1px solid rgba(255, 180, 91, .38);
+  border-radius: 10px;
+}
+.stadium-work__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .6rem;
+  margin-bottom: .2rem;
+}
+.stadium-work__cost { color: var(--orange); font-variant-numeric: tabular-nums; }
+
+/* The rivals. The five bands are on the wire rather than summed here, because a manager cannot
+   act on "0.66" and can act on "you have met them six times and split them". */
+.club-rivals { margin-top: 1.1rem; }
+
+.rival {
+  padding: .7rem .7rem;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: .5rem;
+}
+.rival__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .6rem;
+}
+.rival__score {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 700;
+}
+.rival__record {
+  margin: .15rem 0 .5rem;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.rival__bands {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: .35rem .7rem;
+}
+.rival__band { display: flex; flex-direction: column; gap: .15rem; }
+.rival__band-label {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}

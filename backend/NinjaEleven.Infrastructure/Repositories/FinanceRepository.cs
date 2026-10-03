@@ -24,6 +24,46 @@ public class FinanceRepository : IFinanceRepository
             .OrderByDescending(movement => movement.Sequence)
             .FirstOrDefaultAsync(cancellationToken);
 
+    public async Task<IReadOnlyDictionary<Guid, FinanceMovement>> GetLastForTeamsAsync(
+        IEnumerable<Guid> teamIds,
+        CancellationToken cancellationToken = default)
+    {
+        var wanted = teamIds.Distinct().ToList();
+
+        if (wanted.Count == 0)
+        {
+            return new Dictionary<Guid, FinanceMovement>();
+        }
+
+        // Two queries because one query could not be written: the newest line per club is a
+        // grouped maximum followed by a fetch, and the provider will not translate a
+        // "take the last row out of each group" in one expression. Both halves are still set
+        // reads, which is the part that matters — sixty-four clubs is one pair of round trips
+        // rather than sixty-four of them.
+        var heads = await (
+                from movement in _dbContext.FinanceMovements.AsNoTracking()
+                where wanted.Contains(movement.TeamId)
+                group movement by movement.TeamId into club
+                select new { TeamId = club.Key, Sequence = club.Max(candidate => candidate.Sequence) })
+            .ToListAsync(cancellationToken);
+
+        if (heads.Count == 0)
+        {
+            return new Dictionary<Guid, FinanceMovement>();
+        }
+
+        var last = await (
+                from movement in _dbContext.FinanceMovements.AsNoTracking()
+                join head in heads on movement.TeamId equals head.TeamId
+                where movement.Sequence == head.Sequence
+                select movement)
+            .ToListAsync(cancellationToken);
+
+        // A club with an empty book is absent rather than present with a balance of zero: it has
+        // no balance, and a zero here would be read as a bankrupt one.
+        return last.ToDictionary(movement => movement.TeamId);
+    }
+
     public async Task<bool> ExistsInSeasonAsync(
         Guid teamId,
         Guid seasonId,

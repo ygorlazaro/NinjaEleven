@@ -104,6 +104,61 @@ public class MatchRepository : IMatchRepository
             .Where(statistics => matchIds.Contains(statistics.MatchId))
             .ToDictionaryAsync(statistics => statistics.MatchId, cancellationToken);
 
+    public async Task<IReadOnlyDictionary<Guid, HomeGateReading>> ReadHomeGatesAsync(
+        Guid seasonId,
+        IEnumerable<Guid> teamIds,
+        CancellationToken cancellationToken = default)
+    {
+        var wanted = teamIds.Distinct().ToList();
+
+        if (wanted.Count == 0)
+        {
+            return new Dictionary<Guid, HomeGateReading>();
+        }
+
+        // One query, and the two averages are taken over the rows that actually hold each
+        // number rather than over a zero standing in for a missing one. A club that has not
+        // recorded its pressure yet returns a measured gate and an unmeasured demand, which is
+        // what its rows say.
+        var rows = await (
+                from match in _dbContext.Matches.AsNoTracking()
+                join fixture in _dbContext.Fixtures.AsNoTracking() on match.FixtureId equals fixture.Id
+                join round in _dbContext.Rounds.AsNoTracking() on fixture.RoundId equals round.Id
+                join edition in _dbContext.CompetitionSeasons.AsNoTracking()
+                    on round.CompetitionSeasonId equals edition.Id
+                where wanted.Contains(match.HomeTeamId)
+                    && edition.SeasonId == seasonId
+                    && match.Status == MatchStatus.Finished
+                group match by match.HomeTeamId into club
+                select new
+                {
+                    TeamId = club.Key,
+                    HomeMatches = club.Count(),
+                    AverageAttendance = club.Average(candidate => (double)candidate.Attendance),
+                    AverageDemand = club
+                        .Where(candidate => candidate.Demand != null)
+                        .Select(candidate => (double)candidate.Demand!.Value)
+                        .ToList()
+                        .Count == 0
+                            ? (double?)null
+                            : club
+                                .Where(candidate => candidate.Demand != null)
+                                .Average(candidate => (double)candidate.Demand!.Value),
+                    BestGate = club.Max(candidate => candidate.Attendance)
+                })
+            .ToListAsync(cancellationToken);
+
+        return rows.ToDictionary(
+            row => row.TeamId,
+            row => new HomeGateReading
+            {
+                HomeMatches = row.HomeMatches,
+                AverageAttendance = row.AverageAttendance,
+                AverageDemand = row.AverageDemand,
+                BestGate = row.BestGate
+            });
+    }
+
     public async Task AddAsync(Match match, CancellationToken cancellationToken = default) =>
         await _dbContext.Matches.AddAsync(match, cancellationToken);
 

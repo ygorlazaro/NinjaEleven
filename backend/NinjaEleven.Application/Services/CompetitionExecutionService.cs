@@ -62,6 +62,8 @@ public class CompetitionExecutionService
     private readonly StatementService _statements;
     private readonly AcademyService _academy;
     private readonly SponsorOfferService _sponsors;
+    private readonly StadiumService _stadiums;
+    private readonly NpcStadiumService _npcStadiums;
     private readonly IOptions<WorldExecutionOptions> _options;
     private readonly ILogger<CompetitionExecutionService> _logger;
 
@@ -84,6 +86,8 @@ public class CompetitionExecutionService
         ISeasonCalendarBuilder calendar,
         StatementService statements,
         AcademyService academy,
+        StadiumService stadiums,
+        NpcStadiumService npcStadiums,
         SponsorOfferService sponsors,
         IOptions<WorldExecutionOptions> options,
         ILogger<CompetitionExecutionService> logger)    {
@@ -100,6 +104,8 @@ public class CompetitionExecutionService
         _calendar = calendar;
         _statements = statements;
         _academy = academy;
+        _stadiums = stadiums;
+        _npcStadiums = npcStadiums;
         _sponsors = sponsors;
         _player = player;
         _cleaner = cleaner;
@@ -265,8 +271,14 @@ public class CompetitionExecutionService
     /// <summary>
     /// Plays every window of one kind of competition that the calendar says is due.
     ///
+    /// <para>
     /// This is what a scheduled job calls, and it is the whole of what a scheduled job is: a
-    /// question to the calendar and a walk over the answer.
+    /// question to the calendar and a walk over the answer. It settles the world afterwards —
+    /// the day's books, the academy, the NPC shirts and the close of the season — so that a
+    /// world nobody is watching reaches the same state a world somebody is pressing buttons in
+    /// does. A scheduler that only played football was not a scheduler of a season; it was a
+    /// scheduler of a season's fixtures, and the season it played never ended.
+    /// </para>
     /// </summary>
     public async Task<IReadOnlyList<RoundRun>> PlayDueRoundsAsync(
         CompetitionType wave,
@@ -285,6 +297,13 @@ public class CompetitionExecutionService
         if (due.Count == 0)
         {
             _logger.LogDebug("No {Wave} window is due. The world is where the calendar says it is.", wave);
+
+            // Nothing to play is not nothing to do: a season whose close threw on the poll that
+            // finished its football is still open, and this is the poll that finds it again.
+            await SettleTheWorldAfterTheSchedulerWalkedAsync(
+                Array.Empty<DueRound>(),
+                cancellationToken);
+
             return Array.Empty<RoundRun>();
         }
 
@@ -301,6 +320,8 @@ public class CompetitionExecutionService
             cancellationToken.ThrowIfCancellationRequested();
             runs.Add(await PlayRoundAsync(round.RoundId, managerTeamId, cancellationToken));
         }
+
+        await SettleTheWorldAfterTheSchedulerWalkedAsync(due, cancellationToken);
 
         return runs;
     }
@@ -375,6 +396,55 @@ public class CompetitionExecutionService
             runs.Add(await PlayRoundAsync(round.Id, managerTeamId, cancellationToken));
         }
 
+        await RunTheBookkeepingOfTheDayAsync(season, day, cancellationToken);
+
+        _logger.LogInformation(
+            "Advanced by hand: day {Number} ({Date}), the {Wave} window, {Rounds} window(s) played.",
+            day.Number,
+            day.Date,
+            wave,
+            runs.Count);
+
+        var closed = await CloseTheSeasonIfItIsOverAsync(season, cancellationToken);
+
+        return new WorldAdvance(
+            closed.SeasonClosed ? WorldAdvanceKind.SeasonClosed : WorldAdvanceKind.Window,
+            season.Id,
+            season.Name,
+            day.Number,
+            day.Date,
+            wave,
+            runs,
+            closed.SeasonClosed,
+            closed.SeasonOpened);
+    }
+
+    /// <summary>
+    /// Everything the world owes itself once a day of football has been walked: the week's
+    /// books, the academy, and a shirt for every club nobody is running.
+    ///
+    /// <para>
+    /// It is one method rather than three because a season only works when all three happen,
+    /// and they had drifted apart: they were written here as if the scheduler walked the world,
+    /// and they were called only from <see cref="AdvanceTheWorldAsync"/>. A world nobody was
+    /// watching therefore never closed a week, never grew an academy and left sixty-three
+    /// clubs with bare backs for ever — three separate ways for the unattended world to be a
+    /// worse world, all of them from the same missing call.
+    /// </para>
+    ///
+    /// <para>
+    /// Each of the three is idempotent by its own guard — the statement by
+    /// <c>statement:{seasonId}:{matchDayNumber}</c>, the academy by the season state it writes,
+    /// the shirt pass by re-reading the field and signing nothing already wearing — so being
+    /// reached twice on the same day is safe. That matters because the scheduler reaches it
+    /// once per wave: a day carrying a cup leg is walked twice, six hours apart.
+    /// </para>
+    /// </summary>
+    private async Task RunTheBookkeepingOfTheDayAsync(
+        Season season,
+        MatchDay day,
+        CancellationToken cancellationToken)
+    {
         // The books are closed on the day that just finished, before anything else looks at
         // the world again: a statement is about a week that is over, and the week's last gate
         // and last wage bill are on the book now and not a window later.
@@ -399,25 +469,134 @@ public class CompetitionExecutionService
                 signedShirts);
         }
 
-        _logger.LogInformation(
-            "Advanced by hand: day {Number} ({Date}), the {Wave} window, {Rounds} window(s) played.",
-            day.Number,
-            day.Date,
-            wave,
-            runs.Count);
+        // And the stands that have been built. A ground's project is measured in championship
+        // rounds, so it is settled against the championship rather than against whatever wave
+        // happened to close this day — a cup's third round is not a third of a season, and a
+        // construction that counted it would hand a club its seats a fortnight early.
+        var playedThrough = await TheChampionshipRoundPlayedThroughAsync(season, cancellationToken);
 
-        var closed = await CloseTheSeasonIfItIsOverAsync(season, cancellationToken);
+        var built = await _stadiums.SettleFinishedWorksAsync(playedThrough, cancellationToken);
 
-        return new WorldAdvance(
-            closed.SeasonClosed ? WorldAdvanceKind.SeasonClosed : WorldAdvanceKind.Window,
+        foreach (var ground in built)
+        {
+            _logger.LogInformation(
+                "{Seats} seats arrived at the ground of club {ClubId}, which now holds {Capacity}.",
+                ground.SeatsAdded,
+                ground.ClubId,
+                ground.Capacity);
+        }
+
+        // And the grounds of the clubs nobody is running, which improve on their own account.
+        // It runs on the same round number the settlement above just used, and after it rather
+        // than before: a stand that finished today has been added to its ground already, and a
+        // club that approved the next one here would be buying a second stand with money the
+        // first one was measured in. Every five rounds, which is what NpcStadiumPolicy says
+        // and not what this call site believes.
+        var npcBuilt = await _npcStadiums.BuildWhereTheWorldDecidesAsync(
             season.Id,
-            season.Name,
-            day.Number,
-            day.Date,
-            wave,
-            runs,
-            closed.SeasonClosed,
-            closed.SeasonOpened);
+            playedThrough,
+            cancellationToken);
+
+        foreach (var ground in npcBuilt)
+        {
+            _logger.LogInformation(
+                "Club {ClubId} started a stand of {Seats} seats for {Cost:N0}, finished after round {Rounds} ({Verdict}).",
+                ground.ClubId,
+                ground.Seats,
+                ground.Cost,
+                ground.Rounds,
+                ground.Verdict);
+        }
+    }
+
+    /// <summary>
+    /// The highest championship round of this season that has been played, counted from one,
+    /// and zero when none has.
+    ///
+    /// <para>
+    /// "Has been played" rather than "is dated in the past", for the same reason the recovery
+    /// rule is: a round counts when its window is closed, so a day the world owes and has not
+    /// played is not a round a ground has been a building site through.
+    /// </para>
+    /// </summary>
+    private async Task<int> TheChampionshipRoundPlayedThroughAsync(
+        Season season,
+        CancellationToken cancellationToken)
+    {
+        var views = await _competitions.ListSeasonViewsAsync(season.Id, cancellationToken);
+
+        var championships = views
+            .Where(view => view.Type == CompetitionType.League)
+            .Select(view => view.Id)
+            .ToList();
+
+        if (championships.Count == 0)
+        {
+            return 0;
+        }
+
+        var rounds = await _rounds.ListByCompetitionSeasonIdsAsync(championships, cancellationToken);
+
+        return rounds
+            .Where(round => round.HasBeenExecuted)
+            .Select(round => round.Number)
+            .DefaultIfEmpty(0)
+            .Max();
+    }
+
+    /// <summary>
+    /// Settles a day the scheduler played, and closes the season if that day was its last.
+    ///
+    /// <para>
+    /// This is the whole of the unattended world's housekeeping, and its absence is why a
+    /// Scheduler playing by the cron never got past season one: a season is closed by
+    /// <see cref="CloseTheSeasonIfItIsOverAsync"/>, that method was only reachable from the
+    /// hand-walking path, and a world nobody pressed a button in stayed inside one season for
+    /// ever — no next pyramid, no championship purse, no promotion, and a set of systems that
+    /// grow between seasons which would never have been asked to.
+    /// </para>
+    ///
+    /// <para>
+    /// The day it settles is the newest one the pass just played, and the day a wave settles is
+    /// the day the window belonged to rather than the day the calendar's clock says it is: a
+    /// day with a cup leg in it is walked twice, and either walk may be the one that closes it.
+    /// </para>
+    ///
+    /// <para>
+    /// It is asked for even when the pass played nothing, because a close that threw is a
+    /// season that is over and still open — and a rule that is only ever reached on the same
+    /// poll that did the work is a rule with no second chance. The idle cost is one read of the
+    /// season list, and the guard that stops it is the season's own status: a closed season
+    /// answers this in a single line and the whole walk costs nothing.
+    /// </para>
+    /// </summary>
+    private async Task SettleTheWorldAfterTheSchedulerWalkedAsync(
+        IReadOnlyList<DueRound> walked,
+        CancellationToken cancellationToken)
+    {
+        var season = await TheNewestSeasonAsync(cancellationToken);
+
+        if (season is null || season.Status is SeasonStatus.Finished)
+        {
+            return;
+        }
+
+        if (walked.Count > 0)
+        {
+            var newestWalked = walked
+                .OrderByDescending(item => item.MatchDayNumber)
+                .ThenByDescending(item => item.KickOffAt)
+                .First();
+
+            var day = await _matchDays.GetAsync(newestWalked.MatchDayId, cancellationToken);
+
+            if (day is not null)
+            {
+                await RunTheBookkeepingOfTheDayAsync(season, day, cancellationToken);
+            }
+        }
+
+        await CloseTheSeasonIfItIsOverAsync(season, cancellationToken);
     }
 
     /// <summary>
@@ -734,12 +913,22 @@ public class CompetitionExecutionService
                 // until the lease expired would add half an hour of nothing to every failure.
                 await _claims.ReleaseAsync(roundId, cancellationToken);
 
+                // Every reason the window is owed, in one line, because a summary that leaves
+                // one of them out is worse than no summary: "0 failed, 0 already being played,
+                // out of 8 fixture(s)" is a window with nothing in it that refuses to close, and
+                // the reader is sent looking for a fault instead of reading the one sentence
+                // that says the manager's own match is being played live and will close the
+                // window when it reaches the final whistle.
                 _logger.LogWarning(
-                    "Round {RoundId} is not complete: {Failed} failed, {Elsewhere} held by another process, " +
+                    "Round {RoundId} is not complete: {Played} played, {Already} already played, " +
+                    "{Failed} failed, {Elsewhere} already being played, {ForManager} started for the manager, " +
                     "out of {Count} fixture(s). It stays open for the next run.",
                     roundId,
+                    report.Played,
+                    report.AlreadyPlayed,
                     report.Failed,
                     report.PlayedElsewhere,
+                    report.StartedForTheManager,
                     report.Fixtures.Count);
             }
 

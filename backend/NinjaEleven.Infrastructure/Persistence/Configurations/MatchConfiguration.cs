@@ -84,6 +84,12 @@ public class MatchConfiguration : IEntityTypeConfiguration<Match>
         // The gate, in three numbers rather than one. A club's books need to know what it took
         // and what it gave away, and one gross figure cannot answer that.
         builder.Property(m => m.Attendance).IsRequired().HasDefaultValue(0);
+
+        // What the crowd wanted before the ground said no, and deliberately nullable. A match
+        // played before this column existed has no demand recorded and it is not a match that
+        // drew nobody — so null is "not measured", which is a different fact from zero and is
+        // the one a screen must be able to tell apart.
+        builder.Property(m => m.Demand);
         builder.Property(m => m.TicketPrice).HasPrecision(10, 2).IsRequired().HasDefaultValue(0m);
         builder.Property(m => m.GrossRevenue).HasPrecision(12, 2).IsRequired().HasDefaultValue(0m);
         builder.Property(m => m.HomeRevenue).HasPrecision(12, 2).IsRequired().HasDefaultValue(0m);

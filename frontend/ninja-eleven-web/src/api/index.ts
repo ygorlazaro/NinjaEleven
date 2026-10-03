@@ -58,6 +58,9 @@ import type {
     DivisionRecentTransfersDto,
     ClubTransferHistoryDto,
     TransferRankingsDto,
+  CrowdModuleDto,
+  RivalDto,
+  StadiumWorkStartedDto,
 } from '../types';
 
 /**
@@ -752,4 +755,48 @@ export const TacticsApi = {
    */
   savePlan: (request: SaveTacticsPlanRequestDto) =>
     api.post<TacticsPlanDto>('/tactics/plan', request).then(r => r.data),
+};
+
+/**
+ * The club's supporters, its ground and its rivals.
+ *
+ * One call because the screen is one page. The crowd, the ground, the building site and the
+ * rivals are four different reads in the backend and one thing to a manager — and a page that
+ * draws each as it lands is a page showing a crowd from one year beside a ground from another.
+ */
+export const CrowdApi = {
+  /**
+   * The whole module, and null is not a shape this returns: a club that is not there comes back
+   * as a 404 with a code, because a club that does not exist and a club with no crowd yet are
+   * different answers and collapsing them would send a manager looking for a crowd that was
+   * never going to be written.
+   */
+  module: (teamId: string) =>
+    api.get<CrowdModuleDto>(`/team/${teamId}/crowd`).then(r => r.data),
+
+  /**
+   * The four rivals on their own. The module already carries them; this is for a screen that
+   * wants the rivals and nothing else.
+   */
+  rivals: (teamId: string) =>
+    api.get<RivalDto[]>(`/team/${teamId}/rivals`).then(r => r.data),
+
+  /**
+   * Asks for a project on the club's ground.
+   *
+   * The request carries the number of seats and nothing else. The cost, the rounds and the
+   * project itself are the catalogue's answer — a screen that could name a price would be naming
+   * a number the book had never agreed to, and a manager budgeting his season against it would
+   * be budgeting against a lie.
+   *
+   * Asking twice is not an error: a ground that is already building answers with the open
+   * project rather than a refusal, which is the friendly reading of the same fact the unique
+   * index on the open project enforces.
+   */
+  startExpansion: (teamId: string, seats: number, playedThroughRound: number) =>
+    api
+      .post<StadiumWorkStartedDto>(`/team/${teamId}/stadium/expansion`, { seats }, {
+        params: { playedThroughRound },
+      })
+      .then(r => r.data),
 };

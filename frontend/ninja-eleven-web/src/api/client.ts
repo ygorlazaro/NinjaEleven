@@ -50,6 +50,27 @@ export class ApiProblemError extends Error {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // A 401 is a fact about the session, not about the screen that asked. It is answered here,
+    // once, because the alternative is what this file used to do: nothing. Each screen caught
+    // its own refusal and printed its own "Erro" with the axios message, and a manager whose
+    // token had expired walked from tab to tab collecting the same wall — a ranking that would
+    // not open, a table that would not load, nothing anywhere saying that signing in again is
+    // the whole of the fix. Every screen answering the same refusal the same way is the same
+    // bug wearing eight hats.
+    //
+    // Ending the session is the honest reading: 401 is what the API says when the bearer token
+    // is absent or no longer accepted, and a token it will not accept is not a screen's to
+    // retry. Clearing the token is also all the redirect there is — every guarded route reads
+    // it through `RequireAuth`, so a store with no token renders the login screen on the next
+    // paint. No `window.location`, no router handle, and no second opinion about whether the
+    // session is over.
+    //
+    // Guarded on a token being present, because a 401 with nobody signed in is not news and
+    // must not bounce a manager who is already looking at the login screen.
+    if (error.response?.status === 401 && useAuthStore.getState().token) {
+      useAuthStore.getState().clearAuth();
+    }
+
     const problem = error.response?.data;
     const code: string | undefined = problem?.code ?? problem?.title;
     const detail: string | undefined = problem?.detail;

@@ -83,8 +83,8 @@ public enum WorldAdvanceKind
 /// <param name="AwayScore">Goals scored by the away club.</param>
 /// <param name="Status">
 /// <see cref="FixtureRunStatus.Finished"/>, <see cref="FixtureRunStatus.Failed"/> when it
-/// threw, and <see cref="FixtureRunStatus.PlayedElsewhere"/> when another process is holding
-/// the match's working memory. None of them is a retry and none of them is forgotten: the
+/// threw, and <see cref="FixtureRunStatus.PlayedElsewhere"/> when the match is already being
+/// played. None of them is a retry and none of them is forgotten: the
 /// window is only completed when every one of them is finished.
 /// </param>
 /// <param name="Error">Why it failed, when it did.</param>
@@ -109,8 +109,17 @@ public enum FixtureRunStatus
     Failed = 1,
 
     /// <summary>
-    /// Somebody else is playing it. Its working memory is in another process, so this one
-    /// leaves it alone; the window is not completed until that match is finished.
+    /// Somebody is playing it, so this walk leaves it alone and the window is not completed until
+    /// that match is finished.
+    ///
+    /// <para>
+    /// "Somebody" is usually this same process. A window walked a moment ago is played by the
+    /// loop in the time a match takes, and the manager's own fixture is handed to it deliberately,
+    /// so the walk that arrives next finds its own football under way and steps over it. Calling
+    /// that "another process" sent the reader looking for a second scheduler that was never there.
+    /// The working memory is wherever the driver of that match is, and the driver's own log says
+    /// which host that is.
+    /// </para>
     /// </summary>
     PlayedElsewhere = 2,
 
@@ -155,7 +164,11 @@ public record RoundRun(
     /// <summary>The fixtures that threw. One of them is why a window was not completed.</summary>
     public int Failed => Fixtures.Count(run => run.Status is FixtureRunStatus.Failed);
 
-    /// <summary>The fixtures another process is playing right now.</summary>
+    /// <summary>
+    /// The fixtures whose matches are already being played, by this process's loop or by another
+    /// host. One of them is why a window was not completed, and it is not an error: the window
+    /// is owed until those matches reach the final whistle.
+    /// </summary>
     public int PlayedElsewhere => Fixtures.Count(run => run.Status is FixtureRunStatus.PlayedElsewhere);
 
     /// <summary>The fixtures that were started for the manager and are being played live right now.</summary>

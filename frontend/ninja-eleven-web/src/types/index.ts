@@ -361,6 +361,116 @@ export interface StadiumDto {
   name: string;
   capacity: number;
   ticketPrice: number;
+  /** Which club this ground belongs to. Null where the caller was not told. */
+  clubId?: Guid | null;
+  /** The building site, when there is one. Null is the ordinary answer. */
+  work?: StadiumWorkDto | null;
+}
+
+export interface StadiumWorkDto {
+  constructionId: Guid;
+  /** What the ground holds once the work is done, not what it holds today. */
+  seats: number;
+  cost: number;
+  /** Matchdays the work takes. */
+  rounds: number;
+  /** The round the work began after, so a screen can say how long is left. */
+  startedAfterRound: number;
+  startedAt: string;
+}
+
+export interface StadiumProjectDto {
+  seats: number;
+  cost: number;
+  rounds: number;
+}
+
+export interface StadiumWorkStartedDto {
+  /** "Started" or "NothingToBuild" — a double click is not an error. */
+  kind: string;
+  seats: number;
+  cost: number;
+  rounds: number;
+  project?: StadiumProjectDto | null;
+}
+
+/**
+ * How many people follow the club, and where that number is going.
+ *
+ * `averageAttendance` is null when the club has not opened its ground this season, and that is
+ * not the same as an average of zero. A screen that prints a number here is printing a number
+ * for a club that has never had a crowd through the turnstiles.
+ */
+export interface CrowdDto {
+  teamId: Guid;
+  supporters: number;
+  openingSupporters: number;
+  peakSupporters: number;
+  grew: boolean;
+  change: number;
+  seasonId?: Guid | null;
+  seasonName?: string | null;
+  averageAttendance?: number | null;
+  pressure?: CrowdPressureDto | null;
+}
+
+/**
+ * What the crowd wanted against what the ground could hold.
+ *
+ * Both numbers, because one of them lies on its own. `averageAttendance` is capped by the
+ * capacity, so a sold-out ground of five thousand reads exactly like a comfortably large one;
+ * `averageDemand` is the number the ceiling was applied to, and it is the only one of the two
+ * that can say a club is being turned away.
+ *
+ * `averageDemand` and `turnedAwayShare` are null when the club's matches were played before the
+ * pressure was measured. That is "not known", which is a different fact from "no pressure", and
+ * `demandIsMeasured` is what tells the two apart.
+ */
+export interface CrowdPressureDto {
+  capacity: number;
+  averageAttendance: number;
+  averageDemand?: number | null;
+  demandIsMeasured: boolean;
+  occupancy: number;
+  turnedAwayShare?: number | null;
+  oversubscribed: boolean;
+  nextProject?: StadiumProjectDto | null;
+}
+
+export interface RivalWhyDto {
+  recurrence: number;
+  decisiveness: number;
+  results: number;
+  streaks: number;
+  recentForm: number;
+  overall: number;
+}
+
+export interface RivalDto {
+  opponentTeamId: Guid;
+  opponentName: string;
+  meetings: number;
+  wins: number;
+  draws: number;
+  defeats: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  score: number;
+  why: RivalWhyDto;
+}
+
+/**
+ * The club's supporters, its ground, its building site and its rivals, in one answer.
+ *
+ * One call because the screen is one page. Four requests in flight at once is a page that
+ * draws a crowd from one year next to a ground from another.
+ */
+export interface CrowdModuleDto {
+  crowd: CrowdDto;
+  stadium: StadiumDto;
+  rivals: RivalDto[];
+  /** The three projects on offer, most seats first. */
+  catalogue: StadiumProjectDto[];
 }
 
 export interface TeamMembershipDto {

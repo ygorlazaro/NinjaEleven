@@ -61,6 +61,35 @@ public interface IMatchRepository
         string hostId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// What the turnstiles did and what the crowd asked of them, for these clubs in this season.
+    /// </summary>
+    ///
+    /// <para>
+    /// The pair is the answer to "does this ground need to be bigger", and neither half is
+    /// enough on its own. Attendance is capped by the capacity, so a sold-out ground of five
+    /// thousand reads the same as a comfortably large one; demand is the number the ceiling was
+    /// applied to, and it is the only one that can say a club is being turned away.
+    /// </para>
+    ///
+    /// <para>
+    /// Scoped to a season on purpose. A career average is an average of every model the club has
+    /// ever been measured under, and a club whose ground changed size or whose following was
+    /// reseeded in between is a club whose average gate describes no season that happened.
+    /// </para>
+    /// </para>
+    ///
+    /// <para>
+    /// A club with no finished home match is absent rather than present with a zero, and a club
+    /// whose matches predate the demand column has a null demand — not a demand of nobody. Both
+    /// are missing values, because a ground that has not opened is not an empty one.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, HomeGateReading>> ReadHomeGatesAsync(
+        Guid seasonId,
+        IEnumerable<Guid> teamIds,
+        CancellationToken cancellationToken = default);
+
     Task AddAsync(Match match, CancellationToken cancellationToken = default);
     void Update(Match match);
 

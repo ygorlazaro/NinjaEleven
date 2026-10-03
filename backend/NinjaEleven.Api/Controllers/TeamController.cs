@@ -24,19 +24,25 @@ public class TeamController : ControllerBase
     private readonly ManagerService _managerService;
     private readonly StandingsService _standingsService;
     private readonly ClubProfileService _clubProfileService;
+    private readonly CrowdService _crowdService;
+    private readonly StadiumService _stadiumService;
 
     public TeamController(
         TeamService teamService,
         FinanceService financeService,
         ManagerService managerService,
         StandingsService standingsService,
-        ClubProfileService clubProfileService)
+        ClubProfileService clubProfileService,
+        CrowdService crowdService,
+        StadiumService stadiumService)
     {
         _teamService = teamService;
         _financeService = financeService;
         _managerService = managerService;
         _standingsService = standingsService;
         _clubProfileService = clubProfileService;
+        _crowdService = crowdService;
+        _stadiumService = stadiumService;
     }
 
     [HttpGet]
@@ -128,6 +134,80 @@ public class TeamController : ControllerBase
     /// page about a club.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The club's supporters, its ground, its building site and its rivals, in one answer.
+    /// </summary>
+    ///
+    /// <remarks>
+    /// One call because the screen is one page. Four reads taken separately is four requests in
+    /// flight at once, and a page that draws each as it lands is a page showing a crowd from one
+    /// year beside a ground from another.
+    /// </remarks>
+    [HttpGet("{teamId:guid}/crowd")]
+    public async Task<ActionResult<CrowdModuleDto>> GetCrowdModule(
+        Guid teamId,
+        CancellationToken cancellationToken = default)
+    {
+        var module = await _crowdService.ModuleOfAsync(teamId, cancellationToken);
+
+        if (module is null)
+        {
+            return NotFound(new { code = "TeamNotFound", teamId });
+        }
+
+        return Ok(new CrowdModuleDto
+        {
+            Crowd = CrowdDto.From(module.Crowd),
+            Stadium = module.Stadium is null ? new StadiumDto() : module.Stadium.ToDto(),
+            Rivals = module.Rivals.Select(rival => RivalDto.From(rival)).ToList(),
+            Catalogue = CrowdService.Catalogue().Select(StadiumProjectDto.From).ToList()
+        });
+    }
+
+    /// <summary>The four clubs this one is most a rival of.</summary>
+    [HttpGet("{teamId:guid}/rivals")]
+    public async Task<ActionResult<IReadOnlyList<RivalDto>>> GetRivals(
+        Guid teamId,
+        CancellationToken cancellationToken = default)
+    {
+        var rivals = await _crowdService.RivalsOfAsync(teamId, cancellationToken);
+        return Ok(rivals.Select(RivalDto.From).ToList());
+    }
+
+    /// <summary>
+    /// Starts a project on the club's ground, charged to the book in the same unit of work that
+    /// writes it. A club can never be holding a building site it did not pay for.
+    /// </summary>
+    ///
+    /// <remarks>
+    /// The round the world has played through is asked for rather than worked out, because the
+    /// answer is a fact about the calendar and a controller that guessed it would schedule a
+    /// project from a matchday it invented. It has a default because a club with no round behind
+    /// it is a club whose first project starts now — which is the same thing the schedule says.
+    /// </remarks>
+    [HttpPost("{teamId:guid}/stadium/expansion")]
+    public async Task<ActionResult<StadiumWorkStartedDto>> StartExpansion(
+        Guid teamId,
+        StartStadiumExpansionRequestDto request,
+        [FromQuery] int playedThroughRound = 0,
+        CancellationToken cancellationToken = default)
+    {
+        var started = await _stadiumService.StartExpansionAsync(
+            teamId,
+            request.Seats,
+            playedThroughRound,
+            cancellationToken);
+
+        return Ok(new StadiumWorkStartedDto
+        {
+            Kind = started.Kind.ToString(),
+            Seats = started.Seats,
+            Cost = started.Cost,
+            Rounds = started.FinishesAfterRound,
+            Project = started.Project is { } project ? StadiumProjectDto.From(project) : null
+        });
+    }
+
     [HttpGet("{teamId:guid}/profile")]
     public async Task<ActionResult<ClubProfileDto>> GetProfile(
         Guid teamId,

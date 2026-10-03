@@ -20,17 +20,20 @@ public class AttendanceContextFactory
     private readonly IRoundRepository _roundRepository;
     private readonly IFixtureRepository _fixtureRepository;
     private readonly ICompetitionRepository _competitionRepository;
+    private readonly ITeamFanBaseRepository _fanBases;
     private readonly StandingsService _standingsService;
 
     public AttendanceContextFactory(
         IRoundRepository roundRepository,
         IFixtureRepository fixtureRepository,
         ICompetitionRepository competitionRepository,
+        ITeamFanBaseRepository fanBases,
         StandingsService standingsService)
     {
         _roundRepository = roundRepository;
         _fixtureRepository = fixtureRepository;
         _competitionRepository = competitionRepository;
+        _fanBases = fanBases;
         _standingsService = standingsService;
     }
 
@@ -43,6 +46,21 @@ public class AttendanceContextFactory
     /// that nothing is known, and nothing here throws a match out of existence over a table it
     /// could not be found in.
     /// </summary>
+    /// <param name="homeSquadStars">The home squad's strength, 0..5, everybody in the squad.</param>
+    /// <param name="awaySquadStars">The away squad's strength, 0..5, everybody in the squad.</param>
+    /// <param name="homeSupporters">
+    /// How many people follow the home club. It is passed in rather than read here because the
+    /// caller already holds the fixture's two clubs and has both of their crowds in one read;
+    /// asking this factory for a club's crowd would be the same season's row read twice for
+    /// every fixture of a matchday.
+    /// </param>
+    /// <param name="worksUnderway">
+    /// Whether the home ground is being built on. It is read by the caller rather than here
+    /// because the caller is the one already holding the ground, and asking this factory to go
+    /// and find a stadium it was just handed is the question this codebase has already learned
+    /// not to ask.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the reads.</param>
     public async Task<AttendanceContext> ForFixtureAsync(
         Guid fixtureId,
         Guid homeTeamId,
@@ -50,6 +68,8 @@ public class AttendanceContextFactory
         CompetitionType competitionType,
         double homeSquadStars,
         double awaySquadStars,
+        int homeSupporters,
+        bool worksUnderway = false,
         CancellationToken cancellationToken = default)
     {
         var round = await ResolveRoundAsync(fixtureId, cancellationToken);
@@ -59,12 +79,14 @@ public class AttendanceContextFactory
                 Tier: 1,
                 HomePosition: NeutralPosition,
                 ClubsInDivision: 12,
+                HomeSupporters: homeSupporters,
                 HomeSquadStars: homeSquadStars,
                 AwaySquadStars: awaySquadStars,
                 DivisionAverageStars: Math.Max(homeSquadStars, awaySquadStars),
                 Matchday: 1,
                 TotalMatchdays: CompetitionRules.LeagueMatchDays,
-                Importance: MatchImportanceRules.ByCompetition(competitionType));
+                Importance: MatchImportanceRules.ByCompetition(competitionType),
+                WorksUnderway: worksUnderway);
         }
 
         var view = await _competitionRepository.GetSeasonByIdAsync(round.CompetitionSeasonId, cancellationToken) is { } season
@@ -73,7 +95,8 @@ public class AttendanceContextFactory
 
         if (view is null)
         {
-            return await FallbackAsync(homeSquadStars, awaySquadStars, competitionType, cancellationToken);
+            return await FallbackAsync(
+                homeSquadStars, awaySquadStars, competitionType, homeSupporters, worksUnderway, cancellationToken);
         }
 
         var collection = await _standingsService.CollectAsync(view.Id, view, cancellationToken);
@@ -86,6 +109,7 @@ public class AttendanceContextFactory
             Tier: view.Tier ?? 1,
             HomePosition: homePosition == 0 ? NeutralPosition : homePosition,
             ClubsInDivision: Math.Max(collection.ClubsInDivision, 1),
+            HomeSupporters: homeSupporters,
             HomeSquadStars: homeSquadStars,
             AwaySquadStars: awaySquadStars,
             DivisionAverageStars: collection.AverageStars,
@@ -98,7 +122,8 @@ public class AttendanceContextFactory
                 awayPosition == 0 ? NeutralPosition : awayPosition,
                 collection.ClubsInDivision,
                 totalMatchdays,
-                round.Number));
+                round.Number),
+            WorksUnderway: worksUnderway);
     }
 
     /// <summary>
@@ -147,17 +172,21 @@ public class AttendanceContextFactory
         double homeSquadStars,
         double awaySquadStars,
         CompetitionType competitionType,
+        int homeSupporters,
+        bool worksUnderway,
         CancellationToken cancellationToken) =>
         new(
             Tier: 1,
             HomePosition: NeutralPosition,
             ClubsInDivision: 12,
+            HomeSupporters: homeSupporters,
             HomeSquadStars: homeSquadStars,
             AwaySquadStars: awaySquadStars,
             DivisionAverageStars: Math.Max(homeSquadStars, awaySquadStars),
             Matchday: 1,
             TotalMatchdays: CompetitionRules.LeagueMatchDays,
-            Importance: MatchImportanceRules.ByCompetition(competitionType));
+            Importance: MatchImportanceRules.ByCompetition(competitionType),
+            WorksUnderway: worksUnderway);
 
     private async Task<Round?> ResolveRoundAsync(Guid fixtureId, CancellationToken cancellationToken)
     {

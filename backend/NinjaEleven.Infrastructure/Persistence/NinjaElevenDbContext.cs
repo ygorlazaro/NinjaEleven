@@ -63,6 +63,8 @@ public class NinjaElevenDbContext : DbContext
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<TeamMembership> TeamMemberships => Set<TeamMembership>();
     public DbSet<Stadium> Stadiums => Set<Stadium>();
+    public DbSet<TeamFanBase> TeamFanBases => Set<TeamFanBase>();
+    public DbSet<StadiumConstruction> StadiumConstructions => Set<StadiumConstruction>();
     public DbSet<FinanceMovement> FinanceMovements => Set<FinanceMovement>();
     public DbSet<Transfer> Transfers => Set<Transfer>();
     public DbSet<Sponsor> Sponsors => Set<Sponsor>();

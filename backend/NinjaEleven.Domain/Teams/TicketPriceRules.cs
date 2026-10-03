@@ -36,6 +36,18 @@ public static class TicketPriceRules
         (30m, 0.38)
     };
 
+    /// <summary>
+    /// The points the curve is drawn through, cheapest first.
+    ///
+    /// <para>
+    /// They are read rather than restated so that anything which reasons about the shape of the
+    /// curve — what a club's seat should cost, how much a price move is worth — works on the
+    /// same anchors this file does. A second copy of these numbers would be a second curve, and
+    /// it would start agreeing with this one only until somebody retuned this one.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<(decimal Price, double Demand)> Anchors => Curve;
+
     public const double CheapestPriceFactor = 1.30;
 
     public const double DearestPriceFactor = 0.38;

@@ -120,7 +120,8 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
             Id = team.Stadium.Id,
             Name = team.Stadium.Name,
             Capacity = team.Stadium.Capacity,
-            TicketPrice = team.Stadium.TicketPrice
+            TicketPrice = team.Stadium.TicketPrice,
+            ClubId = team.Stadium.ClubId
         } : null,
         ControlledBy = team.Managers.Any()
             ? (bool?) team.Managers.Any(m => m.UserId.HasValue)
@@ -1577,5 +1578,28 @@ public static class ClubProfileMapping
         Relegations = profile.Relegations,
         Trophies = profile.Trophies.Select(trophy => trophy.ToDto()).ToList(),
         History = profile.History.Select(entry => entry.ToDto()).ToList()
+    };
+}
+
+/// <summary>
+/// A ground, as the crowd module's own read of it.
+/// </summary>
+/// <remarks>
+/// The building site comes from the module's read and not from the club, because the club does
+/// not carry it: a project is a fact about the season it was started in and the rounds it has
+/// left, and the ground knows only its size.
+/// </remarks>
+public static class StadiumViewMapper
+{
+    public static StadiumDto ToDto(this StadiumView stadium) => new()
+    {
+        Id = Guid.Empty,
+        Name = stadium.Name,
+        Capacity = stadium.Capacity,
+        TicketPrice = stadium.TicketPrice,
+        ClubId = stadium.ClubId,
+        Work = stadium.Work is null
+            ? null
+            : StadiumWorkDto.From(stadium.Work)
     };
 }

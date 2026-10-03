@@ -19,6 +19,27 @@ public interface IFinanceRepository
     Task<FinanceMovement?> GetLastAsync(Guid teamId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The last line in each of these clubs' books, keyed by club.
+    ///
+    /// <para>
+    /// The same answer as <see cref="GetLastAsync"/>, asked of a whole set at once. An NPC
+    /// pass that asks every club in the country whether it can afford a stand has sixty-four
+    /// questions to ask, and asking them one at a time is the same N+1 as everywhere else:
+    /// sixty-four round trips on a table with a row per line of every club's history.
+    /// </para>
+    ///
+    /// <para>
+    /// A club with an empty book is absent from the answer rather than present with a balance
+    /// of zero. A club that has never been written to has no balance, and a zero here would be
+    /// read as a bankrupt one — which is a decision the rest of this would then make on a
+    /// number nobody wrote.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, FinanceMovement>> GetLastForTeamsAsync(
+        IEnumerable<Guid> teamIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Whether a club's book already carries a line of this kind for a season. It is what
     /// makes a line that must happen once per season happen once, with no timer and no flag.
     /// </summary>

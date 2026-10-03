@@ -65,6 +65,18 @@ public class StadiumDto
     public string Name { get; init; } = string.Empty;
     public int Capacity { get; init; }
     public decimal TicketPrice { get; init; }
+
+    /// <summary>
+    /// Which club this ground belongs to, so a screen holding a ground does not have to be told
+    /// separately who it read.
+    /// </summary>
+    public Guid? ClubId { get; init; }
+
+    /// <summary>
+    /// The building site, when there is one. Null is the ordinary answer and most grounds most
+    /// of the year, so it is a missing value rather than a project of zero seats.
+    /// </summary>
+    public StadiumWorkDto? Work { get; init; }
 }
 
 public class CompetitionDto

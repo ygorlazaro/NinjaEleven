@@ -152,3 +152,45 @@ public class SelectPenaltyTakerDto
 
     public Guid PlayerId { get; init; }
 }
+
+/// <summary>
+/// A request to build on a club's ground.
+///
+/// <para>
+/// It carries the number of seats a manager wants and nothing else. The cost, the rounds and the
+/// project itself are the catalogue's answer — a client that could name a price would be a
+/// client naming a number the book had never agreed to.
+/// </para>
+/// </summary>
+public class StartStadiumExpansionRequestDto
+{
+    /// <summary>How many seats he wants the ground to hold afterwards.</summary>
+    [Range(1, 80_000)]
+    public int Seats { get; set; }
+}
+
+/// <summary>
+/// What starting a project did: whether it started, and what it is.
+/// </summary>
+/// <remarks>
+/// The kind is on the wire because a double click is not an error. Asking for a project on a
+/// ground that is already building answers with the open project rather than a refusal, which
+/// is the friendly reading of the same fact the unique index enforces.
+/// </remarks>
+public class StadiumWorkStartedDto
+{
+    /// <summary>"Started" or "NothingToBuild".</summary>
+    public string Kind { get; init; } = string.Empty;
+
+    /// <summary>What the ground holds once this is done, not what it holds today.</summary>
+    public int Seats { get; init; }
+
+    public decimal Cost { get; init; }
+
+    /// <summary>The round the project finishes after.</summary>
+    public int Rounds { get; init; }
+
+    /// <summary>Null when there was nothing to build and nothing already building.</summary>
+    public StadiumProjectDto? Project { get; init; }
+}
+

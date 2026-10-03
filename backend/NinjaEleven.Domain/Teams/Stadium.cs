@@ -8,6 +8,13 @@ namespace NinjaEleven.Domain.Teams;
 /// today cannot ever be anything else, and the first thing a manager does with a ground is
 /// give it a name of its own — so the name is a column the day the column can be edited, not
 /// a string built at the moment it is needed.
+///
+/// <para>
+/// The capacity is the ground's own, and it is not the club's. A club of forty thousand people
+/// and a ground of five thousand is an ordinary state of a football club's finances rather than
+/// a contradiction, and it is the state that makes an expansion worth doing. So the two numbers
+/// live apart and nothing here derives one from the other.
+/// </para>
 /// </summary>
 public class Stadium
 {
@@ -78,5 +85,21 @@ public class Stadium
         }
 
         TicketPrice = ticketPrice;
+    }
+
+    /// <summary>
+    /// Opens the seats at the price the game decides, rather than at a price somebody typed.
+    ///
+    /// <para>
+    /// It is a decision the domain makes and the club records, in that order: the club asks what
+    /// a seat is worth to its own people, the rule answers, and the answer is stored like any
+    /// other fact about the ground. A screen that offered a price field would be offering to
+    /// invent the one number on the club's page that the game has an opinion about.
+    /// </para>
+    /// </summary>
+    /// <param name="crowd">How many people the club plays to, before a price is known.</param>
+    public void PriceTheSeatsFor(int crowd)
+    {
+        SetTicketPrice(StadiumRules.TicketPriceFor(Capacity, crowd));
     }
 }

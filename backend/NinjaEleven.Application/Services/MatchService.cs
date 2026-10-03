@@ -53,6 +53,8 @@ public class MatchService : IMatchCleaner
     private readonly ICompetitionRepository _competitionRepository;
     private readonly IMatchSessionRegistry _sessions;
     private readonly AttendanceContextFactory _attendanceContextFactory;
+    private readonly IStadiumConstructionRepository _stadiumConstructionRepository;
+    private readonly ITeamFanBaseRepository _fanBases;
     private readonly IUnitOfWork _unitOfWork;
     private readonly CupProgressionService _cupProgression;
 
@@ -125,6 +127,8 @@ public class MatchService : IMatchCleaner
         ICompetitionRepository competitionRepository,
         IMatchSessionRegistry sessions,
         AttendanceContextFactory attendanceContextFactory,
+        IStadiumConstructionRepository stadiumConstructionRepository,
+        ITeamFanBaseRepository fanBases,
         IUnitOfWork unitOfWork,
         CupProgressionService cupProgression,
         MatchdayService matchday,
@@ -149,6 +153,8 @@ public class MatchService : IMatchCleaner
         _competitionRepository = competitionRepository;
         _sessions = sessions;
         _attendanceContextFactory = attendanceContextFactory;
+        _stadiumConstructionRepository = stadiumConstructionRepository;
+        _fanBases = fanBases;
         _unitOfWork = unitOfWork;
         _cupProgression = cupProgression;
         _matchday = matchday;
@@ -476,6 +482,29 @@ public class MatchService : IMatchCleaner
         // 5-0 does not empty a stand that had already filled it. It is worked out once, here,
         // and the noise in it is drawn from the match's own seed so a replayed match has the
         // same crowd in the same ground.
+
+        // A ground in the middle of a project holds a quarter fewer people, and that is a fact
+        // about the ground rather than about the football — so it is asked of the ground itself,
+        // in the same breath as the ground, rather than of a table the crowd was already decided
+        // without it. A club with no ground at all is not asked: it has no construction to have,
+        // and the kick-off below already tolerates the ground being absent.
+        var openWorks = homeTeam.Stadium is null
+            ? null
+            : await _stadiumConstructionRepository.FindOpenForStadiumAsync(
+                homeTeam.Stadium.Id, cancellationToken);
+
+        // How many people follow the host, which is the number the stand is measured from. Only
+        // the host's, because the gate is split and the host's crowd is what is in the ground.
+        //
+        // <para>
+        // No fallback for a club with no crowd on record. An invented number here would be the
+        // one figure on a match that no club's season had anything to do with, and it would be
+        // invented in exactly the world that needed telling: a club nobody has ever seeded a
+        // following for. The seeder fills the country's crowds on every startup, so a world with
+        // no crowd for the host is a world that has not finished being written.
+        // </para>
+        var hostCrowd = await _fanBases.LatestSupportersForTeamsAsync([homeTeam.Id], cancellationToken);
+
         var attendanceContext = await _attendanceContextFactory.ForFixtureAsync(
             fixtureId,
             homeTeam.Id,
@@ -483,6 +512,8 @@ public class MatchService : IMatchCleaner
             competitionType,
             homeStars,
             awayStars,
+            hostCrowd.TryGetValue(homeTeam.Id, out var supporters) ? supporters : 0,
+            openWorks is not null,
             cancellationToken);
 
         match.KickOff(matchSeed, homeTeam.Stadium, attendanceContext);
@@ -599,6 +630,25 @@ public class MatchService : IMatchCleaner
 
         if (match is null || match.IsFinished || match.CurrentMinute != 0)
         {
+            // The commonest reason of all, and the one a reader used to be told the wrong thing
+            // about. A match that is under way was almost always started by this same process —
+            // a window it walked earlier, or the manager's own, with the loop on the clock — so
+            // "another process is playing it" sends whoever is reading the log off to look for a
+            // second scheduler that is not there. It says who is playing it instead.
+            if (match is not null && !match.IsFinished)
+            {
+                var here = _sessions.TryGet(match.Id, out _);
+
+                _logger.LogInformation(
+                    "Match {MatchId} is at minute {Minute} and is being played by {Driver}. " +
+                    "The walk leaves it alone and the window stays owed.",
+                    match.Id,
+                    match.CurrentMinute,
+                    here
+                        ? "this process's loop"
+                        : $"host {match.SessionHost ?? "an unknown host"}");
+            }
+
             return false;
         }
 

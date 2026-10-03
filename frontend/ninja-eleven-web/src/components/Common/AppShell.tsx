@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import { SeasonApi, TeamApi, ManagerApi } from '@/api';
 import { useGameState } from '@/state';
@@ -26,7 +26,29 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const leagueTeams = useGameState((s) => s.leagueTeams);
   const setLeagueTeams = useGameState((s) => s.setLeagueTeams);
   const authTeamId = useAuthStore((s) => s.teamId);
+  const email = useAuthStore((s) => s.email);
   const { pathname } = useLocation();
+
+  /**
+   * Ends the session on purpose, which is the thing a manager could not do until now.
+   *
+   * The session goes first and the club with it, in the same tick and in the same order the two
+   * failure paths already use: a token that has stopped being accepted and a token nobody wants
+   * any more are the same fact about the account, and the club is a thing that account was
+   * running rather than a thing the browser owns. Leaving it behind would hand the next person
+   * to sign in on this browser a club that is already open — the one stale-club fault the
+   * re-seeded world and a rejected token both produced, and the reason a screen that greys out
+   * "not your club" still opens on somebody else's club.
+   *
+   * Clearing the token is what makes the login screen the next thing drawn: the route guards
+   * read it, so a store with no session renders the login screen on the next paint. No
+   * navigation is called for, so there is no history entry to go "back" into a session that no
+   * longer exists.
+   */
+  const signOut = useCallback(() => {
+    useAuthStore.getState().clearAuth();
+    useGameState.getState().forgetClub();
+  }, []);
 
   /**
    * The screen that opens the career is read without the column.
@@ -412,6 +434,35 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </NavLink>
           )}
         </nav>
+
+        {/* Who is signed in, and the way out.
+            *
+            * It is here and not among the club's own doors because it is not about the club. The
+            * links above are places a manager goes inside a career; leaving the account is not a
+            * place, and a row of doors that also opened "Sair" would be a row mixing two kinds of
+            * thing. It sits under the column because a manager on any screen can reach it, which
+            * is the whole point of a control that ends a session.
+            *
+            * The email travels with it because that is what makes the button safe to press: one
+            * browser can hold one career's token and another account can sign in over it, and a
+            * control that says "Sair" with nothing saying *whom* is a control nobody trusts. It
+            * reads who is signed in before they end it.
+            *
+            * Both halves go, and they are the same two halves the failure paths above drop: the
+            * session, because that is what ended, and the club, because a club left in the game
+            * store is what a second account would inherit and open as though it were its own.
+            * That inheritance is the same stale-club fault the world being re-seeded causes, and
+            * the cure is the same: nothing is left pointing at a club nobody is running. */}
+        {email && (
+          <div className="sidebar-account">
+            <span className="sidebar-account__email" title={email}>
+              {email}
+            </span>
+            <button type="button" className="sidebar-account__signout" onClick={signOut}>
+              Sair
+            </button>
+          </div>
+        )}
       </aside>
       )}
 

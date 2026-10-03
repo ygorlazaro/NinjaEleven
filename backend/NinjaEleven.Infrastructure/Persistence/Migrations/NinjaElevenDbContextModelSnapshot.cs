@@ -677,6 +677,10 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("current_minute");
 
+                    b.Property<int?>("Demand")
+                        .HasColumnType("integer")
+                        .HasColumnName("demand");
+
                     b.Property<Guid>("FixtureId")
                         .HasColumnType("uuid")
                         .HasColumnName("fixture_id");
@@ -1630,6 +1634,69 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                     b.ToTable("stadiums", (string)null);
                 });
 
+            modelBuilder.Entity("NinjaEleven.Domain.Teams.StadiumConstruction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("club_id");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<decimal>("Cost")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("cost");
+
+                    b.Property<int>("Rounds")
+                        .HasColumnType("integer")
+                        .HasColumnName("rounds");
+
+                    b.Property<Guid>("SeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_id");
+
+                    b.Property<int>("Seats")
+                        .HasColumnType("integer")
+                        .HasColumnName("seats");
+
+                    b.Property<Guid>("StadiumId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stadium_id");
+
+                    b.Property<int>("StartedAfterRound")
+                        .HasColumnType("integer")
+                        .HasColumnName("started_after_round");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_stadium_constructions");
+
+                    b.HasIndex("ClubId")
+                        .HasDatabaseName("ix_stadium_constructions_club_id");
+
+                    b.HasIndex("CompletedAt")
+                        .HasDatabaseName("ix_stadium_constructions_completed_at");
+
+                    b.HasIndex("SeasonId")
+                        .HasDatabaseName("ix_stadium_constructions_season_id");
+
+                    b.HasIndex("StadiumId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_stadium_constructions_one_open_per_ground")
+                        .HasFilter("completed_at IS NULL");
+
+                    b.ToTable("stadium_constructions", (string)null);
+                });
+
             modelBuilder.Entity("NinjaEleven.Domain.Teams.Team", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1702,6 +1769,49 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_teams_stadium_id");
 
                     b.ToTable("teams", (string)null);
+                });
+
+            modelBuilder.Entity("NinjaEleven.Domain.Teams.TeamFanBase", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("OpeningSupporters")
+                        .HasColumnType("integer")
+                        .HasColumnName("opening_supporters");
+
+                    b.Property<int>("PeakSupporters")
+                        .HasColumnType("integer")
+                        .HasColumnName("peak_supporters");
+
+                    b.Property<Guid>("SeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_id");
+
+                    b.Property<int>("Supporters")
+                        .HasColumnType("integer")
+                        .HasColumnName("supporters");
+
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("team_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_team_fan_bases");
+
+                    b.HasIndex("SeasonId")
+                        .HasDatabaseName("ix_team_fan_bases_season_id");
+
+                    b.HasIndex("TeamId", "SeasonId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_team_fan_bases_team_id_season_id");
+
+                    b.ToTable("team_fan_bases", (string)null);
                 });
 
             modelBuilder.Entity("NinjaEleven.Domain.Teams.TeamMembership", b =>
@@ -2278,6 +2388,30 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_club_events_teams_team_id");
                 });
 
+            modelBuilder.Entity("NinjaEleven.Domain.Teams.StadiumConstruction", b =>
+                {
+                    b.HasOne("NinjaEleven.Domain.Teams.Team", null)
+                        .WithMany()
+                        .HasForeignKey("ClubId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_stadium_constructions_teams_club_id");
+
+                    b.HasOne("NinjaEleven.Domain.Seasons.Season", null)
+                        .WithMany()
+                        .HasForeignKey("SeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_stadium_constructions_seasons_season_id");
+
+                    b.HasOne("NinjaEleven.Domain.Teams.Stadium", null)
+                        .WithMany()
+                        .HasForeignKey("StadiumId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_stadium_constructions_stadiums_stadium_id");
+                });
+
             modelBuilder.Entity("NinjaEleven.Domain.Teams.Team", b =>
                 {
                     b.HasOne("NinjaEleven.Domain.Sponsors.SponsorContract", "ActiveSponsorContract")
@@ -2293,6 +2427,23 @@ namespace NinjaEleven.Infrastructure.Persistence.Migrations
                     b.Navigation("ActiveSponsorContract");
 
                     b.Navigation("Stadium");
+                });
+
+            modelBuilder.Entity("NinjaEleven.Domain.Teams.TeamFanBase", b =>
+                {
+                    b.HasOne("NinjaEleven.Domain.Seasons.Season", null)
+                        .WithMany()
+                        .HasForeignKey("SeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_team_fan_bases_seasons_season_id");
+
+                    b.HasOne("NinjaEleven.Domain.Teams.Team", null)
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_team_fan_bases_teams_team_id");
                 });
 
             modelBuilder.Entity("NinjaEleven.Domain.Teams.TeamMembership", b =>

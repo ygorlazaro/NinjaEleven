@@ -37,6 +37,8 @@ public class MatchServiceTests
     private readonly Mock<IRoundRepository> _rounds = new(MockBehavior.Loose);
     private readonly Mock<ICompetitionRepository> _competitions = new(MockBehavior.Loose);
     private readonly Mock<IUnitOfWork> _unitOfWork = new(MockBehavior.Loose);
+    private readonly Mock<IStadiumConstructionRepository> _constructions = new(MockBehavior.Loose);
+    private readonly Mock<ITeamFanBaseRepository> _fanBases = new(MockBehavior.Loose);
     private readonly Mock<ICupTieRepository> _cupTies = new(MockBehavior.Loose);
     private readonly Mock<ITrophyRepository> _trophies = new(MockBehavior.Loose);
     private readonly Mock<IMatchDayRepository> _matchDays = new(MockBehavior.Loose);
@@ -61,6 +63,15 @@ public class MatchServiceTests
 
     public MatchServiceTests()
     {
+
+        // The stand is measured from the host's own following, so the crowd read answers a
+        // first-division club's. Left unstated it would answer nothing and every match in these
+        // tests would be played in an empty ground — which passes, because a crowd of nobody is
+        // still a crowd as far as the match is concerned, and is exactly why it needs a stub.
+        _fanBases.Setup(repository => repository.LatestSupportersForTeamsAsync(
+                It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IEnumerable<Guid> teamIds, CancellationToken _) =>
+                teamIds.ToDictionary(id => id, _ => 45_000));
         _competitionSeason = CompetitionSeason.Create(Guid.NewGuid(), _seasonId);
         _round = Round.Create(_competitionSeason.Id, 1);
         _matchDay = MatchDay.Create(_seasonId, 1, new DateOnly(2026, 3, 1));
@@ -247,6 +258,7 @@ public class MatchServiceTests
         _rounds.Object,
         _fixtures.Object,
         _competitions.Object,
+        _fanBases.Object,
         new StandingsService(
             _rounds.Object,
             _fixtures.Object,
@@ -286,6 +298,8 @@ public class MatchServiceTests
         _competitions.Object,
         _sessions,
         CreateAttendanceContextFactory(),
+        _constructions.Object,
+        _fanBases.Object,
         _unitOfWork.Object,
         new CupProgressionService(
             _cupTies.Object,
@@ -918,6 +932,7 @@ public class MatchServiceTests
             Tier: 1,
             HomePosition: 1,
             ClubsInDivision: 16,
+            HomeSupporters: 45_000,
             HomeSquadStars: 4,
             AwaySquadStars: 4,
             DivisionAverageStars: 1,

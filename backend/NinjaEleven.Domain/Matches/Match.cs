@@ -272,6 +272,21 @@ namespace NinjaEleven.Domain.Matches;
     /// the fixture rather than about how the game turned out: a 5-0 does not empty a stand
     /// that had already filled it.
     /// </summary>
+    /// <summary>
+    /// How many people wanted to come, before the ground said no.
+    ///
+    /// <para>
+    /// <see cref="Attendance"/> is capped by the capacity, which is the right answer to "how
+    /// many were there" and useless for "does this club need a bigger ground" — a sold-out
+    /// ground of five thousand and a comfortably big one both read as five thousand. The
+    /// number the expansion decision rests on is the one that was clamped away, so it is kept
+    /// rather than recomputed: a reconstruction from the club's following has to invent the
+    /// table position and the matchday the match was actually played in, and an invented one
+    /// is a number the screen prints as though the engine had said it.
+    /// </para>
+    /// </summary>
+    public int? Demand { get; private set; }
+
     public void KickOff(int seed, Stadium homeStadium, AttendanceContext attendance)
     {
         EnsureNotFinished();
@@ -292,6 +307,11 @@ namespace NinjaEleven.Domain.Matches;
             * (AttendanceCalculator.RandomCeiling - AttendanceCalculator.RandomFloor);
 
         Attendance = AttendanceCalculator.Calculate(homeStadium, attendance, noise);
+
+        // The same draw without the ceiling, so the two numbers are about one evening rather
+        // than about two models. Same seed, same noise, same evening — and the only difference
+        // between them is the wall.
+        Demand = AttendanceCalculator.Demand(attendance, homeStadium.TicketPrice, noise);
 
         var gate = GateReceipt.For(Attendance, homeStadium.TicketPrice, GateSplit.For(CompetitionType));
         TicketPrice = gate.TicketPrice;

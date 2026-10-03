@@ -71,13 +71,15 @@ public abstract class WorldJob : IJob
             {
                 _logger.LogInformation(
                     "{Wave} window {RoundId}: {Played} played, {Already} were already played, " +
-                    "{Failed} failed, {Elsewhere} held by another process. Complete: {Complete}. Duration {Duration}.",
+                    "{Failed} failed, {Elsewhere} already being played, {ForManager} started for the manager. " +
+                    "Complete: {Complete}. Duration {Duration}.",
                     wave,
                     run.RoundId,
                     run.Played,
                     run.AlreadyPlayed,
                     run.Failed,
                     run.PlayedElsewhere,
+                    run.StartedForTheManager,
                     run.IsComplete,
                     run.Duration);
             }

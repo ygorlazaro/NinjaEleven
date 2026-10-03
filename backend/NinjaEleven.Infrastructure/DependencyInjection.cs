@@ -35,6 +35,12 @@ public static class DependencyInjection
         services.AddScoped<ITeamRepository, TeamRepository>();
         services.AddScoped<IPlayerRepository, PlayerRepository>();
 
+        // A club's crowd is a fact about the club rather than about its ground, so it is read
+        // and written through its own seam and never through the team's.
+        services.AddScoped<ITeamFanBaseRepository, TeamFanBaseRepository>();
+        services.AddScoped<IStadiumConstructionRepository, StadiumConstructionRepository>();
+        services.AddScoped<IStadiumRepository, StadiumRepository>();
+
         // Training is kept as rows rather than as a tally on the club, because the day's
         // allowance is counted from the sessions that were actually run. A counter would be a
         // second answer to the same question, and the two would only agree on the day nothing
@@ -88,6 +94,10 @@ public static class DependencyInjection
         services.AddScoped<SeasonService>();
         services.AddScoped<SeasonCalendarService>();
         services.AddScoped<SeasonCloseService>();
+        services.AddScoped<StadiumService>();
+        services.AddScoped<RivalryService>();
+        services.AddScoped<CrowdService>();
+        services.AddScoped<NpcStadiumService>();
         // The same instance under the narrow door the walking of the world uses: whether a
         // season is over and what closing it does are the two questions the execution service
         // asks, and it must not be able to answer them with a second close of its own.

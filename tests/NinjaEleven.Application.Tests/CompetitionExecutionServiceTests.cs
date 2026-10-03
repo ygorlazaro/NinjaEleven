@@ -54,6 +54,12 @@ public class CompetitionExecutionServiceTests
     private readonly Mock<ISeasonRepository> _seasonRepository = new(MockBehavior.Loose);
     private readonly Mock<IInboxMessageRepository> _inboxMessages = new(MockBehavior.Loose);
     private readonly AcademyService _academy;
+    private readonly StadiumService _stadiums;
+    private readonly NpcStadiumService _npcStadiums;
+
+    private readonly Mock<IStadiumConstructionRepository> _constructions = new(MockBehavior.Loose);
+    private readonly Mock<ITeamFanBaseRepository> _fanBases = new(MockBehavior.Loose);
+    private readonly Mock<IStadiumRepository> _grounds = new(MockBehavior.Loose);
 
     private readonly Guid _seasonId = Guid.NewGuid();
     private readonly Guid _matchDayId = Guid.NewGuid();
@@ -96,6 +102,13 @@ public class CompetitionExecutionServiceTests
         _managedClubs.Setup(reader => reader.ListManagedClubsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<Guid>());
 
+        // The world settles itself after every poll, including a poll that played nothing, so
+        // every poll asks which season it is in. A world that has not been written yet has none,
+        // and the answer to that is a world with nothing to settle rather than a null the sort
+        // cannot read. GivenASeasonWith replaces this with the season the test drew.
+        _seasons.Setup(repository => repository.ListAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Season>());
+
         // The shirt pass asks which clubs nobody is running, and this world has nobody at all, so
         // there is no shirt for it to sell. Left unstated it would answer a field of clubs and
         // the pass would go on to sign deals these tests never asked for.
@@ -105,6 +118,19 @@ public class CompetitionExecutionServiceTests
 
         _players.Setup(repository => repository.ListAllSeasonStatesAsync(
             It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        // The day's pass asks how far through the championship the world is, to settle the
+        // stands whose projects have had their rounds. A world with no editions drawn has no
+        // rounds played through it, and the pass must be reached on such a world rather than
+        // only on one with work waiting — so the answer is zero rather than a stubbed list of
+        // editions these tests never created.
+        _competitions.Setup(repository => repository.ListSeasonViewsAsync(
+                It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        // And no ground in this world is being built on.
+        _constructions.Setup(repository => repository.ListUnfinishedAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
         _academy = new AcademyService(
@@ -135,6 +161,46 @@ public class CompetitionExecutionServiceTests
                 _unitOfWork.Object,
                 NullLogger<InboxService>.Instance),
             NullLogger<AcademyService>.Instance);
+
+        // The world settles its stands as a day closes, and this world has no ground work in it,
+        // so the pass finds nothing to finish. It still runs: a pass that only appeared on the
+        // poll that had work would never be reached in a season where nothing is being built.
+        _stadiums = new StadiumService(
+            _constructions.Object,
+            _grounds.Object,
+            _teams.Object,
+            _seasonRepository.Object,
+            new FinanceService(
+                _finance.Object,
+                _teams.Object,
+                _players.Object,
+                _fixtures.Object,
+                _rounds.Object,
+                _matchDays.Object,
+                _seasonRepository.Object,
+                new InboxService(
+                    _inboxMessages.Object,
+                    _teams.Object,
+                    new ManagedClubs(),
+                    _unitOfWork.Object,
+                    NullLogger<InboxService>.Instance),
+                _unitOfWork.Object,
+                NullLogger<FinanceService>.Instance),
+            _unitOfWork.Object,
+            MatchTestContext.Clock);
+
+        // And the grounds of the clubs nobody is running, over the same loose mocks. The pass
+        // runs on the day the world closes, so it is reached here the same way the settlement
+        // above is — and this world has neither a measured crowd nor a club anybody can afford a
+        // stand for, so it approves nothing.
+        _npcStadiums = new NpcStadiumService(
+            _teams.Object,
+            _grounds.Object,
+            _constructions.Object,
+            _fanBases.Object,
+            _matches.Object,
+            _finance.Object,
+            _stadiums);
     }
 
     private CompetitionExecutionService CreateService(
@@ -191,6 +257,8 @@ public class CompetitionExecutionServiceTests
             _calendarBuilder.Object,
             BuildTheStatementService(),
             _academy,
+            _stadiums,
+            _npcStadiums,
             CreateSponsorService(),
             options,
             NullLogger<CompetitionExecutionService>.Instance);
@@ -966,7 +1034,7 @@ public class CompetitionExecutionServiceTests
     /// the row could tell it what had been done.
     /// </para>
     /// </summary>
-    private CompetitionExecutionService CreateAdvanceService()
+    private CompetitionExecutionService CreateCalendarService()
     {
         var store = new InMemoryRoundExecutionStore(
             _calendar.ToDictionary(round => round.Id),
@@ -997,7 +1065,7 @@ public class CompetitionExecutionServiceTests
         // that first day's calendar — so a world that never drew it had no Supercup at all.
         GivenASeasonWith(2);
 
-        var first = await CreateAdvanceService().AdvanceTheWorldAsync();
+        var first = await CreateCalendarService().AdvanceTheWorldAsync();
 
         _calendarBuilder.Verify(
             builder => builder.DrawAsync(_season.Id, It.IsAny<CancellationToken>()),
@@ -1013,7 +1081,7 @@ public class CompetitionExecutionServiceTests
         // three. A world that jumped from the first round to the fourth would be offering the
         // same window twice, or offering a day the calendar has already passed.
         GivenASeasonWith(2, 3, 4);
-        var service = CreateAdvanceService();
+        var service = CreateCalendarService();
 
         var first = await service.AdvanceTheWorldAsync();
 
@@ -1044,7 +1112,7 @@ public class CompetitionExecutionServiceTests
         GivenASeasonWith(7, 8);
         GivenACupWindowOn(7, CompetitionRules.CupWindowNumber(1, 1));
 
-        var service = CreateAdvanceService();
+        var service = CreateCalendarService();
 
         var round = await service.AdvanceTheWorldAsync();
         Assert.Equal(7, round.MatchDayNumber);
@@ -1077,7 +1145,7 @@ public class CompetitionExecutionServiceTests
                 season.Id, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SeasonCloseResult(season.Id, nextSeasonId, 16, new List<Guid>()));
 
-        var advance = await CreateAdvanceService().AdvanceTheWorldAsync();
+        var advance = await CreateCalendarService().AdvanceTheWorldAsync();
 
         Assert.Equal(WorldAdvanceKind.SeasonClosed, advance.Kind);
         Assert.True(advance.SeasonClosed);
@@ -1096,7 +1164,7 @@ public class CompetitionExecutionServiceTests
         // fixtures said were owed. Six fixtures of a second division sat there for a season:
         // owed to the world, and unreachable by a hand walking it.
         GivenASeasonWith(2, 3);
-        var service = CreateAdvanceService();
+        var service = CreateCalendarService();
 
         await service.AdvanceTheWorldAsync();
         await service.AdvanceTheWorldAsync();
@@ -1134,7 +1202,7 @@ public class CompetitionExecutionServiceTests
         _closer.Setup(closer => closer.IsFinishedAsync(season.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        var advance = await CreateAdvanceService().AdvanceTheWorldAsync();
+        var advance = await CreateCalendarService().AdvanceTheWorldAsync();
 
         Assert.Equal(WorldAdvanceKind.Nothing, advance.Kind);
         _closer.Verify(closer => closer.CloseAsync(
@@ -1150,13 +1218,184 @@ public class CompetitionExecutionServiceTests
                 It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        var advance = await CreateAdvanceService().AdvanceTheWorldAsync();
+        var advance = await CreateCalendarService().AdvanceTheWorldAsync();
 
         Assert.Equal(WorldAdvanceKind.Nothing, advance.Kind);
         Assert.Empty(advance.Rounds);
         _player.Verify(
             player => player.PlayAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    /// <summary>
+    /// Lets the scheduler see the calendar the world has just been given.
+    ///
+    /// <para>
+    /// The poll asks the calendar for every day up to today, so a test that wants a window
+    /// offered has to put one on a day that has already arrived. A season that starts on the
+    /// clock's own day is the easy case: the championship goes out at fifteen hundred and the
+    /// clock reads four in the afternoon, so the first round is due the moment it is drawn.
+    /// </para>
+    /// </summary>
+    private void GivenTheSchedulerCanSeeTheCalendar()
+    {
+        var today = DateOnly.FromDateTime(MatchTestContext.Now.UtcDateTime);
+
+        _matchDays.Setup(repository => repository.ListUntilAsync(
+                It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_days.Where(day => day.Date <= today).ToList());
+
+        _matchDays.Setup(repository => repository.GetAsync(
+                It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) => _days.FirstOrDefault(day => day.Id == id));
+
+        // The poll asks for every edition of every season on the calendar at once, while the
+        // hand asks for one season's. They are two methods and this sets up the one the
+        // scheduler uses, keyed on the season the test drew rather than on the ids it was given.
+        _competitions.Setup(repository => repository.ListSeasonViewsAsync(
+                It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CompetitionSeasonView>>
+            {
+                [_season.Id] = _views
+            });
+    }
+
+    [Fact]
+    public async Task A_scheduler_that_plays_the_last_window_of_a_season_closes_that_season()
+    {
+        // The defect this holds. The season was only ever closed from AdvanceTheWorldAsync,
+        // which only POST /world/advance reaches, so a world nobody pressed a button in stayed
+        // inside its first season for ever: no next pyramid, no championship purse, no
+        // promotion, and no set of systems that grow between seasons ever asked to grow.
+        var season = GivenASeasonWith(1);
+        GivenTheSchedulerCanSeeTheCalendar();
+
+        _closer.Setup(closer => closer.IsFinishedAsync(season.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        _closer.Setup(closer => closer.CloseAsync(
+                season.Id, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SeasonCloseResult(season.Id, Guid.NewGuid(), 64, [Guid.NewGuid()]));
+
+        var runs = await CreateCalendarService().PlayDueRoundsAsync(CompetitionType.League);
+
+        Assert.NotEmpty(runs);
+        Assert.All(runs, run => Assert.Equal(RoundClaim.Claimed, run.Claim));
+        _closer.Verify(closer => closer.CloseAsync(
+            season.Id, true, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_poll_with_nothing_due_still_closes_a_season_whose_close_threw()
+    {
+        // A close that failed is a season that is over and still open, and the poll that would
+        // have found it again is the one that played its last window. Skipping the settle on an
+        // empty poll would have left that season open for ever with nothing left to play: the
+        // exact shape of the defect above, one failure later.
+        var season = GivenASeasonWith();
+        GivenTheSchedulerCanSeeTheCalendar();
+
+        _closer.Setup(closer => closer.IsFinishedAsync(season.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        _closer.Setup(closer => closer.CloseAsync(
+                season.Id, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SeasonCloseResult(season.Id, Guid.NewGuid(), 64, [Guid.NewGuid()]));
+
+        var runs = await CreateCalendarService().PlayDueRoundsAsync(CompetitionType.League);
+
+        Assert.Empty(runs);
+        _closer.Verify(closer => closer.CloseAsync(
+            season.Id, true, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_scheduler_leaves_a_closed_season_alone()
+    {
+        // The guard that makes the empty poll cheap. A world that has just opened its second
+        // season has nothing to close, and a rule asked about a finished season has to be able
+        // to say so without reading its fixtures.
+        var season = GivenASeasonWith();
+        GivenTheSchedulerCanSeeTheCalendar();
+        season.Finish();
+
+        var runs = await CreateCalendarService().PlayDueRoundsAsync(CompetitionType.League);
+
+        Assert.Empty(runs);
+        _closer.Verify(closer => closer.IsFinishedAsync(
+            It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_scheduler_settles_the_day_it_played_and_not_only_the_season()
+    {
+        // The week's books, the academy and the shirts were written as if the scheduler walked
+        // the world and were called only from the hand. A world nobody watched therefore never
+        // closed a week and left sixty-three clubs with bare backs for ever — so the settle is
+        // asserted on its own and not as a side effect of the season closing.
+        GivenASeasonWith(1);
+        GivenTheSchedulerCanSeeTheCalendar();
+
+        _closer.Setup(closer => closer.IsFinishedAsync(
+                It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await CreateCalendarService().PlayDueRoundsAsync(CompetitionType.League);
+
+        _players.Verify(repository => repository.ListAllSeasonStatesAsync(
+            It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        _teams.Verify(repository => repository.ListClubsWithoutManagerInSeasonAsync(
+            It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+    }
+
+    /// <summary>
+    /// The stands are settled as a day closes, and against the championship rather than
+    /// against whatever wave closed it.
+    ///
+    /// <para>
+    /// The second half is the part worth asserting. A cup's third round is not a third of a
+    /// season, so a settlement that read the wave it happened to be called from would hand a
+    /// club its ten-thousand seats a fortnight early and finish every construction in the
+    /// country inside the first month of the season.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_walk_settles_the_stands_against_the_championship()
+    {
+        GivenASeasonWith(1);
+        GivenTheSchedulerCanSeeTheCalendar();
+
+        _closer.Setup(closer => closer.IsFinishedAsync(
+                It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await CreateCalendarService().PlayDueRoundsAsync(CompetitionType.League);
+
+        _constructions.Verify(
+            repository => repository.ListUnfinishedAsync(It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+    }
+
+    /// <summary>
+    /// A construction's progress is measured in the championship's rounds, so the world asks
+    /// that question of the championship's own editions rather than of every edition it has.
+    /// </summary>
+    [Fact]
+    public async Task The_world_asks_its_championship_how_far_through_the_season_it_is()
+    {
+        GivenASeasonWith(1);
+        GivenTheSchedulerCanSeeTheCalendar();
+
+        _closer.Setup(closer => closer.IsFinishedAsync(
+                It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await CreateCalendarService().PlayDueRoundsAsync(CompetitionType.League);
+
+        _competitions.Verify(
+            repository => repository.ListSeasonViewsAsync(
+                It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
     }
 
     private CompetitionExecutionService BuildWithStore(

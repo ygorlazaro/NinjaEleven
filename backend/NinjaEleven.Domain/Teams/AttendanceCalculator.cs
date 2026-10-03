@@ -28,51 +28,87 @@ public enum MatchImportance
 /// <param name="Tier">The tier of the home club's division. 1 is the top.</param>
 /// <param name="HomePosition">Where the home club stands in its table, counted from one.</param>
 /// <param name="ClubsInDivision">How many clubs are in the division.</param>
+/// <param name="HomeSupporters">
+/// How many people follow the home club. This is the number the crowd is worked out from, and
+/// it has no default on purpose: a club with no following is not a club whose crowd happens to
+/// be zero this week, and a context that could omit it would let a caller measure a ground
+/// without ever saying who is coming to it.
+/// </param>
 /// <param name="HomeSquadStars">The home squad's strength, 0..5, everybody in the squad.</param>
 /// <param name="AwaySquadStars">The away squad's strength, 0..5, everybody in the squad.</param>
 /// <param name="DivisionAverageStars">The average squad strength of the division, for the opponent factor.</param>
 /// <param name="Matchday">Which matchday of the season this is, counted from one.</param>
 /// <param name="TotalMatchdays">How many matchdays the season has.</param>
 /// <param name="Importance">How much the match matters.</param>
+/// <param name="WorksUnderway">
+/// Whether the ground is in the middle of a construction project. It is a fact about the
+/// ground rather than about the football, which is why it belongs here and not in any of the
+/// factors below: it does not change how much a club wants to fill the stand, only how much of
+/// the stand is open to be filled.
+/// </param>
 public readonly record struct AttendanceContext(
     int Tier,
     int HomePosition,
     int ClubsInDivision,
+    int HomeSupporters,
     double HomeSquadStars,
     double AwaySquadStars,
     double DivisionAverageStars,
     int Matchday,
     int TotalMatchdays,
-    MatchImportance Importance);
+    MatchImportance Importance,
+    bool WorksUnderway = false);
 
 /// <summary>
 /// How many people are in the stand.
 ///
-/// A crowd is not a random number. It is a ground of a given size, in a given division, for
-/// a club sitting in a given place in its table, against an opponent of a given quality, in
-/// a given week of a given season, for a match of a given importance, at a given price — and
-/// then a small amount of noise, because the people deciding whether to go are people. Each
-/// of those is a factor, the factors multiply, and the result can never be more people than
-/// the ground holds.
+/// <para>
+/// <b>A crowd is a fact about the club and the ground is only a ceiling.</b> It used to be the
+/// other way round — a share of the seats, which meant a club could never draw more people than
+/// it had seats, a ground of five thousand could never be described as too small, and every
+/// argument for building one was an argument nobody could make. Now the demand is the club's
+/// own following, worked out of who they are playing, where they stand, what it means and what
+/// a seat costs; the ground only says how many of them can be let in. The rest is what a club
+/// is being told about its own ground, and it is the whole point of the model.
+/// </para>
 ///
-/// The last factor is the only random one and it is deliberately narrow. A crowd that
-/// swings by half is not a crowd, it is a coin, and a gate that depends on a coin is a gate
-/// nobody can manage.
+/// <para>
+/// What is left out is the division. It used to be a factor here, and it is not any more,
+/// because a division's clubs do not all draw the same crowd and the ladder in
+/// <see cref="FanBaseRules"/> already says which division draws more. A tier factor multiplied
+/// on top of a crowd that already carries the tier was counting it twice, and it was counting
+/// it twice in the one direction that makes a small ground look busy.
+/// </para>
+///
+/// <para>
+/// The last factor is the only random one and it is deliberately narrow. A crowd that swings by
+/// half is not a crowd, it is a coin, and a gate that depends on a coin is a gate nobody can
+/// manage.
+/// </para>
 /// </summary>
 public static class AttendanceCalculator
 {
     /// <summary>
-    /// The share of a full ground a first-tier match draws, before anything else is taken into
-    /// account. Everything else is a reason to be fuller or emptier than this.
+    /// The share of a club's following that comes to one match.
     ///
-    /// It is 0.45 and not 0.40 because of what the other factors can add up to. The strongest
-    /// possible case — the best club, the best draw, the last day, a decider, and a seat at the
-    /// cheapest price the curve knows — multiplies out to about 1.16, so only a ground in a
-    /// nearly full stadium and a nearly sold-out price reaches a full house. At 0.40 the very
-    /// best case came to 0.93 and no ground in the game could ever be sold out, which would
-    /// make the capacity the only ceiling in the formula a line nothing ever reached.
+    /// <para>
+    /// It replaces a constant that used to mean the opposite thing — the share of a full ground
+    /// a first-tier match drew — and the two numbers are not comparable. A following is
+    /// everybody who would come: the season-ticket holder, the family, the boy who comes with
+    /// his father, the club that has not won anything in nine years and would still turn up on
+    /// a Saturday. Turning up to one match is a fraction of that, and the fraction is what this
+    /// is.
+    /// </para>
+    ///
+    /// <para>
+    /// It is a small number because a club of forty-five thousand people is not a club whose
+    /// stadium holds forty-five thousand. That gap is the argument for building: a first
+    /// division club at this share sells out a five-thousand seat ground several times a
+    /// season, and the part of its following it could not let in is what the ten-thousand stand
+    /// is for.
+    /// </para>
     /// </summary>
-    public const double BaseDemand = 0.45;
+    public const double Followthrough = 0.13;
 
     /// <summary>How much fuller the ground is for the best-placed club than the worst-placed.</summary>
     public const double PositionSpread = 0.30;
@@ -97,16 +133,20 @@ public static class AttendanceCalculator
 
     public const double RandomCeiling = 1.10;
 
-    /// <summary>How full the ground is, as a share of its capacity, for a match in the top division.</summary>
-    public static double DivisionFactor(int tier) => tier switch
-    {
-        1 => 1.00,
-        2 => 0.75,
-        3 => 0.55,
-        // A division below the bottom of the pyramid is a smaller league, and the curve keeps
-        // going down rather than stopping at a number that was only ever meant for three.
-        _ => Math.Max(0.30, 1.00 - (tier - 1) * 0.225)
-    };
+    /// <summary>
+    /// What a ground being worked on is worth to a crowd.
+    ///
+    /// <para>
+    /// It multiplies the demand rather than the capacity, and the two are not the same thing.
+    /// A ground of five thousand with a quarter of it shut is still a ground of five thousand:
+    /// the club cannot sell the seats it does not have, and a demand figure that knew about the
+    /// closure would be a demand for a smaller stadium than the one the club owns. So the
+    /// closure takes a quarter of the crowd off and leaves the capacity where it is — which is
+    /// also why a full house during a rebuild is 3.750 people and not 6.250.
+    /// </para>
+    /// </summary>
+    public static double WorksFactor(bool worksUnderway) =>
+        worksUnderway ? StadiumRules.WorksAttendanceFactor : 1.0;
 
     /// <summary>What a match of this importance is worth to a crowd.</summary>
     public static double ImportanceFactor(MatchImportance importance) => importance switch
@@ -162,7 +202,45 @@ public static class AttendanceCalculator
     }
 
     /// <summary>
-    /// The crowd, as a number of people.
+    /// How much of a club's following wants to come, before the ground is asked whether it has
+    /// anywhere to put them.
+    ///
+    /// <para>
+    /// This is the number a club's finances actually turn on when the ground is big enough,
+    /// and it is worth separating from the attendance for that reason alone: a ground of five
+    /// thousand hides every crowd above five thousand, so a club whose following outgrew its
+    /// ground would see a flat gate and a growing income, and nothing on the club's page would
+    /// say which of the two had happened.
+    /// </para>
+    /// </summary>
+    /// <param name="context">Everything about the match that moves a crowd.</param>
+    /// <param name="ticketPrice">What a seat costs at this ground.</param>
+    /// <param name="randomFactor">The narrow band of noise, 0.90 to 1.10.</param>
+    public static int Demand(AttendanceContext context, decimal ticketPrice, double randomFactor)
+    {
+        if (context.HomeSupporters <= 0) return 0;
+
+        var interest =
+            Followthrough
+            * PositionFactor(context.HomePosition, context.ClubsInDivision)
+            * OpponentFactor(context.AwaySquadStars, context.DivisionAverageStars)
+            * SeasonProgress(context.Matchday, context.TotalMatchdays)
+            * ImportanceFactor(context.Importance)
+            * TicketPriceRules.DemandFactor(ticketPrice)
+            * WorksFactor(context.WorksUnderway)
+            * Math.Clamp(randomFactor, RandomFloor, RandomCeiling);
+
+        return Math.Max(0, (int)Math.Round(context.HomeSupporters * interest));
+    }
+
+    /// <summary>
+    /// How many people turn up, which is how many of them the ground had room for.
+    ///
+    /// <para>
+    /// The ground is the last word and it is the only thing that says no. A demand above the
+    /// capacity is not a crowd that shrank to fit — it is the state a club's ground is in, and
+    /// it is the only state in which an expansion is worth arguing for.
+    /// </para>
     /// </summary>
     /// <param name="stadium">The ground the match is played in.</param>
     /// <param name="context">Everything about the match that moves a crowd.</param>
@@ -171,22 +249,10 @@ public static class AttendanceCalculator
     {
         ArgumentNullException.ThrowIfNull(stadium);
 
-        if (stadium.Capacity == 0) return 0;
+        var demand = Demand(context, stadium.TicketPrice, randomFactor);
 
-        var demand =
-            BaseDemand
-            * DivisionFactor(context.Tier)
-            * PositionFactor(context.HomePosition, context.ClubsInDivision)
-            * OpponentFactor(context.AwaySquadStars, context.DivisionAverageStars)
-            * SeasonProgress(context.Matchday, context.TotalMatchdays)
-            * ImportanceFactor(context.Importance)
-            * TicketPriceRules.DemandFactor(stadium.TicketPrice)
-            * Math.Clamp(randomFactor, RandomFloor, RandomCeiling);
-
-        var attendance = (int)Math.Round(stadium.Capacity * demand);
-
-        // A ground holds what it holds. Every factor above pushes towards a fuller ground and
-        // the capacity is the only thing that is allowed to say no.
-        return Math.Clamp(attendance, 0, stadium.Capacity);
+        // A ground holds what it holds, and a ground of no seats at all holds nobody however
+        // many people would come to the match.
+        return Math.Min(demand, stadium.Capacity);
     }
 }
