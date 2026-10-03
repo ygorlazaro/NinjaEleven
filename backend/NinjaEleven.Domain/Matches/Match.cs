@@ -68,6 +68,22 @@ namespace NinjaEleven.Domain.Matches;
         /// <summary>Which of the visiting club's two shirts was on the pitch.</summary>
         public KitSide AwayKitSide { get; private set; }
 
+        /// <summary>
+        /// The company on the home club's shirt at the kick-off, or null when it had none.
+        ///
+        /// <para>
+        /// Stamped here for the same reason the two shirts are: the mark has to be the mark that
+        /// was on the shirt all afternoon. A deal expires in the middle of a season, so a screen
+        /// that asked the contract every time it drew would take a sponsor off a club's back at
+        /// half-time and put it back at the final whistle, and the shirt would be a different
+        /// shirt in the middle of the match. What the shirt said at the whistle is what it said.
+        /// </para>
+        /// </summary>
+        public Guid? HomeSponsorId { get; private set; }
+
+        /// <summary>The company on the visiting club's shirt at the kick-off.</summary>
+        public Guid? AwaySponsorId { get; private set; }
+
         /// <summary>How many people turned up, worked out from the ground and the match.</summary>
         public int Attendance { get; private set; }
 
@@ -169,6 +185,16 @@ namespace NinjaEleven.Domain.Matches;
     {
         HomeKitSide = home;
         AwayKitSide = away;
+    }
+
+    /// <summary>
+    /// Records the two companies whose names were on the shirts when this match kicked off.
+    /// Written once, beside the two shirts, and never drawn again.
+    /// </summary>
+    public void RecordSponsors(Guid? home, Guid? away)
+    {
+        HomeSponsorId = home;
+        AwaySponsorId = away;
     }
 
     public bool IsFinished => Status is MatchStatus.Finished or MatchStatus.Abandoned;

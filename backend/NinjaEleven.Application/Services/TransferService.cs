@@ -201,7 +201,7 @@ public class TransferService
                 player.Name, buyingClub.Name, signingFee,
                 window.ArrivalSeasonNumber, window.ArrivalRoundNumber);
 
-            return BuildProposal(deal, player, sellingClub: null, buyingClub, season.Number);
+            return BuildProposal(deal, player, state, sellingClub: null, buyingClub, season.Number);
         }
 
         if (currentClubId == buyingClubId)
@@ -283,7 +283,7 @@ window.ArrivalRoundNumber);
             player.Name, sellingClub.Name, buyingClub.Name, askingPrice,
             window.ArrivalSeasonNumber, window.ArrivalRoundNumber);
 
-        return BuildProposal(transfer, player, sellingClub, buyingClub, season.Number);
+        return BuildProposal(transfer, player, state, sellingClub, buyingClub, season.Number);
     }
 
     /// <summary>
@@ -332,6 +332,11 @@ window.ArrivalRoundNumber);
         var player = await _players.GetAsync(transfer.PlayerId, cancellationToken)
             ?? throw new EntityNotFoundException("Player", transfer.PlayerId);
 
+        // The answer carries the man's energy, so that the box the manager reads after pressing
+        // the button is the same box he saw before it. One read for one proposal: a command
+        // answers about one thing and is allowed to ask about it.
+        var state = await _players.GetSeasonStateAsync(player.Id, season.Id, cancellationToken);
+
         var resolvedAt = DateOnly.FromDateTime(DateTime.Now);
 
         if (accept)
@@ -370,7 +375,7 @@ window.ArrivalRoundNumber);
             "Transfer {TransferId} for {PlayerName}: {Decision} by {SellingClub}.",
             transferId, player.Name, accept ? "aceita" : "recusada", sellingClub.Name);
 
-        return BuildProposal(transfer, player, sellingClub, buyingClub, season.Number);
+        return BuildProposal(transfer, player, state, sellingClub, buyingClub, season.Number);
     }
 
     /// <summary>
@@ -1933,9 +1938,18 @@ window.ArrivalRoundNumber);
         var incoming = await _transfers.ListIncomingAsync(clubId, seasonId, cancellationToken);
         var outgoing = await _transfers.ListOutgoingAsync(clubId, seasonId, cancellationToken);
 
+        // The season's states, read once for the whole inbox. The energy on a proposal is the
+        // energy of the man being bought, and a box that printed a hundred for every one of
+        // them because nobody asked would be telling a manager twenty men are fresh when the
+        // world knows how tired they are.
+        var statesByPlayer = (await _players.ListAllSeasonStatesAsync(seasonId, cancellationToken))
+            .GroupBy(state => state.PlayerId)
+            .ToDictionary(group => group.Key, group => group.First());
+
         TransferProposal Build(Transfer transfer) => BuildProposal(
             transfer,
             players.GetValueOrDefault(transfer.PlayerId),
+            statesByPlayer.GetValueOrDefault(transfer.PlayerId),
             transfer.SellingClubId is { } seller ? teams.GetValueOrDefault(seller) : null,
             teams.GetValueOrDefault(transfer.BuyingClubId),
             season.Number);
@@ -1988,13 +2002,18 @@ return new TransferInbox
 
         var teams = (await _teams.ListAsync(cancellationToken)).ToDictionary(t => t.Id, t => t);
         var seasonNumbers = (await _seasons.ListAsync(cancellationToken)).ToDictionary(s => s.Id, s => s.Number);
+        // One read of the season's states for the whole window, for the same reason the inbox
+        // reads them once: a box per transfer and a question per box is fifty questions.
+        var states = (await _players.ListAllSeasonStatesAsync(season.Id, cancellationToken))
+            .GroupBy(state => state.PlayerId)
+            .ToDictionary(group => group.Key, group => group.First());
 
         return new DivisionRecentTransfers
         {
             CompetitionSeasonId = division.Id,
             CurrentRound = currentRound,
             WindowRounds = windowRounds,
-            Transfers = transfers.Select(t => BuildHistoryLine(t, teams, seasonNumbers)).ToList()
+            Transfers = transfers.Select(t => BuildHistoryLine(t, teams, seasonNumbers, states)).ToList()
         };
     }
 
@@ -2157,13 +2176,21 @@ return new TransferInbox
     private static TransferHistoryLine BuildHistoryLine(
         Transfer transfer,
         Dictionary<Guid, Team> teams,
-        Dictionary<Guid, int> seasonNumbers) =>
+        Dictionary<Guid, int> seasonNumbers,
+        Dictionary<Guid, PlayerSeasonState>? states = null) =>
         new()
         {
             TransferId = transfer.Id,
             PlayerId = transfer.PlayerId,
             PlayerName = transfer.Player?.Name ?? transfer.PlayerId.ToString(),
             PlayerPosition = transfer.Player?.Position.ToString() ?? string.Empty,
+            PlayerAge = transfer.Player?.Age ?? 0,
+            Player = transfer.Player is null
+                ? null
+                // No states means no energy, and that is the truth about a list spanning seasons:
+                // one number cannot be the energy of three seasons, and picking one of them would
+                // be a fact about the wrong season.
+                : PlayerSnapshot.Of(transfer.Player, states?.GetValueOrDefault(transfer.PlayerId)),
             SellingClubId = transfer.SellingClubId,
             SellingClubName = transfer.SellingClubId is { } seller
                 ? transfer.SellingClub?.Name ?? teams.GetValueOrDefault(seller)?.Name ?? string.Empty
@@ -2328,6 +2355,7 @@ return new TransferInbox
     private static TransferProposal BuildProposal(
         Transfer transfer,
         Player? player,
+        PlayerSeasonState? state,
         Team? sellingClub,
         Team? buyingClub,
         int proposalSeasonNumber)
@@ -2339,6 +2367,7 @@ return new TransferInbox
             PlayerName = player?.Name ?? string.Empty,
             PlayerPosition = player?.Position.ToString() ?? string.Empty,
             PlayerAge = player?.Age ?? 0,
+            Player = player is null ? null : PlayerSnapshot.Of(player, state),
             SellingClubId = transfer.SellingClubId,
             SellingClubName = sellingClub?.Name ?? "Sem clube",
             BuyingClubId = transfer.BuyingClubId,
@@ -2408,6 +2437,7 @@ return new TransferInbox
             Stamina = player.Stamina,
             Potential = player.Potential,
             Stars = PlayerRating.CalculateStars(player),
+            Face = player.Face,
             TeamId = teamId,
             TeamName = team?.Name,
             TeamPrimaryColor = team?.PrimaryColor,

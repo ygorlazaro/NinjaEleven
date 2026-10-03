@@ -107,9 +107,17 @@ public static class SponsorPricing
     /// <summary>
     /// How many clubs a sponsor of each size keeps on its shirt at once.
     /// </summary>
+    /// <remarks>
+    /// The local company holds three, and it is the number the whole market rests on: the
+    /// regionals ask for appeal and the nationals ask for appeal and a top division, so a club
+    /// at the bottom of the pyramid that nobody else wants has exactly one kind of company left
+    /// to sell its shirt to. With two, twelve local companies carried twenty-four shirts and the
+    /// sixth-lowest club of the world found nobody selling to it — six clubs playing every week
+    /// with a bare back, in a market that had a hundred and sixty spare places in its books.
+    /// </remarks>
     public static int MaxClubsForWeight(int weight) => weight switch
     {
-        1 => 2,
+        1 => 3,
         2 => 4,
         3 => 8,
         _ => 4

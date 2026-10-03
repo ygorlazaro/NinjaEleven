@@ -31,6 +31,7 @@ import { useMatchAudio } from '@/hooks/useMatchAudio';
 import { useCountdown } from '@/hooks/useCountdown';
 import { formatLimo } from '@/services/limo';
 import { ClubName } from '@/components/Common/Names';
+import { SponsorMark } from '@/components/Sponsor/SponsorMark';
 import ClubCrest from '@/components/Club/ClubCrest';
 import { starsToString } from '@/services/formatters';
 
@@ -860,6 +861,10 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
             />
             <ClubName teamId={homeTeam.id}>{homeTeam.name}</ClubName>
             <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(homeTeam.stars)}</span>
+            {/* Who pays for the shirt, under the name it is on. Stamped at the kick-off, so a
+                deal that ends at half-time does not take the company off a club's back while the
+                manager is still watching it play. */}
+            <SponsorMark sponsor={lineup!.homeSponsor} className="team-sponsor" />
             {/* The goals under the name they belong to. A score says how many; the manager
                 watching this match reads who, and an own goal and a penalty are not the same
                 goal as any other. */}
@@ -892,6 +897,7 @@ const MatchScreen: React.FC<{ matchId?: string }> = ({ matchId: propMatchId }) =
             />
             <ClubName teamId={awayTeam.id}>{awayTeam.name}</ClubName>
             <span className="team-stars" style={{ color: 'var(--accent)', marginLeft: '8px' }}>{starsToString(awayTeam.stars)}</span>
+            <SponsorMark sponsor={lineup!.awaySponsor} className="team-sponsor" />
             <GoalHistory feed={feed} teamId={awayTeam.id} lineup={lineup!} team={awayTeam} side={lineup!.awayKitSide} />
           </div>
 

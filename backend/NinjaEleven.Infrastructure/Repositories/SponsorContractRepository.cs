@@ -57,6 +57,34 @@ public class SponsorContractRepository : ISponsorContractRepository
                 group => (IReadOnlyList<SponsorContract>)group.ToList());
     }
 
+    public async Task<IReadOnlyDictionary<Guid, SponsorContract>> ListActiveByTeamIdsAsync(
+        IEnumerable<Guid> teamIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = teamIds.Distinct().ToList();
+
+        if (ids.Count == 0)
+        {
+            return new Dictionary<Guid, SponsorContract>();
+        }
+
+        // A club cannot hold two live deals — `Team.SignSponsorContract` refuses it — so the
+        // newest wins rather than the first row to come back. The ordering is here to make that
+        // true in the database rather than to hope it is.
+        var contracts = await _dbContext.SponsorContracts
+            .AsNoTracking()
+            .Include(contract => contract.Sponsor)
+            .Where(contract => ids.Contains(contract.TeamId))
+            .Where(contract => contract.Status == SponsorContractStatus.Active
+                               && contract.ContractMatches > contract.MatchesPlayed)
+            .OrderByDescending(contract => contract.SignedAt)
+            .ToListAsync(cancellationToken);
+
+        return contracts
+            .GroupBy(contract => contract.TeamId)
+            .ToDictionary(group => group.Key, group => group.First());
+    }
+
     public async Task AddAsync(SponsorContract contract, CancellationToken cancellationToken = default) =>
         await _dbContext.SponsorContracts.AddAsync(contract, cancellationToken);
 

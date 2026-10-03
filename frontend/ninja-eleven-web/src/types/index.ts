@@ -194,6 +194,12 @@ export interface SquadPlayerDto {
   isAvailable: boolean;
   /** Whether the player has declared he will retire at the end of the season. */
   retiring: boolean;
+  /**
+   * The face as the raw JSON of a faces.js `FaceConfig`, or null when he has none. The same
+   * string the profile carries: a face belongs to the man rather than to the screen, so a
+   * squad of twenty-three is twenty-three men and not twenty-three placeholders.
+   */
+  face?: string | null;
   /** Null for a free agent: a player with no club is available to anyone. */
   teamId?: Guid | null;
   seasonId: Guid;
@@ -399,6 +405,11 @@ export interface TransferListingDto {
    */
   stamina: number;
   stars: number;
+  /**
+   * The face as the raw JSON of a faces.js `FaceConfig`, or null when he has none. A market
+   * is scanned by face before it is read by name, which is most of what it is a market for.
+   */
+  face?: string | null;
   teamId?: Guid | null;
   teamName?: string | null;
   teamPrimaryColor?: string | null;
@@ -439,12 +450,35 @@ export interface PlayerClubCareerLineDto {
   total: PlayerCareerLineDto;
 }
 
+
+/**
+ * The face, the seven attributes, the stars and the energy of the man a transfer is about.
+ *
+ * One shape for three lists — the market, a proposal and a line of a division's recent business —
+ * because it is one set of facts about one man. `energy` is nullable: a transfer about somebody
+ * the world has no season state for carries no energy, and that is not a hundred.
+ */
+export type PlayerSnapshotDto = {
+  face?: string | null;
+  speed: number;
+  accuracy: number;
+  dribbling: number;
+  heading: number;
+  strength: number;
+  goalkeeperPower: number;
+  reflexes: number;
+  stars: number;
+  energy?: number | null;
+};
+
 export interface TransferProposalDto {
   transferId: Guid;
   playerId: Guid;
   playerName: string;
   playerPosition: string;
   playerAge: number;
+  /** His face, attributes and energy, so a proposal is a manager reading a man. */
+  player?: PlayerSnapshotDto | null;
   /** Null when the player has no club: a signing, not a purchase. */
   sellingClubId?: Guid | null;
   sellingClubName: string;
@@ -516,6 +550,9 @@ export interface TransferHistoryLineDto {
   playerId: Guid;
   playerName: string;
   playerPosition: string;
+  playerAge: number;
+  /** The same snapshot the proposal carries: a division's business is a list of men who moved. */
+  player?: PlayerSnapshotDto | null;
   /** Null when nobody sold him: a free agent who was signed has a history line too. */
   sellingClubId?: Guid | null;
   sellingClubName: string;
@@ -1156,6 +1193,12 @@ export interface MatchLineupDto {
   /** Which of each club's two shirts this match was played in, as the backend drew it. */
   homeKitSide: KitSide;
   awayKitSide: KitSide;
+  /**
+   * The company on each shirt, as the kick-off stamped it. Null when the club had no live deal
+   * when the whistle went — the ordinary case, and it deserves no mark at all.
+   */
+  homeSponsor: SponsorMarkDto | null;
+  awaySponsor: SponsorMarkDto | null;
 }
 
 /** One leg of a cup tie, as the scoreboard shows it under the score of the other one. */
@@ -1772,6 +1815,53 @@ export type ClubProfileDto = {
  * count is the number of matches the club has left to play under the deal, which is what
  * decides when a club may change its mind about it.
  */
+/**
+ * The panel a company's name is written on.
+ *
+ * The shape travels on the wire rather than being chosen here: eight panels for eight kinds of
+ * company is a rule the world owns, and a screen that picked its own would be drawing a
+ * different sponsor's badge for the same company on the shirt and in the sponsor book.
+ */
+export type SponsorLogoShape =
+  | 'Banner'
+  | 'Block'
+  | 'Roundel'
+  | 'Hexagon'
+  | 'Disc'
+  | 'Plaque'
+  | 'Lozenge'
+  | 'Pennant';
+
+/**
+ * A company's mark as the drawing is described: a panel, a brand colour, an ink that can be read
+ * against it, and the words.
+ *
+ * It is a shape and two colours rather than a picture, because the drawing is the screen's and
+ * the decision is the world's. A bitmap would make every sponsor a thing the game cannot
+ * restyle, recolour or compare.
+ */
+export type SponsorLogoDto = {
+  shape: SponsorLogoShape;
+  backgroundColor: string;
+  inkColor: string;
+  text: string;
+};
+
+/**
+ * A company as a shirt carries it: who it is, what it does, and the mark it is drawn as.
+ *
+ * It is a different shape from an offer on purpose. An offer is a price and a length and it
+ * exists only while somebody is choosing; this is a company that already has a shirt, and it
+ * exists on a scoreboard. One type for both would put a fee on a scoreboard.
+ */
+export type SponsorMarkDto = {
+  id: string;
+  name: string;
+  industry: string;
+  color: string;
+  logo: SponsorLogoDto;
+};
+
 export type SponsorOfferDto = {
   id: string;
   name: string;
@@ -1783,6 +1873,12 @@ export type SponsorOfferDto = {
   contractMatches: number;
   /** The mark's own colour, so a sponsor is a thing the screen can draw. */
   color: string;
+  /**
+   * The mark itself, so the sponsor screen draws each company the way the shirt does. A shortlist
+   * that showed every name in the same text and no colour would be a list a manager has to read
+   * rather than one he recognises.
+   */
+  logo: SponsorLogoDto;
   /**
    * How big a company this is: 1 local, 2 regional, 3 national. A bigger company pays more
    * for the same shirt and works in fewer places, so the number is what tells a manager
@@ -2572,6 +2668,8 @@ export interface AcademyPlayerDto {
    */
   suspensionMatches: number;
   retiring: boolean;
+  /** The youth's own face, so the base is read by the same men the squad will be read by. */
+  face?: string | null;
 }
 
 export interface PromoteAcademyResponseDto {

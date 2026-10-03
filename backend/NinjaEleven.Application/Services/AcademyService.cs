@@ -105,7 +105,10 @@ public class AcademyService
                 // to read "not available" and print "Suspenso" beside it, which sent a manager
                 // looking for a red card a youth player had never been shown.
                 SuspensionMatches = state.SuspensionMatches,
-                Retiring = state.Retiring
+                Retiring = state.Retiring,
+                // The youth's own face, off the identity this loop already holds. The comment above
+                // this method promised the screen could render it; nothing carried it until now.
+                Face = player.Face
             });
         }
 

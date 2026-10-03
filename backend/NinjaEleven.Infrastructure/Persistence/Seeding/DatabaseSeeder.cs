@@ -193,6 +193,16 @@ public class DatabaseSeeder : IDataSeeder
         ("Rede Hospitalar Vida", "Saúde", "#E91E63"),
         ("Editora Cultura", "Mídia", "#673AB7"),
         ("Auto Peças Central", "Automotivo", "#455A64"),
+        ("Cia. de Água do Norte", "Saneamento", "#0277BD"),
+        ("Banco Litorâneo", "Financeiro", "#00897B"),
+        ("Seguros Aurora do Sul", "Seguros", "#5E35B1"),
+        ("Transportes Serra Azul", "Transportes", "#37474F"),
+        ("Cimentos Ipê", "Construção", "#6D4C41"),
+        ("Frigorífico Boiadeiro", "Alimentos", "#C62828"),
+        ("Tecnologia Aurora", "Tecnologia", "#00ACC1"),
+        ("Padaria Forno de Ouro", "Alimentos", "#EF6C00"),
+        ("Farmacêutica Vitalis", "Farmacêutico", "#D81B60"),
+        ("Café Serra Azul", "Alimentos", "#5D4037"),
     };
 
     private readonly NinjaElevenDbContext _dbContext;
@@ -282,6 +292,11 @@ public class DatabaseSeeder : IDataSeeder
             await GiveManagersToTheWorldAlreadySeededAsync(random, cancellationToken);
             await OpenTheBooksOfTheWorldAlreadySeededAsync(cancellationToken);
             await GenerateAcademyIntakeForInProgressSeasonAsync(cancellationToken);
+
+            // The book of companies grows too. A sponsor that is already there is never written
+            // again — a club's signed deal has to stay the same row it always was — so this adds
+            // the ones this world has never seen and leaves the rest alone.
+            await SeedSponsorsAsync(cancellationToken);
             return;
         }
 
@@ -433,9 +448,11 @@ public class DatabaseSeeder : IDataSeeder
     }
 
     /// <summary>
-    /// The master sponsor catalog: the companies that can appear on a shirt. Seeded only
-    /// once, so a world re-seeded keeps its sponsors and a sponsor that has been signed by a
-    /// club is the same row it always was.
+    /// The master sponsor catalog: the companies that can appear on a shirt. A sponsor that is
+    /// already there is never written again, so a world re-seeded keeps its sponsors and a
+    /// sponsor that has been signed by a club is the same row it always was — and a catalogue
+    /// that grew is added to the world that already has one, which is what a book of companies
+    /// looks like when the market opens to more of them.
     ///
     /// <para>
     /// A book of thirty identical companies would be a book with no pyramid in it: every
@@ -449,12 +466,20 @@ public class DatabaseSeeder : IDataSeeder
     /// </summary>
     private async Task SeedSponsorsAsync(CancellationToken cancellationToken)
     {
-        if (await _dbContext.Sponsors.AnyAsync(cancellationToken))
+        var seeded = await _dbContext.Sponsors
+            .Select(sponsor => sponsor.Name)
+            .ToListAsync(cancellationToken);
+
+        var missing = SponsorCatalog
+            .Where(sponsor => !seeded.Contains(sponsor.Name, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        if (missing.Count == 0)
         {
             return;
         }
 
-        _dbContext.Sponsors.AddRange(SponsorCatalog.Select(sponsor => Sponsor.Create(
+        _dbContext.Sponsors.AddRange(missing.Select(sponsor => Sponsor.Create(
             sponsor.Name,
             sponsor.Industry,
             sponsor.Color,
@@ -462,7 +487,11 @@ public class DatabaseSeeder : IDataSeeder
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Seeded {Count} sponsors.", SponsorCatalog.Length);
+        _logger.LogInformation(
+            "Added {Count} sponsor(s) to a book of {Existing}, now {Total}.",
+            missing.Count,
+            seeded.Count,
+            seeded.Count + missing.Count);
     }
 
     /// <summary>

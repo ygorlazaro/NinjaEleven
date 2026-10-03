@@ -33,6 +33,14 @@ public class AcademyPlayerDto
     /// </summary>
     public int SuspensionMatches { get; init; }
     public bool Retiring { get; init; }
+
+    /// <summary>
+    /// The youth's face as the raw JSON of a faces.js <c>FaceConfig</c>, null when he has
+    /// none. The same string the profile carries, for the same reason: a face belongs to the
+    /// man rather than to the screen that shows him, so a youth drawn in the base is the same
+    /// face he has after he is promoted.
+    /// </summary>
+    public string? Face { get; init; }
 }
 
 /// <summary>

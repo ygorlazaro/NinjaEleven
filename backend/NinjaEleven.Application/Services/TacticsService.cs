@@ -98,7 +98,15 @@ public class TacticsService
         // </para>
         var squad = await _squads.GetSquadAsync(teamId, seasonId, cancellationToken);
         var next = await _matchday.GetNextFixtureWindowAsync(teamId, seasonId, cancellationToken);
-        var plan = await _plans.GetAsync(teamId, seasonId, cancellationToken);
+
+        // The order this board edits is the order the kick-off will use, and that is this
+        // season's plan or — in a season nobody has restated it — the club's own last word.
+        // A board that opened blank the morning after the season turned over would be telling
+        // the manager his club has no order when it has one standing, and the eleven he would
+        // build there is a second opinion about a decision he already made.
+        var plan = await _plans.GetAsync(teamId, seasonId, cancellationToken)
+            ?? await _plans.GetLatestAsync(teamId, cancellationToken);
+
         var recent = await _matches.GetTeamHistoryAsync(teamId, RecentFormMatches, cancellationToken);
 
         var opponent = next is null ? null : await ReadTheOpponentAsync(teamId, next.FixtureId, cancellationToken);
@@ -282,6 +290,18 @@ public class TacticsService
     /// </para>
     ///
     /// <para>
+    /// "The plan the manager left" is this season's plan, and the season it was written in is
+    /// not the test of whether it still means something. A manager who left a board saying
+    /// 3-4-3 and then did not touch it all summer has not unsaid it, and a club that meets
+    /// a new season with no order on the board is a club whose tactic was decided by
+    /// whichever game it happened to finish last — which is how a manager watches the eleven
+    /// he chose go out in a shape he never picked. So a season with no plan of its own falls
+    /// back to the club's own last word, and the eleven it names is applied against the
+    /// squad as it stands today: a man who has moved on is replaced rather than the order
+    /// refused, because the plan was not wrong, the world moved under it.
+    /// </para>
+    ///
+    /// <para>
     /// It returns an order and not the row it came from, because the second answer is not a
     /// row at all: a shape the club once used is a column on a finished match, and a plan
     /// assembled out of a plan and a column is the kick-off's business rather than the
@@ -293,7 +313,8 @@ public class TacticsService
         Guid seasonId,
         CancellationToken cancellationToken = default)
     {
-        var planned = await _plans.GetAsync(teamId, seasonId, cancellationToken);
+        var planned = await _plans.GetAsync(teamId, seasonId, cancellationToken)
+            ?? await _plans.GetLatestAsync(teamId, cancellationToken);
 
         if (planned is not null && planned.NamesAnEleven)
         {

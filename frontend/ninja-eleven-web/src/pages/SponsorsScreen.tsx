@@ -5,6 +5,7 @@ import { formatLimo } from '@/services/limo';
 import { useClubWindow } from '@/services/clubColors';
 import { SponsorApi, SeasonApi } from '@/api';
 import { useGameState } from '@/state';
+import { SponsorLogo } from '@/components/Sponsor/SponsorLogo';
 
 /// <summary>
 /// One offer, as a card: who they are, what they pay and for how long.
@@ -39,6 +40,9 @@ const OfferCard: React.FC<{
   return (
     <article className={`sponsor-card${isCurrent ? ' sponsor-card--current' : ''}`}>
       <header className="sponsor-card__head" style={{ borderColor: offer.color }}>
+        {/* The same mark the club carries on its shirt, so a manager is choosing between the
+            companies he will actually see on the television and not a list of names. */}
+        <SponsorLogo logo={offer.logo} height={22} />
         <span className="sponsor-card__name">{offer.name}</span>
         <span className="sponsor-card__industry">
           {offer.industry} <SizeLabel weight={offer.weight} />
@@ -240,7 +244,9 @@ const SponsorsScreen: React.FC = () => {
                 against the games it plays, and a name that is on a shirt for a season that never
                 happened was a promise to a season that does not exist. */}
             <section className="sponsor-master" style={{ '--sponsor': current.color } as React.CSSProperties}>
-              <div className="sponsor-master__mark" aria-hidden="true" />
+              {/* The company's own mark, drawn as the shirt draws it — not a coloured bar. A
+                  panel with a name on it is what a manager sees from the stand; a swatch is not. */}
+              <SponsorLogo logo={current.logo} height={40} className="sponsor-master__logo" title={current.name} />
               <div className="sponsor-master__body">
                 <span className="sponsor-master__label">Patrocinador master</span>
                 <span className="sponsor-master__name">{current.name}</span>

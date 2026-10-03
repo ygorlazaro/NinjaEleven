@@ -75,6 +75,12 @@ public class MatchConfiguration : IEntityTypeConfiguration<Match>
         builder.Property(m => m.HomeKitSide).HasDefaultValue(KitSide.Home);
         builder.Property(m => m.AwayKitSide).HasDefaultValue(KitSide.Home);
 
+        // The two companies whose names were on the shirts at the whistle. Nullable on purpose:
+        // a club with no sponsor is a club playing in a blank shirt, which is a thing that
+        // happens and not a thing to be corrected by a column that refuses null.
+        builder.Property(m => m.HomeSponsorId);
+        builder.Property(m => m.AwaySponsorId);
+
         // The gate, in three numbers rather than one. A club's books need to know what it took
         // and what it gave away, and one gross figure cannot answer that.
         builder.Property(m => m.Attendance).IsRequired().HasDefaultValue(0);

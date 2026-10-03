@@ -44,6 +44,15 @@ public class AcademyPlayer
     public int InjuryMatchesRemaining { get; init; }
     public int SuspensionMatches { get; init; }
     public bool Retiring { get; init; }
+
+    /// <summary>
+    /// The youth's face as the raw JSON of a faces.js <c>FaceConfig</c>, null when he has
+    /// none. It is carried out of the repository with the rest of the youth rather than
+    /// fetched when a card is drawn, because twenty-odd separate face reads to paint one
+    /// screen is a question asked per row — and a face that arrives late is a face that is
+    /// painted late.
+    /// </summary>
+    public string? Face { get; init; }
 }
 
 /// <summary>

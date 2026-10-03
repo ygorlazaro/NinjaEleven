@@ -96,6 +96,13 @@ public class CompetitionExecutionServiceTests
         _managedClubs.Setup(reader => reader.ListManagedClubsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<Guid>());
 
+        // The shirt pass asks which clubs nobody is running, and this world has nobody at all, so
+        // there is no shirt for it to sell. Left unstated it would answer a field of clubs and
+        // the pass would go on to sign deals these tests never asked for.
+        _teams.Setup(repository => repository.ListClubsWithoutManagerInSeasonAsync(
+                It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
         _players.Setup(repository => repository.ListAllSeasonStatesAsync(
             It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
@@ -184,6 +191,7 @@ public class CompetitionExecutionServiceTests
             _calendarBuilder.Object,
             BuildTheStatementService(),
             _academy,
+            CreateSponsorService(),
             options,
             NullLogger<CompetitionExecutionService>.Instance);
     }
@@ -193,6 +201,33 @@ public class CompetitionExecutionServiceTests
     /// the treasurer without standing up a week of football behind it. The managed-club
     /// reader returns nothing here, so it never reaches the book.
     /// </summary>
+    /// <summary>
+    /// The shirt pass, as the test supplies it: a world of nothing to sign. The field the pass
+    /// reads is the same mock the fixtures come from, so a test that sets up a club for another
+    /// reason does not find a shirt on it by accident.
+    /// </summary>
+    private SponsorOfferService CreateSponsorService() =>
+        new(
+            new Mock<ISponsorRepository>().Object,
+            new Mock<ISponsorContractRepository>().Object,
+            _teams.Object,
+            new Mock<IFinanceRepository>().Object,
+            _seasonRepository.Object,
+            new Mock<ICompetitionRepository>().Object,
+            new SponsorClubFactsService(
+                new Mock<ICompetitionRepository>().Object,
+                new Mock<IMatchRepository>().Object,
+                new Mock<ICupTieRepository>().Object,
+                new Mock<IStandingsReader>().Object),
+            new InboxService(
+                _inboxMessages.Object,
+                _teams.Object,
+                new ManagedClubs(),
+                _unitOfWork.Object,
+                NullLogger<InboxService>.Instance),
+            _unitOfWork.Object,
+            NullLogger<SponsorOfferService>.Instance);
+
     private StatementService BuildTheStatementService()
     {
         var messages = new Mock<IInboxMessageRepository>(MockBehavior.Loose);

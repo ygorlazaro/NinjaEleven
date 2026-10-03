@@ -132,6 +132,14 @@ public class SquadPlayerDto
     /// </summary>
     public int? ShirtNumber { get; init; }
 
+    /// <summary>
+    /// The player's face as the raw JSON of a faces.js <c>FaceConfig</c>, null when he has
+    /// none. It is the same string the profile carries, and for the same reason: a face is
+    /// drawn once and belongs to the man, so the squad a manager reads is twenty-three men
+    /// and not twenty-three placeholders.
+    /// </summary>
+    public string? Face { get; init; }
+
     public bool IsAvailable { get; init; }
     public bool Retiring { get; init; }
     public Guid? TeamId { get; init; }

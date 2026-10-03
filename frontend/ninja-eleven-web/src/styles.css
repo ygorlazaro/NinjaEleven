@@ -798,6 +798,32 @@ button { cursor: pointer; }
    reads first, and the strip beneath each name answers the question the number cannot — who
    scored, and how. It wraps onto its own line under the name rather than beside it, which
    is why the name row is allowed to wrap at all. */
+/* The company on the shirt, under the name it is on. It takes a whole line of its own for the
+   same reason the goal history does: a scoreboard that put a panel and a company name beside
+   the club's own name is a row of three names and a crest, and the club's name is the one
+   being read. */
+.sponsor-mark {
+  flex: 0 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.team-name.away .sponsor-mark { justify-content: flex-end; }
+
+.sponsor-mark__name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sponsor-mark svg { flex: 0 0 auto; }
+
 .goal-history {
   flex: 0 0 100%;
   display: flex;
@@ -2541,6 +2567,10 @@ button { cursor: pointer; }
   padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px;
   background: #0a1520; gap: 10px;
 }
+/* The company's own panel, in the line with the name it belongs to. The shirt and the scoreboard
+   carry it at the top of a column; a club's page has room for it beside the words, and it is the
+   same mark in all three because all three are told what it looks like by the backend. */
+.club-sponsor__line svg { flex: 0 0 auto; }
 .club-sponsor__name { font-weight: 700; overflow-wrap: anywhere; }
 .club-sponsor__industry { color: var(--muted); font-size: 14px; margin-left: 6px; }
 .club-sponsor__left {
@@ -4652,3 +4682,143 @@ button.shirt-number:hover .shirt-number__icon { color: var(--accent); opacity: 1
 .transfer-list-button:hover {
   background: var(--panel);
 }
+
+/* ---------------------------------------------------------------------------
+   THE PLAYER BOX
+
+   A man is not a row. Twenty-three men in a table of twenty columns is a spreadsheet
+   with a football on it, and the two things a manager reads first — who this is and what
+   he looks like — are the two a table is worst at, because a table has nowhere to put a
+   face and prints the name in a cell like every other cell.
+
+   The shape is the same everywhere: the face on the left, the facts to its right, and the
+   facts in a fixed order so two boxes side by side are comparable line by line. The face is
+   first on purpose. It is the one thing about a player that no other screen can reconstruct,
+   and a grid of faces is read in a second in a way a grid of names never is.
+*/
+.player-box {
+  display: flex;
+  gap: 11px;
+  padding: 10px 12px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+/* The portrait, and the initials that stand in for it. Both are the same box, so a squad
+   where every man has a face and a squad where none of them do are the same grid — one
+   does not reflow when a face arrives, and a faceless man is a man and not a hole. */
+.player-box__portrait {
+  flex: 0 0 auto;
+  width: 62px; height: 93px;
+  display: grid; place-items: center;
+  overflow: hidden;
+  background: #09141e;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.player-box__face { display: block; }
+.player-box__initials {
+  font-size: 24px; font-weight: 900; letter-spacing: .04em;
+  color: var(--muted);
+}
+
+.player-box__body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+
+/* Every line of the box is one fact read one way, and the lines are the order the facts are
+   read in: who, what position, what he can do, who he belongs to, what he costs, how much
+   football he has left. A manager comparing two men compares the same line of each. */
+.player-box__line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; }
+
+.player-box__name { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 800; }
+.player-box__name .name-link { font-size: 15px; font-weight: 800; }
+
+.player-box__tag { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.player-box__meta-note, .player-box__line--meta { color: var(--muted); }
+
+/* The attributes keep the bands `attributeToneClass` owns, and an attribute that belongs to
+   somebody else's job is a dash and not a zero: a striker with reflexes of 0 is a striker
+   whose reflexes were never measured, and printing a number there would be inventing one. */
+.player-box__attr { display: inline-flex; align-items: baseline; gap: 3px; }
+.player-box__attr-label { color: var(--muted); font-size: 11px; }
+.player-box__attr .attr-absent { color: var(--muted); }
+
+/* The club, by its own shield rather than by a column of text: a name identifies a club to
+   somebody reading it, and a shield identifies it to somebody glancing down twenty-three
+   boxes. */
+.player-box__line--club { gap: 6px; }
+.player-box__crest { width: 18px; height: 18px; border-width: 1px; border-radius: 4px 4px 7px 7px; font-size: 9px; }
+.player-box__club-name { font-weight: 700; }
+
+.player-box__line--money { color: var(--text); }
+.player-box__line--money > span { white-space: nowrap; }
+
+.player-box__line--energy { gap: 6px; }
+.player-box__line--energy .pc-energy { flex: 1 1 70px; max-width: 150px; margin: 0; }
+
+.player-box__extra {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+  margin-top: 2px; padding-top: 7px;
+  border-top: 1px dashed var(--line);
+  font-size: 12px; color: var(--muted);
+}
+
+/* The three states a man's row can be in, and they are the squad screen's own: a man who
+   cannot play is dimmed, a picked man carries a mark, and a row that is a target says so
+   with the cursor rather than by pretending to be one. */
+.player-box.injured { border-color: rgba(255, 180, 91, .45); }
+.player-box.unavailable { opacity: .62; }
+/* A box that is a target says so with the cursor and the border, not by pretending to be a
+   button: the name inside it is already a button, and a button inside a button is not a
+   thing. The name's own click stops here, so a manager clicking the name opens the profile
+   and a manager clicking anywhere else on the box picks the man. */
+.squad-box--target { display: block; cursor: pointer; }
+.squad-box--target:hover > .player-box { border-color: var(--blue); background: var(--panel); }
+.player-box.picked { border-color: var(--green); }
+.player-box.picked-elsewhere { border-color: var(--line); opacity: .75; }
+.player-box .pick-mark { color: var(--green); font-weight: 900; }
+.player-box .actions-col { margin-left: auto; display: inline-flex; gap: 6px; }
+
+/* One column on the narrow end of a phone, two on a desktop, three when there is room for
+   them. A box is a portrait and seven attributes and three money numbers, and below about
+   430px those do not fit side by side. */
+.player-box-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
+@media (min-width: 1280px) { .player-box-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1600px) { .player-box-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* The order control that replaced the table's twenty clickable column heads. */
+.squad-sort { display: flex; align-items: center; gap: 7px; margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+.squad-sort .ctrl { max-width: 240px; }
+
+/* The ranking box wears a club where the player box wears a face: the same portrait frame, so
+   the grid of men and the grid of clubs are the same grid, and a manager comparing what one
+   division spent against what another bought is comparing them box by box. */
+.player-box__portrait--crest { width: 62px; height: 93px; padding: 8px 0; }
+.player-box__crest-lg {
+  width: 44px; height: 51px; font-size: 16px;
+  border-width: 2px; border-radius: 6px 6px 16px 16px;
+}
+
+/* The place in the ranking, beside the club's name rather than in a column of its own: on a
+   grid the first box and the fifth are read side by side, and a place a manager has to count
+   across is a place he counts wrong. */
+.player-box__place {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A box that carries a deal's status: the same four status colours the table's rows used, so
+   a settled proposal still looks settled when it is no longer a row. */
+.player-box.status-pending { border-color: rgba(242, 211, 79, .45); }
+.player-box.status-accepted { border-color: rgba(56, 211, 159, .45); }
+.player-box.status-completed { border-color: rgba(87, 166, 255, .45); }
+.player-box.status-rejected,
+.player-box.status-expired { opacity: .7; }
+
+/* The company's own mark on the sponsor screen: the same panel the shirt carries, at the size a
+   card header can hold. The colour alone was a swatch — recognisable, and not the brand. */
+.sponsor-card__head { display: flex; align-items: center; gap: 8px; }
+.sponsor-card__head svg { flex: 0 0 auto; }
+.sponsor-master__logo { flex: 0 0 auto; }

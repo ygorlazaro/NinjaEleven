@@ -15,6 +15,19 @@ public class Sponsor
     public string Color { get; private set; } = "#f2d34f";
 
     /// <summary>
+    /// The mark this company wears, worked out of its own name rather than stored beside it.
+    ///
+    /// <para>
+    /// It is a computed answer rather than a column for the same reason a club's crest is
+    /// allowed to be one or the other on purpose: the mark has to be the same mark every time
+    /// anybody looks at it, and a value derived from the name always is — there is nothing to
+    /// migrate and nothing that can drift. The shape, the brand colour, the lettering colour
+    /// and the words are all of it.
+    /// </para>
+    /// </summary>
+    public SponsorLogoDesign Logo => SponsorLogoDefaults.LogoFor(this);
+
+    /// <summary>
     /// How big a company this is, 1 to 3, and the size of its cheque.
     ///
     /// <para>

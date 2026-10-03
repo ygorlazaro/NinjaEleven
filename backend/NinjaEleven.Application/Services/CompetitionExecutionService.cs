@@ -61,6 +61,7 @@ public class CompetitionExecutionService
     private readonly ISeasonCalendarBuilder _calendar;
     private readonly StatementService _statements;
     private readonly AcademyService _academy;
+    private readonly SponsorOfferService _sponsors;
     private readonly IOptions<WorldExecutionOptions> _options;
     private readonly ILogger<CompetitionExecutionService> _logger;
 
@@ -83,6 +84,7 @@ public class CompetitionExecutionService
         ISeasonCalendarBuilder calendar,
         StatementService statements,
         AcademyService academy,
+        SponsorOfferService sponsors,
         IOptions<WorldExecutionOptions> options,
         ILogger<CompetitionExecutionService> logger)    {
         _clock = clock;
@@ -98,6 +100,7 @@ public class CompetitionExecutionService
         _calendar = calendar;
         _statements = statements;
         _academy = academy;
+        _sponsors = sponsors;
         _player = player;
         _cleaner = cleaner;
         _scopes = scopes;
@@ -381,6 +384,20 @@ public class CompetitionExecutionService
         // the week closing so it happens alongside the statement, and it is a no-op when
         // there are no academy players.
         await _academy.EvolveAcademyAsync(season.Id, cancellationToken);
+
+        // Shirts for the clubs nobody is running. A world where the sponsor market only serves
+        // the one club a person happens to be in has bare scoreboards in the other sixty-three
+        // matches of every matchday, so the same pass that lets the academy grow also sells the
+        // shirts it drew. It re-reads the field and signs nothing that is already wearing, which
+        // is what makes it safe to walk the world by hand as often as a manager likes.
+        var signedShirts = await _sponsors.SignTheUnmanagedClubsAsync(season.Id, cancellationToken);
+
+        if (signedShirts > 0)
+        {
+            _logger.LogInformation(
+                "{Count} club(s) nobody is running signed a shirt deal on their own.",
+                signedShirts);
+        }
 
         _logger.LogInformation(
             "Advanced by hand: day {Number} ({Date}), the {Wave} window, {Rounds} window(s) played.",

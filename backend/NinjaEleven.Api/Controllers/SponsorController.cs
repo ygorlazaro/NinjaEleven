@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using NinjaEleven.Api.Contracts;
+using NinjaEleven.Api.Mappings;
 using NinjaEleven.Application.Models;
 using NinjaEleven.Application.Services;
 
@@ -71,6 +72,7 @@ public class SponsorController : ControllerBase
             PerMatchFee = offer.PerMatchFee,
             ContractMatches = offer.ContractMatches,
             Color = offer.Color,
+            Logo = ApiMapper.LogoToDto(offer.Name, offer.Color),
             Weight = offer.Weight,
             ClubsSponsored = offer.ClubsSponsored,
             MaxClubs = offer.MaxClubs
@@ -95,7 +97,8 @@ public class SponsorController : ControllerBase
             Industry = current.SponsorIndustry,
             PerMatchFee = current.PerMatchFee,
             ContractMatches = current.ContractMatches,
-            Color = current.SponsorColor
+            Color = current.SponsorColor,
+            Logo = ApiMapper.LogoToDto(current.SponsorName, current.SponsorColor)
         };
 
         return new SponsorBookDto

@@ -20,7 +20,7 @@ namespace NinjaEleven.Domain.Sponsors;
 public record SponsorSize(int Weight, int MaxClubs, double MinAppeal, int MaxTier)
 {
     /// <summary>
-    /// The shop round the corner: two shirts, any club, and it will not be travelling to a
+    /// The shop round the corner: three shirts, any club, and it will not be travelling to a
     /// fourth division for the audience.
     /// </summary>
     public static SponsorSize Local { get; } = new(

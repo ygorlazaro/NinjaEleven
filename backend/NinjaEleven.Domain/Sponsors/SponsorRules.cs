@@ -21,6 +21,20 @@ public static class SponsorRules
     public const int CandidateOffers = 3;
 
     /// <summary>
+    /// How many clubs of the same division one company may have its name on.
+    ///
+    /// <para>
+    /// Two, and not one: a brand that will not put a second name in the same championship is a
+    /// rule that leaves a third of the pyramid without a shirt. A thirty-company catalogue with
+    /// one club each would put twenty-eight clubs on the market at most, and sixteen of the
+    /// sixty-four played every week with a bare back — a company that works in two divisions
+    /// having a club in each is ordinary business, and the rule that kept the brand's name
+    /// exclusive cost more shirts than the exclusivity was worth.
+    /// </para>
+    /// </summary>
+    public const int MaxClubsPerDivision = 2;
+
+    /// <summary>
     /// The length band of a sponsor's first offer: between this many and twice this many
     /// matches.
     /// </summary>

@@ -57,6 +57,23 @@ public class MatchCommandResult
 /// <summary>
 /// The eleven plus the bench of both clubs, as locked in when the match started.
 /// </summary>
+/// <summary>
+/// A company as a shirt carries it: who it is, what it does, and the colour it is drawn in.
+///
+/// <para>
+/// It is not the offer and it is not the contract. An offer is a price and a length, a contract
+/// is a run of matches paid for, and this is the thing a scoreboard has to name — so it holds
+/// the three facts a mark is drawn from and nothing else.
+/// </para>
+/// </summary>
+public class SponsorMark
+{
+    public Guid Id { get; init; }
+    public string Name { get; init; } = string.Empty;
+    public string Industry { get; init; } = string.Empty;
+    public string Color { get; init; } = "#f2d34f";
+}
+
 public class MatchLineup
 {
     public required Guid MatchId { get; init; }
@@ -73,6 +90,16 @@ public class MatchLineup
 
     /// <summary>Which of the visiting club's two shirts was worn.</summary>
     public KitSide AwayKitSide { get; init; }
+
+    /// <summary>
+    /// The company on the home shirt as the kick-off stamped it, or null when the home club had
+    /// no live deal when the whistle went. It is read from the stamp rather than from the
+    /// contract table, so a deal that ends at half-time cannot take the name off the shirt.
+    /// </summary>
+    public SponsorMark? HomeSponsor { get; init; }
+
+    /// <summary>The company on the visiting shirt, stamped at the same moment as the other one.</summary>
+    public SponsorMark? AwaySponsor { get; init; }
 
     /// <summary>
     /// How far the match had got when this was read, which is what a live rating is measured

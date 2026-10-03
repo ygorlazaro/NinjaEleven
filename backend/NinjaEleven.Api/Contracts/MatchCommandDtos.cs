@@ -71,6 +71,16 @@ public class MatchLineupDto
 
     /// <summary>Which of the visiting club's two shirts this match was played in.</summary>
     public KitSide AwayKitSide { get; init; }
+
+    /// <summary>
+    /// The company on the home shirt, as stamped at the kick-off, or null when the home club had
+    /// no live deal then. It is null rather than an empty company because a club without a
+    /// sponsor is the ordinary case and deserves no mark at all.
+    /// </summary>
+    public SponsorMarkDto? HomeSponsor { get; init; }
+
+    /// <summary>The company on the visiting shirt, stamped at the same moment as the other one.</summary>
+    public SponsorMarkDto? AwaySponsor { get; init; }
 }
 
 /// <summary>

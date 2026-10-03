@@ -30,6 +30,20 @@ public interface ISponsorContractRepository
         IEnumerable<Guid> sponsorIds,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The live deal of every club in the set that has one, keyed by the club holding it.
+    ///
+    /// <para>
+    /// It is asked at the kick-off, which is the one moment that has to know about both shirts
+    /// at once, and it is asked about a set rather than about one club because a match has two
+    /// clubs in it. A kick-off that read the home deal and then the away deal is two round trips
+    /// to stamp two columns of the same row.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, SponsorContract>> ListActiveByTeamIdsAsync(
+        IEnumerable<Guid> teamIds,
+        CancellationToken cancellationToken = default);
+
     Task AddAsync(SponsorContract contract, CancellationToken cancellationToken = default);
     void Update(SponsorContract contract);
 }

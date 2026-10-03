@@ -19,18 +19,29 @@ public readonly record struct Formation(int Defenders, int Midfielders, int Atta
     public static readonly Formation Default = new(4, 3, 3);
 
     /// <summary>
-    /// The shape of an eleven, read from the positions of the men on the pitch. A
-    /// goalkeeper is not part of it: the three numbers always add up to the ten outfield
-    /// players, whatever the club decided to do with them.
+    /// The shape of a team sheet, read from the positions of the men named in it. A
+    /// goalkeeper is not part of it: the three numbers add up to the ten outfield players
+    /// whatever the club decided to do with them.
     /// </summary>
+    /// <remarks>
+    /// It counts the eleven it is handed and not the men still standing, because those are
+    /// two questions and this is the first one. A striker who is carried off, or a defender
+    /// who is shown a red card, changes how many men a club has and not the shape it is
+    /// playing; counting the survivors instead reported a three-four-three that had lost a
+    /// striker as a four-three-nothing — seven outfield players on a pitch of ten — so a
+    /// manager who ordered 3-4-3 was told his club had come out in another shape because
+    /// somebody got hurt. How many men are actually playing is the strength's business
+    /// (<see cref="TeamStrength"/>), which filters for itself; the shape is the team
+    /// sheet's.
+    /// </remarks>
     public static Formation FromComposition(IEnumerable<MatchPlayerSnapshot> eleven)
     {
-        var onPitch = eleven.Where(player => player.IsOnPitch).ToList();
+        var teamSheet = eleven.ToList();
 
         return new Formation(
-            onPitch.Count(player => player.Position == Position.DEF),
-            onPitch.Count(player => player.Position == Position.MID),
-            onPitch.Count(player => player.Position == Position.ATT));
+            teamSheet.Count(player => player.Position == Position.DEF),
+            teamSheet.Count(player => player.Position == Position.MID),
+            teamSheet.Count(player => player.Position == Position.ATT));
     }
 
     /// <summary>

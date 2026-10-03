@@ -15,6 +15,13 @@ public class TransferProposal
     public int PlayerAge { get; set; }
 
     /// <summary>
+    /// The face, the seven attributes and the energy, so a proposal is a manager reading a man
+    /// rather than a man reduced to a name and a fee. Null only when the player himself could not
+    /// be read, which the repository would have thrown about before getting here.
+    /// </summary>
+    public PlayerSnapshot? Player { get; set; }
+
+    /// <summary>
     /// The club selling the player, or null when he has none and is being signed. An offer for
     /// a free agent is not a purchase and the screen must not draw it as one.
     /// </summary>
@@ -72,6 +79,13 @@ public class TransferListing
     public int Potential { get; set; }
 
     public double Stars { get; set; }
+
+    /// <summary>
+    /// The player's face as the raw JSON of a faces.js <c>FaceConfig</c>, null when he has
+    /// none. A manager scans a market by face before he reads a name, and a listing of
+    /// initials is a squad table with the names taken off.
+    /// </summary>
+    public string? Face { get; set; }
 
     /// <summary>Null when the player is not on a club this season.</summary>
     public Guid? TeamId { get; set; }
@@ -315,6 +329,19 @@ public class TransferHistoryLine
     public Guid PlayerId { get; set; }
     public string PlayerName { get; set; } = string.Empty;
     public string PlayerPosition { get; set; } = string.Empty;
+
+    /// <summary>
+    /// His age, beside the snapshot that already reads the player. The two travel together
+    /// because a box says who and how old, and reading one off the player and the other off a
+    /// transfer row is two reads of one man that will not always agree.
+    /// </summary>
+    public int PlayerAge { get; set; }
+
+    /// <summary>
+    /// The same snapshot the proposal carries and the squad carries, for the same reason: a
+    /// division's recent business is a list of men who moved, and a list of names is not that.
+    /// </summary>
+    public PlayerSnapshot? Player { get; set; }
 
     public Guid? SellingClubId { get; set; }
     public string? SellingClubName { get; set; }

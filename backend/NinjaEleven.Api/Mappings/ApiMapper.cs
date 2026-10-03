@@ -6,6 +6,29 @@ namespace NinjaEleven.Api.Mappings;
 
 public static class ApiMapper
 {
+    /// <summary>
+    /// The mark a company is drawn as, worked out of its own name and its own brand colour.
+    ///
+    /// <para>
+    /// It is worked out here rather than carried through the application models because it is a
+    /// presentation of two facts the world already holds and nothing else — and a snapshot
+    /// threaded through every model between here and the database would be one more copy of a
+    /// shape that cannot disagree with itself.
+    /// </para>
+    /// </summary>
+    public static SponsorLogoDto LogoToDto(string name, string color)
+    {
+        var logo = Domain.Sponsors.SponsorLogoDefaults.LogoFor(name, color);
+
+        return new SponsorLogoDto
+        {
+            Shape = logo.Shape,
+            BackgroundColor = logo.BackgroundColor,
+            InkColor = logo.InkColor,
+            Text = logo.Text
+        };
+    }
+
 public static PlayerDto ToDto(this Domain.Players.Player player) => new()
 {
     Id = player.Id,
@@ -76,6 +99,7 @@ public static SquadPlayerDto ToDto(this Application.Models.SquadPlayer squadPlay
     Salary = squadPlayer.Salary,
     WageOnRenewal = squadPlayer.WageOnRenewal,
     ShirtNumber = squadPlayer.ShirtNumber,
+    Face = squadPlayer.Player.Face,
     IsAvailable = squadPlayer.IsAvailable,
     Retiring = squadPlayer.Retiring,
     TeamId = squadPlayer.SeasonState.TeamId,
@@ -682,9 +706,23 @@ public static MatchLineupDto ToDto(this Application.Models.MatchLineup lineup)
         HomeBench = lineup.HomeBench.Select(player => player.ToDto(lineup.Minute)).ToList(),
         AwayBench = lineup.AwayBench.Select(player => player.ToDto(lineup.Minute)).ToList(),
         HomeKitSide = lineup.HomeKitSide,
-        AwayKitSide = lineup.AwayKitSide
+        AwayKitSide = lineup.AwayKitSide,
+        HomeSponsor = lineup.HomeSponsor.ToSponsorMarkDto(),
+        AwaySponsor = lineup.AwaySponsor.ToSponsorMarkDto()
     };
 }
+
+private static SponsorMarkDto? ToSponsorMarkDto(this Application.Models.SponsorMark? mark) =>
+    mark is null
+        ? null
+        : new SponsorMarkDto
+        {
+            Id = mark.Id,
+            Name = mark.Name,
+            Industry = mark.Industry,
+            Color = mark.Color,
+            Logo = ApiMapper.LogoToDto(mark.Name, mark.Color)
+        };
 
 public static PenaltyTakerOptionsDto ToDto(this Application.Models.PenaltyTakerOptions options) => new()
 {
@@ -1240,6 +1278,7 @@ public static class TeamMatchRecordMapping
         Stamina = listing.Stamina,
         Potential = listing.Potential,
         Stars = listing.Stars,
+        Face = listing.Face,
         TeamId = listing.TeamId,
         TeamName = listing.TeamName,
         TeamPrimaryColor = listing.TeamPrimaryColor,
@@ -1268,6 +1307,30 @@ public static class TeamMatchRecordMapping
         }).ToArray()
     };
 
+    /// <summary>
+    /// The eight facts a box about a man is made of, as the contract's shape.
+    ///
+    /// Null in, null out: a transfer about a player the world could not read is a transfer that
+    /// carries no snapshot rather than one carrying eight zeros, which would draw a faceless
+    /// man with no football left in him.
+    /// </summary>
+    public static PlayerSnapshotDto? ToDto(this Application.Models.PlayerSnapshot? snapshot) =>
+        snapshot is null
+            ? null
+            : new PlayerSnapshotDto
+            {
+                Face = snapshot.Face,
+                Speed = snapshot.Speed,
+                Accuracy = snapshot.Accuracy,
+                Dribbling = snapshot.Dribbling,
+                Heading = snapshot.Heading,
+                Strength = snapshot.Strength,
+                GoalkeeperPower = snapshot.GoalkeeperPower,
+                Reflexes = snapshot.Reflexes,
+                Stars = snapshot.Stars,
+                Energy = snapshot.Energy
+            };
+
     public static TransferProposalDto ToDto(this Application.Models.TransferProposal proposal) => new()
     {
         TransferId = proposal.TransferId,
@@ -1275,6 +1338,7 @@ public static class TeamMatchRecordMapping
         PlayerName = proposal.PlayerName,
         PlayerPosition = proposal.PlayerPosition,
         PlayerAge = proposal.PlayerAge,
+        Player = proposal.Player.ToDto(),
         SellingClubId = proposal.SellingClubId,
         SellingClubName = proposal.SellingClubName,
         BuyingClubId = proposal.BuyingClubId,
@@ -1322,6 +1386,8 @@ public static class TeamMatchRecordMapping
         PlayerId = line.PlayerId,
         PlayerName = line.PlayerName,
         PlayerPosition = line.PlayerPosition,
+        PlayerAge = line.PlayerAge,
+        Player = line.Player.ToDto(),
         SellingClubId = line.SellingClubId,
         SellingClubName = line.SellingClubName,
         BuyingClubId = line.BuyingClubId,

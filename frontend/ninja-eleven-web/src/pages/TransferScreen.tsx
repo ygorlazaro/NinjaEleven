@@ -7,6 +7,8 @@ import { useOffer } from '@/state/OfferProvider';
 import { formatLimo } from '@/services/limo';
 import { starsToString, positionLabel, attributeToneClass, energyTextClass } from '@/services/formatters';
 import { PlayerName, ClubName } from '@/components/Common/Names';
+import PlayerBox from '@/components/Common/PlayerBox';
+import TransferRankingList from '@/components/Transfer/TransferRankingList';
 import type {
   SeasonDto,
   TransferSearchFilters,
@@ -58,96 +60,175 @@ const count = (value?: number | null): string => (value == null ? '—' : String
 const numberFilter = (value: string): number | undefined =>
   value === '' ? undefined : Number(value);
 
-const PlayerRow: React.FC<{
+/**
+ * One man on the market, as a box rather than as a row.
+ *
+ * The market was the worst of the three tables to read: twenty columns, and the two a manager
+ * reads first — his face and his name — were two cells in the middle of it with everything else
+ * on either side of them. A market is scanned, not compared down a column, so the shape that
+ * suits it is the one a manager browses a shop in.
+ */
+const PlayerBoxListing: React.FC<{
   player: TransferListingDto;
   onSelect: (player: TransferListingDto) => void;
-}> = ({ player, onSelect }) => {
-  const isKeeper = player.position === 'GK';
-
-  return (
-    <tr
-      className={['history-row', player.injury !== 'None' ? 'injured' : ''].join(' ')}
-      onClick={() => onSelect(player)}
+}> = ({ player, onSelect }) => (
+  <div className="squad-box squad-box--target" onClick={() => onSelect(player)}>
+    <PlayerBox
+      playerId={player.playerId}
+      name={player.name}
+      face={player.face}
+      age={player.age}
+      position={player.position}
+      stars={player.stars}
+      attributes={{
+        speed: player.speed,
+        accuracy: player.accuracy,
+        dribbling: player.dribbling,
+        heading: player.heading,
+        strength: player.strength,
+        goalkeeperPower: player.goalkeeperPower,
+        reflexes: player.reflexes
+      }}
+      keeper={player.position === 'GK'}
+      injury={player.injury}
+      injuryMatchesRemaining={player.injuryMatchesRemaining}
+      retiring={player.retiring}
+      energy={player.energy}
+      team={
+        player.teamId
+          ? {
+              teamId: player.teamId,
+              name: player.teamName,
+              primaryColor: player.teamPrimaryColor,
+              secondaryColor: player.teamSecondaryColor
+            }
+          : null
+      }
+      money={{ value: player.marketValue, price: player.askingPrice, salary: player.salary }}
+      className={player.injury !== 'None' ? 'injured' : ''}
     >
-      <td>{positionLabel(player.position)}</td>
-      <td className="squad-name">
-        <PlayerName playerId={player.playerId}>{player.name}</PlayerName>
-        {player.retiring && (
-          <span className="retiring-mark" title="Aposentadoria declarada">🏁</span>
-        )}
-        {player.injury !== 'None' && (
-          <span className="injury-mark" title={`Lesionado: ${player.injury}`}>🩹</span>
-        )}
-        {player.hasActiveProposal && (
-          <span className="proposal-mark" title="Já há uma proposta na mesa por este jogador">📝</span>
-        )}
-        {player.onTransferList && (
-          <span className="transfer-list-mark" title="Jogador listado para transferência">📋</span>
-        )}
-      </td>
-      <td className="num">{player.age}</td>
-      <td className={`num ${energyTextClass(player.energy)}`}>{player.energy}</td>
-      <td className="num stars-col">{starsToString(player.stars)}</td>
-      <td className={`num ${attributeToneClass(player.speed)}`}>{player.speed}</td>
-      <td className={`num ${attributeToneClass(player.accuracy)}`}>{player.accuracy}</td>
-      <td className={`num ${attributeToneClass(player.dribbling)}`}>{player.dribbling}</td>
-      <td className={`num ${attributeToneClass(player.heading)}`}>{player.heading}</td>
-      <td className={`num ${attributeToneClass(player.strength)}`}>{player.strength}</td>
-      <td className={`num ${isKeeper ? attributeToneClass(player.goalkeeperPower) : ''}`}>
-        {isKeeper ? player.goalkeeperPower : '—'}
-      </td>
-      <td className={`num ${isKeeper ? attributeToneClass(player.reflexes) : ''}`}>
-        {isKeeper ? player.reflexes : '—'}
-      </td>
-      <td className="num accent">{player.season?.goals ?? 0}</td>
-      <td className="num">{player.season?.saves ?? 0}</td>
-      <td className="num">{player.season?.yellowCards ?? 0}</td>
-      <td className="num">{player.season?.redCards ?? 0}</td>
-      <td>
-        {player.teamId ? (
-          <ClubName teamId={player.teamId}>{player.teamName ?? '—'}</ClubName>
-        ) : (
-          <span className="free-agent">Livre</span>
-        )}
-      </td>
-      <td className="num money">{player.marketValue ? formatLimo(player.marketValue) : '—'}</td>
-      <td className="num money">
-        {player.askingPrice ? formatLimo(player.askingPrice) : '—'}
-      </td>
-      <td className="num money">{player.salary ? formatLimo(player.salary) : '—'}</td>
-    </tr>
-  );
-};
+      {/* Three facts about the deal rather than about the man: he is on no club, somebody has
+          a proposal on him, or his own club has listed him. The table said all three in the
+          name cell; they belong beside the club's name, which is the thing they are about. */}
+      {player.isFreeAgent && <span className="free-agent">Sem clube</span>}
+      {player.hasActiveProposal && (
+        <span className="proposal-mark" title="Já há uma proposta na mesa por este jogador">📝</span>
+      )}
+      {player.onTransferList && (
+        <span className="transfer-list-mark" title="Jogador listado para transferência">📋</span>
+      )}
 
-const ProposalRow: React.FC<{ proposal: TransferProposalDto }> = ({ proposal }) => (
-  <tr className={`proposal-row status-${STATUS_COLOR[proposal.status]}`}>
-    <td className="squad-name">
-      <PlayerName playerId={proposal.playerId}>{proposal.playerName}</PlayerName>
-    </td>
-    <td className="num">{positionLabel(proposal.playerPosition)}</td>
-    <td className="num">{proposal.playerAge}</td>
-    <td>
+      {/* What he has done this season, read from the same season line the profile reads. */}
+      <span title="Gols na temporada">
+        <span className="player-box__tag">Gols</span> {player.season?.goals ?? 0}
+      </span>
+      <span title="Defesas na temporada">
+        <span className="player-box__tag">Defs</span> {player.season?.saves ?? 0}
+      </span>
+      <span>
+        <span className="player-box__tag">Cartões</span> {player.season?.yellowCards ?? 0}🟨{' '}
+        {player.season?.redCards ?? 0}🟥
+      </span>
+      {/* What the ceiling on his reading is worth to a club buying him: a nineteen-year-old at
+          fifty-four is not a signing, and a nineteen-year-old at fifty-four with a potential of
+          eighty-eight is a different one. */}
+      <span title="Teto que a leitura dele pode alcançar">
+        <span className="player-box__tag">Potencial</span> {player.potential}
+      </span>
+    </PlayerBox>
+  </div>
+);
+
+/**
+ * One proposal, as a box: the same shape the market is a grid of, because it is the same man.
+ *
+ * The club on the box is the one *selling*, which is the club a manager has to phone before he
+ * accepts — the buying club's own name is in the deal line, where the two of them and the fee
+ * are read together rather than as two separate facts a box would have to choose between.
+ */
+const ProposalBox: React.FC<{
+  proposal: TransferProposalDto;
+  /** The answer, offered only when the deal is waiting for one and the club may give it. */
+  onAnswer?: (proposal: TransferProposalDto, accept: boolean) => void;
+  answering?: boolean;
+}> = ({ proposal, onAnswer, answering = false }) => (
+  <PlayerBox
+    playerId={proposal.playerId}
+    name={proposal.playerName}
+    face={proposal.player?.face}
+    age={proposal.playerAge}
+    position={proposal.playerPosition}
+    stars={proposal.player?.stars}
+    attributes={{
+      speed: proposal.player?.speed ?? 0,
+      accuracy: proposal.player?.accuracy ?? 0,
+      dribbling: proposal.player?.dribbling ?? 0,
+      heading: proposal.player?.heading ?? 0,
+      strength: proposal.player?.strength ?? 0,
+      goalkeeperPower: proposal.player?.goalkeeperPower ?? 0,
+      reflexes: proposal.player?.reflexes ?? 0
+    }}
+    keeper={proposal.playerPosition === 'GK'}
+    energy={proposal.player?.energy ?? 0}
+    team={
+      proposal.sellingClubId
+        ? { teamId: proposal.sellingClubId, name: proposal.sellingClubName }
+        : null
+    }
+    className={`status-${STATUS_COLOR[proposal.status]}`}
+  >
+    {/* The deal, in the three numbers that make it a deal: who has it, what it costs, and when
+        the man walks in. Status and date are beside them because a proposal is a fact in time
+        and a status without a date is a mood. */}
+    <span className={`status-badge status-${STATUS_COLOR[proposal.status]}`}>
+      {STATUS_LABELS[proposal.status]}
+    </span>
+    <span>
+      <span className="player-box__tag">Vendedor</span>{' '}
       {proposal.sellingClubId ? (
         <ClubName teamId={proposal.sellingClubId}>{proposal.sellingClubName}</ClubName>
       ) : (
         <span className="free-agent">{proposal.sellingClubName}</span>
       )}
-    </td>
-    <td>
+    </span>
+    <span>
+      <span className="player-box__tag">Comprador</span>{' '}
       <ClubName teamId={proposal.buyingClubId}>{proposal.buyingClubName}</ClubName>
-    </td>
-    <td className="num money">{proposal.fee ? formatLimo(proposal.fee) : '—'}</td>
-    {/* The arrival is the whole point of a proposal: when the man walks through the door. */}
-    <td className="num contract-cell">
-      {proposal.arrivalSeasonNumber}/{proposal.arrivalRoundNumber ?? '—'}
-    </td>
-    <td className="num">
-      <span className={`status-badge status-${STATUS_COLOR[proposal.status]}`}>
-        {STATUS_LABELS[proposal.status]}
+    </span>
+    <span title="O que a proposta oferece">
+      <span className="player-box__tag">Oferta</span>{' '}
+      {proposal.fee ? formatLimo(proposal.fee) : '\u2014'}
+    </span>
+    <span title="Temporada e rodada em que o jogador chega">
+      <span className="player-box__tag">Chega</span>{' '}
+      {proposal.arrivalSeasonNumber}/{proposal.arrivalRoundNumber ?? '\u2014'}
+    </span>
+    <span>
+      <span className="player-box__tag">Proposta</span>{' '}
+      {new Date(proposal.proposedAt).toLocaleDateString('pt-BR')}
+    </span>
+
+    {/* A refusal the server would make is not offered: a man who is not pending has nothing to
+        answer, and a live button on a settled deal is a control that exists to fail. */}
+    {onAnswer && proposal.status === 'Pending' && (
+      <span className="actions-col">
+        <button
+          className="ctrl btn-sm accept"
+          disabled={answering}
+          onClick={() => onAnswer(proposal, true)}
+        >
+          Aceitar
+        </button>
+        <button
+          className="ctrl btn-sm reject"
+          disabled={answering}
+          onClick={() => onAnswer(proposal, false)}
+        >
+          Recusar
+        </button>
       </span>
-    </td>
-    <td className="num">{new Date(proposal.proposedAt).toLocaleDateString('pt-BR')}</td>
-  </tr>
+    )}
+  </PlayerBox>
 );
 
 const HistoryRow: React.FC<{ line: TransferHistoryLineDto }> = ({ line }) => (
@@ -418,49 +499,40 @@ const PlayerDetail: React.FC<{
   );
 };
 
-interface TransferRankingTableProps {
-  title: string;
-  entries: TransferRankingEntryDto[];
-  metricLabel: string;
-  formatMetric: (value: number) => string;
-}
+/**
+ * The four pages the market is read on, and the one a manager lands on.
+ *
+ * The market was five sections on one page — the search for new men, the club's balance, the
+ * division's recent business, the proposals waiting for an answer and four rankings of the
+ * division — and a manager opening it had to scroll past two ranking tables to reach the offers
+ * addressed to his own club. Those are four different questions with four different urgencies, and
+ * stacking them made the least urgent the most visible.
+ *
+ * The landing page is the search, because "what can I buy" is what a manager came for. The
+ * balance travels with it rather than sitting above or below it, because what he can spend is
+ * half of that same question.
+ *
+ * The tab travels in the query string rather than living in the component, for the same reason it
+ * does on the table and the cup: a piece of state that exists only inside one screen cannot be
+ * pointed at from outside it, so a link to "as propostas" is a link that opens on the proposals.
+ */
+type TransferTab = 'market' | 'proposals' | 'activity' | 'rankings';
 
-const TransferRankingTable: React.FC<TransferRankingTableProps> = ({
-  title,
-  entries,
-  metricLabel,
-  formatMetric,
-}) => (
-  <div className="transfer-ranking-table">
-    <h4>{title}</h4>
-    {entries.length === 0 ? (
-      <p className="transfer-empty">Nenhuma movimentação registrada.</p>
-    ) : (
-      <table className="transfer-table">
-        <thead>
-          <tr>
-            <th className="num">#</th>
-            <th>Clube</th>
-            <th className="num">Quant</th>
-            <th className="num">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((entry, i) => (
-            <tr key={entry.teamId}>
-              <td className="num">{i + 1}</td>
-              <td className="squad-name">
-                <ClubName teamId={entry.teamId}>{entry.teamName}</ClubName>
-              </td>
-              <td className="num">{entry.transfers}</td>
-              <td className="num money">{formatMetric(entry.amount)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    )}
-  </div>
-);
+const TAB_PARAM: Record<Exclude<TransferTab, 'market'>, string> = {
+  proposals: 'proposals',
+  activity: 'activity',
+  rankings: 'rankings'
+};
+
+/**
+ * Whether the `tab` the URL carries is a tab this screen has.
+ *
+ * A name that is not one of them is not an error and not a blank screen: it is a link somebody
+ * typed or an old page whose tab has since been renamed, and it lands on the market like a screen
+ * that had never been given one.
+ */
+const isTransferTab = (value: string | null): value is Exclude<TransferTab, 'market'> =>
+  value === 'proposals' || value === 'activity' || value === 'rankings';
 
 const TransferScreen: React.FC = () => {
   const selectedTeam = useGameState((s) => s.selectedTeam);
@@ -693,6 +765,31 @@ const TransferScreen: React.FC = () => {
     [inbox]
   );
 
+  /**
+   * Which of the four pages is open. The market is the one a manager lands on, and a `tab` that
+   * names no page of this screen lands there too.
+   *
+   * Opening a page is a navigation rather than a state change, and `replace` rather than `push`,
+   * because a tab is not a place a manager has been: pressing back from the proposals should
+   * leave the market, not walk back through the tabs he glanced at on the way there. The `player`
+   * in the URL is carried along, because a manager who opened a man from his profile and then
+   * went to read his club's offers must not have that man close under him.
+   */
+  const requestedTab = searchParams.get('tab');
+  const activeTab: TransferTab = isTransferTab(requestedTab) ? requestedTab : 'market';
+
+  const setActiveTab = (tab: TransferTab) => {
+    setSearchParams(
+      current => {
+        const next = new URLSearchParams(current);
+        if (tab === 'market') next.delete('tab');
+        else next.set('tab', TAB_PARAM[tab]);
+        return next;
+      },
+      { replace: true }
+    );
+  };
+
   if (!selectedTeam) {
     return (
       <div className="transfer-screen">
@@ -760,198 +857,278 @@ const TransferScreen: React.FC = () => {
         )}
       </header>
 
-      {/*
-        The search that finds new men is the first thing under the header, above the
-        balance and recent business. A manager opening "Mercado" is asking what he can buy,
-        and the table of names belongs above the summary of money spent.
-      */}
-      <section className="transfer-search-section">
-        <h3>Filtrar mercado {filterCount > 0 && `(${filterCount})`}</h3>
-        <div className="transfer-filters">
-          <div className="transfer-filter-row">
-            <label>Posição:</label>
-            <select
-              value={filters.position ?? ''}
-              onChange={e => setFilter('position', e.target.value || undefined)}
-              className="ctrl"
-            >
-              <option value="">Todas</option>
-              {POSITIONS.map(pos => (
-                <option key={pos} value={pos}>{positionLabel(pos)}</option>
-              ))}
-            </select>
+      {/* The tab bar is the club's own: the same control the table and the cup are divided by,
+          because a screen with two kinds of tab on it is a screen where the manager has to learn
+          where the controls are twice.
 
-            <label>Idade:</label>
-            <input
-              type="number"
-              className="ctrl transfer-filter-number"
-              min={16}
-              max={50}
-              placeholder="mín"
-              value={filters.minAge ?? ''}
-              onChange={e => setFilter('minAge', numberFilter(e.target.value))}
-            />
-            <span>–</span>
-            <input
-              type="number"
-              className="ctrl transfer-filter-number"
-              min={16}
-              max={50}
-              placeholder="máx"
-              value={filters.maxAge ?? ''}
-              onChange={e => setFilter('maxAge', numberFilter(e.target.value))}
-            />
+          The count on the proposals tab is the whole reason the offers are not simply the first
+          page: an offer nobody answers dies at the end of the season, so a page the manager has
+          to go and find is a page of unanswered offers. Carrying the count on the tab says the
+          same thing without the offers being on screen at all. */}
+      <div className="tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'market'}
+          className={`tab ${activeTab === 'market' ? 'active' : ''}`}
+          onClick={() => setActiveTab('market')}
+        >
+          Mercado
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'proposals'}
+          className={`tab ${activeTab === 'proposals' ? 'active' : ''}`}
+          onClick={() => setActiveTab('proposals')}
+        >
+          Propostas
+          {incoming.length > 0 && (
+            <span className="tab-badge" title={`${incoming.length} a responder`}>
+              {incoming.length}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'activity'}
+          className={`tab ${activeTab === 'activity' ? 'active' : ''}`}
+          onClick={() => setActiveTab('activity')}
+        >
+          Movimentação
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'rankings'}
+          className={`tab ${activeTab === 'rankings' ? 'active' : ''}`}
+          onClick={() => setActiveTab('rankings')}
+        >
+          Rankings
+        </button>
+      </div>
 
-            <label>Estrelas ≥</label>
-            <input
-              type="number"
-              step={0.5}
-              min={0}
-              className="ctrl transfer-filter-number"
-              placeholder="★"
-              value={filters.minStars ?? ''}
-              onChange={e => setFilter('minStars', numberFilter(e.target.value))}
-            />
+      {/* The search that finds new men, and the club's balance above it: what he can spend is
+          half of the same question as what he can spend it on, so they are the same page. The
+          balance used to sit below a twenty-column table of players while its own comment said it
+          belonged at the top, which is the kind of thing that is true in a comment and not on the
+          screen. */}
+      {activeTab === 'market' && (
+        <section className="transfer-search-section">
+          {balance && (
+            <div className="transfer-balance-section">
+              <div className="club-figures">
+                <div className="club-figure club-figure--accent">
+                  <span className="club-figure__icon">💰</span>
+                  <span className="club-figure__value">{formatLimo(balance.balance)}</span>
+                  <span className="club-figure__label">Saldo do clube</span>
+                </div>
+              </div>
+            </div>
+          )}
 
-            <label>
+          <h3>Filtrar mercado {filterCount > 0 && `(${filterCount})`}</h3>
+          <div className="transfer-filters">
+            <div className="transfer-filter-row">
+              <label>Posição:</label>
+              <select
+                value={filters.position ?? ''}
+                onChange={e => setFilter('position', e.target.value || undefined)}
+                className="ctrl"
+              >
+                <option value="">Todas</option>
+                {POSITIONS.map(pos => (
+                  <option key={pos} value={pos}>{positionLabel(pos)}</option>
+                ))}
+              </select>
+
+              <label>Idade:</label>
               <input
-                type="checkbox"
-                checked={filters.freeAgentsOnly ?? false}
-                onChange={e => setFilter('freeAgentsOnly', e.target.checked || undefined)}
+                type="number"
+                className="ctrl transfer-filter-number"
+                min={16}
+                max={50}
+                placeholder="mín"
+                value={filters.minAge ?? ''}
+                onChange={e => setFilter('minAge', numberFilter(e.target.value))}
               />
-              {' '}Só livres
-            </label>
-            <label>
+              <span>–</span>
               <input
-                type="checkbox"
-                checked={filters.withClubOnly ?? false}
-                onChange={e => setFilter('withClubOnly', e.target.checked || undefined)}
+                type="number"
+                className="ctrl transfer-filter-number"
+                min={16}
+                max={50}
+                placeholder="máx"
+                value={filters.maxAge ?? ''}
+                onChange={e => setFilter('maxAge', numberFilter(e.target.value))}
               />
-              {' '}Com clube
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={filters.retiring ?? false}
-                onChange={e => setFilter('retiring', e.target.checked ? true : undefined)}
-              />
-              {' '}Aposentando
-            </label>
 
-            <button className="ctrl" onClick={resetFilters} disabled={filterCount === 0}>
-              Limpar
-            </button>
+              <label>Estrelas ≥</label>
+              <input
+                type="number"
+                step={0.5}
+                min={0}
+                className="ctrl transfer-filter-number"
+                placeholder="★"
+                value={filters.minStars ?? ''}
+                onChange={e => setFilter('minStars', numberFilter(e.target.value))}
+              />
+
+              <label>
+                <input
+                  type="checkbox"
+                  checked={filters.freeAgentsOnly ?? false}
+                  onChange={e => setFilter('freeAgentsOnly', e.target.checked || undefined)}
+                />
+                {' '}Só livres
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={filters.withClubOnly ?? false}
+                  onChange={e => setFilter('withClubOnly', e.target.checked || undefined)}
+                />
+                {' '}Com clube
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={filters.retiring ?? false}
+                  onChange={e => setFilter('retiring', e.target.checked ? true : undefined)}
+                />
+                {' '}Aposentando
+              </label>
+
+              <button className="ctrl" onClick={resetFilters} disabled={filterCount === 0}>
+                Limpar
+              </button>
+            </div>
+
+            <details className="transfer-filter-row transfer-filter-attributes">
+              <summary>Atributos mínimos</summary>
+              <div className="transfer-filter-row">
+                {([
+                  ['minSpeed', 'Vel'],
+                  ['minAccuracy', 'Fin'],
+                  ['minDribbling', 'Dri'],
+                  ['minHeading', 'Cab'],
+                  ['minStrength', 'For'],
+                  ['minGoalkeeperPower', 'Gol'],
+                  ['minReflexes', 'Ref']
+                ] as const).map(([key, label]) => (
+                  <span key={key} className="transfer-filter-attribute">
+                    <label>{label} ≥</label>
+                    <input
+                      type="number"
+                      className="ctrl transfer-filter-number"
+                      min={0}
+                      max={20}
+                      value={filters[key] ?? ''}
+                      onChange={e => setFilter(key, numberFilter(e.target.value))}
+                    />
+                  </span>
+                ))}
+              </div>
+            </details>
           </div>
 
-          <details className="transfer-filter-row transfer-filter-attributes">
-            <summary>Atributos mínimos</summary>
-            <div className="transfer-filter-row">
-              {([
-                ['minSpeed', 'Vel'],
-                ['minAccuracy', 'Fin'],
-                ['minDribbling', 'Dri'],
-                ['minHeading', 'Cab'],
-                ['minStrength', 'For'],
-                ['minGoalkeeperPower', 'Gol'],
-                ['minReflexes', 'Ref']
-              ] as const).map(([key, label]) => (
-                <span key={key} className="transfer-filter-attribute">
-                  <label>{label} ≥</label>
-                  <input
-                    type="number"
-                    className="ctrl transfer-filter-number"
-                    min={0}
-                    max={20}
-                    value={filters[key] ?? ''}
-                    onChange={e => setFilter(key, numberFilter(e.target.value))}
-                  />
-                </span>
-              ))}
-            </div>
-          </details>
-        </div>
+          {error && <p className="transfer-error">{error}</p>}
 
-        {error && <p className="transfer-error">{error}</p>}
-
-        {loading ? (
-          <p>Carregando...</p>
-        ) : !searchResult?.players?.length ? (
-          <p className="transfer-empty">Nenhum jogador encontrado.</p>
-        ) : (
-          <>
-            <table className="transfer-table club-squad-table">
-              <thead>
-                <tr>
-                  <th>Pos</th>
-                  <th className="squad-name">Jogador</th>
-                  <th className="num">Idade</th>
-                  <th className="num">Energia</th>
-                  <th className="num">★</th>
-                  <th className="num">Vel</th>
-                  <th className="num">Fin</th>
-                  <th className="num">Dri</th>
-                  <th className="num">Cab</th>
-                  <th className="num">For</th>
-                  <th className="num">Gol</th>
-                  <th className="num">Ref</th>
-                  <th className="num accent">Gols</th>
-                  <th className="num">Defs</th>
-                  <th className="num">Ama</th>
-                  <th className="num">Verm</th>
-                  <th>Clube</th>
-                  <th className="num">Valor</th>
-                  <th className="num">Preço</th>
-                  <th className="num">Salário</th>
-                </tr>
-              </thead>
-              <tbody>
+          {loading ? (
+            <p>Carregando...</p>
+          ) : !searchResult?.players?.length ? (
+            <p className="transfer-empty">Nenhum jogador encontrado.</p>
+          ) : (
+            <>
+              <div className="player-box-grid">
                 {searchResult.players.map(player => (
-                  <PlayerRow
+                  <PlayerBoxListing
                     key={player.playerId}
                     player={player}
                     onSelect={setSelectedPlayer}
                   />
                 ))}
-              </tbody>
-            </table>
-
-            <p className="transfer-count">
-              {searchResult.total} jogadores — página {searchResult.page} de {searchResult.totalPages}
-            </p>
-
-            {searchResult.totalPages > 1 && (
-              <div className="pagination">
-                {Array.from({ length: searchResult.totalPages }, (_, i) => i + 1)
-                  .filter(p => Math.abs(p - page) < 3 || p === 1 || p === searchResult.totalPages)
-                  .map(p => (
-                    <button
-                      key={p}
-                      className={`pagination-btn ${p === page ? 'active' : ''}`}
-                      onClick={() => setPage(p)}
-                    >
-                      {p}
-                    </button>
-                  ))}
               </div>
-            )}
-          </>
-        )}
-      </section>
 
-      {/*
-        The club's balance, shown prominently at the top of the market so a manager
-        knows what he can spend before he starts bidding. Matches the club page's
-        figures layout.
-      */}
-      {balance && (
-        <section className="transfer-balance-section">
-          <div className="club-figures">
-            <div className="club-figure club-figure--accent">
-              <span className="club-figure__icon">💰</span>
-              <span className="club-figure__value">{formatLimo(balance.balance)}</span>
-              <span className="club-figure__label">Saldo do clube</span>
-            </div>
-          </div>
+              <p className="transfer-count">
+                {searchResult.total} jogadores — página {searchResult.page} de {searchResult.totalPages}
+              </p>
+
+              {searchResult.totalPages > 1 && (
+                <div className="pagination">
+                  {Array.from({ length: searchResult.totalPages }, (_, i) => i + 1)
+                    .filter(p => Math.abs(p - page) < 3 || p === 1 || p === searchResult.totalPages)
+                    .map(p => (
+                      <button
+                        key={p}
+                        className={`pagination-btn ${p === page ? 'active' : ''}`}
+                        onClick={() => setPage(p)}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      )}
+
+      {/* The offers addressed to this club, on a page of their own. They were buried under a
+          twenty-column table of players and two ranking sections, and an offer nobody answers
+          dies at the end of the season — so burying them was how offers piled up unread. They are
+          not the landing page, because a manager opening the market is asking what he can buy;
+          they are one click away and their count is on the tab. */}
+      {activeTab === 'proposals' && (
+        <section className="transfer-inbox-section">
+          <h3>
+            Propostas na mesa
+            {incoming.length > 0 && (
+              <span className="transfer-inbox-count">{incoming.length} a responder</span>
+            )}
+          </h3>
+
+          {/* A tab that opens onto nothing is a broken tab, so the empty case is said rather than
+              left blank: "nothing on the table" and "this page is broken" are different facts and
+              a blank page would be read as the second one. */}
+          {(!inbox || (inbox.incoming.length === 0 && inbox.outgoing.length === 0)) && (
+            <p className="transfer-empty">
+              Nenhuma proposta na mesa. As ofertas que você fizer aparecem aqui.
+            </p>
+          )}
+
+          {!!inbox?.outgoing.length && (
+            <>
+              <h4>Enviadas</h4>
+              {/* The same grid the market is, for the same reason: these are the same men, and a
+                  proposal the manager made is a man he has already read. */}
+              <div className="player-box-grid">
+                {inbox.outgoing.map(p => (
+                  <ProposalBox key={p.transferId} proposal={p} />
+                ))}
+              </div>
+            </>
+          )}
+
+          {!!inbox?.incoming.length && (
+            <>
+              <h4>Recebidas</h4>
+              {/* The answer is offered here and not on the outgoing side, because a proposal sent
+                  is not waiting for the sender to answer it. The box carries the club that has to
+                  be convinced on its own line, which is the club a manager has to ring. */}
+              <div className="player-box-grid">
+                {inbox.incoming.map(p => (
+                  <ProposalBox
+                    key={p.transferId}
+                    proposal={p}
+                    onAnswer={handleAnswer}
+                    answering={answering === p.transferId}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </section>
       )}
 
@@ -961,174 +1138,73 @@ const TransferScreen: React.FC = () => {
         list is empty: a heading that vanishes says nothing, and "nobody moved" is a
         different fact from "this screen is broken".
       */}
-      {recentTransfers && (
+      {activeTab === 'activity' && (
         <section className="transfer-recent-section">
-          <h3>Transferências recentes na divisão (últimas {recentTransfers.windowRounds} rodadas)</h3>
-          {recentTransfers.transfers.length === 0 ? (
+          <h3>
+            Transferências recentes na divisão (últimas {recentTransfers?.windowRounds ?? 3} rodadas)
+          </h3>
+          {/* The same grid, once more: a division's recent business is a list of men who moved,
+              and the men are the same men the market is a grid of. */}
+          <div className="player-box-grid">
+            {(recentTransfers?.transfers ?? []).map((line, i) => (
+              <PlayerBox
+                key={`${line.sellingClubId ?? 'livre'}-${line.buyingClubId}-${i}`}
+                playerId={line.playerId}
+                name={line.playerName}
+                face={line.player?.face}
+                age={line.playerAge}
+                position={line.playerPosition}
+                stars={line.player?.stars}
+                attributes={{
+                  speed: line.player?.speed ?? 0,
+                  accuracy: line.player?.accuracy ?? 0,
+                  dribbling: line.player?.dribbling ?? 0,
+                  heading: line.player?.heading ?? 0,
+                  strength: line.player?.strength ?? 0,
+                  goalkeeperPower: line.player?.goalkeeperPower ?? 0,
+                  reflexes: line.player?.reflexes ?? 0
+                }}
+                keeper={line.playerPosition === 'GK'}
+                energy={line.player?.energy ?? 0}
+                team={
+                  line.buyingClubId
+                    ? { teamId: line.buyingClubId, name: line.buyingClubName }
+                    : null
+                }
+                money={{ price: line.fee }}
+                className={`status-${STATUS_COLOR[line.status]}`}
+              >
+                {/* The move itself, in the order it happened: he left one club and arrived at
+                    another, for a fee, on a round. */}
+                <span className={`status-badge status-${STATUS_COLOR[line.status]}`}>
+                  {STATUS_LABELS[line.status]}
+                </span>
+                <span>
+                  <span className="player-box__tag">Saiu de</span>{' '}
+                  {line.sellingClubId ? (
+                    <ClubName teamId={line.sellingClubId}>{line.sellingClubName}</ClubName>
+                  ) : (
+                    <span className="free-agent">{line.sellingClubName}</span>
+                  )}
+                </span>
+                <span>
+                  <span className="player-box__tag">Foi para</span>{' '}
+                  <ClubName teamId={line.buyingClubId}>{line.buyingClubName}</ClubName>
+                </span>
+                <span title="Rodada em que ele chegou">
+                  <span className="player-box__tag">Rodada</span>{' '}
+                  {line.arrivalRoundNumber ? `${line.arrivalRoundNumber}\u00aa` : '\u2014'}
+                </span>
+              </PlayerBox>
+            ))}
+          </div>
+
+          {/* The empty case is said rather than left blank: "nobody moved in the division" and
+              "this page is broken" are different facts and a blank page reads as the second. */}
+          {recentTransfers && recentTransfers.transfers.length === 0 && (
             <p className="transfer-empty">
               Nenhum clube da divisão contratou ou liberou jogador nas últimas {recentTransfers.windowRounds} rodadas.
             </p>
-          ) : (
-            <table className="transfer-table club-squad-table">
-              <thead>
-                <tr>
-                  <th className="squad-name">Jogador</th>
-                  <th>De</th>
-                  <th>Para</th>
-                  <th className="num money">Valor</th>
-                  <th className="num">Rodada</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentTransfers.transfers.map((line, i) => (
-                  <tr key={`${line.sellingClubId ?? 'livre'}-${line.buyingClubId}-${i}`} className={`history-row status-${STATUS_COLOR[line.status]}`}>
-                    <td className="squad-name">
-                      <PlayerName playerId={line.playerId}>{line.playerName}</PlayerName>
-                    </td>
-                    <td>
-                      {line.sellingClubId ? (
-                        <ClubName teamId={line.sellingClubId}>{line.sellingClubName}</ClubName>
-                      ) : (
-                        <span className="free-agent">{line.sellingClubName}</span>
-                      )}
-                    </td>
-                    <td>
-                      <ClubName teamId={line.buyingClubId}>{line.buyingClubName}</ClubName>
-                    </td>
-                    <td className="num money">{line.fee ? formatLimo(line.fee) : '—'}</td>
-                    <td className="num">{line.arrivalRoundNumber ? `${line.arrivalRoundNumber}ª` : '—'}</td>
-                    <td>
-                      <span className={`status-badge status-${STATUS_COLOR[line.status]}`}>
-                        {STATUS_LABELS[line.status]}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            )}
-        </section>
-      )}
-
-      {/*
-        The offers addressed to this club are the first thing on the screen, above the search
-        that finds new men. A manager opening "Mercado" is asking one of two questions — what
-        can I buy, and what do I have to answer for — and the second is the one with a clock on
-        it: an offer nobody answers dies at the season's end. Burying it under a twenty-column
-        table is how twenty offers pile up unread.
-      */}
-      {inbox && (inbox.incoming.length > 0 || inbox.outgoing.length > 0) && (
-        <section className="transfer-inbox-section">
-          <h3>
-            Propostas na mesa
-            {incoming.length > 0 && (
-              <span className="transfer-inbox-count">{incoming.length} a responder</span>
-            )}
-          </h3>
-
-          {inbox.outgoing.length > 0 && (
-            <>
-              <h4>Enviadas</h4>
-              {/*
-                Every column a row prints is a column the head names, in the same order. A row
-                that prints one number the head does not name shifts every value after it: the
-                seller ends up under "Comprador" and the status under "Data", and a table read
-                that way is not a table that is nearly right, it is a table saying the opposite
-                of what it means.
-              */}
-              <table className="transfer-table club-squad-table">
-                <thead>
-                  <tr>
-                    <th className="squad-name">Jogador</th>
-                    <th>Posição</th>
-                    <th className="num">Idade</th>
-                    <th>Vendedor</th>
-                    <th>Comprador</th>
-                    <th className="num money">Oferta</th>
-                    <th className="num">Chega</th>
-                    <th>Status</th>
-                    <th className="num">Data</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inbox.outgoing.map(p => (
-                    <ProposalRow key={p.transferId} proposal={p} />
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-
-          {inbox.incoming.length > 0 && (
-            <>
-              <h4>Recebidas</h4>
-              <table className="transfer-table club-squad-table">
-                <thead>
-                  <tr>
-                    <th className="squad-name">Jogador</th>
-                    <th>Posição</th>
-                    <th className="num">Idade</th>
-                    <th>Vendedor</th>
-                    <th>Comprador</th>
-                    <th className="num money">Oferta</th>
-                    <th className="num">Chega</th>
-                    <th>Status</th>
-                    <th>Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inbox.incoming.map(p => (
-                    <tr key={p.transferId} className={`proposal-row status-${STATUS_COLOR[p.status]}`}>
-                      <td className="squad-name">
-                        <PlayerName playerId={p.playerId}>{p.playerName}</PlayerName>
-                      </td>
-                      <td>{positionLabel(p.playerPosition)}</td>
-                      <td className="num">{p.playerAge}</td>
-                      <td>
-                        {p.sellingClubId ? (
-                          <ClubName teamId={p.sellingClubId}>{p.sellingClubName}</ClubName>
-                        ) : (
-                          <span className="free-agent">{p.sellingClubName}</span>
-                        )}
-                      </td>
-                      <td>
-                        <ClubName teamId={p.buyingClubId}>{p.buyingClubName}</ClubName>
-                      </td>
-                      <td className="num money">{p.fee ? formatLimo(p.fee) : '—'}</td>
-                      <td className="num">
-                        {p.arrivalSeasonNumber}/{p.arrivalRoundNumber ?? '—'}
-                      </td>
-                      <td>
-                        <span className={`status-badge status-${STATUS_COLOR[p.status]}`}>
-                          {STATUS_LABELS[p.status]}
-                        </span>
-                      </td>
-                      <td>
-                        {p.status === 'Pending' && (
-                          <>
-                            <button
-                              className="ctrl btn-sm accept"
-                              disabled={answering === p.transferId}
-                              onClick={() => handleAnswer(p, true)}
-                            >
-                              Aceitar
-                            </button>
-                            <button
-                              className="ctrl btn-sm reject"
-                              disabled={answering === p.transferId}
-                              onClick={() => handleAnswer(p, false)}
-                            >
-                              Recusar
-                            </button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
           )}
         </section>
       )}
@@ -1137,29 +1213,31 @@ const TransferScreen: React.FC = () => {
         The four transfer rankings of the division: most players bought, most sold, most
         money spent, and most profit. Profit is net — fees received minus fees paid — so
         a sell-on that covers two losses appears above a club that bought five for peanuts.
+        A page of its own, because four tables under a search form is a wall and a wall is
+        the reason a manager stopped reading the division's business.
       */}
-      {rankings && (
+      {activeTab === 'rankings' && rankings && (
         <section className="transfer-rankings-section">
           <div className="transfer-rankings-grid">
-            <TransferRankingTable
+            <TransferRankingList
               title="Mais contratações"
               entries={rankings.mostBought}
               metricLabel="contratações"
               formatMetric={n => String(n)}
             />
-            <TransferRankingTable
+            <TransferRankingList
               title="Mais vendidas"
               entries={rankings.mostSold}
               metricLabel="vendas"
               formatMetric={n => String(n)}
             />
-            <TransferRankingTable
+            <TransferRankingList
               title="Mais gastos"
               entries={rankings.mostSpent}
               metricLabel="gasto"
               formatMetric={n => formatLimo(n)}
             />
-            <TransferRankingTable
+            <TransferRankingList
               title="Mais lucro"
               entries={rankings.mostProfit}
               metricLabel="lucro"

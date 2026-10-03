@@ -2,9 +2,7 @@ import { SeasonApi, TeamApi, PlayerApi } from '@/api';
 import type { AcademyPlayerDto, SeasonDto, TeamDto, SquadTrainingQuotesDto, PlayerAttribute } from '@/types';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { attributeToneClass, energyTextClass, positionLabel, starsToString } from '@/services/formatters';
-import { PlayerName } from '@/components/Common/Names';
-import PlayerStatusMarks from '@/components/Common/PlayerStatusMarks';
+import PlayerBox from '@/components/Common/PlayerBox';
 import ClubCrest from '@/components/Club/ClubCrest';
 import { useClubWindow } from '@/services/clubColors';
 import { useGameState } from '@/state';
@@ -320,142 +318,127 @@ const BaseScreen: React.FC = () => {
           {error && <p className="squad-hint" style={{ color: 'var(--danger)' }}>{error}</p>}
 
           {!loading && !error && (
-            /* An empty base is a sentence rather than a row. A row would have to span seventeen
-               columns of a table whose headers are the only thing telling a manager what a youth
-               is, and a header row above an empty body is a shape that looks like a page that
-               failed to load rather than a club with nobody coming up. The squad's empty state is
-               the same sentence for the same reason. */
+            /* An empty base is a sentence. A row would have to stand in for a youth in a layout
+               whose headers are the only thing telling a manager what one is, and a header above an
+               empty body is a shape that reads as a page that failed to load rather than as a club
+               with nobody coming up. */
             sortedPlayers.length === 0 ? (
               <p className="league-empty">Nenhum jogador na base.</p>
             ) : (
-              /* The same table the squad's is: `.history-table.club-squad-table` inside the same
-                 `.profile-history` box, so the two tables on two screens are one table. The rows
-                 carry the same marks — a youth carrying a knock is dimmed as unavailable rather
-                 than shown in the same ink as one who is fit, and the two goalkeeper columns print
-                 an em dash for an outfielder instead of the number he will never use, which is
-                 what the squad's does with the same two columns. */
-              <div className="profile-history">
-              <table className="history-table club-squad-table">
-                <thead>
-                  <tr>
+              /* The same box the squad's is, for the same reason: a youth on the base and a man
+                 in the first team are the same kind of thing read in two places, and two shapes
+                 answering one question is how the goalkeeper's numbers end up on one screen and not
+                 on the other. The keeper's two numbers print a dash for an outfielder rather than
+                 the number he will never use, which is what the squad's does with the same two. */
+              <>
+                {/* The order the boxes are read in. The header row was the order, exactly as it is
+                    on the squad; a grid of boxes has no columns, so it says it with one control. */}
+                <div className="squad-sort">
+                  <label htmlFor="academy-sort">Ordenar por</label>
+                  <select
+                    id="academy-sort"
+                    className="ctrl"
+                    value={sortKey}
+                    onChange={e => toggleSort(e.target.value as SortKey)}
+                  >
                     {COLUMNS.map(column => (
-                      <th
-                        key={column.key}
-                        className={[
-                          column.head ?? 'num',
-                          'sort-head',
-                          sortKey === column.key ? 'sorted' : ''
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
-                        onClick={() => toggleSort(column.key)}
-                        title={`Ordenar por ${column.label}`}
-                      >
+                      <option key={column.key} value={column.key}>
                         {column.label}
-                        {sortKey === column.key && (
-                          <span className="sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>
-                        )}
-                      </th>
+                        {sortKey === column.key ? (sortDir === 'asc' ? ' \u25b2' : ' \u25bc') : ''}
+                      </option>
                     ))}
-                    <th className="num">Tre</th>
-                    {/* The two decisions are not a column a manager sorts by, so the header says
-                        what they are and nothing more — the same reason the squad's action column
-                        carries no arrow. */}
-                    <th className="actions-col">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
+                  </select>
+                </div>
+
+                <div className="player-box-grid">
                   {sortedPlayers.map(player => (
-                    <tr
+                    <PlayerBox
                       key={player.playerId}
+                      playerId={player.playerId}
+                      name={player.name}
+                      face={player.face}
+                      age={player.age}
+                      position={player.position}
+                      stars={player.stars}
+                      attributes={{
+                        speed: player.speed,
+                        accuracy: player.accuracy,
+                        dribbling: player.dribbling,
+                        heading: player.heading,
+                        strength: player.strength,
+                        goalkeeperPower: player.goalkeeperPower,
+                        reflexes: player.reflexes
+                      }}
+                      keeper={player.position === 'GK'}
+                      injury={player.injury}
+                      injuryMatchesRemaining={player.injuryMatchesRemaining}
+                      suspensionMatches={player.suspensionMatches}
+                      retiring={player.retiring}
+                      energy={player.energy}
+                      team={team ? { teamId: team.id, name: team.name, primaryColor: team.primaryColor, secondaryColor: team.secondaryColor } : null}
                       className={[
-                        'history-row',
                         player.injury !== 'None' ? 'injured' : '',
                         player.isAvailable ? '' : 'unavailable'
                       ]
                         .filter(Boolean)
                         .join(' ')}
                     >
-                      <td className="squad-name">
-                        <PlayerName playerId={player.playerId}>{player.name}</PlayerName>
-                        {/* One rule for the three marks a man's name can carry, so a youth
-                            carrying a knock is never printed as "Suspenso" for having been
-                            unavailable — the red card he was never shown. */}
-                        <PlayerStatusMarks
-                          retiring={player.retiring}
-                          injury={player.injury}
-                          injuryMatchesRemaining={player.injuryMatchesRemaining}
-                          suspensionMatches={player.suspensionMatches}
-                        />
-                      </td>
-                      <td className="num">{positionLabel(player.position)}</td>
-                      <td className="num">{player.age}</td>
-                      <td className="num">{player.overallRating}</td>
-                      <td className="num">{player.potential}</td>
-                      <td className="num stars-col">{starsToString(player.stars)}</td>
-                      <td className={`num ${attributeToneClass(player.speed)}`}>{player.speed}</td>
-                      <td className={`num ${attributeToneClass(player.accuracy)}`}>{player.accuracy}</td>
-                      <td className={`num ${attributeToneClass(player.dribbling)}`}>{player.dribbling}</td>
-                      <td className={`num ${attributeToneClass(player.heading)}`}>{player.heading}</td>
-                      <td className={`num ${attributeToneClass(player.strength)}`}>{player.strength}</td>
-                      {/* The two goalkeeper numbers are only the goalkeeper's. An outfielder's is
-                          not zero — it is a rating he will never be measured on — so the cell
-                          says so rather than printing a number the manager might read as one. */}
-                      <td className={`num ${player.position === 'GK' ? attributeToneClass(player.goalkeeperPower) : ''}`}>
-                        {player.position === 'GK' ? player.goalkeeperPower : '—'}
-                      </td>
-                      <td className={`num ${player.position === 'GK' ? attributeToneClass(player.reflexes) : ''}`}>
-                        {player.position === 'GK' ? player.reflexes : '—'}
-                      </td>
-                      <td className={`num ${energyTextClass(player.energy)}`}>{player.energy}</td>
-                      <td className="num">{player.developmentRoom}</td>
+                      {/* The three numbers the base has and a squad does not: how good he is now,
+                          how good he may become, and how far that is still away. */}
+                      <span title="Média geral dos atributos">
+                        <span className="player-box__tag">Geral</span> {player.overallRating}
+                      </span>
+                      <span title="Teto que a leitura dele pode alcançar">
+                        <span className="player-box__tag">Potencial</span> {player.potential}
+                      </span>
+                      <span title="Quanto ainda há entre ele e o próprio teto">
+                        <span className="player-box__tag">Margem</span> {player.developmentRoom}
+                      </span>
+
                       {/* What a session with this youth costs. A dash rather than a zero when the
                           backend has not quoted him, for the same reason the rest of the screen
                           prints one: a zero is a price, and this is not one yet. */}
-                      <td className="num">
-                        {trainingQuotes[player.playerId] ? (
-                          <span title={`Custo da sessão: ${trainingQuotes[player.playerId].sessionFee} L$`}>
-                            {trainingQuotes[player.playerId].sessionFee}
-                          </span>
-                        ) : '—'}
-                      </td>
-                      <td className="actions-col">
-                        <div className="squad-row__actions">
-                          <select
-                            className="promote-button"
-                            value=""
-                            onChange={e => {
-                              const attr = e.target.value as PlayerAttribute;
-                              if (attr) handleTrain(player.playerId, attr);
-                            }}
-                            disabled={trainingPlayerId === player.playerId}
-                            title="Treinar atributo"
-                          >
-                            <option value="" disabled>
-                              {trainingPlayerId === player.playerId ? '…' : 'Treinar'}
+                      <span>
+                        <span className="player-box__tag">Treino</span>{' '}
+                        {trainingQuotes[player.playerId]
+                          ? `${trainingQuotes[player.playerId].sessionFee} L$`
+                          : '\u2014'}
+                      </span>
+
+                      <span className="actions-col">
+                        <select
+                          className="promote-button"
+                          value=""
+                          onChange={e => {
+                            const attr = e.target.value as PlayerAttribute;
+                            if (attr) handleTrain(player.playerId, attr);
+                          }}
+                          disabled={trainingPlayerId === player.playerId}
+                          title="Treinar atributo"
+                        >
+                          <option value="" disabled>
+                            {trainingPlayerId === player.playerId ? '\u2026' : 'Treinar'}
+                          </option>
+                          {getTrainableAttributes(player.playerId).map(attr => (
+                            <option key={attr.attribute} value={attr.attribute}>
+                              {attr.attribute} ({attr.cost})
                             </option>
-                            {getTrainableAttributes(player.playerId).map(attr => (
-                              <option key={attr.attribute} value={attr.attribute}>
-                                {attr.attribute} ({attr.cost})
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            className="promote-button"
-                            onClick={() => handlePromote(player.playerId)}
-                            disabled={promotingPlayerId === player.playerId}
-                            title="Promover para a equipe principal"
-                          >
-                            {promotingPlayerId === player.playerId ? '…' : 'Promover'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                          ))}
+                        </select>
+                        <button
+                          className="promote-button"
+                          onClick={() => handlePromote(player.playerId)}
+                          disabled={promotingPlayerId === player.playerId}
+                          title="Promover para a equipe principal"
+                        >
+                          {promotingPlayerId === player.playerId ? '\u2026' : 'Promover'}
+                        </button>
+                      </span>
+                    </PlayerBox>
                   ))}
-                </tbody>
-              </table>
-            </div>
-            )
+                </div>
+              </>
+              )
           )}
         </div>
       </div>

@@ -5,12 +5,13 @@ import KitEditor from '@/components/Club/KitEditor';
 import KitShirt from '@/components/Club/KitShirt';
 import ClubOwnershipIcon from '@/components/Common/ClubOwnershipIcon';
 import DivisionTrophy from '@/components/League/DivisionTrophy';
+import { SponsorLogo } from '@/components/Sponsor/SponsorLogo';
 import { useClubWindow } from '@/services/clubColors';
 import { kitOf } from '@/services/clubKits';
 import { formatLimo } from '@/services/limo';
 import { useGameState } from '@/state';
 import { useAuthStore } from '@/state/auth';
-import type { ClubHistoryEventDto, ClubProfileDto, ClubTrophyDto, TeamDto } from '@/types';
+import type { ClubHistoryEventDto, ClubProfileDto, ClubTrophyDto, SponsorOfferDto, TeamDto } from '@/types';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -165,9 +166,14 @@ const ClubScreen: React.FC = () => {
   const clubWindow = useClubWindow(selectedTeam);
   const [club, setClub] = useState<ClubProfileDto | null>(null);
   const [failed, setFailed] = useState(false);
-  const [sponsorName, setSponsorName] = useState<string | null>(null);
-  const [sponsorIndustry, setSponsorIndustry] = useState<string | null>(null);
+  const [sponsor, setSponsor] = useState<SponsorOfferDto | null>(null);
   const [sponsorMatchesLeft, setSponsorMatchesLeft] = useState<number>(0);
+
+  // The company is held as the offer it is rather than as loose strings, because the mark on
+  // this page has to be the same mark the shirt and the scoreboard carry, and a name kept apart
+  // from its logo is a name and a logo that can be about different companies.
+  const sponsorName = sponsor?.name ?? null;
+  const sponsorIndustry = sponsor?.industry ?? null;
   const [coachName, setCoachName] = useState<string | null>(null);
   const [editingCoach, setEditingCoach] = useState(false);
   const [coachInput, setCoachInput] = useState('');
@@ -213,14 +219,13 @@ const ClubScreen: React.FC = () => {
       .then(season => SponsorApi.getBook(selectedTeam.id, season.id))
       .then(book => {
         if (!alive) return;
-        setSponsorName(book.current?.name ?? null);
-        setSponsorIndustry(book.current?.industry ?? null);
+        setSponsor(book.current);
         setSponsorMatchesLeft(book.matchesLeft);
       })
       .catch(() => {
         if (!alive) return;
-        setSponsorName(null);
-        setSponsorIndustry(null);
+        setSponsor(null);
+        setSponsorMatchesLeft(0);
       });
 
     return () => {
@@ -424,8 +429,12 @@ const ClubScreen: React.FC = () => {
             sponsor still has matches to pay is one that cannot be shopped around. */}
         <section className="club-sponsor">
           <h3 className="club-section-title">Patrocinador do momento</h3>
-          {sponsorName ? (
+          {sponsor ? (
             <p className="club-sponsor__line">
+              {/* The company's own panel, the one the shirt and the scoreboard draw. A club's page
+                  says who is paying for it; this is what makes that company recognisable at a
+                  glance instead of only readable. */}
+              <SponsorLogo logo={sponsor.logo} height={26} title={sponsor.name} />
               <span className="club-sponsor__name">{sponsorName}</span>
               {sponsorIndustry && <span className="club-sponsor__industry">• {sponsorIndustry}</span>}
               <span className="club-sponsor__left">

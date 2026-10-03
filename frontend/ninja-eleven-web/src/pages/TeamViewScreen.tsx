@@ -1,7 +1,7 @@
 import { SeasonApi, TeamApi, ManagerApi, TransferApi, PlayerApi } from '@/api';
 import { ApiProblemError } from '@/api/client';
 import ClubCrest from '@/components/Club/ClubCrest';
-import ClubSquadTable from '@/components/Club/ClubSquadTable';
+import ClubSquadList from '@/components/Club/ClubSquadList';
 import TrainingPanel from '@/components/Club/TrainingPanel';
 import SquadFilterBar, {
   applySquadFilter,
@@ -665,7 +665,7 @@ const TeamViewScreen: React.FC<{ teamId?: string }> = ({ teamId: propTeamId }) =
               matched={filteredPlayers.length}
               total={players.length}
             />
-            <ClubSquadTable
+            <ClubSquadList
               squad={filteredPlayers}
               team={team}
               onRelease={isOwnTeam ? handleRelease : undefined}

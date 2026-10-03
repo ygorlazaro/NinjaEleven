@@ -259,6 +259,19 @@ and 18, the quarter-finals on 22 and 23, the semi-finals on 27 and 28 and the fi
 `Round.CompletedAt` and `WindowsPerMatchDay` are what energy recovery is measured against, so
 a squad's rest is a fact about the calendar rather than a number a client invents.
 
+**The sides are alternated by pair index, and that is what stops a club from living at home.**
+`RoundRobin` reads the home side off the pair's index in the round and not off the slot: the first
+pair plays "first member at home", the second plays "second member at home", and so on. The circle
+method moves every club one slot per round, so the parity of the pair index flips with the club and
+the side flips with it. Reading the sides off the slot instead is what a draw does when nobody asks,
+and it is how a club ends up playing fifteen home games in a row and then fifteen away ones — which
+is what a sixteen-club division drew before this rule. Three in a row is the floor, not a
+preference: a club that alternated perfectly would be decided by one bit, two such clubs could only
+meet if their bits differed, and in a single round-robin every club meets every other one — a
+two-colouring of a complete graph. So at most two clubs can alternate without a slip, and the draw
+reaches that: two alternate all season, every other club repeats its side three times in thirty
+rounds, and a whole division holds two three-in-a-rows (`ScheduleBalanceTests` measures all of it).
+
 **A day has two windows, and the round is in the first one.** `CompetitionRules` holds the
 hours — 15:00 UTC for a championship window and the Supercup, 21:00 for a cup leg — so the
 seventh day of a season carries the sixth round of the divisions and the first legs of the
@@ -742,9 +755,21 @@ the game prices a shirt outside them.
   price a season's first day like its last.
 - **A crowd is not extrapolated.** `CrowdSpread` holds both ends flat, like the price of a seat:
   a sponsor does not pay six times the fee for a ground three times as full.
-- **A brand does not put two shirts in one championship.** `WantsThisClub` refuses a company
-  that already has a club in this division, and a company whose slate is full. Both are real
-  reasons and both are reasons a human sponsor has.
+- **A brand puts two shirts in one championship, and not three.**
+  `SponsorRules.MaxClubsPerDivision` is the ceiling and `WantsThisClub` counts what a company
+  already holds in the same division against it. It was one, and a third of the pyramid played
+  every week with a bare back: only the local companies (`min_appeal` 0) will sign a
+  fourth-division club, so their book is the floor the whole market rests on.
+- **The best clubs are served first, because that is what fills the pyramid.** The shirt pass
+  works the field by descending appeal. Handing out a company's places in the order the clubs
+  came out of the database would give the best of the small companies to the best clubs and
+  leave the clubs nobody wants to sponsor with nobody to sponsor them.
+- **A company is stamped on the match at the whistle, and the past is derived once.**
+  `Match.RecordSponsors` writes `home_sponsor_id`/`away_sponsor_id` and the lineup reads those
+  ids rather than the contract, because a deal runs out in mid-season. The backfill migration
+  fills the matches that were played before the columns existed from the deal signed at or
+  before their kick-off — and a match played while a club had not signed anything stays bare,
+  because a shirt nobody bought is not a shirt.
 - **The size of a company is one decision, not four.** `SponsorSize` carries the weight, the
   slate, the appeal floor and the highest division together, and `Sponsor.Create` takes it as
   one argument — a national brand seeded with a local club's appetite is a company nothing

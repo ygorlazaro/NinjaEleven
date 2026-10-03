@@ -1,3 +1,4 @@
+using NinjaEleven.Domain.Common;
 using NinjaEleven.Domain.Enums;
 using NinjaEleven.Domain.Matches;
 using Xunit;
@@ -134,6 +135,32 @@ public class TacticTests
         Assert.Equal(
             (Tactics.Find("343")!.Defenders, Tactics.Find("343")!.Midfielders, Tactics.Find("343")!.Attackers),
             (3, 4, 3));
+    }
+
+    [Fact]
+    public void A_club_reduced_to_ten_players_is_still_playing_the_shape_it_fielded()
+    {
+        // A striker carried off, a defender sent off, and the shape is still 3-4-3. How many
+        // men a club has is the strength's business; the shape it is playing is the team
+        // sheet's, and reading it off the survivors told a manager who ordered 3-4-3 that his
+        // club had come out in another one.
+        var eleven = Enumerable.Range(0, 11)
+            .Select(index => Snapshot(index switch
+            {
+                0 => Position.GK,
+                <= 3 => Position.DEF,
+                <= 7 => Position.MID,
+                _ => Position.ATT
+            }))
+            .ToList();
+
+        eleven[10].SendOff(30);
+        eleven[9].Injure(Injury.Grave, matchesOut: 3, minute: 55);
+
+        var played = eleven.ToDictionary(player => player.PlayerId);
+
+        Assert.Equal(new Formation(3, 4, 3), Formation.FromComposition(played.Values));
+        Assert.Equal(10, Formation.FromComposition(played.Values).Outfielders);
     }
 
     private static MatchPlayerSnapshot Snapshot(

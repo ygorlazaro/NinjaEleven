@@ -87,6 +87,17 @@ public class MatchService : IMatchCleaner
     private readonly SponsorOfferService _sponsorService;
 
     /// <summary>
+    /// The reader that answers which of a set of clubs have a live deal, which is the one question
+    /// the kick-off has about the two names on the two shirts.
+    /// </summary>
+    private readonly ISponsorContractRepository _sponsorContracts;
+
+    /// <summary>
+    /// The companies whose names are on the shirts, read by the ids the kick-off stamped.
+    /// </summary>
+    private readonly ISponsorRepository _sponsors;
+
+    /// <summary>
     /// The manager's box, and the two readers a report is written with.
     ///
     /// A finished match is the one moment the world has something to say, and the service
@@ -120,6 +131,8 @@ public class MatchService : IMatchCleaner
         TacticsService tactics,
         FinanceService financeService,
         SponsorOfferService sponsorService,
+        ISponsorContractRepository sponsorContracts,
+        ISponsorRepository sponsors,
         InboxService inbox,
         MatchContextService matchContext,
         StandingsService standings,
@@ -142,6 +155,8 @@ public class MatchService : IMatchCleaner
         _tactics = tactics;
         _financeService = financeService;
         _sponsorService = sponsorService;
+        _sponsorContracts = sponsorContracts;
+        _sponsors = sponsors;
         _inbox = inbox;
         _matchContext = matchContext;
         _standings = standings;
@@ -437,6 +452,18 @@ public class MatchService : IMatchCleaner
             awayTeam.AwayKit,
             matchSeed);
         match.RecordKits(homeKitSide, awayKitSide);
+
+        // The two companies on the two shirts, stamped beside the two shirts and for the same
+        // reason: a deal runs out in the middle of a season, so a screen that asked the contract
+        // every time it drew would take a sponsor off a club's back at half-time and put it back
+        // at the final whistle. Both clubs are asked about in one read, because a match has two
+        // clubs in it and one row to write.
+        var liveDeals = await _sponsorContracts.ListActiveByTeamIdsAsync(
+            new[] { homeTeam.Id, awayTeam.Id },
+            cancellationToken);
+        match.RecordSponsors(
+            liveDeals.TryGetValue(homeTeam.Id, out var homeDeal) ? homeDeal.SponsorId : null,
+            liveDeals.TryGetValue(awayTeam.Id, out var awayDeal) ? awayDeal.SponsorId : null);
 
         // The squad strength behind the crowd is the eleven that is about to play and the bench
         // behind it, because that is the team the supporters are coming to watch on the day.
@@ -1199,6 +1226,51 @@ public class MatchService : IMatchCleaner
         players.Count(player => player.RedCard);
 
     /// <summary>
+    /// The two companies stamped on the two shirts, resolved in one read.
+    ///
+    /// <para>
+    /// They are read from the ids the kick-off wrote and not from the contract table, so what a
+    /// screen draws is what the referee saw when the whistle went. Both ids go out as one set
+    /// because a match has two shirts and a reader per shirt is two round trips to name them.
+    /// </para>
+    /// </summary>
+    private async Task<(SponsorMark? Home, SponsorMark? Away)> SponsorsOf(
+        Domain.Matches.Match match,
+        CancellationToken cancellationToken)
+    {
+        var stamped = new[] { match.HomeSponsorId, match.AwaySponsorId }
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+
+        if (stamped.Count == 0)
+        {
+            return (null, null);
+        }
+
+        var companies = (await _sponsors.ListByIdsAsync(stamped, cancellationToken))
+            .ToDictionary(sponsor => sponsor.Id);
+
+        return (
+            MarkOf(companies, match.HomeSponsorId),
+            MarkOf(companies, match.AwaySponsorId));
+    }
+
+    private static SponsorMark? MarkOf(
+        IReadOnlyDictionary<Guid, Domain.Sponsors.Sponsor> companies,
+        Guid? sponsorId) =>
+        sponsorId is Guid id && companies.TryGetValue(id, out var company)
+            ? new SponsorMark
+            {
+                Id = company.Id,
+                Name = company.Name,
+                Industry = company.Industry,
+                Color = company.Color
+            }
+            : null;
+
+    /// <summary>
     /// The eleven and the bench of both clubs, as locked in at kick-off.
     /// </summary>
     public async Task<MatchLineup> GetLineupAsync(
@@ -1208,10 +1280,14 @@ public class MatchService : IMatchCleaner
     {
         var match = await GetMatchAsync(matchId, cancellationToken);
 
+        var sponsors = await SponsorsOf(match, cancellationToken);
+
         if (_sessions.TryGet(matchId, out var session))
         {
             return new MatchLineup
             {
+                HomeSponsor = sponsors.Home,
+                AwaySponsor = sponsors.Away,
                 MatchId = match.Id,
                 UserTeamIndex = ResolveUserTeamIndex(match, userTeamId),
                 HomeTeam = ToTeam(await _teamRepository.GetAsync(match.HomeTeamId, cancellationToken)),
@@ -1242,6 +1318,8 @@ public class MatchService : IMatchCleaner
             AwayTeam = awaySquad.Team,
             HomeKitSide = match.HomeKitSide,
             AwayKitSide = match.AwayKitSide,
+            HomeSponsor = sponsors.Home,
+            AwaySponsor = sponsors.Away,
             HomeLineup = homeSquad.Lineup,
             AwayLineup = awaySquad.Lineup,
             HomeBench = homeSquad.Bench,

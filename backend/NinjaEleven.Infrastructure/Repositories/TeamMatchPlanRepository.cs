@@ -19,6 +19,19 @@ public class TeamMatchPlanRepository : ITeamMatchPlanRepository
             .AsNoTracking()
             .SingleOrDefaultAsync(plan => plan.TeamId == teamId && plan.SeasonId == seasonId, cancellationToken);
 
+    /// <summary>
+    /// The club's own last word on how it plays, read as one row: the most recently restated
+    /// plan it has, whatever season that was written in.
+    /// </summary>
+    public async Task<TeamMatchPlan?> GetLatestAsync(
+        Guid teamId,
+        CancellationToken cancellationToken = default) =>
+        await _dbContext.TeamMatchPlans
+            .AsNoTracking()
+            .Where(plan => plan.TeamId == teamId)
+            .OrderByDescending(plan => plan.UpdatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
     public async Task AddAsync(TeamMatchPlan plan, CancellationToken cancellationToken = default) =>
         await _dbContext.TeamMatchPlans.AddAsync(plan, cancellationToken);
 

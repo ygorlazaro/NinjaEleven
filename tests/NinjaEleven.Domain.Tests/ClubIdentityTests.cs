@@ -265,4 +265,37 @@ public class ClubIdentityTests
         Assert.Equal(KitSide.Home, match.HomeKitSide);
         Assert.Equal(KitSide.Away, match.AwayKitSide);
     }
+
+    [Fact]
+    public void AMatchRemembersTheTwoCompaniesOnTheShirtsRatherThanAskingTheContractsAgain()
+    {
+        // Same reasoning as the two shirts, and it matters more: a deal runs out in the middle of
+        // a season, so a scoreboard that asked the contract table on every draw would take the
+        // company off a club's back at half-time and put it back at the final whistle. The two
+        // names are what the referee saw when the whistle went.
+        var match = Match.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var home = Guid.NewGuid();
+        var away = Guid.NewGuid();
+
+        Assert.Null(match.HomeSponsorId);
+        Assert.Null(match.AwaySponsorId);
+
+        match.RecordSponsors(home, away);
+
+        Assert.Equal(home, match.HomeSponsorId);
+        Assert.Equal(away, match.AwaySponsorId);
+    }
+
+    [Fact]
+    public void AClubWithNoSponsorLeavesAHalfOfTheScoreboardEmptyRatherThanNamingSomebody()
+    {
+        // Most clubs have no deal for most of a season, and a null is that fact. Substituting a
+        // name for the gap would put a company on a shirt that was sold to somebody else.
+        var match = Match.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        match.RecordSponsors(Guid.NewGuid(), null);
+
+        Assert.NotNull(match.HomeSponsorId);
+        Assert.Null(match.AwaySponsorId);
+    }
 }

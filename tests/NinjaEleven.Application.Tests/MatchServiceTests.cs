@@ -257,6 +257,21 @@ public class MatchServiceTests
 
     private MatchService CreateService()
     {
+        // The two shirts are stamped with the two companies on them at the whistle, and this
+        // world has a field of sponsors of nobody: the shortlist a test sets up is a manager's
+        // book, and a bare shirt is what a club nobody signed looks like.
+        _sponsorContracts
+            .Setup(repository => repository.ListActiveByTeamIdsAsync(
+                It.IsAny<IEnumerable<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Domain.Sponsors.SponsorContract>());
+
+        _sponsors
+            .Setup(repository => repository.ListByIdsAsync(
+                It.IsAny<IEnumerable<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
         // Two services want each other here — the match reads the standing order off the
         // board, and the board reads the calendar off the matchday — so the shared one is
         // built once and handed to both rather than written out twice and left to drift.
@@ -320,6 +335,8 @@ public class MatchServiceTests
             InboxTestFactory.Create(_teams),
             _unitOfWork.Object,
             NullLogger<SponsorOfferService>.Instance),
+        _sponsorContracts.Object,
+        _sponsors.Object,
         InboxTestFactory.Create(_teams),
         new MatchContextService(
             _matches.Object,

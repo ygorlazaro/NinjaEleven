@@ -184,6 +184,186 @@ public class SponsorOfferService
     }
 
     /// <summary>
+    /// Puts a shirt on every club nobody is running, on the same terms a manager would be given.
+    ///
+    /// <para>
+    /// A club without a manager is not a club without a shirt. Sixty-three of the sixty-four
+    /// clubs in a pyramid are run by nobody, and a world where only the one club a person
+    /// happens to be in has a sponsor is a world whose scoreboards are bare everywhere else —
+    /// so this asks the same question the manager's screen asks, of every one of them, and
+    /// takes the same answer.
+    /// </para>
+    /// <para>
+    /// It is a pass and not a loop, because the answer is one reading of the world: the clubs,
+    /// the divisions, the catalogue and the whole portfolio are read once each and the sixty
+    /// shortlists are worked out of what came back. Sixty clubs asked one at a time is sixty
+    /// walks of the same four tables.
+    /// </para>
+    /// <para>
+    /// Each club takes the top of its own shortlist — the company that pays most — which is what
+    /// a manager pressing the first row of the list he is shown does, and the length is the
+    /// same seeded draw, so a club that signs without looking is paid exactly what the list
+    /// would have quoted it. The companies' books are updated as the pass signs, so a brand
+    /// that fills its slate on club three is not offered club four.
+    /// </para>
+    /// <para>
+    /// Nothing is announced. The inbox is a manager's box, and a notice in a box no person
+    /// opens is not a fact about the world.
+    /// </para>
+    /// </summary>
+    /// <param name="seasonId">The season whose divisions are selling shirts.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>How many deals were signed.</returns>
+    public async Task<int> SignTheUnmanagedClubsAsync(
+        Guid seasonId,
+        CancellationToken cancellationToken = default)
+    {
+        var clubs = await _teams.ListClubsWithoutManagerInSeasonAsync(seasonId, cancellationToken);
+
+        if (clubs.Count == 0)
+        {
+            return 0;
+        }
+
+        // A club already wearing a company is left wearing it: this pass fills bare shirts, it
+        // does not re-deal a club that chose. Read in one go because it is one question about
+        // the whole field rather than one per club.
+        var wearing = await _contracts.ListActiveByTeamIdsAsync(
+            clubs.Select(club => club.Id),
+            cancellationToken);
+
+        var bare = clubs
+            .Where(club => !wearing.ContainsKey(club.Id))
+            .ToList();
+
+        if (bare.Count == 0)
+        {
+            return 0;
+        }
+
+        var tierOfTeam = await _teams.GetTeamDivisionsAsync(
+            seasonId,
+            bare.Select(club => club.Id),
+            cancellationToken);
+
+        // A club in no division of this season has no shirt to sell, and there is nothing a
+        // sponsor would be quoting for — the same absence the manager's own shortlist reports.
+        var inThePyramid = bare
+            .Where(club => tierOfTeam.TryGetValue(club.Id, out var clubTier))
+            .Select(club => (Club: club, Tier: tierOfTeam[club.Id]))
+            .ToList();
+
+        if (inThePyramid.Count == 0)
+        {
+            return 0;
+        }
+
+        var catalog = await _sponsors.ListAsync(cancellationToken);
+
+        if (catalog.Count == 0)
+        {
+            return 0;
+        }
+
+        var portfolio = (await _contracts.ListActiveBySponsorIdsAsync(
+                catalog.Select(sponsor => sponsor.Id),
+                cancellationToken))
+            .ToDictionary(
+                entry => entry.Key,
+                entry => entry.Value.ToList());
+
+        foreach (var sponsor in catalog)
+        {
+            if (!portfolio.ContainsKey(sponsor.Id))
+            {
+                portfolio[sponsor.Id] = [];
+            }
+        }
+
+        var facts = await _facts.ReadAsync(seasonId, cancellationToken);
+        var signed = 0;
+
+        // The best clubs first, and it matters: the companies that only work with a good club go
+        // to them, and what is left of the small companies' books is what the rest of the
+        // pyramid has to be able to buy a shirt with. Handing out a company's two places in the
+        // order the clubs came out of the database would give the best of the small companies to
+        // the best clubs and leave the ones nobody wants to sponsor with nobody to sponsor them.
+        var ordered = inThePyramid
+            .OrderByDescending(entry => AppealOf(facts.GetValueOrDefault(entry.Club.Id), entry.Club.Id))
+            .ThenBy(entry => entry.Club.Id)
+            .ToList();
+
+        foreach (var (club, tier) in ordered)
+        {
+            var clubFacts = facts.GetValueOrDefault(club.Id);
+            var appeal = AppealOf(clubFacts, club.Id);
+
+            var best = catalog
+                .Where(sponsor => WantsThisClub(
+                    sponsor,
+                    tier,
+                    appeal,
+                    portfolio.ToDictionary(
+                        entry => entry.Key,
+                        entry => (IReadOnlyList<SponsorContract>)entry.Value),
+                    tierOfTeam))
+                .Select(sponsor => new
+                {
+                    Sponsor = sponsor,
+                    Held = portfolio[sponsor.Id].Count,
+                    Fee = SponsorPricing.FeeFor(
+                        tier,
+                        sponsor,
+                        (clubFacts ?? new ClubSponsorFacts()) with { SponsorClubs = portfolio[sponsor.Id].Count })
+                })
+                .OrderByDescending(offer => offer.Fee)
+                .ThenBy(offer => offer.Sponsor.Name, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+
+            if (best is null)
+            {
+                _logger.LogInformation(
+                    "No company would take the shirt of {ClubName} this season; it stays bare.",
+                    club.Name);
+                continue;
+            }
+
+            var length = ContractLengthFor(best.Sponsor, club.Id, seasonId);
+            var contract = SponsorContract.Sign(best.Sponsor.Id, club.Id, seasonId, best.Fee, length);
+
+            await _contracts.AddAsync(contract, cancellationToken);
+            club.SignSponsorContract(contract);
+            _teams.Update(club);
+            portfolio[best.Sponsor.Id].Add(contract);
+            signed++;
+
+            _logger.LogInformation(
+                "{ClubName} signed a shirt deal with {SponsorName} on its own: {Fee} limos per match for {Length} matches.",
+                club.Name, best.Sponsor.Name, best.Fee, length);
+        }
+
+        if (signed > 0)
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return signed;
+    }
+
+    /// <summary>
+    /// What a company thinks the shirt is worth to it: the club's season read as a whole.
+    ///
+    /// <para>
+    /// A club the standings could not place is priced as the average club rather than as a club
+    /// with nothing — the same reading the manager's own shortlist gives it, because a missing
+    /// line on a table is a table that has not been built yet, and a price of nothing would be
+    /// the one reading of it a sponsor would not act on.
+    /// </para>
+    /// </summary>
+    private static double AppealOf(ClubSponsorFacts? clubFacts, Guid clubId) =>
+        clubFacts is null ? 1.0 : SponsorPricing.Appeal(clubFacts);
+
+    /// <summary>
     /// Records one match played under a club's shirt deal and pays the sponsor for it.
     ///
     /// The payment is written against the match: a match settled twice — by the tick that
@@ -402,11 +582,13 @@ public class SponsorOfferService
             return false;
         }
 
-        // One shirt per division. A club whose tier this sponsor's own book cannot say is
-        // treated as a clash rather than as a free run: a sponsor finding out afterwards that
-        // it is on two shirts in one championship is worse than one missing an offer.
-        return deals.All(contract =>
-            tierOfTeam.TryGetValue(contract.TeamId, out var heldTier) && heldTier != tier);
+        // The same division, twice at most: a club whose tier this company's own book cannot
+        // say is treated as a clash rather than as a free run, because a sponsor finding out
+        // afterwards that it is on a fourth shirt in one championship is worse than one
+        // missing an offer. A club in another division is not a clash at all.
+        return deals.Count(contract =>
+                tierOfTeam.TryGetValue(contract.TeamId, out var heldTier) && heldTier == tier)
+            < SponsorRules.MaxClubsPerDivision;
     }
 
     /// <summary>

@@ -102,6 +102,56 @@ public class TacticsServiceTests
     }
 
     [Fact]
+    public async Task An_academy_player_is_on_the_board_and_may_be_named_in_the_order()
+    {
+        var squad = AFullSquad();
+        var graduate = squad[5];
+
+        var service = CreateService();
+        SquadIs(squad, academy: new HashSet<Guid> { graduate.Id });
+
+        var board = await service.GetBoardAsync(_teamId, _seasonId);
+
+        // An academy player is attached to a club for the season and under nobody's contract:
+        // the domain says so, the world gives him a season state under the club's name, and
+        // that is how he comes to play for it. So he is on this board.
+        //
+        // He used not to be, and that was the whole bug. A squad read from the contract table
+        // could not show him; the staff suggestion reads the season states, so it proposed an
+        // eleven with him in it; the screen took the suggestion whole and posted it; and the
+        // save — which checks the order against the same contract-only squad — refused it on a
+        // player the manager had been handed and could not refuse. The board and the save have
+        // to be looking at the same club, and the eleven the staff suggest has to be an eleven
+        // this board could have been built by hand.
+        var row = board.Squad.Single(candidate => candidate.PlayerId == graduate.Id);
+        Assert.True(row.IsAvailable);
+
+        // And naming him is a decision, not a refusal.
+        TeamMatchPlan? stored = null;
+        _plans
+            .Setup(repo => repo.GetAsync(_teamId, _seasonId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => stored);
+        _plans
+            .Setup(repo => repo.AddAsync(It.IsAny<TeamMatchPlan>(), It.IsAny<CancellationToken>()))
+            .Callback((TeamMatchPlan plan, CancellationToken _) => stored = plan);
+
+        var order = squad
+            .Take(MatchRules.SquadSize)
+            .Select(player => player.Id)
+            .ToList();
+        var bench = squad
+            .Skip(MatchRules.SquadSize)
+            .Take(3)
+            .Select(player => player.Id)
+            .ToList();
+
+        var saved = await service.SavePlanAsync(_teamId, _seasonId, "4231", order, bench);
+
+        Assert.Equal(order, saved.StarterIds);
+        Assert.Equal(bench, saved.BenchIds);
+    }
+
+    [Fact]
     public async Task A_plan_naming_a_man_from_another_club_is_refused()
     {
         var service = CreateService();
@@ -222,6 +272,85 @@ public class TacticsServiceTests
 
         Assert.Equal("433", resolved!.TacticCode);
         Assert.Equal(order, resolved.StarterIds);
+    }
+
+    [Fact]
+    public async Task A_season_the_manager_never_restated_still_goes_out_in_the_shape_he_chose()
+    {
+        // The morning after the season turned over. Nobody opened the board, so there is no
+        // plan for this season — and the club must not fall back to whichever shape it
+        // happened to finish the last one in. This is the guard on the bug that a manager
+        // picks 3-4-3, closes the game, and watches his eleven go out 4-3-3 because the
+        // standing order was filed under a season that had already ended.
+        var service = CreateService();
+        var order = Enumerable.Range(0, MatchRules.SquadSize).Select(_ => Guid.NewGuid()).ToList();
+        var lastSeason = Guid.NewGuid();
+
+        _plans
+            .Setup(repo => repo.GetAsync(_teamId, _seasonId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TeamMatchPlan?)null);
+        _plans
+            .Setup(repo => repo.GetLatestAsync(_teamId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(TeamMatchPlan.Create(_teamId, lastSeason, "343", order, [], _now));
+        _matches
+            .Setup(repo => repo.GetLastTacticCodeAsync(_teamId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("433");
+
+        var resolved = await service.TheOrderAtTheKickOffAsync(_teamId, _seasonId);
+
+        Assert.Equal("343", resolved!.TacticCode);
+        Assert.Equal(order, resolved.StarterIds);
+    }
+
+    [Fact]
+    public async Task A_club_that_never_left_a_plan_still_gets_the_shape_it_last_played()
+    {
+        // The other end of the same fallback: a club nobody ever spoke for has no order to
+        // carry, and the shape it finished the last campaign in is still its habit.
+        var service = CreateService();
+
+        _plans
+            .Setup(repo => repo.GetAsync(_teamId, _seasonId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TeamMatchPlan?)null);
+        _plans
+            .Setup(repo => repo.GetLatestAsync(_teamId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TeamMatchPlan?)null);
+        _matches
+            .Setup(repo => repo.GetLastTacticCodeAsync(_teamId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("352");
+
+        var order = await service.TheOrderAtTheKickOffAsync(_teamId, _seasonId);
+
+        Assert.Equal("352", order!.TacticCode);
+        Assert.Empty(order.StarterIds);
+    }
+
+    [Fact]
+    public async Task The_board_opens_on_the_order_the_club_will_actually_go_out_in()
+    {
+        // The screen and the kick-off must answer the same question. A board that opened blank
+        // in a fresh season would have the manager rebuilding an eleven his club is already
+        // playing, and two answers to "what does my club play" is one too many.
+        var service = CreateService();
+        SquadIs(AFullSquad());
+        var order = Enumerable.Range(0, MatchRules.SquadSize).Select(_ => Guid.NewGuid()).ToList();
+        var lastSeason = Guid.NewGuid();
+
+        _plans
+            .Setup(repo => repo.GetAsync(_teamId, _seasonId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TeamMatchPlan?)null);
+        _plans
+            .Setup(repo => repo.GetLatestAsync(_teamId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(TeamMatchPlan.Create(_teamId, lastSeason, "343", order, [], _now));
+
+        var board = await service.GetBoardAsync(_teamId, _seasonId);
+
+        Assert.NotNull(board.Plan);
+        Assert.Equal("343", board.Plan!.TacticCode);
+        Assert.Equal(order, board.Plan.StarterIds);
+        // The season is still the one the board was opened for: what it shows was carried in
+        // from last season, and what it saves belongs to this one.
+        Assert.Equal(_seasonId, board.SeasonId);
     }
 
     [Fact]
@@ -472,8 +601,21 @@ public class TacticsServiceTests
             NullLogger<MatchdayService>.Instance);
     }
 
-    private void SquadIs(IReadOnlyList<Player> squad, Action<Player, PlayerSeasonState>? touch = null)
+    private void SquadIs(
+        IReadOnlyList<Player> squad,
+        Action<Player, PlayerSeasonState>? touch = null,
+        ISet<Guid>? academy = null)
     {
+        // The club's contracts, which is the book the wages come from. An academy player is in
+        // no book: he is trained here and paid nothing.
+        var contracted = squad
+            .Where(player => academy is null || !academy.Contains(player.Id))
+            .ToList();
+
+        PlayerSeasonState StateOf(Player player) => academy is not null && academy.Contains(player.Id)
+            ? PlayerSeasonState.CreateAcademyPlayer(player.Id, _seasonId, _teamId, 90)
+            : AState(player, touch);
+
         _teams
             .Setup(repo => repo.GetAsync(_teamId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(_club ??= AClub("Renascença", _teamId, 4));
@@ -484,7 +626,7 @@ public class TacticsServiceTests
 
         _teams
             .Setup(repo => repo.GetSquadAsync(_teamId, _seasonId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<TeamMembership>)squad
+            .ReturnsAsync((IReadOnlyList<TeamMembership>)contracted
                 .Select(player => TeamMembership.Create(player.Id, _teamId, new DateOnly(2026, 1, 1)))
                 .ToList());
 
@@ -492,7 +634,7 @@ public class TacticsServiceTests
         // player's back.
         _teams
             .Setup(repo => repo.GetLiveContractsAsync(_teamId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<TeamMembership>)squad
+            .ReturnsAsync((IReadOnlyList<TeamMembership>)contracted
                 .Select(player => TeamMembership.Create(player.Id, _teamId, new DateOnly(2026, 1, 1)))
                 .ToList());
 
@@ -505,6 +647,17 @@ public class TacticsServiceTests
                     .Where(player => playerIds.Contains(player.Id))
                     .ToDictionary(player => player.Id)));
 
+        // Both doors into the club, answered from the same book of men. The season states are
+        // what the kick-off and the staff suggestion read, so a squad that left the academy out
+        // of this one would be a squad the manager can see and the staff cannot name.
+        _players
+            .Setup(repo => repo.ListSeasonStatesAsync(
+                _seasonId,
+                It.IsAny<Guid?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((Guid _, Guid? __, CancellationToken ___) =>
+                Task.FromResult<IReadOnlyList<PlayerSeasonState>>(squad.Select(StateOf).ToList()));
+
         _players
             .Setup(repo => repo.ListSeasonStatesByPlayerIdsAsync(
                 _seasonId,
@@ -513,13 +666,15 @@ public class TacticsServiceTests
             .Returns((Guid _, IEnumerable<Guid> playerIds, CancellationToken __) =>
                 Task.FromResult<IReadOnlyList<PlayerSeasonState>>(squad
                     .Where(player => playerIds.Contains(player.Id))
-                    .Select(player =>
-                    {
-                        var state = PlayerSeasonState.Create(player.Id, _seasonId, _teamId, 90);
-                        touch?.Invoke(player, state);
-                        return state;
-                    })
+                    .Select(StateOf)
                     .ToList()));
+    }
+
+    private PlayerSeasonState AState(Player player, Action<Player, PlayerSeasonState>? touch)
+    {
+        var state = PlayerSeasonState.Create(player.Id, _seasonId, _teamId, 90);
+        touch?.Invoke(player, state);
+        return state;
     }
 
     /// <summary>

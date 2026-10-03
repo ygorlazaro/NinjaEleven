@@ -451,10 +451,29 @@ public class TeamService
         var roundsLeft = await _seasonRepository.GetChampionshipRoundsLeftAsync(
             seasonId, cancellationToken);
 
+        // A squad is the club's contracts *and* its academy, because the domain says an academy
+        // player is "attached to a club for the season": he is trained by the club, he evolves in
+        // it, and the world gives him a season state under its name, which is how he comes to
+        // play for it and how he comes to have scored. A squad read from the contract table
+        // alone is the squad of the men the club pays, and that is not the same answer twice
+        // over: the staff suggestion reads the season states, so it offered a manager an eleven
+        // this list had never heard of, and saving that eleven was refused on a player he had
+        // been handed and could not refuse. Two doors into one squad is the whole bug.
+        //
+        // The academy is read as a set alongside the contracts rather than one man at a time, and
+        // the row carries no membership: a contract is not invented for him, so his wage is a
+        // real zero, his seasons left are nothing to buy and his release costs nothing to
+        // settle. <see cref="SquadPlayer"/> already answers for a row without one.
         var memberships = await _teamRepository.GetSquadAsync(teamId, seasonId, cancellationToken);
-        var squad = new List<SquadPlayer>(memberships.Count);
+        var underContract = memberships.Select(membership => membership.PlayerId).ToHashSet();
 
-        if (memberships.Count == 0)
+        var academyStates = (await _playerRepository.ListSeasonStatesAsync(seasonId, teamId, cancellationToken))
+            .Where(state => state.IsAcademyPlayer && !underContract.Contains(state.PlayerId))
+            .ToList();
+
+        var squad = new List<SquadPlayer>(memberships.Count + academyStates.Count);
+
+        if (memberships.Count == 0 && academyStates.Count == 0)
         {
             return squad;
         }
@@ -462,13 +481,16 @@ public class TeamService
         // A squad is twenty-three men and a page of a club is read by everybody who looks at a
         // matchday, so the men and their season's state are read in two queries rather than two
         // per row. A player with a contract and no state in the season is skipped, exactly as
-        // he was when he was read one at a time.
-        var players = await _teamRepository.GetPlayersAsync(
-            memberships.Select(membership => membership.PlayerId),
-            cancellationToken);
+        // he was when he were read one at a time. Both doors are asked for in one pass, so a
+        // squad of contracts and a squad of academy are two reads rather than two per man.
+        var playerIds = underContract
+            .Concat(academyStates.Select(state => state.PlayerId))
+            .ToList();
+
+        var players = await _teamRepository.GetPlayersAsync(playerIds, cancellationToken);
         var states = (await _playerRepository.ListSeasonStatesByPlayerIdsAsync(
                 seasonId,
-                memberships.Select(membership => membership.PlayerId),
+                playerIds,
                 cancellationToken))
             .ToDictionary(state => state.PlayerId);
 
@@ -489,6 +511,23 @@ public class TeamService
                 Player = player,
                 SeasonState = seasonState,
                 Membership = membership,
+                Season = season,
+                RoundsLeftInSeason = roundsLeft
+            });
+        }
+
+        foreach (var academyState in academyStates)
+        {
+            if (!players.TryGetValue(academyState.PlayerId, out var player))
+            {
+                continue;
+            }
+
+            squad.Add(new SquadPlayer
+            {
+                Player = player,
+                SeasonState = academyState,
+                Membership = null,
                 Season = season,
                 RoundsLeftInSeason = roundsLeft
             });

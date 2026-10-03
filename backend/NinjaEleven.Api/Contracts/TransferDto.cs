@@ -3,6 +3,34 @@ using NinjaEleven.Domain.Transfers;
 
 namespace NinjaEleven.Api.Contracts;
 
+
+/// <summary>
+/// The face, the seven attributes, the stars and the energy of the man a transfer is about.
+///
+/// <para>
+/// It is one shape on three lists — the market, a proposal and a line of a division's recent
+/// business — because it is one set of facts about one man, and a client that had to be told
+/// three times that a proposal carries his attributes is a client that would have been told
+/// twice and drawn twice and disagreed with itself on the third.
+/// </para>
+/// </summary>
+public class PlayerSnapshotDto
+{
+    /// <summary>The raw JSON of a faces.js <c>FaceConfig</c>, null when he has none.</summary>
+    public string? Face { get; init; }
+    public int Speed { get; init; }
+    public int Accuracy { get; init; }
+    public int Dribbling { get; init; }
+    public int Heading { get; init; }
+    public int Strength { get; init; }
+    public int GoalkeeperPower { get; init; }
+    public int Reflexes { get; init; }
+    public double Stars { get; init; }
+
+    /// <summary>Null when the world has no season state for him, which is not a hundred.</summary>
+    public int? Energy { get; init; }
+}
+
 public class TransferProposalDto
 {
     public Guid TransferId { get; init; }
@@ -10,6 +38,12 @@ public class TransferProposalDto
     public string PlayerName { get; init; } = string.Empty;
     public string PlayerPosition { get; init; } = string.Empty;
     public int PlayerAge { get; init; }
+
+    /// <summary>
+    /// His face, attributes, stars and energy, so a proposal is a manager reading a man rather
+    /// than a man reduced to a name and a fee.
+    /// </summary>
+    public PlayerSnapshotDto? Player { get; init; }
 
     /// <summary>Null when the player has no club: a signing has nobody selling him.</summary>
     public Guid? SellingClubId { get; init; }
@@ -90,6 +124,14 @@ public class TransferListingDto
 
     /// <summary>The career split by club, on the card that opens from a row.</summary>
     public IReadOnlyList<PlayerClubCareerLineDto> Clubs { get; init; } = Array.Empty<PlayerClubCareerLineDto>();
+
+    /// <summary>
+    /// The player's face as the raw JSON of a faces.js <c>FaceConfig</c>, null when he has
+    /// none. A market is read by face before it is read by name — that is what it is a market
+    /// for — and a list of men with no faces is a list of initials, which is a squad screen
+    /// wearing a different hat.
+    /// </summary>
+    public string? Face { get; init; }
 }
 
 /// <summary>
@@ -167,6 +209,14 @@ public class TransferHistoryLineDto
     public Guid PlayerId { get; init; }
     public string PlayerName { get; init; } = string.Empty;
     public string PlayerPosition { get; init; } = string.Empty;
+
+    public int PlayerAge { get; init; }
+
+    /// <summary>
+    /// The same snapshot a proposal carries, for the same reason: a division's recent business is
+    /// a list of men who moved, and a list of names is not that.
+    /// </summary>
+    public PlayerSnapshotDto? Player { get; init; }
 
     public Guid? SellingClubId { get; init; }
     public string? SellingClubName { get; init; }

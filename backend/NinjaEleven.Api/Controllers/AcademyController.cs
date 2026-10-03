@@ -54,7 +54,8 @@ public class AcademyController : ControllerBase
             Injury = p.Injury,
             InjuryMatchesRemaining = p.InjuryMatchesRemaining,
             SuspensionMatches = p.SuspensionMatches,
-            Retiring = p.Retiring
+            Retiring = p.Retiring,
+            Face = p.Face
         }));
     }
 
